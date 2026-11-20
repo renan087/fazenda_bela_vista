@@ -20585,54 +20585,317 @@ def _classification_harvests(repo, scope):
     return [harvest for harvest in harvests if harvest_matches_season(harvest, season)]
 
 
-@router.get("/producao/classificacao")
-def coffee_classification_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
-                               csrf_token: str = Depends(get_csrf_token)):
-    repo = _repository(db)
-    scope = _global_scope_context(request, repo, user)
-    harvests = _classification_harvests(repo, scope)
-    selected_harvest_id = _optional_query_int(request.query_params.get("harvest_id"))
+def _analysis_view(analysis, *, mini: bool = False) -> dict:
+    """Dados prontos para exibir uma análise: radar, barras, faixa da nota e tipo de análise."""
+    from app.services.coffee_classification import ANALYSIS_KINDS, radar_axes, radar_points, score_band
+    profile = analysis.sensory_profile
+    pairs = profile.attribute_pairs if profile else []
+    scale = profile.scale_max if profile else 10
+    labels = [label for label, _ in pairs]
+    values = [float(value or 0) for _, value in pairs]
+    geo = {"cx": 22.0, "cy": 22.0, "radius": 19.0} if mini else {}
+    band, tone = score_band(analysis.sensory_score)
+    kinds = {key: label for key, label, _ in ANALYSIS_KINDS}
+    kind = analysis.analysis_kind or ("ambos" if profile or analysis.sensory_score is not None else "fisica")
+    return {
+        "obj": analysis, "id": analysis.id, "scale": scale, "has_profile": len(values) >= 3,
+        "pairs": [{"label": label, "value": value, "pct": round(min(value / scale, 1) * 100, 1) if scale else 0}
+                  for label, value in zip(labels, values)],
+        "radar": radar_points(values, scale, **geo), "ring": radar_points([scale] * len(values), scale, **geo),
+        "ring_half": radar_points([scale / 2] * len(values), scale, **geo), "axes": radar_axes(labels) if not mini else [],
+        "band": band, "tone": tone, "kind": kind, "kind_label": analysis.method or kinds.get(kind, ""),
+        "score": float(analysis.sensory_score) if analysis.sensory_score is not None else None,
+        "files": ([{"name": analysis.report_filename, "url": f"/producao/classificacao/{analysis.id}/laudo"}]
+                  if analysis.report_filename else [])
+                 + [{"name": item.filename, "url": f"/producao/classificacao/{analysis.id}/laudo?attachment_id={item.id}"}
+                    for item in analysis.attachments],
+    }
+
+
+def _classification_data(db: Session, harvests: list[HarvestRecord]):
+    """Análises da safra (mais recentes primeiro) agrupadas por lote."""
     ids = [item.id for item in harvests]
-    history_ids = [selected_harvest_id] if selected_harvest_id in ids else ids
-    analyses = (db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data), joinedload(CoffeeClassification.harvest),
-                                                   selectinload(CoffeeClassification.attachments))
-                .filter(CoffeeClassification.harvest_id.in_(history_ids))
-                .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).all()) if history_ids else []
-    farm = scope.get("active_farm")
-    comparison = []
-    if farm:
-        comparison = (db.query(CoffeeClassification).join(HarvestRecord, CoffeeClassification.harvest_id == HarvestRecord.id)
-                      .join(Plot, HarvestRecord.plot_id == Plot.id).join(CropSeason, HarvestRecord.season_id == CropSeason.id)
-                      .options(defer(CoffeeClassification.report_data), joinedload(CoffeeClassification.harvest).joinedload(HarvestRecord.season))
-                      .filter(Plot.farm_id == farm.id, CropSeason.farm_id == farm.id)
-                      .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).limit(51).all())
-    from app.services.coffee_classification import COFFEE_BEVERAGES, SENSORY_SCALES, sensory_attributes_for_org, sensory_definitions_for_edit
-    definitions = sensory_attributes_for_org(db, user.organization_id)
-    edit_id = _optional_query_int(request.query_params.get("edit_id"))
-    edit_analysis = db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data)).filter_by(id=edit_id).first() if edit_id else None
-    if edit_id and (not edit_analysis or edit_analysis.harvest_id not in ids):
-        raise HTTPException(status_code=404, detail="Análise não encontrada neste contexto.")
-    active_definitions = sensory_definitions_for_edit(definitions, edit_analysis.sensory_profile if edit_analysis else None)
-    detail_id = _optional_query_int(request.query_params.get("analise"))
-    return templates.TemplateResponse("coffee_classification.html", _base_context(
-        request, user, csrf_token, "coffee_classification", _repo=repo, title="Classificação do café",
-        classification_harvests=harvests, classifications=analyses, today=today_in_app_timezone(),
-        selected_harvest_id=selected_harvest_id if selected_harvest_id in ids else None, sensory_attributes=active_definitions,
-        production_origin=selected_harvest_id in ids and request.query_params.get("origem") == "producao",
-        detail_analysis_id=detail_id if selected_harvest_id in ids and any(item.id == detail_id for item in analyses) else None,
-        sensory_definitions=definitions, edit_classification=edit_analysis,
-        coffee_beverages=COFFEE_BEVERAGES, sensory_scales=SENSORY_SCALES,
-        classification_comparison=comparison[:50], classification_comparison_truncated=len(comparison) > 50,
-        classification_pending=_classification_pending(db, harvests)))
+    analyses = (db.query(CoffeeClassification)
+                .options(defer(CoffeeClassification.report_data), selectinload(CoffeeClassification.attachments)
+                         .load_only(CoffeeClassificationAttachment.filename), selectinload(CoffeeClassification.sensory_profile))
+                .filter(CoffeeClassification.harvest_id.in_(ids))
+                .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).all()) if ids else []
+    by_lot: dict[int, list] = {}
+    for analysis in analyses:
+        by_lot.setdefault(analysis.harvest_id, []).append(analysis)
+    return analyses, by_lot
 
 
-def _classification_pending(db: Session, harvests: list[HarvestRecord]) -> list[HarvestRecord]:
-    """Lotes da safra que ainda não têm nenhuma análise."""
+def _quality_price_refs(db: Session, harvests, by_lot) -> list[dict]:
+    """Preço médio das vendas da safra por faixa de qualidade do lote vendido."""
     ids = [item.id for item in harvests]
     if not ids:
         return []
-    done = {row[0] for row in db.query(CoffeeClassification.harvest_id).filter(CoffeeClassification.harvest_id.in_(ids)).distinct()}
-    return [item for item in harvests if item.id not in done][:12]
+    sales = db.query(CoffeeCommercializationRecord).filter(CoffeeCommercializationRecord.harvest_id.in_(ids)).all()
+    buckets = {"top": [], "ok": [], "std": []}
+    for sale in sales:
+        latest = (by_lot.get(sale.harvest_id) or [None])[0]
+        if latest is None or latest.sensory_score is None:
+            continue
+        score = float(latest.sensory_score)
+        buckets["top" if score >= 84 else "ok" if score >= 80 else "std"].append(float(sale.unit_price or 0))
+    labels = {"top": "Especial 84+ pts", "ok": "Especial 80–84 pts", "std": "Comercial (abaixo de 80)"}
+    return [{"label": labels[key], "min": min(values), "max": max(values)} for key, values in buckets.items() if values]
+
+
+@router.get("/producao/classificacao")
+def coffee_classification_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+                               csrf_token: str = Depends(get_csrf_token)):
+    from collections import Counter
+
+    from app.services.coffee_classification import attribute_rows, attribute_usage, default_scale
+    from app.services.harvest_lots import stage_of
+
+    params = request.query_params
+    harvest_param = _optional_query_int(params.get("harvest_id"))
+    origem = "producao" if params.get("origem") == "producao" else None
+    if params.get("novo"):
+        return _redirect_with_query("/producao/classificacao/nova", lote=harvest_param, origem=origem)
+    if _optional_query_int(params.get("edit_id")):
+        return _redirect(f"/producao/classificacao/{_optional_query_int(params.get('edit_id'))}/editar")
+    if _optional_query_int(params.get("analise")):
+        return _redirect(f"/producao/classificacao/{_optional_query_int(params.get('analise'))}")
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    harvests = _classification_harvests(repo, scope)
+    analyses, by_lot = _classification_data(db, harvests)
+    today = today_in_app_timezone()
+    rows = []
+    for harvest in harvests:
+        mine = by_lot.get(harvest.id, [])
+        latest = _analysis_view(mine[0], mini=True) if mine else None
+        stage = stage_of(harvest)[1]
+        rows.append({"harvest": harvest, "code": _lot_display_code(harvest), "latest": latest, "count": len(mine),
+                     "sacks": float(harvest.sacks_produced or 0), "estimated": bool(harvest.sacks_estimated),
+                     "plot": harvest.plot.name if harvest.plot else "Setor removido",
+                     "variety": harvest.plot.variety.name if harvest.plot and harvest.plot.variety else "",
+                     "stage": stage, "age": (today - harvest.harvest_date).days if harvest.harvest_date else None})
+    classified = [row for row in rows if row["latest"]]
+    scored = [row for row in classified if row["latest"]["score"] is not None]
+    weight = sum(row["sacks"] for row in scored)
+    avg = (sum(row["latest"]["score"] * row["sacks"] for row in scored) / weight) if weight else (
+        sum(row["latest"]["score"] for row in scored) / len(scored) if scored else None)
+    best = max(scored, key=lambda row: row["latest"]["score"], default=None)
+    drinks = Counter(row["latest"]["obj"].beverage for row in classified if row["latest"]["obj"].beverage)
+    top_drink = drinks.most_common(1)[0][0] if drinks else None
+    tests = {"todos": lambda r: True, "especiais": lambda r: bool(r["latest"]) and (r["latest"]["score"] or 0) >= 80,
+             "comerciais": lambda r: bool(r["latest"]) and r["latest"]["score"] is not None and r["latest"]["score"] < 80,
+             "sem": lambda r: not r["latest"]}
+    selected = params.get("filtro") if params.get("filtro") in tests else "todos"
+    search = _normalize_search_value((params.get("busca") or "").strip())
+    shown = [row for row in rows if tests[selected](row)]
+    if search:
+        shown = [row for row in shown if search in _normalize_search_value(
+            f"{row['code']} {row['plot']} {row['variety']} {(row['latest']['obj'].evaluator or '') if row['latest'] else ''}")]
+    shown.sort(key=lambda row: (row["latest"] is None, -(row["latest"]["score"] or 0) if row["latest"] else 0))
+    attributes = attribute_rows(db, user.organization_id)
+    usage = attribute_usage(db, user.organization_id)
+    can_delete = user_has_permission(db, user, "data.delete")
+    return templates.TemplateResponse("coffee_classification.html", _base_context(
+        request, user, csrf_token, "coffee_classification", _repo=repo, title="Classificação do café",
+        cl_rows=shown, cl_total=len(rows), cl_filter=selected, cl_search=params.get("busca") or "",
+        cl_counts={key: sum(1 for row in rows if test(row)) for key, test in tests.items()},
+        cl_pending=[row for row in rows if not row["latest"]], cl_focus=harvest_param,
+        cl_kpi={"classified": len(classified), "total": len(rows), "classified_sacks": sum(r["sacks"] for r in classified),
+                "total_sacks": sum(r["sacks"] for r in rows), "avg": avg, "weighted": bool(weight), "best": best,
+                "drink": top_drink, "drink_lots": drinks.get(top_drink, 0) if top_drink else 0,
+                "drink_sacks": sum(r["sacks"] for r in classified if r["latest"]["obj"].beverage == top_drink) if top_drink else 0,
+                "analyses": len(analyses)},
+        cl_attributes=[{**row, "uses": usage.get(row["key"], 0)} for row in attributes],
+        cl_scale=default_scale(db, user.organization_id), cl_can_delete=can_delete,
+        cl_open_attributes=bool(params.get("atributos")),
+    ))
+
+
+def _classification_form_render(request: Request, db: Session, user: User, csrf_token: str, *, analysis=None,
+                                prefill: dict | None = None, error: str | None = None, status_code: int = 200):
+    from app.services.coffee_classification import (ANALYSIS_KINDS, COFFEE_BEVERAGES, COFFEE_TYPES, FLAVORS, SIEVES,
+                                                     default_scale, sensory_attributes_for_org, sensory_definitions_for_edit)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    harvests = _classification_harvests(repo, scope)
+    _, by_lot = _classification_data(db, harvests)
+    definitions = sensory_attributes_for_org(db, user.organization_id)
+    profile = analysis.sensory_profile if analysis else None
+    attrs = sensory_definitions_for_edit(definitions, profile)
+    p = dict(prefill or {})
+    if analysis and not prefill:
+        p = {"harvest_id": analysis.harvest_id, "analysis_date": analysis.analysis_date.isoformat(),
+             "evaluator": analysis.evaluator or "", "sample_number": analysis.sample_number or "",
+             "analysis_kind": analysis.analysis_kind or ("ambos" if profile or analysis.sensory_score is not None else "fisica"),
+             "beverage": analysis.beverage or "", "coffee_type": analysis.coffee_type or "", "sieve": analysis.sieve or "",
+             "moisture": _format_decimal_br(analysis.moisture) if analysis.moisture is not None else "",
+             "defects": analysis.defects or "",
+             "broca_percentage": _format_decimal_br(analysis.broca_percentage) if analysis.broca_percentage is not None else "",
+             "sensory_score": _format_decimal_br(analysis.sensory_score) if analysis.sensory_score is not None else "",
+             "sensory_notes": analysis.sensory_notes or "", "notes": analysis.notes or "", "flavors": analysis.flavors,
+             "sensory": profile.attributes if profile else {}, "sensory_scale": profile.scale_max if profile else None}
+    if not analysis and "harvest_id" not in p:
+        p["harvest_id"] = _optional_query_int(getattr(request, "query_params", {}).get("lote"))
+    p.setdefault("analysis_kind", "ambos")
+    p.setdefault("flavors", [])
+    p.setdefault("sensory", {})
+    scale = int(p.get("sensory_scale") or default_scale(db, user.organization_id))
+    lots = []
+    for harvest in harvests:
+        count = len(by_lot.get(harvest.id, []))
+        lots.append({"id": harvest.id, "code": _lot_display_code(harvest), "count": count,
+                     "sub": f"{harvest.plot.name if harvest.plot else 'Setor removido'} · {'≈ ' if harvest.sacks_estimated else ''}"
+                            f"{_format_decimal_br(harvest.sacks_produced, 0)} sc"})
+    lots.sort(key=lambda lot: (lot["count"] > 0, ))
+    evaluators = sorted({a.evaluator for items in by_lot.values() for a in items if a.evaluator})[:8]
+    flavors = list(FLAVORS) + [item for item in p["flavors"] if item not in FLAVORS]
+    sieves = list(SIEVES) + ([p["sieve"]] if p.get("sieve") and p["sieve"] not in SIEVES else [])
+    type_values = [f"Tipo {value}" for value in COFFEE_TYPES]
+    response = templates.TemplateResponse("classification_form.html", _base_context(
+        request, user, csrf_token, "coffee_classification", _repo=repo, title="Nova análise",
+        cf_analysis=analysis, cf_p=p, cf_error=error, cf_lots=lots, cf_kinds=ANALYSIS_KINDS,
+        cf_beverages=COFFEE_BEVERAGES, cf_types=type_values, cf_extra_type=p.get("coffee_type") if p.get("coffee_type") and p.get("coffee_type") not in type_values else None,
+        cf_sieves=sieves, cf_flavors=flavors, cf_attrs=attrs, cf_scale=scale, cf_evaluators=evaluators,
+        cf_origem=getattr(request, "query_params", {}).get("origem") == "producao" or (prefill or {}).get("origem") == "producao",
+        cf_price_refs=_quality_price_refs(db, harvests, by_lot), today=today_in_app_timezone(),
+        cf_files=_analysis_view(analysis)["files"] if analysis else [],
+    ))
+    response.status_code = status_code
+    return response
+
+
+@router.get("/producao/classificacao/nova")
+def coffee_classification_new_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+                                   csrf_token: str = Depends(get_csrf_token)):
+    return _classification_form_render(request, db, user, csrf_token)
+
+
+@router.get("/producao/classificacao/comparar")
+def coffee_classification_compare_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+                                       csrf_token: str = Depends(get_csrf_token)):
+    from app.services.coffee_classification import radar_axes, radar_points
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    harvests = _classification_harvests(repo, scope)
+    _, by_lot = _classification_data(db, harvests)
+    available = [h for h in harvests if by_lot.get(h.id)]
+    wanted = [int(x) for x in re.findall(r"\d+", request.query_params.get("lotes") or "")]
+    chosen = [h for h in available if h.id in wanted][:3] or available[:2]
+    colors = ["#294127", "#1F5FA8", "#D18A00"]
+    dashes = ["", "", "5 3"]
+    items = []
+    for index, harvest in enumerate(chosen):
+        view = _analysis_view(by_lot[harvest.id][0])
+        items.append({"harvest": harvest, "code": _lot_display_code(harvest), "view": view, "color": colors[index],
+                      "dash": dashes[index], "values": {p["label"]: p["value"] / view["scale"] * 10 for p in view["pairs"]}})
+    common = [label for label in (items[0]["values"] if items else {}) if all(label in item["values"] for item in items)]
+    for item in items:
+        item["radar"] = radar_points([item["values"][label] for label in common], 10)
+
+    def row(label, getter, better=None, places=1):
+        raw = [getter(item) for item in items]
+        nums = [value for value in raw if isinstance(value, (int, float))]
+        best = (max(nums) if better == "high" else min(nums)) if nums and better and len(items) > 1 else None
+        return {"label": label, "cells": [{"text": (_format_decimal_br(value, places) if isinstance(value, (int, float)) else (value or "—")),
+                                          "best": best is not None and value == best} for value in raw]}
+
+    def num(value):
+        return float(value) if value is not None else None
+
+    def defects(item):
+        digits = re.sub(r"[^\d]", "", item["view"]["obj"].defects or "")
+        return int(digits) if digits else (item["view"]["obj"].defects or None)
+
+    rows = [row("Nota final", lambda i: i["view"]["score"], "high"), row("Bebida", lambda i: i["view"]["obj"].beverage),
+            row("Tipo", lambda i: i["view"]["obj"].coffee_type), row("Peneira", lambda i: i["view"]["obj"].sieve),
+            row("Umidade (%)", lambda i: num(i["view"]["obj"].moisture)), row("Defeitos", defects, "low", 0)]
+    for label in common:
+        rows.append(row(label + " (0–10)", lambda i, label=label: round(i["values"][label], 2), "high", 2))
+    return templates.TemplateResponse("classification_compare.html", _base_context(
+        request, user, csrf_token, "coffee_classification", _repo=repo, title="Comparar lotes",
+        cc_items=items, cc_rows=rows, cc_axes=radar_axes(common), cc_common=common,
+        cc_ring=radar_points([10] * len(common), 10), cc_ring_half=radar_points([5] * len(common), 10),
+        cc_available=[{"id": h.id, "code": _lot_display_code(h), "on": h in chosen,
+                       "href": "/producao/classificacao/comparar?lotes=" + ",".join(
+                           str(x.id) for x in ([c for c in chosen if c.id != h.id] if h in chosen else [*chosen, h][-3:]))}
+                      for h in available],
+        cc_colors=colors,
+    ))
+
+
+@router.get("/producao/classificacao/{analysis_id}")
+def coffee_classification_detail_page(analysis_id: int, request: Request, db: Session = Depends(get_db),
+                                      user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token)):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    harvests = {h.id: h for h in _classification_harvests(repo, scope)}
+    _, by_lot = _classification_data(db, list(harvests.values()))
+    analysis = next((a for items in by_lot.values() for a in items if a.id == analysis_id), None)
+    if not analysis:
+        _flash(request, "error", "Análise não encontrada na safra ativa.")
+        return _redirect("/producao/classificacao")
+    harvest = harvests[analysis.harvest_id]
+    versions = by_lot[harvest.id]
+    index = versions.index(analysis)
+    previous = versions[index + 1] if index + 1 < len(versions) else None
+    sales = db.query(CoffeeCommercializationRecord).filter(CoffeeCommercializationRecord.harvest_id == harvest.id).all()
+    sold = sum(float(s.equivalent_sacks or 0) for s in sales)
+    available = max(float(harvest.sacks_produced or 0) - sold, 0)
+    history = [a for a in reversed(versions) if a.sensory_score is not None]
+    points = []
+    if len(history) >= 2:
+        scores = [float(a.sensory_score) for a in history]
+        low, high = min(scores) - 1, max(scores) + 1
+        for i, a in enumerate(history):
+            x = 30 + i * (220 / (len(history) - 1))
+            y = 60 - (float(a.sensory_score) - low) / (high - low) * 44
+            points.append({"x": round(x, 1), "y": round(y, 1), "label": f"{a.analysis_date.strftime('%d/%m')} · {_format_decimal_br(a.sensory_score, 1)}"})
+    delta = (float(analysis.sensory_score) - float(previous.sensory_score)) if previous and analysis.sensory_score is not None and previous.sensory_score is not None else None
+    return templates.TemplateResponse("classification_detail.html", _base_context(
+        request, user, csrf_token, "coffee_classification", _repo=repo, title="Análise do lote",
+        cd=_analysis_view(analysis), cd_harvest=harvest, cd_code=_lot_display_code(harvest),
+        cd_versions=[{"id": a.id, "label": f"{a.analysis_date.strftime('%d/%m')} · {a.evaluator or 'sem responsável'}",
+                      "on": a.id == analysis.id, "latest": i == 0} for i, a in enumerate(versions)],
+        cd_delta=delta, cd_available=available, cd_points=points,
+        cd_polyline=" ".join(f"{p['x']},{p['y']}" for p in points),
+        cd_price_refs=_quality_price_refs(db, list(harvests.values()), by_lot),
+        cd_can_sell=available > 0 and harvest_matches_season(harvest, scope.get("active_season")),
+    ))
+
+
+@router.get("/producao/classificacao/{analysis_id}/editar")
+def coffee_classification_edit_page(analysis_id: int, request: Request, db: Session = Depends(get_db),
+                                    user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token)):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    ids = {h.id for h in _classification_harvests(repo, scope)}
+    analysis = (db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data))
+                .filter_by(id=analysis_id).first())
+    if not analysis or analysis.harvest_id not in ids:
+        _flash(request, "error", "Análise não encontrada na safra ativa.")
+        return _redirect("/producao/classificacao")
+    return _classification_form_render(request, db, user, csrf_token, analysis=analysis)
+
+
+@router.post("/producao/classificacao/atributos/salvar")
+async def save_coffee_sensory_attributes(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.coffee_classification import save_attributes
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    try:
+        payload = json.loads(str(form.get("payload") or "{}"))
+        if not isinstance(payload, dict):
+            raise ValueError("Dados inválidos.")
+        save_attributes(db, user.organization_id, payload, can_delete=user_has_permission(db, user, "data.delete"))
+        db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
+                        event_type="coffee.attribute.changed", outcome="success",
+                        metadata_json=json.dumps({"items": len(payload.get("items") or []), "deleted": len(payload.get("deleted") or [])})))
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        return JSONResponse({"error": str(exc) or "Dados inválidos."}, status_code=422)
+    return JSONResponse({"ok": True})
 
 
 async def _read_coffee_classification_attachments(form):
@@ -20648,6 +20911,45 @@ async def _read_coffee_classification_attachments(form):
             raise ValueError("Cada laudo deve ser um arquivo PDF válido.")
         attachments.append(CoffeeClassificationAttachment(filename=filename, data=payload))
     return attachments
+
+
+def _classification_inputs(form, *, has_report: bool):
+    """Campos do novo formulário: tipo de análise, origem derivada do laudo, broca, sabores e nº do laudo."""
+    from app.services.coffee_classification import ANALYSIS_KINDS
+    kinds = {key: label for key, label, _ in ANALYSIS_KINDS}
+    kind = str(form.get("analysis_kind") or "").strip()
+    kind = kind if kind in kinds else None
+    data = {key: form.get(key) for key in form.keys()}
+    if not data.get("source"):
+        data["source"] = "laudo" if has_report else "informado"
+    if kind and not str(data.get("method") or "").strip():
+        data["method"] = kinds[kind]
+    if kind == "fisica":
+        data["sensory_score"] = ""
+        data["sensory_notes"] = ""
+    broca_raw = str(form.get("broca_percentage") or "").strip().replace(",", ".")
+    broca = None
+    if broca_raw:
+        try:
+            broca = float(broca_raw)
+        except ValueError:
+            raise ValueError("Broca deve ser um número, como 1,5.") from None
+        if broca < 0 or broca > 100:
+            raise ValueError("Broca deve ficar entre 0 e 100%.")
+    flavors = [" ".join(str(item).split())[:40] for item in form.getlist("flavor") if str(item).strip()] if hasattr(form, "getlist") else []
+    extra = {"analysis_kind": kind, "sample_number": (str(form.get("sample_number") or "").strip()[:60] or None),
+             "broca_percentage": broca, "flavor_notes": ", ".join(dict.fromkeys(flavors))[:400] or None}
+    sensory_form = {} if kind == "fisica" else form
+    return data, extra, sensory_form
+
+
+def _classification_prefill(form) -> dict:
+    prefill = {key: form.get(key) for key in form.keys() if key not in {"report", "csrf_token"}}
+    prefill["flavors"] = form.getlist("flavor") if hasattr(form, "getlist") else []
+    prefill["sensory"] = {key[len("sensory_"):]: form.get(key) for key in form.keys()
+                          if key.startswith("sensory_") and key not in {"sensory_score", "sensory_notes", "sensory_scale"}}
+    prefill["harvest_id"] = _int_or_none(form.get("harvest_id"))
+    return prefill
 
 
 @router.post("/producao/classificacao")
@@ -20666,9 +20968,10 @@ async def create_coffee_classification(request: Request, db: Session = Depends(g
     try:
         attachments = await _read_coffee_classification_attachments(form)
         definitions = [(key, label) for key, label, active in sensory_attributes_for_org(db, user.organization_id) if active]
-        scale, sensory = validate_sensory(form, definitions)
-        values = validate_classification(form, harvest_date=harvest.harvest_date, today=today_in_app_timezone(), has_report=bool(attachments), has_sensory=bool(sensory))
-        analysis = CoffeeClassification(harvest_id=harvest.id, attachments=attachments, **values)
+        data, extra, sensory_form = _classification_inputs(form, has_report=bool(attachments))
+        scale, sensory = validate_sensory(sensory_form, definitions)
+        values = validate_classification(data, harvest_date=harvest.harvest_date, today=today_in_app_timezone(), has_report=bool(attachments), has_sensory=bool(sensory))
+        analysis = CoffeeClassification(harvest_id=harvest.id, attachments=attachments, **values, **extra)
         if sensory:
             labels = dict(definitions)
             analysis.sensory_profile = CoffeeSensoryProfile(scale_max=scale, attributes_json=json.dumps(
@@ -20681,13 +20984,12 @@ async def create_coffee_classification(request: Request, db: Session = Depends(g
         db.commit()
     except ValueError as exc:
         db.rollback()
-        _flash(request, "error", str(exc))
-        return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id, novo=1,
-                                    origem="producao" if production_origin else None)
-    _flash(request, "success", "Análise registrada no histórico do lote.")
+        return _classification_form_render(request, db, user, str(form.get("csrf_token") or ""),
+                                           prefill=_classification_prefill(form), error=str(exc), status_code=422)
+    _flash(request, "success", f"Análise do lote {_lot_display_code(harvest)} registrada.")
     if production_origin:
         return _redirect(f"/producao/lotes/{harvest.id}")
-    return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id)
+    return _redirect(f"/producao/classificacao/{analysis.id}")
 
 
 @router.post("/producao/classificacao/{analysis_id}/editar")
@@ -20719,14 +21021,15 @@ async def edit_coffee_classification(analysis_id: int, request: Request, db: Ses
         old_values = profile.attributes if profile else {}
         definitions = sensory_definitions_for_edit(sensory_attributes_for_org(db, user.organization_id), profile)
         # Fields absent from a stale form must not silently erase existing values.
-        sensory_form = dict(form)
-        for key, value in old_values.items():
+        data, extra, base_sensory = _classification_inputs(form, has_report=has_report)
+        sensory_form = dict(base_sensory) if base_sensory else {}
+        for key, value in (old_values.items() if base_sensory else []):
             if "sensory_" + key not in sensory_form and value is not None:
                 sensory_form["sensory_" + key] = str(value)
         scale, sensory = validate_sensory(sensory_form, definitions)
-        values = validate_classification(form, harvest_date=harvest.harvest_date, today=today_in_app_timezone(),
+        values = validate_classification(data, harvest_date=harvest.harvest_date, today=today_in_app_timezone(),
                                          has_report=has_report, has_sensory=bool(sensory))
-        for key, value in values.items():
+        for key, value in {**values, **extra}.items():
             setattr(analysis, key, value)
         if remove_legacy:
             analysis.report_filename, analysis.report_data = None, None
@@ -20747,10 +21050,12 @@ async def edit_coffee_classification(analysis_id: int, request: Request, db: Ses
         db.commit()
     except (ValueError, TypeError) as exc:
         db.rollback()
-        _flash(request, "error", str(exc) or "Dados inválidos.")
-        return _redirect_with_query("/producao/classificacao", edit_id=analysis_id)
+        fresh = db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data)).filter_by(id=analysis_id).first()
+        return _classification_form_render(request, db, user, str(form.get("csrf_token") or ""), analysis=fresh,
+                                           prefill=_classification_prefill(form), error=str(exc) or "Dados inválidos.",
+                                           status_code=422)
     _flash(request, "success", "Análise atualizada com sucesso.")
-    return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id)
+    return _redirect(f"/producao/classificacao/{analysis_id}")
 
 
 @router.post("/producao/classificacao/atributos")

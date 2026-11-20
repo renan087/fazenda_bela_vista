@@ -51,6 +51,10 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
         req = request(url)
         if req.url.path.endswith("/classificacao"):
             response = routes.coffee_classification_page(req, db=db, user=user, csrf_token="x")
+        elif req.url.path == "/producao/classificacao/nova":
+            response = routes.coffee_classification_new_page(req, db=db, user=user, csrf_token="x")
+        elif re.fullmatch(r"/producao/classificacao/\d+", req.url.path):
+            response = routes.coffee_classification_detail_page(int(req.url.path.rsplit("/", 1)[1]), req, db=db, user=user, csrf_token="x")
         elif req.url.path.endswith("/comercializacao"):
             response = routes.commercialization_page(
                 req, harvest_id=req.query_params.get("harvest_id"), status=req.query_params.get("status"),
@@ -95,7 +99,7 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     url = f"/producao/classificacao?harvest_id={lot_id}&novo=1&origem=producao"
     assert f'href="{url.replace("&", "&amp;")}"' in page
     classification = get(url)
-    assert f'<option value="{lot_id}" selected>' in classification
+    assert f'name="harvest_id" value="{lot_id}" data-code="2026-L001" checked' in classification
     assert 'name="origem" value="producao"' in classification
     legacy_analysis = CoffeeClassification(
         harvest_id=lot_id, analysis_date=date(2026, 11, 1), source="laudo", beverage="Dura",
@@ -125,9 +129,10 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     for attachment in newest_analysis.attachments:
         assert f'/producao/classificacao/{newest_analysis.id}/laudo?attachment_id={attachment.id}' in page
     detail = get(f"/producao/classificacao?harvest_id={lot_id}&origem=producao&analise={newest_analysis.id}")
-    open_analysis = f"""document.querySelector('[data-cc-details="{newest_analysis.id}"]')?.click()"""
-    assert open_analysis in detail
-    assert open_analysis not in get(f"/producao/classificacao?harvest_id={other_lot.id}&origem=producao&analise={newest_analysis.id}")
+    assert f'/producao/classificacao/{newest_analysis.id}/editar' in detail and 'Mole' in detail
+    assert 'Análises deste lote' in detail and f'href="/producao/classificacao/{legacy_analysis.id}"' in detail
+    listing = get("/producao/classificacao")
+    assert f'href="/producao/classificacao/{newest_analysis.id}"' in listing and 'Qualidade por lote' in listing
 
     sale_url = f"/producao/vendas/nova?lote={lot_id}"
     assert f'href="{sale_url}"' in page

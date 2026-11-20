@@ -1,362 +1,196 @@
 {% extends "base.html" %}
 {% from "partials/production_nav.html" import production_tabs %}
-{% macro current_report(url, filename, field, value) %}
-<li class="cc-form-report-item">
-    <a href="{{ url }}" title="{{ filename }}">{{ filename[:27] ~ '...' if filename|length > 30 else filename }}</a>
-    {% if 'data.delete' in (permission_codes or []) %}
-    <input type="hidden" name="{{ field }}" value="{{ value }}" disabled>
-    <button type="button" class="cc-form-report-delete" data-cc-remove-report aria-label="Marcar para remoção: {{ filename }}" aria-pressed="false" title="Marcar para remoção">
-        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></svg>
-    </button>
-    <span class="cc-form-report-pending" hidden>Remover ao salvar</span>
-    {% endif %}
-</li>
-{% endmacro %}
 {% block content %}
-<div class="sf-page pd-page coffee-classification-page">
+{% set k = cl_kpi %}
+<div class="sf-page pd-page cl-page" data-cl-page>
     <header class="pd-head">
         <div>
             <h1 class="sf-page-title">Classificação do café</h1>
-            <p class="sf-page-subtitle">Opcional, mas ajuda a vender melhor: a qualidade aparece junto com o saldo do lote.</p>
+            <p class="sf-page-subtitle">Qualidade de cada lote, física e sensorial, para negociar com segurança.</p>
         </div>
         {% if can_write_page %}
         <div class="pd-head-actions">
-            <button type="button" class="sf-btn sf-btn-secondary" data-attributes-open>Gerenciar atributos</button>
-            <button type="button" class="sf-btn sf-btn-primary" data-classification-open>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                Nova classificação
+            <button type="button" class="sf-btn sf-btn-secondary" data-cl-attr-open>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+                Atributos sensoriais
             </button>
+            <a class="sf-btn sf-btn-primary" href="/producao/classificacao/nova">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Nova análise
+            </a>
         </div>
         {% endif %}
     </header>
     {{ production_tabs('classification') }}
-    {% if classification_pending and can_write_page %}
-    <section class="pd-card cc-pending" aria-labelledby="cc-pending-title">
-        <div class="cc-pending-head"><h2 id="cc-pending-title">Aguardando classificação</h2><span>{{ classification_pending|length }} lote{{ 's' if classification_pending|length != 1 }} sem qualidade definida</span></div>
-        <div class="cc-pending-grid">
-            {% for lot in classification_pending %}
-            <a class="cc-pending-lot" href="/producao/classificacao?harvest_id={{ lot.id }}&amp;novo=1">
-                <strong>{{ lot.lot_code or ('Lote ' ~ lot.id) }}</strong>
-                <span>{{ lot.plot.name if lot.plot else 'Setor removido' }} · {{ '≈ ' if lot.sacks_estimated }}{{ lot.sacks_produced|decimal_br(0) }} sc</span>
-                <em>Classificar →</em>
+
+    {% if not active_season %}
+    <div class="pd-empty pd-card"><strong>Selecione a fazenda e a safra no topo.</strong><span>A classificação mostra os lotes da safra ativa.</span></div>
+    {% else %}
+    <section class="cl-kpis" aria-label="Resumo da qualidade">
+        <article class="pd-card">
+            <p class="pd-eyebrow">Lotes classificados</p>
+            <strong>{{ k.classified }} <small>de {{ k.total }}</small></strong>
+            <span class="cl-meter" aria-hidden="true"><i style="width: {{ (k.classified / (k.total or 1) * 100)|round(1) }}%"></i></span>
+            <span>{{ k.classified_sacks|decimal_br(0) }} de {{ k.total_sacks|decimal_br(0) }} sacas com qualidade conhecida</span>
+        </article>
+        <article class="pd-card">
+            <p class="pd-eyebrow">Nota média da safra</p>
+            <strong>{% if k.avg is not none %}{{ k.avg|decimal_br(1) }} <small>pts</small>{% else %}—{% endif %}</strong>
+            <span>{{ 'Ponderada pelas sacas de cada lote' if k.weighted else 'Sem prova de xícara registrada' }}</span>
+        </article>
+        <article class="pd-card">
+            <p class="pd-eyebrow">Melhor lote</p>
+            {% if k.best %}
+            <strong>{{ k.best.code }} <small class="is-brand">{{ k.best.latest.score|decimal_br(1) }} pts</small></strong>
+            <span>{{ k.best.latest.obj.beverage or 'Sem bebida' }} · {{ k.best.plot }}</span>
+            {% else %}<strong>—</strong><span>Registre uma prova de xícara</span>{% endif %}
+        </article>
+        <article class="pd-card">
+            <p class="pd-eyebrow">Bebida que mais aparece</p>
+            <strong>{{ k.drink or '—' }}</strong>
+            <span>{% if k.drink %}{{ k.drink_lots }} lote{{ 's' if k.drink_lots != 1 }} · {{ k.drink_sacks|decimal_br(0) }} sacas{% else %}Nenhuma bebida informada{% endif %}</span>
+        </article>
+    </section>
+
+    {% if cl_pending and can_write_page %}
+    <section class="pd-card cl-pending" aria-labelledby="cl-pending-title">
+        <div class="cl-section-head">
+            <h2 id="cl-pending-title">Aguardando classificação</h2>
+            <span>Lotes sem qualidade definida valem menos na negociação</span>
+        </div>
+        <div class="cl-pending-grid">
+            {% for row in cl_pending %}
+            <a class="cl-pending-lot" href="/producao/classificacao/nova?lote={{ row.harvest.id }}">
+                <span><strong>{{ row.code }}</strong>
+                <small>{{ row.plot }}{% if row.variety %} · {{ row.variety }}{% endif %} · {{ '≈ ' if row.estimated }}{{ row.sacks|decimal_br(0) }} sc</small>
+                <em>{% if row.age is not none %}Colhido há {{ row.age }} dia{{ 's' if row.age != 1 }} · {% endif %}{{ row.stage|lower }}</em></span>
+                <b>Classificar →</b>
             </a>
             {% endfor %}
         </div>
     </section>
     {% endif %}
-    <div class="cc-surface">
-    {% if production_origin %}
-    <a class="mb-3 inline-block text-sm font-semibold text-emerald-700 hover:underline" href="/producao/lotes/{{ selected_harvest_id }}">Voltar à ficha do lote</a>
-    {% endif %}
-    <section class="cc-filters" aria-label="Filtros de classificações">
-        <label><span>Safra ativa</span><select disabled aria-label="Safra ativa"><option>{{ active_season.name if active_season else 'Selecione uma safra' }}</option></select></label>
-        <label class="cc-search"><span>Buscar lote</span><input type="search" data-cc-search placeholder="Código ou responsável..." aria-label="Buscar lote ou responsável"></label>
-        <label><span>Método</span><select data-cc-method><option value="">Todos</option>{% for value in classifications|map(attribute='method')|select|unique|sort %}<option value="{{ value }}">{{ value }}</option>{% endfor %}</select></label>
-        <label><span>Tipo</span><select data-cc-type><option value="">Todos</option>{% for value in classifications|map(attribute='coffee_type')|select|unique|sort %}<option value="{{ value }}">{{ value }}</option>{% endfor %}</select></label>
-    </section>
-    <section class="cc-kpis" aria-label="Resumo das classificações">
-        <article><span class="cc-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3 8 9-5 9 5-9 5-9-5Zm0 4 9 5 9-5M3 16l9 5 9-5"/></svg></span><div><b>Lotes classificados</b><strong data-cc-count-lots>{{ classifications|map(attribute='harvest_id')|unique|list|length }}</strong></div></article>
-        <article><span class="cc-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v7l-6 9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2l-6-9V3M7 16h10"/></svg></span><div><b>Análises registradas</b><strong data-cc-count-analyses>{{ classifications|length }}</strong></div></article>
-        <article><span class="cc-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18"/></svg></span><div><b>Safras avaliadas</b><strong data-cc-count-seasons>{{ 1 if classifications|selectattr('harvest.season_id')|list else 0 }}</strong></div></article>
-        <article><span class="cc-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><div><b>Última análise</b><strong data-cc-latest>{{ classifications[0].analysis_date.strftime('%d/%m/%Y') if classifications else '—' }}</strong></div></article>
-    </section>
-    <section class="cc-dialogs">
-        {% if can_write_page %}
-        <dialog class="coffee-classification-dialog" data-classification-dialog aria-labelledby="classification-dialog-title">
-        <header class="cc-form-header">
-            <h2 id="classification-dialog-title">{{ 'Editar classificação' if edit_classification else 'Nova classificação' }}</h2>
-            <p>{{ 'Atualize a análise física e sensorial do lote de café.' if edit_classification else 'Registre a análise física e sensorial de um lote de café.' }}</p>
-            <button type="button" class="cc-form-close" data-classification-close aria-label="Fechar">×</button>
-        </header>
-        <div class="cc-form-body">
-            {% if flash and (request.query_params.get('novo') or edit_classification) %}
-            <p class="rounded-xl bg-rose-50 p-3 text-sm text-rose-700" role="alert">{{ flash.message }}</p>
-            {% endif %}
-        <form method="post" action="{{ '/producao/classificacao/' ~ edit_classification.id ~ '/editar' if edit_classification else '/producao/classificacao' }}" enctype="multipart/form-data" class="cc-form" id="coffee-classification-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            {% if production_origin and not edit_classification %}<input type="hidden" name="origem" value="producao">{% endif %}
-            <h3 class="cc-form-section"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 3h8l10 10-8 8L3 11V3Zm5 5h.01"/></svg><span>1. Identificação da análise</span></h3>
-            <label class="grid gap-2 text-sm font-medium">Lote <span><select name="harvest_id" autofocus required {% if edit_classification %}disabled{% endif %} class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="">Selecione o lote</option>{% for harvest in classification_harvests %}<option value="{{ harvest.id }}" {% if (edit_classification and edit_classification.harvest_id == harvest.id) or (not edit_classification and selected_harvest_id == harvest.id) %}selected{% endif %}>{{ harvest.lot_code or ('Lote ' ~ harvest.id) }} · {{ harvest.plot.name }} · {{ harvest.harvest_date.strftime('%d/%m/%Y') }}</option>{% endfor %}</select></span></label>
-            <label class="grid gap-2 text-sm font-medium">Data da análise<input type="date" name="analysis_date" value="{{ edit_classification.analysis_date.isoformat() if edit_classification else today.isoformat() }}" max="{{ today.isoformat() }}" required class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
-            <label class="grid gap-2 text-sm font-medium">Origem dos dados<select name="source" required class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="informado" {% if edit_classification and edit_classification.source == 'informado' %}selected{% endif %}>Usuário</option><option value="laudo" {% if edit_classification and edit_classification.source == 'laudo' %}selected{% endif %}>Laudo</option></select></label>
-            <label class="cc-form-upload">
-                Laudo em PDF
-                <input type="file" name="report" multiple accept="application/pdf,.pdf" aria-describedby="cc-report-help" class="sr-only">
-                <span class="cc-form-upload-button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 14l5-6a2 2 0 0 1 3 3l-6 7a4 4 0 0 1-6-5l7-8"/></svg><span><b>Anexar PDFs</b> · até 10 MB por arquivo</span></span>
-                <span id="cc-report-help" class="sr-only">Anexe pelo menos um PDF se a origem for Laudo.</span>
-            </label>
-            <label class="grid gap-2 text-sm font-medium">Responsável ou laboratório<input name="evaluator" value="{{ edit_classification.evaluator or '' if edit_classification else '' }}" maxlength="180" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
-            <label class="grid gap-2 text-sm font-medium">Método ou protocolo<input name="method" value="{{ edit_classification.method or '' if edit_classification else '' }}" maxlength="180" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
-            <p class="cc-pezinho-soon"><span><strong>Pezinho preenche para você</strong><small>Lê o laudo e completa os campos; você só confere.</small></span><em>Em breve</em></p>
-            <ul class="cc-form-report cc-form-selected-reports" data-cc-selected-reports hidden aria-live="polite"></ul>
-            {% if edit_classification and (edit_classification.report_filename or edit_classification.attachments) %}
-            {% set report_url = '/producao/classificacao/' ~ edit_classification.id ~ '/laudo' %}
-            <div class="cc-form-report">
-                <h4>{{ 'Laudos atuais' if ((edit_classification.attachments|default([])|length) + (1 if edit_classification.report_filename else 0)) > 1 else 'Laudo atual' }}</h4>
-                <ul class="cc-form-report-list">
-                    {% if edit_classification.report_filename %}{{ current_report(report_url, edit_classification.report_filename, 'remove_report', '1') }}{% endif %}
-                    {% for attachment in edit_classification.attachments %}
-                    {{ current_report(report_url ~ '?attachment_id=' ~ attachment.id, attachment.filename, 'remove_attachment', attachment.id) }}
+
+    <section class="pd-card cl-list" aria-labelledby="cl-list-title" data-cl-list>
+        <div class="cl-list-head">
+            <h2 id="cl-list-title">Qualidade por lote</h2>
+            <form method="get" class="cl-filters" role="search">
+                <div class="sl-chips" role="group" aria-label="Filtrar lotes">
+                    {% for key, label in [('todos', 'Todos'), ('especiais', 'Especiais 80+'), ('comerciais', 'Comerciais'), ('sem', 'Sem classificação')] %}
+                    <button type="submit" name="filtro" value="{{ key }}" class="sl-chip" aria-pressed="{{ 'true' if cl_filter == key else 'false' }}">{{ label }} <span>{{ cl_counts[key] }}</span></button>
                     {% endfor %}
-                </ul>
-            </div>
-            {% endif %}
-            <h3 class="cc-form-section"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m3 8 9-5 9 5-9 5-9-5Zm0 4 9 5 9-5M3 16l9 5 9-5"/></svg><span>2. Classificação física</span></h3>
-            <label class="cc-form-physical">Tipo informado<input name="coffee_type" value="{{ edit_classification.coffee_type or '' if edit_classification else '' }}" maxlength="80" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
-            <label class="cc-form-physical">Peneira<input name="sieve" value="{{ edit_classification.sieve or '' if edit_classification else '' }}" maxlength="80" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
-            <label class="cc-form-physical">Umidade da análise (%)<input type="number" name="moisture" value="{{ edit_classification.moisture if edit_classification and edit_classification.moisture is not none else '' }}" min="0" max="100" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
-            <label class="cc-form-physical">Defeitos informados<input name="defects" value="{{ edit_classification.defects or '' if edit_classification else '' }}" maxlength="180" placeholder="Resultado conforme a análise" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
-            {% set current_beverage = edit_classification.beverage if edit_classification else none %}
-            <fieldset class="cc-form-beverage">
-                <legend>Bebida</legend>
-                {% if current_beverage %}
-                {% set choices = namespace(has_current=false) %}
-                {% for group, beverages in coffee_beverages %}{% if current_beverage in beverages %}{% set choices.has_current = true %}{% endif %}{% endfor %}
+                </div>
+                <label class="sl-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <span class="sr-only">Buscar</span>
+                    <input type="search" name="busca" value="{{ cl_search }}" placeholder="Lote, talhão ou laboratório">
+                </label>
+                {% if cl_counts.todos - cl_counts.sem >= 2 %}
+                <button type="button" class="cl-compare-btn" data-cl-compare-toggle aria-pressed="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v17M5 7h14M7 7l-4 7h8zM17 7l-4 7h8z"/></svg>
+                    Comparar lotes
+                </button>
                 {% endif %}
-                {% for group, beverages in coffee_beverages %}
-                <p class="cc-bev-group">{{ group }}</p>
-                <div class="cc-bev-chips">
-                    {% for beverage in beverages %}
-                    <label><input type="radio" name="beverage" value="{{ beverage }}" {% if beverage == current_beverage %}checked{% endif %}><span>{{ beverage }}</span></label>
-                    {% endfor %}
-                    {% if loop.first %}
-                    {% if current_beverage and not choices.has_current %}<label><input type="radio" name="beverage" value="{{ current_beverage }}" checked><span>{{ current_beverage }}</span></label>{% endif %}
-                    <label><input type="radio" name="beverage" value="" {% if not current_beverage %}checked{% endif %}><span>Não informar</span></label>
-                    {% endif %}
-                </div>
-                {% endfor %}
-            </fieldset>
-            <label class="cc-form-physical">Nota sensorial informada<input type="number" name="sensory_score" value="{{ edit_classification.sensory_score if edit_classification and edit_classification.sensory_score is not none else '' }}" min="0" max="100" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-50"><small class="cc-band" data-cc-band aria-live="polite"></small></label>
-            <fieldset class="cc-form-sensory">
-                <legend><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Zm13 1h2a2 2 0 1 1 0 4h-2M3 21h18M8 5V3m4 2V2"/></svg><span>3. Avaliação sensorial</span></legend>
-                {% set editing_profile = edit_classification.sensory_profile if edit_classification else none %}
-                <div class="cc-form-sensory-layout">
-                    <div class="cc-form-scores">
-                        <label class="cc-form-scale">Escala das notas<select name="sensory_scale" data-sensory-scale class="rounded-xl border-slate-200 bg-white">{% for scale in sensory_scales|default(range(5, 11)) %}<option value="{{ scale }}" {% if scale == (editing_profile.scale_max if editing_profile else 10) %}selected{% endif %}>0 a {{ scale }}</option>{% endfor %}</select></label>
-                        <div class="cc-form-attributes">
-                            {% for key, label in sensory_attributes %}<label><span>{{ label }}</span><input type="number" name="sensory_{{ key }}" data-sensory-input="{{ key }}" value="{{ editing_profile.attributes[key] if editing_profile and key in editing_profile.attributes else 0 }}" min="0" max="{{ editing_profile.scale_max if editing_profile else 10 }}" step="0.01" inputmode="decimal" class="w-full rounded-xl border-slate-200 bg-white"></label>{% endfor %}
-                        </div>
-                    </div>
-                    <figure class="cc-form-radar">
-                        <div class="cc-form-radar-canvas"><canvas data-sensory-radar aria-label="Gráfico radar das notas informadas" role="img"></canvas></div>
-                        <figcaption data-cc-radar-hint>O gráfico será exibido conforme as notas forem preenchidas.</figcaption>
-                    </figure>
-                </div>
-                <p class="cc-form-sensory-help"><span aria-hidden="true">ⓘ</span> Notas informadas pelo usuário. O gráfico não certifica protocolos nem calcula a nota final.</p>
-            </fieldset>
-            <h3 class="cc-form-section"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5V3Zm9 0v5h5M8 12h8m-8 4h8"/></svg><span>4. Informações complementares</span></h3>
-            <label class="cc-form-notes grid gap-2 text-sm font-medium">Descrição sensorial<textarea name="sensory_notes" maxlength="2000" rows="2" class="w-full rounded-xl border-slate-200 bg-slate-50" placeholder="Aroma, sabor, corpo e outros atributos informados">{{ edit_classification.sensory_notes or '' if edit_classification else '' }}</textarea></label>
-            <label class="cc-form-notes grid gap-2 text-sm font-medium">Observações<textarea name="notes" maxlength="2000" rows="2" class="w-full rounded-xl border-slate-200 bg-slate-50">{{ edit_classification.notes or '' if edit_classification else '' }}</textarea></label>
-        </form>
+            </form>
         </div>
-        <footer class="cc-form-actions">
-            <button type="button" class="cc-btn cc-btn-light" data-classification-close>Cancelar</button>
-            <button type="submit" form="coffee-classification-form" class="cc-btn cc-btn-primary" {% if not classification_harvests %}disabled{% endif %}>Salvar análise</button>
-        </footer>
-        </dialog>
-        <dialog class="coffee-classification-dialog" data-attributes-dialog aria-labelledby="attributes-dialog-title">
-            <div class="coffee-classification-dialog-inner"><div class="flex items-center justify-between gap-4"><div><h2 id="attributes-dialog-title" class="text-xl font-semibold">Atributos sensoriais</h2><p class="mt-1 text-sm text-slate-500">Configure os campos da organização. Alterações não afetam análises anteriores.</p></div><button type="button" class="sf-icon-btn" data-attributes-close aria-label="Fechar">×</button></div>{% if flash and request.query_params.get('atributos') %}<p class="mt-3 rounded-xl bg-slate-100 p-3 text-sm" role="status">{{ flash.message }}</p>{% endif %}
-            <form method="post" action="/producao/classificacao/atributos" class="mt-5 flex flex-wrap items-end gap-2"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="add"><label class="grid min-w-0 flex-1 gap-1 text-sm font-medium">Novo atributo<input name="label" required maxlength="80" placeholder="Ex.: Fragrância" class="rounded-xl border-slate-200 bg-slate-50"></label><button class="sf-btn sf-btn-primary">Adicionar</button></form>
-            <div class="mt-5 grid gap-2">{% for key, label, active in sensory_definitions %}<div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 p-3"><span class="text-sm font-semibold">{{ label }} <small class="font-normal text-slate-500">{{ 'Ativo' if active else 'Inativo' }}</small></span><div class="flex gap-3"><form method="post" action="/producao/classificacao/atributos"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="key" value="{{ key }}"><input type="hidden" name="action" value="{{ 'deactivate' if active else 'activate' }}"><button class="text-sm font-semibold text-emerald-700">{{ 'Inativar' if active else 'Ativar' }}</button></form>{% if 'data.delete' in (permission_codes or []) %}<form method="post" action="/producao/classificacao/atributos" onsubmit="return confirm('Excluir este atributo das opções? As análises anteriores serão preservadas.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="key" value="{{ key }}"><input type="hidden" name="action" value="delete"><button class="text-sm font-semibold text-rose-700">Excluir</button></form>{% endif %}</div></div>{% else %}<p class="text-sm text-slate-500">Nenhum atributo cadastrado.</p>{% endfor %}</div></div>
-        </dialog>
+        {% if cl_rows %}
+        <div class="cl-head" aria-hidden="true"><span></span><span>Lote</span><span>Nota</span><span>Bebida</span><span>Tipo · peneira</span><span>Perfil</span><span>Última análise</span><span></span></div>
+        {% for row in cl_rows %}
+        {% set a = row.latest %}
+        <div class="cl-row{% if cl_focus == row.harvest.id %} is-focus{% endif %}">
+            <span class="cl-pick">
+                {% if a %}<input type="checkbox" value="{{ row.harvest.id }}" data-cl-pick aria-label="Comparar {{ row.code }}" hidden>{% endif %}
+                <i class="cl-dot is-{{ a.tone if a else 'none' }}" aria-hidden="true" data-cl-dot></i>
+            </span>
+            <span class="cl-lot"><strong>{{ row.code }}</strong><small>{{ row.plot }} · {{ '≈ ' if row.estimated }}{{ row.sacks|decimal_br(0) }} sc</small></span>
+            <span class="cl-score is-{{ a.tone if a else 'none' }}">{{ a.score|decimal_br(1) if a and a.score is not none else (a.obj.coffee_type|replace('Tipo ', 'T') if a and a.obj.coffee_type else '—') }}</span>
+            <span class="cl-drink cl-hide-t"><strong>{{ (a.obj.beverage or 'Sem bebida') if a else 'Sem classificação' }}</strong><small>{{ a.band if a else 'Classifique para negociar melhor' }}</small></span>
+            <span class="cl-hide-t">{% if a %}{{ a.obj.coffee_type or '—' }} · {{ a.obj.sieve or '—' }}{% else %}—{% endif %}</span>
+            <span class="cl-hide-t" aria-hidden="true">{% if a and a.has_profile %}<svg width="44" height="44" viewBox="0 0 44 44"><polygon points="{{ a.ring }}" fill="none" stroke="#E3E8E2"/><polygon points="{{ a.radar }}" fill="#9BCB6B" fill-opacity=".45" stroke="#446A36" stroke-width="1.2"/></svg>{% endif %}</span>
+            <span class="cl-last cl-hide-t">{% if a %}<span>{{ a.obj.analysis_date.strftime('%d/%m') }} · {{ row.count }} análise{{ 's' if row.count != 1 }}</span><small>{{ a.obj.evaluator or 'Sem responsável' }}{% if a.files %} · laudo PDF{% endif %}</small>{% else %}—{% endif %}</span>
+            {% if a %}<a class="cl-cta" href="/producao/classificacao/{{ a.id }}">Ver análise →</a>
+            {% elif can_write_page %}<a class="cl-cta" href="/producao/classificacao/nova?lote={{ row.harvest.id }}">Classificar →</a>{% else %}<span></span>{% endif %}
+        </div>
+        {% endfor %}
+        {% elif cl_total %}
+        <div class="pd-empty"><strong>Nenhum lote neste filtro.</strong><a href="/producao/classificacao">Ver todos os lotes</a></div>
+        {% else %}
+        <div class="pd-empty"><strong>Nenhum lote nesta safra.</strong><span>Registre uma colheita para depois classificar o lote.</span><a class="sf-btn sf-btn-secondary" href="/producao/colheitas/nova">Registrar colheita</a></div>
         {% endif %}
-        {% if not classification_harvests %}<p class="mt-4 text-sm text-slate-500">Selecione uma fazenda e safra com colheitas cadastradas para registrar uma análise.</p>{% endif %}
+        <div class="cl-compare-bar" data-cl-compare-bar hidden>
+            <span data-cl-compare-text>Marque até 3 lotes para comparar</span>
+            <span class="cl-compare-actions">
+                <button type="button" data-cl-compare-toggle>Cancelar</button>
+                <a href="/producao/classificacao/comparar" data-cl-compare-go>Ver comparação</a>
+            </span>
+        </div>
     </section>
-    <section class="cc-history">
-        <div class="cc-section-head"><span class="cc-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8m0-5v5h5m4-1v5l3 2"/></svg></span><div><h3>Histórico de classificações</h3><p>Clique em um lote para visualizar seu laudo, atributos e gráfico sensorial.</p></div>{% if selected_harvest_id %}<a class="cc-clear" href="/producao/classificacao">Ver todos os lotes</a>{% endif %}</div>
-        <div class="cc-table-wrap"><table class="cc-table"><thead><tr><th>Lote</th><th>Safra</th><th>Data da análise</th><th>Responsável</th><th>Método</th><th>Tipo</th><th>Peneira</th><th>Bebida</th><th>Nota</th><th>Ações</th></tr></thead><tbody>
-        {% for item in classifications %}
-            <tr data-cc-row data-lot="{{ item.harvest.id }}" data-season="{{ item.harvest.season_id or '' }}" data-date="{{ item.analysis_date.isoformat() }}" data-search="{{ item.harvest.lot_code or ('Lote ' ~ item.harvest.id) }} {{ item.harvest.plot.name }} {{ item.evaluator or '' }}" data-method="{{ item.method or '' }}" data-type="{{ item.coffee_type or '' }}"><td><button type="button" class="cc-lot-link" data-cc-details="{{ item.id }}">{{ item.harvest.lot_code or ('Lote ' ~ item.harvest.id) }} · {{ item.harvest.plot.name }}</button></td><td>{{ active_season.name if item.harvest.season_id and active_season else 'Não vinculada' }}</td><td class="cc-nowrap">{{ item.analysis_date.strftime('%d/%m/%Y') }}</td><td>{{ item.evaluator or '—' }}</td><td>{{ item.method or '—' }}</td><td>{{ item.coffee_type or '—' }}</td><td>{{ item.sieve or '—' }}</td><td>{{ item.beverage or '—' }}</td><td>{% if item.sensory_score is not none %}<span class="cc-score">{{ item.sensory_score|decimal_br }}</span>{% else %}—{% endif %}</td><td><button type="button" class="cc-detail-btn" data-cc-details="{{ item.id }}">Ver detalhes <span aria-hidden="true">›</span></button></td></tr>
-        {% endfor %}
-        </tbody></table><p class="cc-empty" data-cc-empty {% if classifications %}hidden{% endif %}>Nenhuma classificação encontrada para os filtros selecionados.</p></div>
-        {% for item in classifications %}
-            <template data-cc-detail-template="{{ item.id }}">
-            <article class="cc-analysis-detail">
-                <div class="cc-analysis-heading"><h4>{{ item.harvest.lot_code or ('Lote ' ~ item.harvest.id) }} · {{ item.harvest.plot.name }}</h4><p>{{ item.analysis_date.strftime('%d/%m/%Y') }} · {{ 'Informado com laudo anexado' if item.source == 'laudo' else 'Informado pelo usuário' }}</p></div>
-                <div class="cc-analysis-metrics">
-                    <div class="cc-analysis-metric"><span class="cc-analysis-metric-icon" aria-hidden="true">⚗</span><div><span>Análises exibidas do lote</span><strong>{{ '%02d'|format(classifications|selectattr('harvest_id', 'equalto', item.harvest_id)|list|length) }}</strong></div></div>
-                    <div class="cc-analysis-metric"><span class="cc-analysis-metric-icon" aria-hidden="true">☆</span><div><span>Nota sensorial informada</span><strong>{% if item.sensory_score is not none %}{{ item.sensory_score|decimal_br }}{% else %}—{% endif %}</strong></div></div>
-                    <div class="cc-analysis-metric"><span class="cc-analysis-metric-icon" aria-hidden="true">▦</span><div><span>Peneira</span><strong>{{ item.sieve or '—' }}</strong></div></div>
-                    <div class="cc-analysis-metric"><span class="cc-analysis-metric-icon" aria-hidden="true">◉</span><div><span>Tipo</span><strong>{{ item.coffee_type or '—' }}</strong></div></div>
-                </div>
-                <div class="cc-analysis-grid">
-                    <section class="cc-analysis-panel cc-analysis-chart" aria-label="Gráfico sensorial">
-                        {% if item.sensory_profile and item.sensory_profile.attribute_pairs %}<div class="cc-analysis-chart-inner"><canvas data-sensory-saved="{{ item.sensory_profile.attribute_pairs|tojson|forceescape }}" data-scale="{{ item.sensory_profile.scale_max }}" aria-label="Gráfico radar da análise" role="img"></canvas></div>{% else %}<p class="cc-analysis-empty">Nenhum atributo sensorial informado para esta análise.</p>{% endif %}
-                    </section>
-                    <section class="cc-analysis-panel"><h5>Notas da análise</h5>{% if item.sensory_profile and item.sensory_profile.attribute_pairs %}<p class="cc-analysis-scale">Escala de 0 a {{ item.sensory_profile.scale_max }}</p><div class="cc-analysis-scores">{% for label, value in item.sensory_profile.attribute_pairs %}<div><span>{{ label }}</span><strong>{{ value|decimal_br }}</strong></div>{% endfor %}</div>{% else %}<p class="cc-analysis-empty">Nenhuma nota informada.</p>{% endif %}</section>
-                    <section class="cc-analysis-panel cc-analysis-profile"><h5>Perfil da amostra</h5><div class="cc-analysis-fields">
-                        <div><span>Responsável</span><strong>{{ item.evaluator or 'Não informado' }}</strong></div><div><span>Método</span><strong>{{ item.method or 'Não informado' }}</strong></div><div><span>Tipo</span><strong>{{ item.coffee_type or 'Não informado' }}</strong></div><div><span>Peneira</span><strong>{{ item.sieve or 'Não informada' }}</strong></div><div><span>Bebida</span><strong>{{ item.beverage or 'Não informada' }}</strong></div><div><span>Umidade</span><strong>{% if item.moisture is not none %}{{ item.moisture|decimal_br }}%{% else %}Não informada{% endif %}</strong></div><div class="cc-analysis-field-wide"><span>Defeitos</span><strong>{{ item.defects or 'Não informados' }}</strong></div>
-                    </div><div class="cc-analysis-description"><h5>Descrição sensorial</h5><p>{{ item.sensory_notes or 'Não informada' }}</p>{% if item.notes %}<h5>Observações</h5><p>{{ item.notes }}</p>{% endif %}</div>
-                    <div class="cc-analysis-actions">{% if item.report_filename %}<a href="/producao/classificacao/{{ item.id }}/laudo">↓ &nbsp;Baixar laudo PDF</a>{% endif %}{% for attachment in item.attachments %}<a href="/producao/classificacao/{{ item.id }}/laudo?attachment_id={{ attachment.id }}" title="{{ attachment.filename }}">↓ &nbsp;{{ attachment.filename[:27] ~ '...' if attachment.filename|length > 30 else attachment.filename }}</a>{% endfor %}<a href="/producao/classificacao/{{ item.id }}/relatorio.pdf">↓ &nbsp;Baixar relatório PDF</a>{% if can_write_page %}<a class="cc-analysis-edit" href="/producao/classificacao?edit_id={{ item.id }}">✎ &nbsp;Editar</a>{% endif %}{% if can_write_page and 'data.delete' in (permission_codes or []) %}<form method="post" action="/producao/classificacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir definitivamente esta análise e seu laudo?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Excluir</button></form>{% endif %}</div>
-                    </section>
-                </div>
-            </article>
-            </template>
-        {% endfor %}
-        <dialog class="coffee-classification-dialog" data-cc-detail-dialog aria-labelledby="cc-detail-title"><div class="coffee-classification-dialog-inner"><div class="cc-detail-header"><div><p class="cc-detail-kicker">Classificação do café</p><h3 id="cc-detail-title">Detalhes da análise</h3></div><button type="button" class="sf-icon-btn" data-cc-detail-close aria-label="Fechar detalhes">×</button></div><div data-cc-detail-content></div></div></dialog>
-    </section>
-    <section class="cc-compare">
-        <details><summary><span class="cc-compare-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v17M5 7h14M7 7 3 14h8L7 7Zm10 0-4 7h8l-4-7ZM8 21h8"/></svg></span> Comparar lotes e safras <span class="cc-compare-chevron" aria-hidden="true">⌄</span></summary>
-            <p class="mt-2 text-sm text-slate-500">Compare resultados apenas quando os métodos e escalas forem compatíveis. Exibe até 50 análises de colheitas vinculadas a uma safra.</p>
-            <div class="mt-4 overflow-x-auto"><table class="min-w-full text-left text-sm"><thead class="bg-slate-50"><tr><th class="p-3">Safra</th><th class="p-3">Lote</th><th class="p-3">Data</th><th class="p-3">Método</th><th class="p-3">Tipo</th><th class="p-3">Nota informada</th></tr></thead><tbody>{% for item in classification_comparison %}<tr class="border-t border-slate-100"><td class="p-3">{{ item.harvest.season.name }}</td><td class="p-3">{{ item.harvest.lot_code or ('Lote ' ~ item.harvest.id) }}</td><td class="p-3 whitespace-nowrap">{{ item.analysis_date.strftime('%d/%m/%Y') }}</td><td class="p-3">{{ item.method or 'Não informado' }}</td><td class="p-3">{{ item.coffee_type or 'Não informado' }}</td><td class="p-3">{% if item.sensory_score is not none %}{{ item.sensory_score|decimal_br }}{% else %}Não informada{% endif %}</td></tr>{% else %}<tr><td class="p-3 text-slate-500" colspan="6">Nenhuma análise vinculada a uma safra.</td></tr>{% endfor %}</tbody></table></div>
-            {% if classification_comparison_truncated %}<p class="mt-2 text-xs text-slate-500">Há outras análises além das 50 exibidas.</p>{% endif %}
-        </details>
-    </section>
-    <aside class="cc-disclaimer"><span aria-hidden="true">ⓘ</span> Os resultados são informados pelo usuário. O SiSFarm não verifica a autenticidade dos laudos.</aside>
-    </div>
+
+    <p class="cl-disclaimer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 11v5"/></svg>
+        Os resultados são informados por você ou pelo laboratório. O SiSFarm guarda os laudos, mas não certifica a análise.
+    </p>
+    {% endif %}
 </div>
-<script>
-(() => {
-    const detailDialog = document.querySelector('[data-cc-detail-dialog]');
-    const detailContent = document.querySelector('[data-cc-detail-content]');
-    let drawDetailCharts = () => {};
-    document.querySelectorAll('[data-cc-details]').forEach(button => button.addEventListener('click', () => {
-        const template = document.querySelector(`template[data-cc-detail-template="${button.dataset.ccDetails}"]`);
-        if (!template || !detailDialog || !detailContent) return;
-        detailContent.replaceChildren(template.content.cloneNode(true));
-        detailDialog.showModal();
-        requestAnimationFrame(() => drawDetailCharts(detailContent));
-    }));
-    document.querySelector('[data-cc-detail-close]')?.addEventListener('click', () => detailDialog?.close());
-    const rows = Array.from(document.querySelectorAll('[data-cc-row]'));
-    const search = document.querySelector('[data-cc-search]'), method = document.querySelector('[data-cc-method]'), type = document.querySelector('[data-cc-type]');
-    const normalize = value => (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    const filter = () => {
-        const visible = rows.filter(row => {
-            const matches = normalize(row.dataset.search).includes(normalize(search?.value)) && (!method?.value || row.dataset.method === method.value) && (!type?.value || row.dataset.type === type.value);
-            row.hidden = !matches;
-            return matches;
-        });
-        const setText = (selector, value) => { const el = document.querySelector(selector); if (el) el.textContent = value; };
-        setText('[data-cc-count-lots]', new Set(visible.map(row => row.dataset.lot)).size);
-        setText('[data-cc-count-analyses]', visible.length);
-        setText('[data-cc-count-seasons]', new Set(visible.map(row => row.dataset.season).filter(Boolean)).size);
-        const last = visible.map(row => row.dataset.date).sort().pop();
-        setText('[data-cc-latest]', last ? last.split('-').reverse().join('/') : '—');
-        const empty = document.querySelector('[data-cc-empty]'); if (empty) empty.hidden = visible.length > 0;
-    };
-    [search, method, type].forEach(input => input?.addEventListener(input === search ? 'input' : 'change', filter));
-    for (const [open, close, target] of [['[data-classification-open]', '[data-classification-close]', '[data-classification-dialog]'], ['[data-attributes-open]', '[data-attributes-close]', '[data-attributes-dialog]']]) {
-        const dialog = document.querySelector(target);
-        document.querySelector(open)?.addEventListener('click', () => dialog?.showModal());
-        document.querySelectorAll(close).forEach(button => button.addEventListener('click', () => dialog?.close()));
-    }
-    const scoreInput = document.querySelector('[name=sensory_score]');
-    const band = document.querySelector('[data-cc-band]');
-    const syncBand = () => {
-        if (!scoreInput || !band) return;
-        const v = parseFloat(String(scoreInput.value).replace(',', '.'));
-        band.textContent = Number.isFinite(v) ? (v >= 85 ? 'Especial · excelente' : v >= 80 ? 'Especial' : 'Comercial') : '';
-        band.className = 'cc-band' + (Number.isFinite(v) ? (v >= 80 ? ' is-top' : ' is-std') : '');
-    };
-    scoreInput?.addEventListener('input', syncBand);
-    syncBand();
-    const params = new URLSearchParams(window.location.search);
-    {% if production_origin and not edit_classification %}
-    if (params.has('novo')) {
-        document.querySelector('[data-classification-dialog]')?.addEventListener('close', () => window.location.assign('/producao/lotes/{{ selected_harvest_id }}'));
-    }
-    {% endif %}
-    if (params.has('edit_id')) document.querySelector('[data-classification-dialog]')?.addEventListener('close', () => { const next = new URL(window.location.href); next.searchParams.delete('edit_id'); window.location.assign(next.pathname + next.search + next.hash); });
-    if (params.has('atributos')) document.querySelector('[data-attributes-dialog]')?.showModal();
-    else if (params.has('novo') || params.has('edit_id')) document.querySelector('[data-classification-dialog]')?.showModal();
-    {% if detail_analysis_id %}
-    else {
-        {% if production_origin %}
-        detailDialog?.addEventListener('close', () => window.location.assign('/producao/lotes/{{ selected_harvest_id }}'), {once: true});
-        {% endif %}
-        document.querySelector('[data-cc-details="{{ detail_analysis_id }}"]')?.click();
-    }
-    {% endif %}
-    if (params.has('atributos') || params.has('novo')) { params.delete('atributos'); params.delete('novo'); const query = params.toString(); history.replaceState(null, '', `${location.pathname}${query ? '?' + query : ''}${location.hash}`); }
-    const report = document.querySelector('[data-classification-dialog] input[name="report"]');
-    if (report) {
-        const list = document.querySelector('[data-cc-selected-reports]');
-        report.addEventListener('change', () => {
-            const filenames = Array.from(report.files, file => {
-                const item = document.createElement('li');
-                const characters = Array.from(file.name);
-                item.title = file.name;
-                item.textContent = characters.length > 30 ? characters.slice(0, 27).join('') + '...' : file.name;
-                return item;
-            });
-            list.replaceChildren(...filenames);
-            list.hidden = filenames.length === 0;
-        });
-    }
-    document.querySelectorAll('[data-cc-remove-report]').forEach(button => {
-        const row = button.closest('.cc-form-report-item');
-        const input = row.querySelector('input');
-        const pending = row.querySelector('.cc-form-report-pending');
-        button.addEventListener('click', () => {
-            const marked = input.disabled;
-            const action = marked ? 'Desfazer remoção' : 'Marcar para remoção';
-            input.disabled = !marked;
-            pending.hidden = !marked;
-            button.setAttribute('aria-pressed', String(marked));
-            button.setAttribute('aria-label', action + ': ' + row.querySelector('a').title);
-            button.title = action;
-        });
-    });
-    const inputs = Array.from(document.querySelectorAll('[data-sensory-input]'));
-    const scale = document.querySelector('[data-sensory-scale]');
-    const normalizeSensoryInput = input => {
-        if (input.validity.badInput) return;
-        if (input.value === '') input.value = '0';
-        input.value = String(Math.min(Number(scale.value), Math.max(0, Number(input.value))));
-    };
-    if (scale) {
-        inputs.forEach(input => {
-            input.addEventListener('input', () => {
-                if (input.value !== '' && !input.validity.badInput && Number(input.value) > Number(scale.value)) {
-                    input.value = scale.value;
-                }
-            });
-            input.addEventListener('blur', () => {
-                normalizeSensoryInput(input);
-                input.dispatchEvent(new Event('input'));
-            });
-        });
-        document.querySelector('#coffee-classification-form').addEventListener('submit', () => {
-            inputs.forEach(normalizeSensoryInput);
-        });
-        scale.addEventListener('change', () => {
-            inputs.forEach(input => {
-                input.max = scale.value;
-                normalizeSensoryInput(input);
-            });
-        });
-    }
-    if (typeof Chart === 'undefined') return;
-    const attributes = {{ sensory_attributes|tojson }};
-    const chart = (canvas, labels, values, scale) => new Chart(canvas, {type: 'radar', data: {labels, datasets: [{label: 'Notas informadas', data: values, borderColor: '#446a36', backgroundColor: 'rgba(86, 139, 67, .2)', pointBackgroundColor: '#446a36', spanGaps: false}]}, options: {responsive: true, maintainAspectRatio: false, scales: {r: {min: 0, max: scale, ticks: {maxTicksLimit: 6}}}, plugins: {legend: {display: false}}}});
-    let detailCharts = [];
-    drawDetailCharts = container => {
-        detailCharts.forEach(graph => graph.destroy()); detailCharts = [];
-        container.querySelectorAll('[data-sensory-saved]').forEach(canvas => { const pairs = JSON.parse(canvas.dataset.sensorySaved); detailCharts.push(chart(canvas, pairs.map(p => p[0]), pairs.map(p => p[1]), Number(canvas.dataset.scale))); });
-    };
-    const canvas = document.querySelector('[data-sensory-radar]');
-    if (canvas && scale) {
-        const graph = chart(canvas, attributes.map(a => a[1]), inputs.map(input => input.value === '' ? null : Number(input.value)), Number(scale.value));
-        document.querySelector('[data-classification-open]')?.addEventListener('click', () => requestAnimationFrame(() => graph.resize()));
-        Object.assign(graph.options.scales.r, {
-            grid: {color: '#cbd5e1'},
-            angleLines: {color: '#cbd5e1'},
-            pointLabels: {color: '#26354a', font: {size: 12}, padding: 6},
-            ticks: {maxTicksLimit: 6, color: '#111c2b', showLabelBackdrop: false},
-        });
-        const hint = document.querySelector('[data-cc-radar-hint]');
-        const update = () => {
-            const values = inputs.map(input => input.value === '' ? null : Number(input.value));
-            inputs.forEach(input => { input.max = scale.value; });
-            hint.classList.toggle('is-filled', values.some(value => value !== null));
-            graph.data.datasets[0].data = values;
-            graph.options.scales.r.max = Number(scale.value);
-            graph.update();
-        };
-        update();
-        inputs.forEach(input => input.addEventListener('input', update)); scale.addEventListener('change', update);
-    }
-})();
-</script>
+
+{% if can_write_page %}
+<dialog class="cl-attr-modal" data-cl-attr-modal aria-labelledby="cl-attr-title">
+    <div class="cl-attr">
+        <header class="cl-attr-head">
+            <div><h2 id="cl-attr-title">Atributos da prova de xícara</h2><p>Escolha o que sua equipe avalia em cada análise. Vale para toda a organização.</p></div>
+            <button type="button" class="bp-close" data-cl-attr-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </header>
+        <div class="cl-attr-body">
+            <div class="cl-attr-main">
+                <div class="cl-attr-block">
+                    <div class="cl-attr-title"><strong>Comece por um modelo</strong><small>Depois você ajusta atributo por atributo.</small></div>
+                    <div class="cl-presets" role="radiogroup" aria-label="Modelo" data-cl-presets>
+                        <button type="button" role="radio" data-preset="sca"><strong>Modelo SCA</strong><small>9 atributos</small></button>
+                        <button type="button" role="radio" data-preset="simples"><strong>Simplificado</strong><small>5 atributos</small></button>
+                        <button type="button" role="radio" data-preset="custom"><strong>Personalizado</strong><small>do seu jeito</small></button>
+                    </div>
+                </div>
+                <div class="cl-attr-block cl-attr-scale">
+                    <div class="cl-attr-title"><strong>Escala das notas</strong><small>Nota máxima de cada atributo.</small></div>
+                    <div class="cl-seg2" role="radiogroup" aria-label="Escala" data-cl-scale>
+                        <button type="button" role="radio" data-scale="5">De 0 a 5</button>
+                        <button type="button" role="radio" data-scale="10">De 0 a 10</button>
+                    </div>
+                </div>
+                <div class="cl-attr-block">
+                    <div class="cl-attr-title"><strong data-cl-active-title>Aparecem na prova</strong><small>Arraste para mudar a ordem, ou use as setas.</small></div>
+                    <ul class="cl-attr-list" data-cl-active-list></ul>
+                    <div class="cl-attr-add" data-cl-add-form hidden>
+                        <div class="cl-attr-fields">
+                            <label>Nome do atributo<input data-cl-new-label maxlength="80" placeholder="Ex.: Limpeza"></label>
+                            <label>Explicação para a equipe<input data-cl-new-hint maxlength="160" placeholder="Opcional, aparece como dica na prova"></label>
+                        </div>
+                        <p class="cl-attr-error" data-cl-add-error role="alert" hidden></p>
+                        <div class="cl-attr-btns"><button type="button" class="sf-btn sf-btn-secondary" data-cl-add-cancel>Cancelar</button><button type="button" class="sf-btn sf-btn-primary" data-cl-add-confirm>Adicionar</button></div>
+                    </div>
+                    <button type="button" class="cl-attr-new" data-cl-add-open>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Novo atributo
+                    </button>
+                </div>
+                <details class="cl-attr-off" open>
+                    <summary><strong data-cl-inactive-title>Desativados</strong><small>Não aparecem em novas análises.</small></summary>
+                    <ul class="cl-attr-list" data-cl-inactive-list></ul>
+                </details>
+            </div>
+            <aside class="cl-attr-preview" aria-label="Como aparece na prova">
+                <p class="pd-eyebrow">Como aparece na prova</p>
+                <svg role="img" aria-label="Formato do gráfico com os atributos ativos" viewBox="0 0 240 240" data-cl-preview-svg></svg>
+                <p class="cl-attr-read" data-cl-readability></p>
+            </aside>
+        </div>
+        <p class="cl-attr-error cl-attr-save-error" data-cl-save-error role="alert" hidden></p>
+        <footer class="cl-attr-foot">
+            <span>Mudanças aqui não alteram notas já registradas.</span>
+            <span class="cl-attr-btns"><button type="button" class="sf-btn sf-btn-secondary" data-cl-attr-close>Cancelar</button><button type="button" class="sf-btn sf-btn-primary" data-cl-attr-save>Salvar alterações</button></span>
+        </footer>
+    </div>
+</dialog>
+<script type="application/json" data-cl-attr-data>{{ {"items": cl_attributes, "scale": cl_scale, "canDelete": cl_can_delete, "csrf": csrf_token, "open": cl_open_attributes}|tojson }}</script>
+{% endif %}
+<script src="{{ url_for('static', path='js/classification.js') }}?v=1" defer></script>
 {% endblock %}

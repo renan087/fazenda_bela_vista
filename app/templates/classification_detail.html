@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block content %}
+{% set a = cd.obj %}
+<div class="sf-page pd-page cd-page">
+    <nav class="pd-crumbs" aria-label="Caminho">
+        <a href="/producao">Produção</a><span aria-hidden="true">›</span><a href="/producao/classificacao">Classificação</a><span aria-hidden="true">›</span><span>{{ cd_code }}</span>
+    </nav>
+    <header class="pd-head">
+        <div class="lt-title">
+            <h1 class="sf-page-title">Lote {{ cd_code }} · análise de {{ a.analysis_date.strftime('%d/%m/%Y') }}</h1>
+            <div class="lt-tags">
+                <span class="lt-tag">{{ cd_harvest.plot.name if cd_harvest.plot else 'Setor removido' }}{% if cd_harvest.plot and cd_harvest.plot.variety %} · {{ cd_harvest.plot.variety.name }}{% endif %}</span>
+                <span class="lt-tag">{{ '≈ ' if cd_harvest.sacks_estimated }}{{ cd_harvest.sacks_produced|decimal_br(0) }} sc · {{ cd_available|decimal_br(0) }} sc com saldo</span>
+                {% if cd.kind_label %}<span class="pd-chip is-ok">{{ cd.kind_label }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="pd-head-actions">
+            {% if can_write_page %}
+            <form method="post" action="/producao/classificacao/{{ a.id }}/excluir" onsubmit="return confirm('Excluir esta análise e os laudos anexados? Não dá para desfazer.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="sf-icon-btn cd-danger" type="submit" aria-label="Excluir análise"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+            </form>
+            <a class="sf-btn sf-btn-secondary" href="/producao/classificacao/{{ a.id }}/editar">Editar análise</a>
+            {% endif %}
+            <a class="sf-btn sf-btn-secondary" href="/producao/lotes/{{ cd_harvest.id }}">Ver ficha do lote</a>
+            {% if cd_can_sell and can_write_page %}<a class="sf-btn sf-btn-primary" href="/producao/vendas/nova?lote={{ cd_harvest.id }}">Vender deste lote</a>{% endif %}
+        </div>
+    </header>
+
+    {% if cd_versions|length > 1 %}
+    <nav class="cd-versions" aria-label="Análises deste lote">
+        <span>Análises deste lote:</span>
+        {% for v in cd_versions %}<a href="/producao/classificacao/{{ v.id }}" {% if v.on %}aria-current="page"{% endif %}>{{ v.label }}{{ ' (mais recente)' if v.latest }}</a>{% endfor %}
+        {% if cd_delta is not none %}<b class="{{ 'is-up' if cd_delta >= 0 else 'is-down' }}">{{ '+' if cd_delta >= 0 }}{{ cd_delta|decimal_br(1) }} pts desde a análise anterior</b>{% endif %}
+    </nav>
+    {% endif %}
+
+    <div class="lt-layout">
+        <div class="lt-main">
+            <section class="pd-card cd-summary">
+                <div class="cd-score-box">
+                    <span class="cl-score is-{{ cd.tone }} is-lg">{{ cd.score|decimal_br(1) if cd.score is not none else (a.coffee_type|replace('Tipo ', 'T') if a.coffee_type else '—') }}</span>
+                    <div><strong>{{ a.beverage or 'Bebida não informada' }}</strong><span class="cf-band is-{{ cd.tone }}">{{ cd.band }}</span></div>
+                </div>
+                <dl class="cd-phys">
+                    <div><dt>Tipo</dt><dd>{{ a.coffee_type or '—' }}</dd></div>
+                    <div><dt>Peneira</dt><dd>{{ a.sieve or '—' }}</dd></div>
+                    <div><dt>Umidade</dt><dd>{{ (a.moisture|decimal_br(1) ~ '%') if a.moisture is not none else '—' }}</dd></div>
+                    <div><dt>Defeitos</dt><dd>{{ a.defects or '—' }}</dd></div>
+                    <div><dt>Broca</dt><dd>{{ (a.broca_percentage|decimal_br(1) ~ '%') if a.broca_percentage is not none else '—' }}</dd></div>
+                    <div><dt>Bebida</dt><dd>{{ a.beverage or '—' }}</dd></div>
+                </dl>
+            </section>
+
+            <section class="pd-card cd-cup">
+                <div class="cf-step-head"><h2>Prova de xícara</h2>{% if cd.has_profile %}<small>escala de 0 a {{ cd.scale }}</small>{% endif %}</div>
+                {% if cd.pairs %}
+                <div class="cd-cup-body">
+                    {% if cd.has_profile %}
+                    <svg role="img" aria-label="Gráfico radar dos atributos" viewBox="0 0 240 240" class="cd-radar">
+                        <polygon points="{{ cd.ring_half }}" fill="none" stroke="#EEF1ED"/><polygon points="{{ cd.ring }}" fill="none" stroke="#E3E8E2"/>
+                        <polygon points="{{ cd.radar }}" fill="#9BCB6B" fill-opacity=".45" stroke="#446A36" stroke-width="2"/>
+                        {% for x in cd.axes %}<text x="{{ x.x }}" y="{{ x.y }}" text-anchor="middle" font-size="11" fill="#5B6660">{{ x.label }}</text>{% endfor %}
+                    </svg>
+                    {% endif %}
+                    <ul class="cd-bars">
+                        {% for p in cd.pairs %}<li><span>{{ p.label }}</span><i aria-hidden="true"><b style="width: {{ p.pct }}%"></b></i><strong>{{ p.value|decimal_br(2) }}</strong></li>{% endfor %}
+                    </ul>
+                </div>
+                {% elif cd.score is none %}
+                <p class="lt-muted">Esta análise não teve prova de xícara.</p>
+                {% endif %}
+                {% if a.flavors %}<div class="cf-prev-flavors">{% for f in a.flavors %}<span>{{ f }}</span>{% endfor %}</div>{% endif %}
+                {% if a.sensory_notes %}<blockquote class="cd-quote">“{{ a.sensory_notes }}”</blockquote>{% endif %}
+                {% if a.notes %}<p class="cd-notes"><strong>Observações:</strong> {{ a.notes }}</p>{% endif %}
+            </section>
+        </div>
+
+        <aside class="lt-side">
+            <section class="pd-card cd-origin">
+                <h2>Origem da análise</h2>
+                <dl class="cd-rows">
+                    <div><dt>Quem classificou</dt><dd>{{ a.evaluator or 'Não informado' }}</dd></div>
+                    <div><dt>Nº do laudo</dt><dd>{{ a.sample_number or '—' }}</dd></div>
+                    <div><dt>Registrada em</dt><dd>{{ a.created_at.strftime('%d/%m/%Y') if a.created_at else '—' }}</dd></div>
+                </dl>
+                {% for f in cd.files %}
+                <a class="cd-file" href="{{ f.url }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg><span>{{ f.name }}</span><small>Baixar</small></a>
+                {% else %}<p class="lt-muted">Sem laudo anexado.</p>{% endfor %}
+                <a class="cd-link" href="/producao/classificacao/{{ a.id }}/relatorio.pdf">Gerar relatório em PDF</a>
+            </section>
+            <section class="pd-card cd-sale">
+                <h2>Este lote na venda</h2>
+                <dl class="cd-rows">
+                    <div><dt>Saldo disponível</dt><dd>{{ cd_available|decimal_br(0) }} sc</dd></div>
+                    {% for ref in cd_price_refs %}<div><dt>{{ ref.label }}</dt><dd>R$ {{ ref.min|decimal_br(0) }}{% if ref.max != ref.min %}–{{ ref.max|decimal_br(0) }}{% endif %}/sc</dd></div>{% endfor %}
+                </dl>
+                {% if not cd_price_refs %}<p class="lt-muted">A referência de preço aparece depois das primeiras vendas de lotes classificados.</p>{% endif %}
+            </section>
+            {% if cd_points %}
+            <section class="pd-card">
+                <h2>Notas deste lote no tempo</h2>
+                <svg role="img" aria-label="Evolução da nota final do lote" viewBox="0 0 280 90" class="cd-trend">
+                    <line x1="20" y1="66" x2="260" y2="66" stroke="#EEF1ED"/>
+                    <polyline points="{{ cd_polyline }}" fill="none" stroke="#446A36" stroke-width="2.5"/>
+                    {% for p in cd_points %}<circle cx="{{ p.x }}" cy="{{ p.y }}" r="4.5" fill="#446A36"/><text x="{{ p.x }}" y="84" text-anchor="middle" font-size="10" fill="#5B6660">{{ p.label }}</text>{% endfor %}
+                </svg>
+            </section>
+            {% endif %}
+        </aside>
+    </div>
+    <p class="cl-disclaimer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 11v5"/></svg>Os resultados são informados por você ou pelo laboratório. O SiSFarm guarda os laudos, mas não certifica a análise.</p>
+</div>
+{% endblock %}

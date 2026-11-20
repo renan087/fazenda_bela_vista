@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="sf-page pd-page cx-page">
+    <nav class="pd-crumbs" aria-label="Caminho">
+        <a href="/producao">Produção</a><span aria-hidden="true">›</span><a href="/producao/classificacao">Classificação</a><span aria-hidden="true">›</span><span>Comparar lotes</span>
+    </nav>
+    <header class="pd-head">
+        <div>
+            <h1 class="sf-page-title">Comparar lotes</h1>
+            <p class="sf-page-subtitle">Última análise de cada lote. Compare só análises com o mesmo método e escala.</p>
+        </div>
+        <nav class="cx-lots" aria-label="Lotes na comparação (até 3)">
+            {% for lot in cc_available %}
+            <a href="{{ lot.href }}" class="{{ 'is-on' if lot.on }}" aria-pressed="{{ 'true' if lot.on else 'false' }}">
+                {% if lot.on %}{% for item in cc_items if item.harvest.id == lot.id %}<i style="background: {{ item.color }}" aria-hidden="true"></i>{% endfor %}{% endif %}{{ lot.code }}
+            </a>
+            {% endfor %}
+        </nav>
+    </header>
+    {% if cc_items|length < 2 %}
+    <div class="pd-card pd-empty"><strong>Escolha pelo menos 2 lotes classificados.</strong><span>Toque nos lotes acima para incluir na comparação.</span></div>
+    {% else %}
+    <div class="lt-layout">
+        <section class="pd-card cx-chart">
+            {% if cc_common|length >= 3 %}
+            <svg role="img" aria-label="Radar comparando os lotes escolhidos" viewBox="0 0 240 240">
+                <polygon points="{{ cc_ring_half }}" fill="none" stroke="#EEF1ED"/><polygon points="{{ cc_ring }}" fill="none" stroke="#E3E8E2"/>
+                {% for item in cc_items %}<polygon points="{{ item.radar }}" fill="{{ item.color }}" fill-opacity=".12" stroke="{{ item.color }}" stroke-width="2" {% if item.dash %}stroke-dasharray="{{ item.dash }}"{% endif %}/>{% endfor %}
+                {% for x in cc_axes %}<text x="{{ x.x }}" y="{{ x.y }}" text-anchor="middle" font-size="11" fill="#5B6660">{{ x.label }}</text>{% endfor %}
+            </svg>
+            {% else %}
+            <p class="lt-muted">Os lotes não têm pelo menos 3 atributos sensoriais em comum, então o gráfico não aparece. A tabela continua válida.</p>
+            {% endif %}
+            <ul class="cx-legend">{% for item in cc_items %}<li><i style="background: {{ item.color }}" aria-hidden="true"></i>{{ item.code }} · {{ item.view.score|decimal_br(1) ~ ' pts' if item.view.score is not none else 'sem nota' }}</li>{% endfor %}</ul>
+        </section>
+        <section class="pd-card cx-table-card">
+            <div class="cx-table-wrap">
+                <table class="cx-table">
+                    <thead><tr><th scope="col">Item</th>{% for item in cc_items %}<th scope="col"><i style="background: {{ item.color }}" aria-hidden="true"></i>{{ item.code }}</th>{% endfor %}</tr></thead>
+                    <tbody>
+                        {% for row in cc_rows %}<tr><th scope="row">{{ row.label }}</th>{% for cell in row.cells %}<td class="{{ 'is-best' if cell.best }}">{{ cell.text }}</td>{% endfor %}</tr>{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="cx-foot">Em verde, o melhor valor de cada linha. Atributos convertidos para a escala de 0 a 10.</p>
+        </section>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

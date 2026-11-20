@@ -1,4 +1,6 @@
 import asyncio
+
+from starlette.responses import Response
 from datetime import date
 from io import BytesIO
 from pathlib import Path
@@ -18,14 +20,12 @@ from app.models.coffee_sensory_profile import CoffeeSensoryProfile
 from tests.test_stock_assistant import _route_env
 
 
-def test_classification_header_covers_scrolling_content():
+def test_classification_page_uses_production_module_layout():
     root = Path(__file__).resolve().parents[1]
     template = (root / "app/templates/coffee_classification.html").read_text()
-    css = (root / "app/static/css/styles.css").read_text()
-    assert "coffee-classification-page" in template
-    assert "body:has(.coffee-classification-page) .hd { background: #fff; }" in css
-    assert "body .coffee-classification-page .stock-page-header { top: 69px; background: #f1f5f9; }" in css
-
+    assert "production_tabs('classification')" in template and "sf-page pd-page cl-page" in template
+    assert "Aguardando classificação" in template and "Qualidade por lote" in template
+    assert "data-cl-attr-modal" in template and "js/classification.js" in template
 
 def test_classification_validation_and_provenance():
     base = {"analysis_date": "2026-11-10", "source": "informado", "moisture": "11,5", "sensory_score": "85"}
@@ -167,6 +167,7 @@ def test_custom_attribute_is_saved_with_its_label_and_printed_after_removal(monk
 
 def test_edit_preserves_report_lot_and_inactive_attributes(monkeypatch):
     routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    monkeypatch.setattr(routes, "_classification_form_render", lambda *a, **k: Response(status_code=k.get("status_code", 200)))
     request = SimpleNamespace(session={})
     plot = Plot(name="Setor 1", farm_id=scope["active_farm_id"], area_hectares=1, plant_count=1)
     db.add(plot); db.flush()
@@ -202,6 +203,7 @@ def test_edit_preserves_report_lot_and_inactive_attributes(monkeypatch):
 
 def test_edit_rejects_foreign_scope_and_missing_report(monkeypatch):
     routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    monkeypatch.setattr(routes, "_classification_form_render", lambda *a, **k: Response(status_code=k.get("status_code", 200)))
     plot = Plot(name="Setor 1", farm_id=scope["active_farm_id"], area_hectares=1, plant_count=1)
     db.add(plot); db.flush()
     harvest = HarvestRecord(plot_id=plot.id, season_id=scope["active_season_id"], harvest_date=date(2026, 11, 1), sacks_produced=1)
@@ -215,44 +217,16 @@ def test_edit_rejects_foreign_scope_and_missing_report(monkeypatch):
             return form
     response = asyncio.run(routes.edit_coffee_classification(item.id, Request(), db, user))
     db.refresh(item)
-    assert "edit_id" in response.headers["location"] and item.beverage == "Original"
+    assert response.status_code == 422 and item.beverage == "Original"
     monkeypatch.setattr(routes, "_global_scope_context", lambda *args: dict(scope, active_farm=None))
     with pytest.raises(HTTPException) as denied:
         asyncio.run(routes.edit_coffee_classification(item.id, Request(), db, user))
     assert denied.value.status_code == 404
 
 
-def test_edit_form_renders_existing_values_and_archived_notes():
-    from jinja2 import ChoiceLoader, DictLoader
-    from app.web import routes
-    env = routes.templates.env.overlay(loader=ChoiceLoader([DictLoader({"base.html": "{% block content %}{% endblock %}"}), routes.templates.env.loader]))
-    profile = CoffeeSensoryProfile(scale_max=9, attributes_json='{"aroma":{"label":"Aroma antigo","value":8}}')
-    plot = SimpleNamespace(name="Setor 1")
-    harvest = SimpleNamespace(id=1, lot_code="L-1", plot=plot, harvest_date=date(2026, 11, 1))
-    item = SimpleNamespace(id=12, harvest_id=1, harvest=harvest, analysis_date=date(2026, 11, 10), source="laudo",
-                           report_filename="laudo.pdf", evaluator="Laboratório", method="SCA", coffee_type="Tipo 4",
-                           sieve="16", moisture=0, defects=None, beverage="Mole", sensory_score=0,
-                           sensory_notes="Frutado", notes="Observação", sensory_profile=profile)
-    html = env.get_template("coffee_classification.html").render(
-        can_write_page=True, csrf_token="x", classification_harvests=[harvest], classifications=[item],
-        edit_classification=item, sensory_attributes=[("aroma", "Aroma antigo")], sensory_definitions=[],
-        classification_comparison=[], classification_comparison_truncated=False, today=date(2026, 11, 15),
-        selected_harvest_id=None, permission_codes={"data.delete"}, request=SimpleNamespace(query_params={}), flash=None)
-    assert 'action="/producao/classificacao/12/editar"' in html
-    assert 'name="moisture" value="0"' in html and 'name="sensory_score" value="0"' in html
-    assert 'name="sensory_aroma" data-sensory-input="aroma" value="8"' in html
-    assert "laudo.pdf" in html and "Aroma antigo" in html
-    assert 'data-cc-details="12"' in html and 'data-cc-detail-template="12"' in html
-    assert 'data-method="SCA"' in html and 'data-type="Tipo 4"' in html
-    assert "/producao/classificacao/12/relatorio.pdf" in html and "/producao/classificacao?edit_id=12" in html
-    assert 'class="cc-analysis-metrics"' in html and 'class="cc-analysis-grid"' in html
-    assert 'data-sensory-saved=' in html and "Notas da análise" in html
-    assert "Perfil da amostra" in html and "Frutado" in html and "Observação" in html
-    assert "/producao/classificacao/12/laudo" in html and "/producao/classificacao/12/excluir" in html
-
-
 def test_multiple_reports_append_and_remove_individually(monkeypatch):
     routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    monkeypatch.setattr(routes, "_classification_form_render", lambda *a, **k: Response(status_code=k.get("status_code", 200)))
     plot = Plot(name="Setor 1", farm_id=scope["active_farm_id"], area_hectares=1, plant_count=1)
     db.add(plot)
     db.flush()
@@ -299,7 +273,7 @@ def test_multiple_reports_append_and_remove_individually(monkeypatch):
 
     last = Request([("remove_attachment", str(second.id))])
     response = asyncio.run(routes.edit_coffee_classification(analysis.id, last, db, user))
-    assert "edit_id" in response.headers["location"]
+    assert response.status_code == 422
     assert [attachment.id for attachment in analysis.attachments] == [second.id]
 
 

@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block content %}
+{% set p = cf_p %}
+{% set a = cf_analysis %}
+<div class="sf-page pd-page vw-page cf-page">
+    <nav class="pd-crumbs" aria-label="Caminho">
+        <a href="/producao">Produção</a><span aria-hidden="true">›</span><a href="/producao/classificacao">Classificação</a><span aria-hidden="true">›</span>
+        <span>{{ 'Editar análise' if a else 'Nova análise' }}</span>
+    </nav>
+    <header class="pd-head">
+        <h1 class="sf-page-title">{{ 'Editar análise' if a else 'Nova análise' }}</h1>
+        <ol class="vw-steps" aria-label="Passos" data-cf-steps>
+            <li data-vw-step-tab="1" aria-current="step"><span>1</span>Lote e origem</li>
+            <li data-vw-step-tab="2"><span>2</span>Física</li>
+            <li data-vw-step-tab="3" data-cf-cup-tab><span>3</span>Prova de xícara</li>
+            <li data-vw-step-tab="4"><span>4</span>Conferir</li>
+        </ol>
+    </header>
+    {% if cf_error %}<div class="pd-alert is-error" role="alert" data-cf-server-error>{{ cf_error }}</div>{% endif %}
+    {% if not cf_lots %}
+    <div class="pd-card pd-empty"><strong>Nenhum lote na safra ativa.</strong><span>Registre uma colheita para classificar o lote.</span><a class="sf-btn sf-btn-secondary" href="/producao/colheitas/nova">Registrar colheita</a></div>
+    {% else %}
+    <form method="post" enctype="multipart/form-data" action="{{ '/producao/classificacao/' ~ a.id ~ '/editar' if a else '/producao/classificacao' }}" class="vw-layout" data-cf-form novalidate
+          data-scale="{{ cf_scale }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="sensory_scale" value="{{ cf_scale }}">
+        {% if cf_origem and not a %}<input type="hidden" name="origem" value="producao">{% endif %}
+        <section class="pd-card vw-main">
+            <div class="vw-step" data-vw-step="1">
+                <fieldset class="cf-fieldset">
+                    <legend><h2>Qual lote?</h2></legend>
+                    {% if a %}
+                    <input type="hidden" name="harvest_id" value="{{ a.harvest_id }}">
+                    {% set lot = (cf_lots|selectattr('id', 'equalto', a.harvest_id)|list|first) %}
+                    <p class="cf-fixed-lot"><strong>{{ lot.code if lot else 'Lote' }}</strong> {{ lot.sub if lot }}<small>O lote de uma análise não muda.</small></p>
+                    {% else %}
+                    <div class="cf-lots">
+                        {% for lot in cf_lots %}
+                        <label class="cf-card">
+                            <input type="radio" name="harvest_id" value="{{ lot.id }}" data-code="{{ lot.code }}" {% if p.harvest_id == lot.id %}checked{% endif %} required>
+                            <span><strong>{{ lot.code }}</strong><small>{{ lot.sub }}</small>
+                            <em class="{{ 'is-wait' if not lot.count }}">{{ 'Aguardando' if not lot.count else (lot.count ~ ' análise' ~ ('s' if lot.count > 1 else '')) }}</em></span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </fieldset>
+                <div class="vw-grid">
+                    <label class="vw-f">Data da análise<input type="date" name="analysis_date" value="{{ p.analysis_date or today.isoformat() }}" max="{{ today.isoformat() }}" required></label>
+                    <label class="vw-f">Quem classificou<input name="evaluator" maxlength="180" value="{{ p.evaluator or '' }}" list="cf-evaluators" placeholder="Laboratório, cooperativa ou você">
+                        {% if cf_evaluators %}<small>Usados antes: {{ cf_evaluators|join(' · ') }}</small>{% endif %}
+                    </label>
+                    <datalist id="cf-evaluators">{% for name in cf_evaluators %}<option value="{{ name }}">{% endfor %}<option value="Feita na fazenda"></datalist>
+                    <label class="vw-f"><span>Nº do laudo ou da amostra <small>opcional</small></span><input name="sample_number" maxlength="60" value="{{ p.sample_number or '' }}" placeholder="Ex.: 2026-0457"></label>
+                </div>
+                <fieldset class="vw-f vw-seg-field">
+                    <legend>Tipo de análise</legend>
+                    <div class="vw-seg cf-kinds">
+                        {% for value, label, sub in cf_kinds %}
+                        <label><input type="radio" name="analysis_kind" value="{{ value }}" {% if p.analysis_kind == value %}checked{% endif %} data-cf-kind><span><strong>{{ label }}</strong><small>{{ sub }}</small></span></label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+                <div class="cf-upload">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+                    <div><strong>Anexar laudo</strong><small>PDF, até 10 MB cada. Opcional.</small><ul class="cf-files" data-cf-files></ul></div>
+                    <label class="sf-btn sf-btn-secondary cf-upload-btn">Escolher arquivo<input type="file" name="report" accept="application/pdf,.pdf" multiple class="sr-only" data-cf-report></label>
+                </div>
+                {% if a and (a.report_filename or a.attachments) %}
+                <div class="cf-current">
+                    <p class="cf-small-title">Laudos já anexados</p>
+                    <ul>
+                        {% if a.report_filename %}<li><a href="/producao/classificacao/{{ a.id }}/laudo">{{ a.report_filename }}</a>{% if 'data.delete' in (permission_codes or []) %}<label><input type="checkbox" name="remove_report" value="1"> Remover ao salvar</label>{% endif %}</li>{% endif %}
+                        {% for att in a.attachments %}<li><a href="/producao/classificacao/{{ a.id }}/laudo?attachment_id={{ att.id }}">{{ att.filename }}</a>{% if 'data.delete' in (permission_codes or []) %}<label><input type="checkbox" name="remove_attachment" value="{{ att.id }}"> Remover ao salvar</label>{% endif %}</li>{% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+                <p class="cf-soon"><span><strong>Pezinho preenche para você</strong><small>Lê o laudo anexado e completa os passos 2 e 3; você só confere.</small></span><em>Em breve</em></p>
+            </div>
+
+            <div class="vw-step" data-vw-step="2" hidden>
+                <fieldset class="vw-f vw-seg-field">
+                    <legend><h2>Bebida</h2></legend>
+                    {% for group, beverages in cf_beverages %}
+                    <p class="cf-group">{{ group }}</p>
+                    <div class="cf-chips">
+                        {% for beverage in beverages %}<label><input type="radio" name="beverage" value="{{ beverage }}" {% if p.beverage == beverage %}checked{% endif %}><span>{{ beverage }}</span></label>{% endfor %}
+                        {% if loop.first %}
+                        {% set known = namespace(v=false) %}{% for g, bs in cf_beverages %}{% if p.beverage in bs %}{% set known.v = true %}{% endif %}{% endfor %}
+                        {% if p.beverage and not known.v %}<label><input type="radio" name="beverage" value="{{ p.beverage }}" checked><span>{{ p.beverage }}</span></label>{% endif %}
+                        <label><input type="radio" name="beverage" value="" {% if not p.beverage %}checked{% endif %}><span>Não informar</span></label>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </fieldset>
+                <fieldset class="vw-f vw-seg-field">
+                    <legend>Tipo (COB)</legend>
+                    <div class="cf-types">
+                        {% for value in cf_types %}<label><input type="radio" name="coffee_type" value="{{ value }}" {% if p.coffee_type == value %}checked{% endif %}><span>{{ value|replace('Tipo ', '') }}</span></label>{% endfor %}
+                        {% if cf_extra_type %}<label><input type="radio" name="coffee_type" value="{{ cf_extra_type }}" checked><span>{{ cf_extra_type }}</span></label>{% endif %}
+                        <label><input type="radio" name="coffee_type" value="" {% if not p.coffee_type %}checked{% endif %}><span>—</span></label>
+                    </div>
+                    <small class="cf-help">Quanto menor o número, menos defeitos. Tipo 6 é o mais comum no mercado.</small>
+                </fieldset>
+                <fieldset class="vw-f vw-seg-field">
+                    <legend>Peneira</legend>
+                    <div class="cf-chips">
+                        {% for value in cf_sieves %}<label><input type="radio" name="sieve" value="{{ value }}" {% if p.sieve == value %}checked{% endif %}><span>{{ value }}</span></label>{% endfor %}
+                        <label><input type="radio" name="sieve" value="" {% if not p.sieve %}checked{% endif %}><span>Não informar</span></label>
+                    </div>
+                </fieldset>
+                <div class="vw-grid vw-grid-3 cf-align">
+                    <label class="vw-f">Umidade<span class="vw-affix is-end"><input name="moisture" inputmode="decimal" value="{{ p.moisture or '' }}" placeholder="Ex.: 11,5"><span>%</span></span><small>Ideal entre 11% e 12%</small></label>
+                    <label class="vw-f">Defeitos<span class="vw-affix is-end"><input name="defects" inputmode="numeric" maxlength="180" value="{{ p.defects or '' }}" placeholder="Ex.: 72"><span>em 300 g</span></span></label>
+                    <label class="vw-f"><span>Broca <small>opcional</small></span><span class="vw-affix is-end"><input name="broca_percentage" inputmode="decimal" value="{{ p.broca_percentage or '' }}" placeholder="Ex.: 2"><span>%</span></span></label>
+                </div>
+            </div>
+
+            <div class="vw-step" data-vw-step="3" hidden data-cf-cup>
+                <div class="cf-step-head"><h2>Prova de xícara</h2><small>Opcional. Pule se a análise não teve prova.</small></div>
+                <div class="vw-f">Nota final (0–100)
+                    <div class="cf-score">
+                        <button type="button" class="vw-step-btn" data-cf-score="-0.5" aria-label="Diminuir nota">−</button>
+                        <input name="sensory_score" inputmode="decimal" value="{{ p.sensory_score or '' }}" placeholder="—" aria-label="Nota final" data-cf-score-input>
+                        <button type="button" class="vw-step-btn" data-cf-score="0.5" aria-label="Aumentar nota">+</button>
+                        <span class="cf-band" data-cf-band></span>
+                    </div>
+                </div>
+                {% if cf_attrs %}
+                <div class="cf-sensory">
+                    <div class="cf-attrs">
+                        <div class="cf-attrs-head"><strong>Atributos</strong><small>escala de 0 a {{ cf_scale }}</small></div>
+                        {% for key, label in cf_attrs %}
+                        {% set val = p.sensory.get(key) %}
+                        <div class="cf-attr">
+                            <label for="cf-s-{{ key }}">{{ label }}</label>
+                            <button type="button" class="vw-step-btn" data-cf-step="-0.25" aria-label="Diminuir {{ label }}">−</button>
+                            <input id="cf-s-{{ key }}" name="sensory_{{ key }}" inputmode="decimal" value="{{ val if val is not none else '' }}" placeholder="0" data-cf-attr data-label="{{ label }}">
+                            <button type="button" class="vw-step-btn" data-cf-step="0.25" aria-label="Aumentar {{ label }}">+</button>
+                        </div>
+                        {% endfor %}
+                        <small class="cf-help">Para escolher quais atributos aparecem, use “Atributos sensoriais” na página de Classificação.</small>
+                    </div>
+                    <figure class="cf-radar">
+                        <svg role="img" aria-label="Gráfico radar dos atributos" viewBox="0 0 240 240" data-cf-radar></svg>
+                        <figcaption>O gráfico não calcula a nota final; ela vem da prova.</figcaption>
+                    </figure>
+                </div>
+                {% endif %}
+                <fieldset class="vw-f vw-seg-field">
+                    <legend>Sabores percebidos</legend>
+                    <div class="cf-chips cf-flavors" data-cf-flavors>
+                        {% for flavor in cf_flavors %}<label><input type="checkbox" name="flavor" value="{{ flavor }}" {% if flavor in p.flavors %}checked{% endif %}><span>{{ flavor }}</span></label>{% endfor %}
+                        <span class="cf-flavor-add"><input data-cf-flavor-new maxlength="40" placeholder="+ outro sabor" aria-label="Outro sabor"></span>
+                    </div>
+                </fieldset>
+                <label class="vw-f"><span>Comentário da prova <small>opcional</small></span><textarea name="sensory_notes" rows="2" maxlength="2000" placeholder="Ex.: corpo cremoso, final longo">{{ p.sensory_notes or '' }}</textarea></label>
+            </div>
+
+            <div class="vw-step" data-vw-step="4" hidden>
+                <h2 class="vw-review-title">Confira antes de salvar</h2>
+                <div data-cf-review></div>
+                <label class="vw-f"><span>Observações <small>opcional</small></span><textarea name="notes" rows="2" maxlength="2000">{{ p.notes or '' }}</textarea></label>
+            </div>
+
+            <div class="pd-alert is-error" data-vw-error role="alert" hidden></div>
+            <footer class="vw-foot">
+                <a class="sf-btn sf-btn-secondary" href="{{ ('/producao/classificacao/' ~ a.id) if a else '/producao/classificacao' }}" data-vw-cancel>Cancelar</a>
+                <button type="button" class="sf-btn sf-btn-secondary" data-vw-back hidden>Voltar</button>
+                <button type="button" class="cf-skip" data-cf-skip hidden>Pular prova de xícara</button>
+                <button type="button" class="sf-btn sf-btn-primary" data-vw-next>Continuar</button>
+                <button type="submit" class="sf-btn sf-btn-primary" data-vw-submit hidden>{{ 'Salvar alterações' if a else 'Salvar análise' }}</button>
+            </footer>
+        </section>
+
+        <aside class="vw-summary cf-side">
+            <section class="pd-card cf-preview">
+                <p class="pd-eyebrow">Como o lote vai aparecer</p>
+                <div class="cf-preview-top"><span class="cl-score is-none" data-cf-prev-score>—</span><p><strong data-cf-prev-lot>Escolha o lote</strong><small data-cf-prev-phys>—</small></p></div>
+                <svg aria-hidden="true" viewBox="0 0 240 240" class="cf-preview-radar" data-cf-prev-radar></svg>
+                <div class="cf-prev-flavors" data-cf-prev-flavors></div>
+            </section>
+            {% if cf_price_refs %}
+            <section class="pd-card cf-prices">
+                <strong>Referência para negociar</strong>
+                {% for ref in cf_price_refs %}<p><span>{{ ref.label }}</span><b>R$ {{ ref.min|decimal_br(0) }}{% if ref.max != ref.min %}–{{ ref.max|decimal_br(0) }}{% endif %}/sc</b></p>{% endfor %}
+                <small>Com base nas suas vendas desta safra.</small>
+            </section>
+            {% endif %}
+            <p class="pd-note">Nada é salvo até você confirmar no último passo.</p>
+        </aside>
+    </form>
+    {% endif %}
+</div>
+<script src="{{ url_for('static', path='js/classification_form.js') }}?v=1" defer></script>
+{% endblock %}
