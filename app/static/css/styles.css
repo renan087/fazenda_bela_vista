@@ -8219,7 +8219,8 @@ a.pf-logout:hover { background: #fdecea; color: #b42318; }
 .fm-car-pill-head span { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--pd-muted); }
 .fm-car-pill-val { font-size:12.5px; font-weight:600; color:var(--pd-ink); line-height:1.4; overflow-wrap:anywhere; word-break:break-word; font-variant-numeric:tabular-nums; }
 .fm-map-edit-pane { display:flex; flex-direction:column; gap:12px; }
-.fm-map-edit-pane[hidden], [data-fm-map-view][hidden] { display:none !important; }
+.fm-map-prompt { padding:28px 16px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px; }
+.fm-map-edit-pane[hidden], .fm-map-prompt[hidden], [data-fm-map-view][hidden], [data-fm-map-wrap][hidden] { display:none !important; }
 
 /* Wizard de Fazendas (passos em linha única + Informações adicionais retráteis) */
 .fm-steps { list-style:none; margin:0; padding:0; display:flex; flex-wrap:nowrap; gap:8px; overflow-x:auto; scrollbar-width:none; max-width:100%; }
