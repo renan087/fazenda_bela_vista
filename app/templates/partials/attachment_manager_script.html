@@ -6,11 +6,13 @@
         document.querySelectorAll('[data-attachment-manager]').forEach((manager) => {
             const form = manager.closest('form');
             const pickerSlot = manager.querySelector('[data-attachments-picker-slot]');
+            const dropzone = manager.querySelector('[data-attachments-dropzone]');
             const submitInput = manager.querySelector('[data-attachments-submit-input]');
             const feedback = manager.querySelector('[data-attachments-feedback]');
             const pendingBox = manager.querySelector('[data-attachments-pending]');
             const pendingList = manager.querySelector('[data-attachments-pending-list]');
             const clearButton = manager.querySelector('[data-attachments-clear]');
+            const isSisfarmStyle = manager.getAttribute('data-attachment-style') === 'sisfarm';
             if (!form || !pickerSlot || !submitInput || !feedback || !pendingBox || !pendingList) return;
 
             let pendingFiles = [];
@@ -27,23 +29,27 @@
                 pendingList.innerHTML = '';
                 pendingFiles.forEach((file, index) => {
                     const row = document.createElement('div');
-                    row.className = 'flex max-w-full items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3';
+                    row.className = isSisfarmStyle
+                        ? 'fm-att-row'
+                        : 'flex max-w-full items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3';
 
                     const content = document.createElement('div');
-                    content.className = 'min-w-0 flex-1';
+                    content.className = isSisfarmStyle ? 'fm-att-info' : 'min-w-0 flex-1';
 
                     const title = document.createElement('p');
-                    title.className = 'truncate text-sm font-medium text-slate-900';
+                    title.className = isSisfarmStyle ? 'fm-att-name' : 'truncate text-sm font-medium text-slate-900';
                     title.title = file.name;
                     title.textContent = file.name;
 
                     const meta = document.createElement('p');
-                    meta.className = 'mt-1 text-xs text-slate-500';
+                    meta.className = isSisfarmStyle ? 'fm-att-meta' : 'mt-1 text-xs text-slate-500';
                     meta.textContent = `${file.type || 'documento'} • ${formatKb(file.size)}`;
 
                     const removeButton = document.createElement('button');
                     removeButton.type = 'button';
-                    removeButton.className = 'shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100';
+                    removeButton.className = isSisfarmStyle
+                        ? 'fm-att-remove'
+                        : 'shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100';
                     removeButton.textContent = 'Remover';
                     removeButton.addEventListener('click', () => {
                         pendingFiles = pendingFiles.filter((_, itemIndex) => itemIndex !== index);
@@ -58,30 +64,66 @@
                 });
 
                 pendingBox.classList.remove('hidden');
-                feedback.textContent = `${pendingFiles.length} anexo(s) pendente(s). O envio so acontecera ao salvar.`;
+                const count = pendingFiles.length;
+                feedback.textContent = count === 1
+                    ? '1 anexo selecionado. O envio acontecerá ao salvar.'
+                    : `${count} anexos selecionados. O envio acontecerá ao salvar.`;
                 feedback.classList.remove('hidden');
+            };
+
+            const addFiles = (fileList) => {
+                const files = Array.from(fileList || []);
+                if (!files.length) return;
+                const known = new Set(pendingFiles.map(fileKey));
+                files.forEach((file) => {
+                    const key = fileKey(file);
+                    if (!known.has(key)) {
+                        pendingFiles.push(file);
+                        known.add(key);
+                    }
+                });
+                refreshState();
             };
 
             const bindPicker = (picker) => {
                 picker.addEventListener('change', () => {
-                    const files = Array.from(picker.files || []);
-                    if (!files.length) return;
-                    const known = new Set(pendingFiles.map(fileKey));
-                    files.forEach((file) => {
-                        const key = fileKey(file);
-                        if (!known.has(key)) {
-                            pendingFiles.push(file);
-                            known.add(key);
-                        }
-                    });
+                    addFiles(picker.files);
                     picker.value = '';
-                    refreshState();
                 });
             };
 
             const initialPicker = pickerSlot.querySelector('[data-attachments-picker]');
             if (initialPicker) {
                 bindPicker(initialPicker);
+            }
+
+            if (dropzone) {
+                const stop = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                };
+                ['dragenter', 'dragover'].forEach((evName) => {
+                    dropzone.addEventListener(evName, (event) => {
+                        stop(event);
+                        dropzone.classList.add('is-dragover');
+                    });
+                });
+                ['dragleave', 'dragend'].forEach((evName) => {
+                    dropzone.addEventListener(evName, (event) => {
+                        stop(event);
+                        if (!dropzone.contains(event.relatedTarget)) {
+                            dropzone.classList.remove('is-dragover');
+                        }
+                    });
+                });
+                dropzone.addEventListener('drop', (event) => {
+                    stop(event);
+                    dropzone.classList.remove('is-dragover');
+                    const files = event.dataTransfer?.files;
+                    if (files && files.length) {
+                        addFiles(files);
+                    }
+                });
             }
 
             clearButton?.addEventListener('click', () => {

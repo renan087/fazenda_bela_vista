@@ -345,10 +345,17 @@ def test_kml_file_parsing_and_collapsed_attachments_on_edit(env):
     assert "data-fm-geo-dropzone" in html
     assert ".kml" in html
     assert "Procurar arquivo" in html
-    # Garante que o bloco de anexos não tem atributo open e que a confirmação de área usa modal elegante sem mencionar "5%"
+    # Garante que o bloco de anexos não tem atributo open, usa dropzone no padrão SiSFarm (sem cinza slate) e modal de área sem mencionar "5%"
     idx = html.index("Anexos da propriedade")
     snippet = html[max(0, idx - 400):idx]
     assert '<details class="fm-opt-card" open>' not in snippet
+    att_section = html[idx:idx + 3500]
+    assert "data-attachments-dropzone" in att_section
+    assert 'data-attachment-style="sisfarm"' in att_section
+    assert 'class="fm-geo-dropzone"' in att_section
+    assert "Procurar arquivos" in att_section
+    assert "border-slate-300" not in att_section
+    assert "bg-slate-50" not in att_section
     assert "data-fm-area-modal" in html
     assert "Qual área você quer usar nesta fazenda?" in html
     assert "tolerância de 5%" not in html

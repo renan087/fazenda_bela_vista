@@ -248,14 +248,68 @@
                                 </div>
                             </summary>
                             <div class="fm-opt-body" style="display:flex; flex-direction:column; gap:12px;">
-                                {% set attachment_label = 'Documentos da fazenda' %}
-                                {% set attachment_help_text = 'Envie CCIR, ITR, matrícula, certidões ou fotos. Você pode adicionar vários arquivos antes de salvar.' %}
-                                {% include "partials/attachment_upload_field.html" %}
+                                <div class="fm-att-manager" data-attachment-manager data-attachment-style="sisfarm">
+                                    <div class="fm-geo-dropzone" data-attachments-dropzone>
+                                        <span class="fm-geo-drop-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                        </span>
+                                        <div class="fm-geo-drop-copy">
+                                            <strong>Enviar documentos da fazenda</strong>
+                                            <small>Arraste e solte aqui ou procure no aparelho · CCIR, ITR, matrícula, certidões ou fotos (vários arquivos)</small>
+                                        </div>
+                                        <label class="sf-btn sf-btn-secondary fm-geo-browse" data-attachments-picker-slot>
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                            Procurar arquivos
+                                            <input
+                                                type="file"
+                                                multiple
+                                                accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.odt,.ods"
+                                                class="sr-only"
+                                                data-attachments-picker
+                                            >
+                                        </label>
+                                    </div>
+                                    <input
+                                        type="file"
+                                        name="attachments"
+                                        multiple
+                                        class="hidden"
+                                        tabindex="-1"
+                                        aria-hidden="true"
+                                        data-attachments-submit-input
+                                    >
+                                    <div class="fm-att-feedback hidden" data-attachments-feedback role="status" aria-live="polite"></div>
+                                    <div class="fm-att-panel hidden" data-attachments-pending>
+                                        <div class="fm-att-panel-head">
+                                            <div>
+                                                <p class="pd-eyebrow">Novos anexos</p>
+                                                <h4>Arquivos prontos para salvar neste registro</h4>
+                                            </div>
+                                            <button type="button" class="sf-btn sf-btn-secondary fm-att-clear" data-attachments-clear>Limpar seleção</button>
+                                        </div>
+                                        <div class="fm-att-list" data-attachments-pending-list></div>
+                                    </div>
+                                </div>
                                 {% if edit_farm and edit_farm.attachments %}
-                                {% set attachment_owner = edit_farm %}
-                                {% set attachment_view_base = '/fazendas/anexos' %}
-                                {% set attachment_delete_base = '' %}
-                                {% include "partials/attachment_list.html" %}
+                                <div class="fm-att-panel">
+                                    <div class="fm-att-panel-head">
+                                        <div>
+                                            <p class="pd-eyebrow">Anexos salvos</p>
+                                            <h4>Arquivos vinculados a esta fazenda</h4>
+                                        </div>
+                                        <span class="pd-chip is-done">{{ edit_farm.attachments|length }} arquivo{{ 's' if edit_farm.attachments|length != 1 }}</span>
+                                    </div>
+                                    <div class="fm-att-list">
+                                        {% for attachment in edit_farm.attachments|sort(attribute='id', reverse=True) %}
+                                        <div class="fm-att-row">
+                                            <div class="fm-att-info">
+                                                <a href="/fazendas/anexos/{{ attachment.id }}" target="_blank" class="fm-att-link" title="{{ attachment.filename }}">{{ attachment.filename }}</a>
+                                                <p class="fm-att-meta">{{ attachment.content_type }}</p>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
                                 {% endif %}
                             </div>
                         </details>
