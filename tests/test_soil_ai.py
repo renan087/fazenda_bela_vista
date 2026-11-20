@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from types import SimpleNamespace
 
@@ -34,7 +35,7 @@ def soil_context(monkeypatch):
     fertilizer = InputCatalog(name="Superfosfato simples", normalized_name="superfosfato simples",
                               category="Fertilizantes", default_unit="kg")
     db.add_all([main, other_plot, foreign, fertilizer, AgronomicProfile(
-        farm_id=farm_id, culture="Café", region="Sul de Minas", crop_stage="Produção",
+        farm_id=farm_id, culture="Café", region="Sul de Minas", crop_stage="Produção", target_productivity_sacks_per_ha=35,
     )])
     db.flush()
     analysis = SoilAnalysis(
@@ -99,18 +100,22 @@ def test_context_limits_data_to_farm_plot_period_and_authorized_modules(soil_con
     assert not restricted["agendamentos_pendentes"] and not restricted["recomendacoes_cadastradas_sem_data"]
 
 
-def _recommendation(stock, **dose_changes):
+def _recommendation(stock=None, **dose_changes):
     return service.SoilRecommendation.model_validate({
         "diagnostico": ["Fósforo medido: 8 mg/dm³.", "Aplicar 90 kg/ha sem validação."],
         "comparacao_manejo": ["Revisar as aplicações depois da amostragem."],
         "alertas": [],
         "orientacoes": ["Comparar com nova amostragem."],
         "plano": [{
-            "tipo": "Adubação", "objetivo": "Avaliar correção de fósforo", "produto": stock["produto"],
-            "estoque_ref": stock["referencia"], "epoca": "Após confirmação",
+            "tipo": "Adubação", "objetivo": "Planejar o aporte de fósforo",
+            "produto": stock["produto"] if stock else "Fonte fosfatada adequada",
+            "estoque_ref": stock["referencia"] if stock else None,
+            "nutrientes": ["P2O5"], "epoca": "Início das chuvas", "frequencia": "Em 2 parcelas",
+            "forma_aplicacao": "Em cobertura", "referencia_id": "embrapa_mg",
+            "criterio_referencia": "Capítulo de fertilidade e adubação", "premissas": [], "confirmar": [],
             "fundamentacao": "Revisar fósforo do laudo para a fase do setor.",
-            "dose": {"valor": 40, "unidade": "kg/ha", "indicadores": ["fósforo"],
-                     "trecho_do_laudo": LAB, "trecho_da_garantia": GUARANTEE, **dose_changes},
+            "dose": {"valor": 40, "unidade": "kg/ha", "base": "P2O5", "periodo": "meta_ciclo",
+                     "indicadores": ["fósforo"], "trecho_da_garantia": None, **dose_changes},
         }],
     })
 
@@ -137,8 +142,11 @@ def test_generation_and_rendering_use_configured_model_and_preserve_legacy(soil_
     assert result["status"] == "generated" and result["model"] == "configured-model"
     assert calls[0]["model"] == "configured-model" and "FIXA" not in calls[0]["messages"][1]["content"]
     structured = service.read_soil_recommendation(result["recommendation"])
-    assert structured["plano"][0]["dose"] == {"valor": 40.0, "unidade": "kg/ha"}
-    assert structured["plano"][0]["estoque"]["saldo"] == 100
+    assert "referencias_tecnicas" in calls[0]["messages"][1]["content"]
+    assert structured["plano"][0]["dose"] == {
+        "valor": 40.0, "unidade": "kg/ha", "base": "P₂O₅", "periodo": "Meta do ciclo",
+    }
+    assert structured["estoque"][0]["saldo"] == 100
     assert structured["diagnostico"] == ["Fósforo medido: 8 mg/dm³."]
 
     template = routes.templates.env.get_template("partials/soil_ai_recommendation.html")
@@ -146,6 +154,10 @@ def test_generation_and_rendering_use_configured_model_and_preserve_legacy(soil_
     html = template.render(item=item, soil_ai_allowed_pages=PAGES)
     assert "Revisão técnica antes da aplicação" in html and "40,00 kg/ha" in html
     assert "Diagnóstico nutricional" in html and "FIXA" not in html
+    assert "Em 2 parcelas" in html and "Em cobertura" in html
+    assert "de P₂O₅" in html and "Aproveitamento do estoque" in html
+    structured["versao"] = 1
+    assert service.read_soil_recommendation(json.dumps(structured))
     assert "40,00 kg/ha" not in template.render(item=item, soil_ai_allowed_pages=set())
     assert not service.soil_recommendation_summary(result["recommendation"], set())
     assert "Histórico anterior" in template.render(
@@ -153,29 +165,74 @@ def test_generation_and_rendering_use_configured_model_and_preserve_legacy(soil_
     )
 
 
+def _draft_context(db, analysis):
+    context = build_soil_ai_context(db, analysis, TODAY, PAGES)
+    context["referencias_tecnicas"] = service._technical_references(context)
+    return context
+
+
 def test_rejects_unfounded_doses_and_checks_balance(soil_context):
     _, db, _, analysis, _ = soil_context
-    context = build_soil_ai_context(db, analysis, TODAY, PAGES)
+    context = _draft_context(db, analysis)
     stock = context["estoque_atual"][0]
-    for changes in ({"valor": -1}, {"indicadores": ["cálcio"]}, {"trecho_do_laudo": "inventado"},
-                    {"trecho_da_garantia": "20%"}, {"valor": 3.0001}):
+    for changes in ({"valor": -1}, {"indicadores": ["cálcio"]}, {"valor": 3.0001}, {"valor": 1000},
+                    {"base": "produto", "trecho_da_garantia": "20%"}, {"unidade": "L/ha"}):
         result = service._prepare_recommendation(_recommendation(stock, **changes), context, TODAY)
         assert result["plano"][0]["dose"] is None
+        assert result["plano"][0]["confirmar"]
+
     with pytest.raises(ValidationError):
         _recommendation(stock, unidade="kg/planta")
     with pytest.raises(ValidationError):
         _recommendation(stock, valor=float("nan"))
 
-    result = service._prepare_recommendation(_recommendation(stock, valor=60), context, TODAY)
-    assert result["plano"][0]["estoque"] is None
-    assert any("saldo inferior" in alert for alert in result["alertas"])
-    result = service._prepare_recommendation(_recommendation(stock, unidade="L/ha"), context, TODAY)
-    assert result["plano"][0]["estoque"] is None and result["plano"][0]["dose"] is None
-    assert any("unidade do saldo" in alert for alert in result["alertas"])
+    result = service._prepare_recommendation(
+        _recommendation(stock, valor=60, base="produto", trecho_da_garantia=GUARANTEE), context, TODAY,
+    )
+    assert result["plano"][0]["dose"]["valor"] == 60
+    assert "abaixo da quantidade" in result["estoque"][0]["situacao"]
+    excessive = _recommendation(stock, valor=3000, base="produto", trecho_da_garantia=GUARANTEE)
+    assert service._prepare_recommendation(excessive, context, TODAY)["plano"][0]["dose"] is None
+
     context["agendamentos_pendentes"][0]["produtos"][0]["produto"] = stock["produto"]
-    result = service._prepare_recommendation(_recommendation(stock), context, TODAY)
+    result = service._prepare_recommendation(_recommendation(stock, periodo="saldo_ciclo"), context, TODAY)
     assert result["plano"][0]["dose"] is None
-    assert any("agendamento pendente" in alert for alert in result["alertas"])
+    assert any("aplicação pendente" in item for item in result["plano"][0]["confirmar"])
+    result = service._prepare_recommendation(_recommendation(stock), context, TODAY)
+    assert result["plano"][0]["dose"]["periodo"] == "Meta do ciclo"
+    assert any("aplicação pendente" in item for item in result["plano"][0]["confirmar"])
+
+
+def test_secondary_gap_and_empty_stock_keep_supported_nutrient_dose(soil_context):
+    _, db, _, analysis, _ = soil_context
+    context = _draft_context(db, analysis)
+    context["estoque_atual"] = []
+    context["escopo"]["area_ha"] = None
+    context["solo"]["observacoes"] = None
+    context["modulos_consultados"].remove(PAGE_AGENDA)
+    phosphorus = _recommendation()
+    nitrogen = _recommendation(base="N", indicadores=[])
+    nitrogen.plano[0].nutrientes = ["N"]
+    nitrogen.plano[0].produto = "Ureia"
+    nitrogen.plano[0].fundamentacao = "Considera a meta informada para o cafeeiro em produção."
+    phosphorus.plano.extend(nitrogen.plano)
+
+    result = service._prepare_recommendation(phosphorus, context, TODAY)
+    assert result["plano"][0]["dose"] is None
+    assert "unidades do laudo" in result["plano"][0]["confirmar"][0]
+    assert result["plano"][1]["dose"]["base"] == "N"
+    assert "apurar o saldo" in result["plano"][1]["confirmar"][0]
+    assert result["estoque"] == []
+
+    context["perfil"]["target_productivity_sacks_per_ha"] = None
+    context["escopo"]["estimativa_setor_sacas_ha"] = 35
+    result = service._prepare_recommendation(nitrogen, context, TODAY)
+    assert result["plano"][0]["dose"]
+    assert "estimativa de produção" in result["plano"][0]["premissas"][0]
+
+    nitrogen.plano[0].dose.periodo = "saldo_ciclo"
+    result = service._prepare_recommendation(nitrogen, context, TODAY)
+    assert result["plano"][0]["dose"] is None
 
 
 def test_regeneration_rejects_analysis_outside_active_farm(soil_context, monkeypatch):
@@ -185,3 +242,15 @@ def test_regeneration_rejects_analysis_outside_active_farm(soil_context, monkeyp
     monkeypatch.setattr(routes, "_apply_soil_ai_recommendation", lambda *args: pytest.fail("Geração fora da fazenda ativa"))
     response = routes.regenerate_soil_recommendation_action(analysis.id, request, "x", db, user)
     assert response.headers["Location"] == "/analise-solo"
+
+
+def test_incomplete_profile_can_generate_a_plan(soil_context, monkeypatch):
+    routes, db, user, analysis, _ = soil_context
+    completion, _ = routes._agronomic_profile_completion(analysis.farm.agronomic_profile)
+    assert completion < 70
+    monkeypatch.setattr(routes, "_soil_ai_allowed_pages", lambda *_: PAGES)
+    monkeypatch.setattr(routes, "gerar_recomendacao_adubacao", lambda *_: {
+        "status": "generated", "recommendation": "Plano com os dados disponíveis", "model": "configured-model",
+    })
+    updated = routes._apply_soil_ai_recommendation(routes._repository(db), analysis, user)
+    assert updated.ai_status == "generated" and updated.ai_recommendation == "Plano com os dados disponíveis"

@@ -49,12 +49,6 @@
             </div>
         </div>
 
-        {% if not ai_generation_available %}
-        <div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p class="text-sm text-amber-900"><strong>IA agronômica bloqueada.</strong> O Perfil Agronômico está com {{ profile_completion }}% de completude. {% if missing_profile_fields %}Priorize: {{ missing_profile_fields[:3]|join(', ') }}.{% endif %}</p>
-            <a href="/perfil-agronomico?edit_farm_id={{ filters.farm_id }}" class="inline-flex shrink-0 items-center justify-center rounded-xl bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">Completar perfil</a>
-        </div>
-        {% endif %}
     </section>
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
@@ -127,16 +121,10 @@
                         {% if item.pdf_data %}
                         <a href="/analise-solo/{{ item.id }}/pdf" target="_blank" class="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-100">PDF</a>
                         {% endif %}
-                        {% if ai_generation_available %}
                         <form method="post" action="/analise-solo/{{ item.id }}/regenerar" data-soil-ai-generate-form>
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <button class="inline-flex h-9 items-center justify-center rounded-xl bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-700">Gerar IA</button>
                         </form>
-                        {% else %}
-                        <span title="Complete o Perfil Agronômico para liberar a geração pela IA.">
-                            <button type="button" disabled class="inline-flex h-9 cursor-not-allowed items-center justify-center rounded-xl bg-slate-200 px-4 text-sm font-medium text-slate-500">Gerar IA</button>
-                        </span>
-                        {% endif %}
                         <details class="sf-menu" data-sf-dropdown>
                             <summary class="sf-icon-btn" aria-label="Mais ações" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
                             <div class="sf-menu-panel">
@@ -302,7 +290,7 @@
                 {% if edit_analysis and edit_analysis.pdf_data %}
                 <p class="md:col-span-2 -mt-2 text-sm text-slate-500">PDF atual salvo. <a href="/analise-solo/{{ edit_analysis.id }}/pdf" target="_blank" class="font-semibold text-brand-700 hover:text-brand-500">Abrir anexo</a></p>
                 {% endif %}
-                <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">Observações</span><p class="mb-2 text-xs text-slate-600">Para fundamentar doses, copie do laudo a profundidade da amostra, as unidades e os métodos. Registre também a garantia do produto, como o PRNT do calcário, quando ela não constar nas notas do estoque.</p><textarea name="observations" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_analysis.observations if edit_analysis else '' }}</textarea></label>
+                <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">Observações</span><p class="mb-2 text-xs text-slate-600">Registre métodos e unidades do laudo para interpretar os resultados. Para calcular a quantidade de um produto específico, informe sua garantia, como o PRNT do calcário, quando ela não constar no estoque.</p><textarea name="observations" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_analysis.observations if edit_analysis else '' }}</textarea></label>
             </form>
         </div>
     </div>

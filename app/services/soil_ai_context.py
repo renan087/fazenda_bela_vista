@@ -80,8 +80,11 @@ def build_soil_ai_context(db: Session, analysis: SoilAnalysis, today: date, allo
     planting_start = planting.planting_date if planting else plot.planting_date
     start = max(today - timedelta(days=365), planting_start or date.min)
     crop = planting.culture if planting else profile.culture if profile else None
+    area = _number(plot.area_hectares)
+    expected_sacks = _number(planting.estimated_yield_sacks if planting else plot.estimated_yield_sacks)
     scope = {"fazenda": farm.name, "setor": plot.name, "cultura_do_setor": crop,
-             "area_ha": _number(plot.area_hectares), "plantio": _text(planting_start),
+             "localidade": farm.location, "area_ha": area, "plantio": _text(planting_start),
+             "estimativa_setor_sacas_ha": expected_sacks / area if expected_sacks and expected_sacks > 0 and area and area > 0 else None,
              "historico_desde": start.isoformat(), "dados_em": today.isoformat()}
 
     matching_planting = not planting_start or planting_start <= analysis.analysis_date <= today
