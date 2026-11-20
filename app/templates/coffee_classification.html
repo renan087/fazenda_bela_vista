@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/production_nav.html" import production_tabs %}
 {% macro current_report(url, filename, field, value) %}
 <li class="cc-form-report-item">
     <a href="{{ url }}" title="{{ filename }}">{{ filename[:27] ~ '...' if filename|length > 30 else filename }}</a>
@@ -12,11 +13,40 @@
 </li>
 {% endmacro %}
 {% block content %}
-<div class="stock-page-shell sf-page coffee-classification-page">
+<div class="sf-page pd-page coffee-classification-page">
+    <header class="pd-head">
+        <div>
+            <h1 class="sf-page-title">Classificação do café</h1>
+            <p class="sf-page-subtitle">Opcional, mas ajuda a vender melhor: a qualidade aparece junto com o saldo do lote.</p>
+        </div>
+        {% if can_write_page %}
+        <div class="pd-head-actions">
+            <button type="button" class="sf-btn sf-btn-secondary" data-attributes-open>Gerenciar atributos</button>
+            <button type="button" class="sf-btn sf-btn-primary" data-classification-open>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Nova classificação
+            </button>
+        </div>
+        {% endif %}
+    </header>
+    {{ production_tabs('classification') }}
+    {% if classification_pending and can_write_page %}
+    <section class="pd-card cc-pending" aria-labelledby="cc-pending-title">
+        <div class="cc-pending-head"><h2 id="cc-pending-title">Aguardando classificação</h2><span>{{ classification_pending|length }} lote{{ 's' if classification_pending|length != 1 }} sem qualidade definida</span></div>
+        <div class="cc-pending-grid">
+            {% for lot in classification_pending %}
+            <a class="cc-pending-lot" href="/producao/classificacao?harvest_id={{ lot.id }}&amp;novo=1">
+                <strong>{{ lot.lot_code or ('Lote ' ~ lot.id) }}</strong>
+                <span>{{ lot.plot.name if lot.plot else 'Setor removido' }} · {{ '≈ ' if lot.sacks_estimated }}{{ lot.sacks_produced|decimal_br(0) }} sc</span>
+                <em>Classificar →</em>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
     <div class="cc-surface">
-    <section class="stock-page-header cc-header"><div class="cc-header-row"><div class="stock-page-header-intro"><h2 class="stock-page-card-title">Classificação do café</h2><p class="stock-page-card-subtitle">Consulte e gerencie as classificações de seus lotes de café.</p></div>{% if can_write_page %}<div class="cc-header-actions"><button type="button" class="cc-btn cc-btn-light" data-attributes-open>Gerenciar atributos</button><button type="button" class="cc-btn cc-btn-primary" data-classification-open><span aria-hidden="true">+</span> Nova classificação</button></div>{% endif %}</div></section>
     {% if production_origin %}
-    <a class="mb-3 inline-block text-sm font-semibold text-emerald-700 hover:underline" href="/producao?lote={{ selected_harvest_id }}">Voltar à ficha do lote</a>
+    <a class="mb-3 inline-block text-sm font-semibold text-emerald-700 hover:underline" href="/producao/lotes/{{ selected_harvest_id }}">Voltar à ficha do lote</a>
     {% endif %}
     <section class="cc-filters" aria-label="Filtros de classificações">
         <label><span>Safra ativa</span><select disabled aria-label="Safra ativa"><option>{{ active_season.name if active_season else 'Selecione uma safra' }}</option></select></label>
@@ -57,6 +87,7 @@
             </label>
             <label class="grid gap-2 text-sm font-medium">Responsável ou laboratório<input name="evaluator" value="{{ edit_classification.evaluator or '' if edit_classification else '' }}" maxlength="180" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
             <label class="grid gap-2 text-sm font-medium">Método ou protocolo<input name="method" value="{{ edit_classification.method or '' if edit_classification else '' }}" maxlength="180" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <p class="cc-pezinho-soon"><span><strong>Pezinho preenche para você</strong><small>Lê o laudo e completa os campos; você só confere.</small></span><em>Em breve</em></p>
             <ul class="cc-form-report cc-form-selected-reports" data-cc-selected-reports hidden aria-live="polite"></ul>
             {% if edit_classification and (edit_classification.report_filename or edit_classification.attachments) %}
             {% set report_url = '/producao/classificacao/' ~ edit_classification.id ~ '/laudo' %}
@@ -76,22 +107,26 @@
             <label class="cc-form-physical">Umidade da análise (%)<input type="number" name="moisture" value="{{ edit_classification.moisture if edit_classification and edit_classification.moisture is not none else '' }}" min="0" max="100" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
             <label class="cc-form-physical">Defeitos informados<input name="defects" value="{{ edit_classification.defects or '' if edit_classification else '' }}" maxlength="180" placeholder="Resultado conforme a análise" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
             {% set current_beverage = edit_classification.beverage if edit_classification else none %}
-            <label class="cc-form-physical">Bebida
-                <select name="beverage">
-                    <option value="">Selecione a bebida</option>
-                    {% if current_beverage %}
-                    {% set choices = namespace(has_current=false) %}
-                    {% for group, beverages in coffee_beverages %}{% if current_beverage in beverages %}{% set choices.has_current = true %}{% endif %}{% endfor %}
-                    {% if not choices.has_current %}<option value="{{ current_beverage }}" selected>{{ current_beverage }}</option>{% endif %}
-                    {% endif %}
-                    {% for group, beverages in coffee_beverages %}
-                    <optgroup label="{{ group }}">
-                        {% for beverage in beverages %}<option value="{{ beverage }}" {% if beverage == current_beverage %}selected{% endif %}>{{ beverage }}</option>{% endfor %}
-                    </optgroup>
+            <fieldset class="cc-form-beverage">
+                <legend>Bebida</legend>
+                {% if current_beverage %}
+                {% set choices = namespace(has_current=false) %}
+                {% for group, beverages in coffee_beverages %}{% if current_beverage in beverages %}{% set choices.has_current = true %}{% endif %}{% endfor %}
+                {% endif %}
+                {% for group, beverages in coffee_beverages %}
+                <p class="cc-bev-group">{{ group }}</p>
+                <div class="cc-bev-chips">
+                    {% for beverage in beverages %}
+                    <label><input type="radio" name="beverage" value="{{ beverage }}" {% if beverage == current_beverage %}checked{% endif %}><span>{{ beverage }}</span></label>
                     {% endfor %}
-                </select>
-            </label>
-            <label class="cc-form-physical">Nota sensorial informada<input type="number" name="sensory_score" value="{{ edit_classification.sensory_score if edit_classification and edit_classification.sensory_score is not none else '' }}" min="0" max="100" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+                    {% if loop.first %}
+                    {% if current_beverage and not choices.has_current %}<label><input type="radio" name="beverage" value="{{ current_beverage }}" checked><span>{{ current_beverage }}</span></label>{% endif %}
+                    <label><input type="radio" name="beverage" value="" {% if not current_beverage %}checked{% endif %}><span>Não informar</span></label>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </fieldset>
+            <label class="cc-form-physical">Nota sensorial informada<input type="number" name="sensory_score" value="{{ edit_classification.sensory_score if edit_classification and edit_classification.sensory_score is not none else '' }}" min="0" max="100" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-50"><small class="cc-band" data-cc-band aria-live="polite"></small></label>
             <fieldset class="cc-form-sensory">
                 <legend><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Zm13 1h2a2 2 0 1 1 0 4h-2M3 21h18M8 5V3m4 2V2"/></svg><span>3. Avaliação sensorial</span></legend>
                 {% set editing_profile = edit_classification.sensory_profile if edit_classification else none %}
@@ -206,10 +241,20 @@
         document.querySelector(open)?.addEventListener('click', () => dialog?.showModal());
         document.querySelectorAll(close).forEach(button => button.addEventListener('click', () => dialog?.close()));
     }
+    const scoreInput = document.querySelector('[name=sensory_score]');
+    const band = document.querySelector('[data-cc-band]');
+    const syncBand = () => {
+        if (!scoreInput || !band) return;
+        const v = parseFloat(String(scoreInput.value).replace(',', '.'));
+        band.textContent = Number.isFinite(v) ? (v >= 85 ? 'Especial · excelente' : v >= 80 ? 'Especial' : 'Comercial') : '';
+        band.className = 'cc-band' + (Number.isFinite(v) ? (v >= 80 ? ' is-top' : ' is-std') : '');
+    };
+    scoreInput?.addEventListener('input', syncBand);
+    syncBand();
     const params = new URLSearchParams(window.location.search);
     {% if production_origin and not edit_classification %}
     if (params.has('novo')) {
-        document.querySelector('[data-classification-dialog]')?.addEventListener('close', () => window.location.assign('/producao?lote={{ selected_harvest_id }}'));
+        document.querySelector('[data-classification-dialog]')?.addEventListener('close', () => window.location.assign('/producao/lotes/{{ selected_harvest_id }}'));
     }
     {% endif %}
     if (params.has('edit_id')) document.querySelector('[data-classification-dialog]')?.addEventListener('close', () => { const next = new URL(window.location.href); next.searchParams.delete('edit_id'); window.location.assign(next.pathname + next.search + next.hash); });
@@ -218,7 +263,7 @@
     {% if detail_analysis_id %}
     else {
         {% if production_origin %}
-        detailDialog?.addEventListener('close', () => window.location.assign('/producao?lote={{ selected_harvest_id }}'), {once: true});
+        detailDialog?.addEventListener('close', () => window.location.assign('/producao/lotes/{{ selected_harvest_id }}'), {once: true});
         {% endif %}
         document.querySelector('[data-cc-details="{{ detail_analysis_id }}"]')?.click();
     }

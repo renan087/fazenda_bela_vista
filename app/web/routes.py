@@ -20622,7 +20622,17 @@ def coffee_classification_page(request: Request, db: Session = Depends(get_db), 
         detail_analysis_id=detail_id if selected_harvest_id in ids and any(item.id == detail_id for item in analyses) else None,
         sensory_definitions=definitions, edit_classification=edit_analysis,
         coffee_beverages=COFFEE_BEVERAGES, sensory_scales=SENSORY_SCALES,
-        classification_comparison=comparison[:50], classification_comparison_truncated=len(comparison) > 50))
+        classification_comparison=comparison[:50], classification_comparison_truncated=len(comparison) > 50,
+        classification_pending=_classification_pending(db, harvests)))
+
+
+def _classification_pending(db: Session, harvests: list[HarvestRecord]) -> list[HarvestRecord]:
+    """Lotes da safra que ainda não têm nenhuma análise."""
+    ids = [item.id for item in harvests]
+    if not ids:
+        return []
+    done = {row[0] for row in db.query(CoffeeClassification.harvest_id).filter(CoffeeClassification.harvest_id.in_(ids)).distinct()}
+    return [item for item in harvests if item.id not in done][:12]
 
 
 async def _read_coffee_classification_attachments(form):
