@@ -306,6 +306,7 @@ from app.services.forms import (
     _normalize_input_name,
 )
 from app.services.openai_service import gerar_recomendacao_adubacao, read_soil_recommendation
+from app.services.soil_measurements import FIELDS as SOIL_FIELDS, EXTRA_FIELDS as SOIL_EXTRA_FIELDS, METHODS as SOIL_METHODS, canonical_value, parse_metadata, validate_metadata, validate_measurements
 from app.services.stock_assistant import assistant_available
 from app.services.password_change import (
     get_active_password_change_verification,
@@ -328,6 +329,7 @@ templates.env.filters["chat_html"] = chat_to_html
 templates.env.filters["decimal_br"] = lambda value, places=2: _format_decimal_br(value, places)
 templates.env.filters["money_br"] = lambda value: _format_currency(value)
 templates.env.filters["soil_recommendation"] = read_soil_recommendation
+templates.env.filters["soil_metadata"] = parse_metadata
 templates.env.globals["subscription_cycles"] = SUBSCRIPTION_CYCLES
 templates.env.globals["format_app_datetime"] = format_app_datetime
 templates.env.globals["asaas_env"] = current_asaas_environment
@@ -3908,6 +3910,7 @@ def _soil_payload(
     pdf_content_type: str | None,
     pdf_data: bytes | None,
     current_analysis: SoilAnalysis | None = None,
+    laboratory_metadata: dict | None = None,
 ) -> dict:
     payload = {
         "farm_id": farm_id,
@@ -3929,7 +3932,19 @@ def _soil_payload(
         "pdf_content_type": pdf_content_type if pdf_content_type is not None else (current_analysis.pdf_content_type if current_analysis else None),
         "pdf_data": pdf_data if pdf_data is not None else (current_analysis.pdf_data if current_analysis else None),
     }
-    payload.update(calculate_soil_recommendations(payload))
+    payload["laboratory_metadata"] = json.dumps(laboratory_metadata, ensure_ascii=False) if laboratory_metadata else None
+    calculation = dict(payload)
+    if laboratory_metadata:
+        for field, unit in laboratory_metadata["units"].items():
+            if field not in SOIL_FIELDS:
+                continue
+            calculation[field] = canonical_value(field, payload[field], unit) if unit else None
+        # The historical thresholds use organic matter in percent.
+        if laboratory_metadata["units"]["organic_matter"] == "g/kg" and payload["organic_matter"] is not None:
+            calculation["organic_matter"] = payload["organic_matter"] / 10
+        elif calculation["organic_matter"] is not None:
+            calculation["organic_matter"] /= 10
+    payload.update(calculate_soil_recommendations(calculation))
     return payload
 
 
@@ -3993,17 +4008,22 @@ def _apply_soil_ai_recommendation(repo: FarmRepository, analysis: SoilAnalysis, 
 
 def _soil_history_chart(analyses: list[SoilAnalysis]) -> str:
     ordered = list(reversed(sorted(analyses, key=lambda item: (item.analysis_date, item.id))))
-    return json.dumps(
-        {
-            "labels": [item.analysis_date.isoformat() for item in ordered],
-            "ph": [float(item.ph or 0) for item in ordered],
-            "phosphorus": [float(item.phosphorus or 0) for item in ordered],
-            "potassium": [float(item.potassium or 0) for item in ordered],
-            "calcium": [float(item.calcium or 0) for item in ordered],
-            "magnesium": [float(item.magnesium or 0) for item in ordered],
-            "base_saturation": [float(item.base_saturation or 0) for item in ordered],
-        }
-    )
+    result = {"labels": [item.analysis_date.isoformat() for item in ordered]}
+    for field in ("ph", "phosphorus", "potassium", "calcium", "magnesium", "base_saturation"):
+        values = []
+        for item in ordered:
+            raw = getattr(item, field)
+            metadata = parse_metadata(item.laboratory_metadata)
+            unit = metadata.get("units", {}).get(field)
+            # Historical records lack a reliable unit and cannot be compared quantitatively.
+            if field == "ph":
+                values.append(float(raw) if raw is not None else None)
+            elif raw is None or not unit:
+                values.append(None)
+            else:
+                values.append(canonical_value(field, raw, unit))
+        result[field] = values
+    return json.dumps(result)
 
 
 @router.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
@@ -21157,6 +21177,8 @@ def soil_analysis_page(
             analyses_pagination=analyses_pagination,
             edit_analysis=edit_analysis,
             soil_ai_allowed_pages=_soil_ai_allowed_pages(db, user),
+            soil_fields=SOIL_FIELDS, soil_extra_fields=SOIL_EXTRA_FIELDS, soil_methods=SOIL_METHODS,
+            soil_metadata=parse_metadata(edit_analysis.laboratory_metadata) if edit_analysis else {},
             generated_recommendation_id=recommendation_id,
             filters={"farm_id": effective_farm_id, "plot_id": effective_plot_id, "compare_plot_id": compare_target},
             compare_chart=_soil_history_chart(compare_analyses),
@@ -21167,7 +21189,7 @@ def soil_analysis_page(
 
 
 @router.post("/analise-solo")
-def create_soil_analysis_action(
+async def create_soil_analysis_action(
     request: Request,
     csrf_token: str = Form(...),
     plot_id: int = Form(...),
@@ -21189,6 +21211,19 @@ def create_soil_analysis_action(
     user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
+    form_data = await request.form()
+    try:
+        validate_measurements({key: form_data.get(key) for key in ("ph", *SOIL_FIELDS)})
+        metadata = validate_metadata(
+            {key: form_data.get("unit_" + key) for key in (*SOIL_FIELDS, *SOIL_EXTRA_FIELDS)},
+            {key: form_data.get("method_" + key) for key in SOIL_METHODS},
+            form_data.get("collection_date"), form_data.get("report_date"),
+            form_data.get("depth_from"), form_data.get("depth_to"),
+            {key: form_data.get(key) for key in SOIL_EXTRA_FIELDS},
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/analise-solo")
     repo = _repository(db)
     plot, scope, denied = _resolve_farm_plot_in_scope(request, repo, plot_id, "/analise-solo")
     if denied:
@@ -21215,6 +21250,7 @@ def create_soil_analysis_action(
             pdf_filename=pdf_filename,
             pdf_content_type=pdf_content_type,
             pdf_data=pdf_data,
+            laboratory_metadata=metadata,
         ),
     )
     analysis = _apply_soil_ai_recommendation(repo, analysis, user)
@@ -21228,7 +21264,7 @@ def create_soil_analysis_action(
 
 
 @router.post("/analise-solo/{analysis_id}/editar")
-def update_soil_analysis_action(
+async def update_soil_analysis_action(
     analysis_id: int,
     request: Request,
     csrf_token: str = Form(...),
@@ -21251,6 +21287,19 @@ def update_soil_analysis_action(
     user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
+    form_data = await request.form()
+    try:
+        validate_measurements({key: form_data.get(key) for key in ("ph", *SOIL_FIELDS)})
+        metadata = validate_metadata(
+            {key: form_data.get("unit_" + key) for key in (*SOIL_FIELDS, *SOIL_EXTRA_FIELDS)},
+            {key: form_data.get("method_" + key) for key in SOIL_METHODS},
+            form_data.get("collection_date"), form_data.get("report_date"),
+            form_data.get("depth_from"), form_data.get("depth_to"),
+            {key: form_data.get(key) for key in SOIL_EXTRA_FIELDS},
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/analise-solo")
     repo = _repository(db)
     plot, scope, denied = _resolve_farm_plot_in_scope(request, repo, plot_id, "/analise-solo")
     if denied:
@@ -21262,6 +21311,8 @@ def update_soil_analysis_action(
     if analysis.farm_id != scope["active_farm_id"] or not analysis.plot or analysis.plot.farm_id != scope["active_farm_id"]:
         _flash(request, "error", "Esta analise de solo nao pertence ao contexto ativo.")
         return _redirect_for_request(request, "/analise-solo")
+    if not any("unit_" + field in form_data for field in SOIL_FIELDS):
+        metadata = parse_metadata(analysis.laboratory_metadata) or None
     pdf_filename, pdf_content_type, pdf_data = _read_upload(analysis_pdf)
     updated = update_soil_analysis(
         repo,
@@ -21285,6 +21336,7 @@ def update_soil_analysis_action(
             pdf_filename=pdf_filename,
             pdf_content_type=pdf_content_type,
             pdf_data=pdf_data,
+            laboratory_metadata=metadata,
             current_analysis=analysis,
         ),
     )

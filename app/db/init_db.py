@@ -594,6 +594,22 @@ def _sync_schema() -> None:
             ai_generated_at TIMESTAMPTZ
         )
         """,
+        "ALTER TABLE soil_analyses ADD COLUMN IF NOT EXISTS laboratory_metadata TEXT",
+        """
+        DO $$
+        DECLARE field_name TEXT;
+        BEGIN
+            FOREACH field_name IN ARRAY ARRAY['ph', 'organic_matter', 'phosphorus', 'potassium',
+                'calcium', 'magnesium', 'aluminum', 'h_al', 'ctc', 'base_saturation']
+            LOOP
+                IF EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema() AND table_name = 'soil_analyses'
+                    AND column_name = field_name AND numeric_scale < 4) THEN
+                    EXECUTE format('ALTER TABLE soil_analyses ALTER COLUMN %I TYPE NUMERIC(14,4)', field_name);
+                END IF;
+            END LOOP;
+        END $$
+        """,
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_two_factor_enabled BOOLEAN DEFAULT TRUE",

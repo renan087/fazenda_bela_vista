@@ -6,6 +6,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.permissions_catalog import PAGE_AGENDA, PAGE_INPUTS, PAGE_IRRIGATION, PAGE_OPERATIONS
+from app.services.soil_measurements import canonical_value, parse_metadata
 from app.models import (
     CropSeason, FertilizationRecord, FertilizationSchedule, InputCatalog, InputRecommendation,
     InputRecommendationItem, IrrigationRecord, PurchasedInput, SoilAnalysis,
@@ -38,7 +39,15 @@ def _text(value):
 
 
 def _lab_values(analysis):
-    return {label: _number(getattr(analysis, field)) for field, label in LAB_FIELDS.items()}
+    metadata = parse_metadata(analysis.laboratory_metadata)
+    units = metadata.get("units", {})
+    values = {}
+    for field, label in LAB_FIELDS.items():
+        value = _number(getattr(analysis, field))
+        if value is not None and field in units:
+            value = canonical_value(field, value, units[field]) if units[field] else None
+        values[label] = value
+    return values
 
 
 def _recent(query, date_column, id_column, limit=30):
@@ -87,7 +96,9 @@ def build_soil_ai_context(db: Session, analysis: SoilAnalysis, today: date, allo
              "estimativa_setor_sacas_ha": expected_sacks / area if expected_sacks and expected_sacks > 0 and area and area > 0 else None,
              "historico_desde": start.isoformat(), "dados_em": today.isoformat()}
 
-    matching_planting = not planting_start or planting_start <= analysis.analysis_date <= today
+    metadata = parse_metadata(analysis.laboratory_metadata)
+    sample_date = date.fromisoformat(metadata["collected"]) if metadata.get("collected") else analysis.analysis_date
+    matching_planting = not planting_start or planting_start <= sample_date <= today
     seasons = db.query(CropSeason.id, CropSeason.culture).filter(CropSeason.farm_id == farm.id)
     season_ids = [row.id for row in seasons if not crop or _same_crop(row.culture, crop)]
 
@@ -137,7 +148,7 @@ def build_soil_ai_context(db: Session, analysis: SoilAnalysis, today: date, allo
     if any(value is not None and (value < 0 or (key == "pH" and not 0 < value <= 14)
            or (key == "saturação por bases (V%)" and value > 100)) for key, value in reading.items()):
         checks.append("Conferir valores laboratoriais fora da faixa física.")
-    if not start <= analysis.analysis_date <= today:
+    if not start <= sample_date <= today:
         checks.append("A data da amostra está fora da janela do plantio e histórico atuais.")
     truncated = max(len(applied), len(scheduled), len(recommendations)) > 30
     if truncated:
@@ -160,8 +171,15 @@ def build_soil_ai_context(db: Session, analysis: SoilAnalysis, today: date, allo
         "modulos_utilizados": source_pages,
         "historico_truncado": truncated,
         "perfil": {field: _text(getattr(profile, field)) for field in profile_fields} if profile else {},
-        "solo": {"referencia": "solo", "data": analysis.analysis_date.isoformat(), "laboratorio": analysis.laboratory,
-                 "resultados": reading, "observacoes": _text(analysis.observations)},
+        "solo": {"referencia": "solo", "data": sample_date.isoformat(), "data_analise": analysis.analysis_date.isoformat(), "laboratorio": analysis.laboratory,
+                 "resultados": reading, "observacoes": _text(analysis.observations),
+                 "metadados_laboratoriais": parse_metadata(analysis.laboratory_metadata),
+                 "valores_originais": {label: _number(getattr(analysis, field)) for field, label in LAB_FIELDS.items()},
+                 "unidades_resultados_normalizados": {"matéria orgânica": "g/dm³", "fósforo": "mg/dm³",
+                     "potássio": "mg/dm³", "cálcio": "cmolc/dm³", "magnésio": "cmolc/dm³",
+                     "alumínio": "cmolc/dm³", "H+Al": "cmolc/dm³", "CTC": "cmolc/dm³"} if metadata else {},
+                 "aviso_unidades": "Registros sem unidade declarada devem ser confirmados no laudo."},
+
         "analises_anteriores": [{"data": row.analysis_date.isoformat(), "resultados": _lab_values(row)}
                                for row in prior],
         "aplicacoes": [

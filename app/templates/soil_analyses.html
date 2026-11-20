@@ -138,12 +138,12 @@
                 </div>
 
                 <div class="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">pH: <strong>{{ item.ph or "-" }}</strong></div>
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">P: <strong>{{ item.phosphorus or "-" }}</strong></div>
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">K: <strong>{{ item.potassium or "-" }}</strong></div>
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">Ca: <strong>{{ item.calcium or "-" }}</strong></div>
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">Mg: <strong>{{ item.magnesium or "-" }}</strong></div>
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">V%: <strong>{{ item.base_saturation or "-" }}</strong></div>
+                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">pH: <strong>{{ item.ph if item.ph is not none else '-' }}</strong></div>
+                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">P: <strong>{{ item.phosphorus if item.phosphorus is not none else '-' }}</strong></div>
+                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">K: <strong>{{ item.potassium if item.potassium is not none else '-' }}</strong></div>
+                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">Ca: <strong>{{ item.calcium if item.calcium is not none else '-' }}</strong></div>
+                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">Mg: <strong>{{ item.magnesium if item.magnesium is not none else '-' }}</strong></div>
+                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">V%: <strong>{{ item.base_saturation if item.base_saturation is not none else '-' }}</strong></div>
                 </div>
 
                 <button type="button" class="soil-rec-open-button mt-4 flex w-full flex-col items-start gap-1 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-brand-300 hover:bg-brand-50/40" data-soil-recommendations-open="soil-recommendations-{{ item.id }}">
@@ -159,14 +159,32 @@
                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">PDF</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.pdf_data %}<a href="/analise-solo/{{ item.id }}/pdf" target="_blank" class="text-brand-700 hover:text-brand-500">Abrir PDF</a>{% else %}-{% endif %}</p></div>
                     </div>
                     <div class="grid gap-3 sm:grid-cols-3">
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">pH: <strong>{{ item.ph or "-" }}</strong></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Fósforo: <strong>{{ item.phosphorus or "-" }}</strong></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Potássio: <strong>{{ item.potassium or "-" }}</strong></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Cálcio: <strong>{{ item.calcium or "-" }}</strong></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Magnésio: <strong>{{ item.magnesium or "-" }}</strong></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">V%: <strong>{{ item.base_saturation or "-" }}</strong></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">pH: <strong>{{ item.ph if item.ph is not none else '-' }}</strong></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Fósforo: <strong>{{ item.phosphorus if item.phosphorus is not none else '-' }}</strong></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Potássio: <strong>{{ item.potassium if item.potassium is not none else '-' }}</strong></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Cálcio: <strong>{{ item.calcium if item.calcium is not none else '-' }}</strong></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Magnésio: <strong>{{ item.magnesium if item.magnesium is not none else '-' }}</strong></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">V%: <strong>{{ item.base_saturation if item.base_saturation is not none else '-' }}</strong></div>
                     </div>
                     <button type="button" class="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-left text-sm font-semibold text-brand-800 hover:bg-brand-100" data-soil-recommendations-open="soil-recommendations-{{ item.id }}">Ver recomendação agronômica</button>
+                    {% set metadata = item.laboratory_metadata|soil_metadata %}
+                    <div class="rounded-2xl bg-slate-50 p-4">
+                        <h4 class="font-semibold text-slate-900">Resultados e identificação do laudo</h4>
+                        <div class="mt-3 grid gap-2 sm:grid-cols-2 text-sm text-slate-700">
+                            {% for field, (label, options) in soil_fields.items() %}
+                            {% set value = item|attr(field) %}
+                            <p>{{ label }}: <strong>{{ value if value is not none else '—' }}</strong> {{ metadata.get('units', {}).get(field) or 'unidade não informada' }}</p>
+                            {% endfor %}
+                            {% for field, (label, options) in soil_extra_fields.items() %}
+                            {% set value = metadata.get('extra_values', {}).get(field) %}
+                            {% if value is not none %}<p>{{ label }}: <strong>{{ value }}</strong> {{ metadata.get('units', {}).get(field) or 'unidade não informada' }}</p>{% endif %}
+                            {% endfor %}
+                            <p>Coleta: {{ metadata.get('collected') or 'Não informada' }}</p>
+                            <p>Emissão: {{ metadata.get('issued') or 'Não informada' }}</p>
+                            <p>Profundidade: {% if metadata.get('depth_from_cm') is not none %}{{ metadata.depth_from_cm }}–{{ metadata.depth_to_cm }} cm{% else %}Não informada{% endif %}</p>
+                            {% for field, (label, options) in soil_methods.items() %}<p>{{ label }}: {{ metadata.get('methods', {}).get(field, 'Não informado') }}</p>{% endfor %}
+                        </div>
+                    </div>
                     <div class="rounded-2xl bg-slate-50 px-4 py-4">
                         <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
                         <p class="mt-2 text-sm text-slate-600">{{ item.observations or "Sem observações." }}</p>
@@ -276,21 +294,58 @@
                 <label><span class="mb-2 block text-sm font-medium">Setor</span><select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}" {% if edit_analysis and edit_analysis.plot_id == plot.id %}selected{% elif filters.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}</select></label>
                 <label><span class="mb-2 block text-sm font-medium">Data da análise</span><input type="date" name="analysis_date" value="{{ edit_analysis.analysis_date.isoformat() if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
                 <label><span class="mb-2 block text-sm font-medium">Laboratório</span><input name="laboratory" value="{{ edit_analysis.laboratory if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-                <label><span class="mb-2 block text-sm font-medium">pH</span><input type="number" step="0.01" name="ph" value="{{ edit_analysis.ph if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                <label><span class="mb-2 block text-sm font-medium">Matéria orgânica</span><input type="number" step="0.01" name="organic_matter" value="{{ edit_analysis.organic_matter if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                <label><span class="mb-2 block text-sm font-medium">Fósforo</span><input type="number" step="0.01" name="phosphorus" value="{{ edit_analysis.phosphorus if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                <label><span class="mb-2 block text-sm font-medium">Potássio</span><input type="number" step="0.01" name="potassium" value="{{ edit_analysis.potassium if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                <label><span class="mb-2 block text-sm font-medium">Cálcio</span><input type="number" step="0.01" name="calcium" value="{{ edit_analysis.calcium if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                <label><span class="mb-2 block text-sm font-medium">Magnésio</span><input type="number" step="0.01" name="magnesium" value="{{ edit_analysis.magnesium if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                <label><span class="mb-2 block text-sm font-medium">Alumínio</span><input type="number" step="0.01" name="aluminum" value="{{ edit_analysis.aluminum if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                <label><span class="mb-2 block text-sm font-medium">H + Al</span><input type="number" step="0.01" name="h_al" value="{{ edit_analysis.h_al if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                <label><span class="mb-2 block text-sm font-medium">CTC</span><input type="number" step="0.01" name="ctc" value="{{ edit_analysis.ctc if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                <label><span class="mb-2 block text-sm font-medium">Saturação por bases (%)</span><input type="number" step="0.01" name="base_saturation" value="{{ edit_analysis.base_saturation if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                <label><span class="mb-2 block text-sm font-medium">pH</span><input type="number" step="0.0001" min="0" max="14" name="ph" value="{{ edit_analysis.ph if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                {% for field, (label, options) in soil_fields.items() %}
+                {% set value = edit_analysis|attr(field) if edit_analysis else none %}
+                {% set selected = soil_metadata.get('units', {}).get(field, '' if edit_analysis else options[0]) %}
+                <div>
+                    <label for="soil-{{ field }}" class="mb-2 block text-sm font-medium">{{ label }}</label>
+                    <div class="flex gap-2">
+                        <input id="soil-{{ field }}" type="number" step="0.0001" min="0" name="{{ field }}" value="{{ value if value is not none else '' }}" class="min-h-[3.25rem] min-w-0 flex-1 rounded-2xl border-slate-200 bg-slate-50">
+                        <select name="unit_{{ field }}" aria-label="Unidade de {{ label }}" class="min-h-[3.25rem] max-w-[45%] rounded-2xl border-slate-200 bg-slate-50">
+                            {% if edit_analysis and not selected %}<option value="" selected>Não informada</option>{% endif %}
+                            {% for option in options %}<option value="{{ option }}" {% if selected == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                {% endfor %}
+                <fieldset class="md:col-span-2 grid gap-4 md:grid-cols-2">
+                    <legend class="mb-3 text-base font-semibold text-slate-900">Enxofre e micronutrientes</legend>
+                    {% for field, (label, options) in soil_extra_fields.items() %}
+                    {% set value = soil_metadata.get('extra_values', {}).get(field) %}
+                    {% set selected = soil_metadata.get('units', {}).get(field, '' if edit_analysis else options[0]) %}
+                    <div>
+                        <label for="soil-{{ field }}" class="mb-2 block text-sm font-medium">{{ label }}</label>
+                        <div class="flex gap-2">
+                            <input id="soil-{{ field }}" type="number" step="any" min="0" name="{{ field }}" value="{{ value if value is not none else '' }}" class="min-h-[3.25rem] min-w-0 flex-1 rounded-2xl border-slate-200 bg-slate-50">
+                            <select name="unit_{{ field }}" aria-label="Unidade de {{ label }}" class="min-h-[3.25rem] max-w-[45%] rounded-2xl border-slate-200 bg-slate-50">
+                                {% if edit_analysis and not selected %}<option value="" selected>Não informada</option>{% endif %}
+                                {% for option in options %}<option value="{{ option }}" {% if selected == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </fieldset>
+                <fieldset class="md:col-span-2 grid gap-4 md:grid-cols-2">
+                    <legend class="mb-3 text-base font-semibold text-slate-900">Amostragem e laudo</legend>
+                    <label><span class="mb-2 block text-sm font-medium">Data da coleta</span><input type="date" name="collection_date" value="{{ soil_metadata.get('collected') or '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Data de emissão do laudo</span><input type="date" name="report_date" value="{{ soil_metadata.get('issued') or '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Profundidade inicial (cm)</span><input type="number" min="0" max="1000" step="0.1" name="depth_from" value="{{ soil_metadata.get('depth_from_cm') if soil_metadata.get('depth_from_cm') is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Profundidade final (cm)</span><input type="number" min="0" max="1000" step="0.1" name="depth_to" value="{{ soil_metadata.get('depth_to_cm') if soil_metadata.get('depth_to_cm') is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                </fieldset>
+                <fieldset class="md:col-span-2 grid gap-4 md:grid-cols-2">
+                    <legend class="mb-3 text-base font-semibold text-slate-900">Métodos de análise</legend>
+                    {% for field, (label, options) in soil_methods.items() %}
+                    <label><span class="mb-2 block text-sm font-medium">{{ label }}</span><select name="method_{{ field }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        {% for option in options %}<option value="{{ option }}" {% if soil_metadata.get('methods', {}).get(field, 'Não informado') == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+                    </select></label>
+                    {% endfor %}
+                </fieldset>
                 <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">PDF da análise</span><input type="file" name="analysis_pdf" accept="application/pdf" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-xl file:border file:border-gray-200 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"></label>
                 {% if edit_analysis and edit_analysis.pdf_data %}
                 <p class="md:col-span-2 -mt-2 text-sm text-slate-500">PDF atual salvo. <a href="/analise-solo/{{ edit_analysis.id }}/pdf" target="_blank" class="font-semibold text-brand-700 hover:text-brand-500">Abrir anexo</a></p>
                 {% endif %}
-                <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">Observações</span><p class="mb-2 text-xs text-slate-600">Registre métodos e unidades do laudo para interpretar os resultados. Para calcular a quantidade de um produto específico, informe sua garantia, como o PRNT do calcário, quando ela não constar no estoque.</p><textarea name="observations" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_analysis.observations if edit_analysis else '' }}</textarea></label>
+                <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">Observações</span><p class="mb-2 text-xs text-slate-600">Para calcular a quantidade de um produto específico, informe sua garantia, como o PRNT do calcário, quando ela não constar no estoque.</p><textarea name="observations" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_analysis.observations if edit_analysis else '' }}</textarea></label>
             </form>
         </div>
     </div>

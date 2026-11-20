@@ -25,6 +25,7 @@ from app.models.organization_subscription import OrganizationSubscription
 from app.models.pesticide import PestIncident
 from app.models.soil_analysis import SoilAnalysis
 from app.services.openai_service import soil_recommendation_summary
+from app.services.soil_measurements import parse_metadata
 
 MAX_ROWS = 15
 PERIOD_PROPS = {
@@ -343,7 +344,7 @@ class AssistantQueries:
         def value(number):
             return _num(number) if number is not None else None
         result = self._history([{"data": r.analysis_date.isoformat(), "setor": self._plot_name(r.plot_id),
-                                "laboratorio": r.laboratory, "ph": value(r.ph), "materia_organica": value(r.organic_matter),
+                                "laboratorio": r.laboratory, "metadados_laboratorio": parse_metadata(r.laboratory_metadata), "ph": value(r.ph), "materia_organica": value(r.organic_matter),
                                 "fosforo": value(r.phosphorus), "potassio": value(r.potassium), "calcio": value(r.calcium),
                                 "magnesio": value(r.magnesium), "aluminio": value(r.aluminum), "ctc": value(r.ctc),
                                 "h_mais_al": value(r.h_al), "necessidade_calagem_t_ha": value(r.liming_need_t_ha),

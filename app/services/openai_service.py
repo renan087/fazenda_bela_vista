@@ -179,6 +179,9 @@ def _dose_problem(row: SoilAction, context: dict, today: date, entry: dict | Non
     dose = row.dose
     soil, scope, profile = context["solo"], context["escopo"], context["perfil"]
     notes = soil["observacoes"] or ""
+    metadata = soil.get("metadados_laboratoriais") or {}
+    units = metadata.get("units", {})
+    methods = metadata.get("methods", {})
     if row.referencia_id not in context["referencias_tecnicas"] or not row.criterio_referencia.strip():
         return "Confirme a seção da referência técnica aplicável à cultura e à região."
     if not _clean_narrative(row.fundamentacao):
@@ -204,8 +207,14 @@ def _dose_problem(row: SoilAction, context: dict, today: date, entry: dict | Non
     if any(values.get(key) is None or values[key] < 0 or (key == "pH" and not 0 < values[key] <= 14)
            or (key == "saturação por bases (V%)" and values[key] > 100) for key in required):
         return "Confirme os resultados de laboratório usados para esta ação."
-    if any(not NUTRIENT_UNITS[key].search(_normalized(notes)) for key in required & NUTRIENT_UNITS.keys()) or (
-        "fósforo" in required and not EXTRACTION_METHOD.search(notes)
+    if any(
+        not (units.get({"fósforo": "phosphorus", "potássio": "potassium"}[key])
+             or NUTRIENT_UNITS[key].search(_normalized(notes)))
+        for key in required & NUTRIENT_UNITS.keys()
+    ) or (
+        "fósforo" in required and not (
+            methods.get("phosphorus") not in (None, "", "Não informado") or EXTRACTION_METHOD.search(notes)
+        )
     ):
         return "Confirme as unidades do laudo e o extrator, quando aplicável."
     expected_yield = profile.get("target_productivity_sacks_per_ha") or scope.get("estimativa_setor_sacas_ha")
@@ -224,7 +233,8 @@ def _dose_problem(row: SoilAction, context: dict, today: date, entry: dict | Non
         ):
             return "Confirme a formulação do produto e o cálculo da dose comercial."
         if row.tipo == "Correção":
-            if not SAMPLE_DEPTH.search(notes) or not LAB_UNIT.search(notes):
+            has_depth = metadata.get("depth_from_cm") is not None and metadata.get("depth_to_cm") is not None
+            if not (has_depth or SAMPLE_DEPTH.search(notes)) or not (units.get("ctc") or LAB_UNIT.search(notes)):
                 return "Confirme a camada amostrada e a unidade usada no cálculo do corretivo."
             if "calcario" in _normalized(row.produto):
                 prnt_match = PRNT.search(guarantee)
