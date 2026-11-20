@@ -8170,7 +8170,12 @@ a.pf-logout:hover { background: #fdecea; color: #b42318; }
 .fm-summary-rows > div { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; min-width:0; }
 .fm-summary-rows dt { color:var(--pd-muted); flex:none; }
 .fm-summary-rows dd { margin:0; font-weight:600; color:var(--pd-ink); text-align:right; min-width:0; max-width:100%; overflow-wrap:anywhere; word-break:break-word; }
-.fm-break-code { font-size:13px; letter-spacing:.01em; }
+.fm-car-pill { border-radius:12px; background:var(--pd-soft); border:1px solid var(--pd-line2); padding:10px 12px; display:flex; flex-direction:column; gap:4px; }
+.fm-car-pill-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.fm-car-pill-head span { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--pd-muted); }
+.fm-car-pill-val { font-size:12.5px; font-weight:600; color:var(--pd-ink); line-height:1.4; overflow-wrap:anywhere; word-break:break-word; font-variant-numeric:tabular-nums; }
+.fm-map-edit-pane { display:flex; flex-direction:column; gap:12px; }
+.fm-map-edit-pane[hidden], [data-fm-map-view][hidden] { display:none !important; }
 
 /* Wizard de Fazendas (passos em linha única + Informações adicionais retráteis) */
 .fm-steps { list-style:none; margin:0; padding:0; display:flex; flex-wrap:nowrap; gap:8px; overflow-x:auto; scrollbar-width:none; max-width:100%; }

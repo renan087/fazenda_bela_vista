@@ -509,44 +509,109 @@
                     strokeWeight: 3,
                     fillColor: '#9bcb6b',
                     fillOpacity: 0.3,
+                    clickable: false,
                     zIndex: 100,
                     map,
                 });
             }
         };
 
+        const markerListeners = [];
         const clearMarkers = () => {
+            markerListeners.forEach((h) => google.maps.event.removeListener(h));
+            markerListeners.length = 0;
             markers.forEach((m) => m.setMap(null));
             markers.length = 0;
         };
 
         const renderMarkers = () => {
             clearMarkers();
+            // Alças de ponto médio (+) entre vértices consecutivos para inserir pontos na borda certa
+            if (points.length >= 3) {
+                points.forEach((pt, idx) => {
+                    const next = points[(idx + 1) % points.length];
+                    const mid = { lat: (pt.lat + next.lat) / 2, lng: (pt.lng + next.lng) / 2 };
+                    const midMarker = new google.maps.Marker({
+                        position: mid,
+                        map,
+                        draggable: true,
+                        zIndex: 180,
+                        title: 'Adicionar ponto nesta borda',
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 8.5,
+                            fillColor: '#ffffff',
+                            fillOpacity: 0.94,
+                            strokeColor: '#446a36',
+                            strokeWeight: 2,
+                        },
+                        label: {
+                            text: '+',
+                            color: '#294127',
+                            fontSize: '13px',
+                            fontWeight: '700',
+                        },
+                    });
+                    const insertAtMid = (latLng) => {
+                        skipNextMapClick = true;
+                        window.setTimeout(() => { skipNextMapClick = false; }, 100);
+                        pushHistory();
+                        const newPt = latLng ? { lat: latLng.lat(), lng: latLng.lng() } : mid;
+                        points.splice(idx + 1, 0, newPt);
+                        selectedIndex = idx + 1;
+                        renderAll();
+                    };
+                    markerListeners.push(
+                        google.maps.event.addListener(midMarker, 'click', () => insertAtMid(null)),
+                    );
+                    markerListeners.push(
+                        google.maps.event.addListener(midMarker, 'dragend', () => insertAtMid(midMarker.getPosition())),
+                    );
+                    markers.push(midMarker);
+                });
+            }
+
+            // Vértices numerados (cantos)
             points.forEach((pt, index) => {
+                const isSelected = index === selectedIndex;
                 const marker = new google.maps.Marker({
                     position: pt,
                     map,
                     draggable: true,
+                    zIndex: isSelected ? 220 : 200,
+                    title: `Vértice ${index + 1} — arraste para mover ou clique para selecionar`,
                     icon: {
                         path: google.maps.SymbolPath.CIRCLE,
-                        scale: 8,
-                        fillColor: index === selectedIndex ? '#e11d48' : '#446a36',
+                        scale: isSelected ? 12 : 10.5,
+                        fillColor: isSelected ? '#9bcb6b' : '#446a36',
                         fillOpacity: 1,
                         strokeColor: '#ffffff',
-                        strokeWeight: 3,
+                        strokeWeight: 2.5,
+                    },
+                    label: {
+                        text: String(index + 1),
+                        color: isSelected ? '#16201a' : '#ffffff',
+                        fontSize: '10px',
+                        fontWeight: '700',
                     },
                 });
-                listenerHandles.push(
+                markerListeners.push(
                     google.maps.event.addListener(marker, 'click', () => {
                         skipNextMapClick = true;
                         window.setTimeout(() => {
                             skipNextMapClick = false;
-                        }, 80);
+                        }, 100);
                         selectedIndex = index;
                         renderAll();
                     }),
                 );
-                listenerHandles.push(
+                markerListeners.push(
+                    google.maps.event.addListener(marker, 'dragstart', () => {
+                        pushHistory();
+                        selectedIndex = index;
+                    }),
+                );
+                markerListeners.push(
                     google.maps.event.addListener(marker, 'drag', () => {
                         const pos = marker.getPosition();
                         points[index] = { lat: pos.lat(), lng: pos.lng() };
@@ -554,7 +619,7 @@
                         if (polygon) polygon.setPath(points);
                     }),
                 );
-                listenerHandles.push(google.maps.event.addListener(marker, 'dragend', () => renderAll()));
+                markerListeners.push(google.maps.event.addListener(marker, 'dragend', () => renderAll()));
                 markers.push(marker);
             });
         };

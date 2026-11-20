@@ -143,8 +143,14 @@
                     <h2>Resumo cadastral</h2>
                     <a class="fm-hcard-link" href="/fazendas/{{ farm.id }}?aba=documentos">Ver tudo</a>
                 </div>
+                <div class="fm-car-pill">
+                    <div class="fm-car-pill-head">
+                        <span>CAR</span>
+                        {% if farm.car_registration_number %}<button type="button" class="fm-hcard-link" style="border:0; background:none; padding:0; cursor:pointer; font-size:12px;" data-fm-copy="{{ farm.car_registration_number }}">Copiar</button>{% endif %}
+                    </div>
+                    <span class="fm-car-pill-val">{{ farm.car_registration_number or 'Não informado' }}</span>
+                </div>
                 <dl class="fm-summary-rows">
-                    <div><dt>CAR</dt><dd class="fm-break-code">{{ farm.car_registration_number or 'Não informado' }}</dd></div>
                     <div><dt>CCIR</dt><dd>{{ farm.ccir_number or '—' }}</dd></div>
                     <div><dt>ITR / NIRF / CIB</dt><dd>{{ farm.itr_registration_number or '—' }}</dd></div>
                     <div><dt>Anexos</dt><dd>{{ metrics.attachments_count }} arquivo{{ 's' if metrics.attachments_count != 1 }}</dd></div>
@@ -309,7 +315,7 @@
                     <img data-fm-map-img src="{{ full_src }}" alt="Mapa de {{ farm.name }}" style="display:block; width:100%; max-height:58vh; object-fit:contain;">
                 </div>
             </div>
-            <div data-fm-map-edit hidden style="display:flex; flex-direction:column; gap:12px;">
+            <div class="fm-map-edit-pane" data-fm-map-edit hidden>
                 <div class="fm-map-bar" style="border:1px solid #E3E8E2; border-radius:12px;">
                     <span data-fm-map-guide style="font-weight:600;">Arraste os cantos para ajustar o perímetro.</span>
                     <span style="white-space:nowrap;">Vértices: <strong data-fm-map-vertices>0</strong> · Área est.: <strong data-fm-map-area>0,00 ha</strong></span>
@@ -383,6 +389,6 @@
 <script type="application/json" id="fm-boundary-geometries-data">{{ farm_boundary_geometries_json|safe }}</script>
 <script type="application/json" id="fm-plot-geometries-data">{{ plot_geometries_json|safe }}</script>
 <script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
-<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261120fm1"></script>
-<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm1"></script>
+<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261120fm3"></script>
+<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm3"></script>
 {% endblock %}

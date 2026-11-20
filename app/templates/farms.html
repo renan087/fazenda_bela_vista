@@ -197,7 +197,7 @@
                     <img data-fm-map-img src="" alt="Mapa da fazenda" style="display:block; width:100%; max-height:58vh; object-fit:contain;">
                 </div>
             </div>
-            <div data-fm-map-edit hidden style="display:flex; flex-direction:column; gap:12px;">
+            <div class="fm-map-edit-pane" data-fm-map-edit hidden>
                 <div class="fm-map-bar" style="border:1px solid #E3E8E2; border-radius:12px;">
                     <span data-fm-map-guide style="font-weight:600;">Arraste os cantos para ajustar o perímetro.</span>
                     <span style="white-space:nowrap;">Vértices: <strong data-fm-map-vertices>0</strong> · Área est.: <strong data-fm-map-area>0,00 ha</strong></span>
@@ -311,6 +311,6 @@
 
 <script type="application/json" id="fm-boundary-geometries-data">{{ farm_boundary_geometries_json|safe }}</script>
 <script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
-<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261120fm1"></script>
-<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm1"></script>
+<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261120fm3"></script>
+<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm3"></script>
 {% endblock %}

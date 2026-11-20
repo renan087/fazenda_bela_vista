@@ -102,7 +102,8 @@ def test_farm_detail_all_tabs_and_visual_fixes(env):
         assert farm.name in html
         if tab == "visao":
             assert "fm-summary-rows" in html
-            assert "fm-break-code" in html
+            assert "fm-car-pill" in html
+            assert "fm-map-edit-pane" in html
 
     # Quando já existe mapa desenhado, o prompt "Carregar mapa da região" deve ser removido e o mapa expandido
     edit_resp = env.routes.edit_farm_page(
