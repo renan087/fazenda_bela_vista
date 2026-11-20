@@ -7,6 +7,7 @@ from app.models.agronomic_profile import AgronomicProfile
 from app.models.agricultural_operation import AgriculturalOperation
 from app.models.backup_automation_setting import BackupAutomationSetting
 from app.models.backup_run import BackupRun
+from app.models.coffee_buyer import CoffeeBuyer
 from app.models.coffee_commercialization import CoffeeCommercializationRecord
 from app.models.coffee_quote import CoffeeQuote
 from app.models.coffee_variety import CoffeeVariety
@@ -95,6 +96,7 @@ __all__ = [
     "AgriculturalOperation",
     "BackupAutomationSetting",
     "BackupRun",
+    "CoffeeBuyer",
     "CoffeeCommercializationRecord",
     "CoffeeQuote",
     "CoffeeVariety",

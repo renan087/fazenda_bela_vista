@@ -36,6 +36,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, defer, load_only, selectinload
 from app.models.coffee_classification import CoffeeClassification, CoffeeClassificationAttachment
+from app.models.coffee_buyer import CoffeeBuyer
 from app.models.coffee_sensory_profile import CoffeeSensoryProfile
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.concurrency import run_in_threadpool
@@ -20757,6 +20758,7 @@ def commercialization_page(
             commercialization_unit_options=COMMERCIALIZATION_UNIT_OPTIONS,
             commercialization_coffee_type_options=COMMERCIALIZATION_COFFEE_TYPE_OPTIONS,
             commercialization_edit=edit_commercialization,
+            commercialization_buyer=_buyer_json(db, edit_commercialization.buyer) if edit_commercialization and edit_commercialization.buyer and edit_commercialization.buyer.active else None,
             commercialization_total_available_sacks=round(total_available_sacks, 2),
             commercialization_total_available_kg=round(total_available_sacks * 60, 2),
             commercialization_available_lot_count=available_lot_count,
@@ -20784,6 +20786,17 @@ def commercialization_page(
     )
 
 
+def _resolve_coffee_buyer(db: Session, user: User, buyer_id: object, buyer_name: object) -> tuple[int | None, str]:
+    """Usa o comprador cadastrado quando informado; senão mantém o nome digitado."""
+    name = buyer_name.strip() if isinstance(buyer_name, str) else ""
+    ref = _int_or_none(buyer_id) if isinstance(buyer_id, (str, int)) else None
+    if ref:
+        buyer = db.get(CoffeeBuyer, ref)
+        if buyer and buyer.active and buyer.organization_id == getattr(user, "organization_id", None):
+            return buyer.id, buyer.name
+    return None, name[:180]
+
+
 @router.post("/producao/comercializacao")
 def create_commercialization_action(
     request: Request,
@@ -20791,6 +20804,7 @@ def create_commercialization_action(
     harvest_id: int = Form(...),
     sale_date: str = Form(...),
     buyer_name: str = Form(...),
+    buyer_id: str | None = Form(None),
     coffee_type: str | None = Form(None),
     quantity_sold: float = Form(...),
     sale_unit: str = Form("sc_60"),
@@ -20807,12 +20821,15 @@ def create_commercialization_action(
     user: User = Depends(get_current_user_web),
     origem: str | None = Form(None),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
     if denied:
         return denied
+    buyer_ref, buyer_label = _resolve_coffee_buyer(db, user, buyer_id, buyer_name)
+    if not buyer_label:
+        _flash(request, "error", "Escolha ou cadastre o comprador.")
+        return _redirect("/producao/comercializacao")
     harvest = repo.get_harvest(harvest_id)
     if not harvest or not _plot_matches_scope(harvest.plot, scope):
         _flash(request, "error", "Selecione um lote de colheita válido para o contexto ativo.")
@@ -20838,7 +20855,8 @@ def create_commercialization_action(
                 "farm_id": scope["active_farm_id"],
                 "finance_account_id": finance_account_id_value,
                 "sale_date": sale_date,
-                "buyer_name": (buyer_name or "").strip(),
+                "buyer_name": buyer_label,
+                "buyer_id": buyer_ref,
                 "coffee_type": (coffee_type or "").strip() or None,
                 "quantity_sold": quantity_sold,
                 "sale_unit": sale_unit,
@@ -20872,6 +20890,7 @@ def update_commercialization_action(
     harvest_id: int = Form(...),
     sale_date: str = Form(...),
     buyer_name: str = Form(...),
+    buyer_id: str | None = Form(None),
     coffee_type: str | None = Form(None),
     quantity_sold: float = Form(...),
     sale_unit: str = Form("sc_60"),
@@ -20887,12 +20906,15 @@ def update_commercialization_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
     if denied:
         return denied
+    buyer_ref, buyer_label = _resolve_coffee_buyer(db, user, buyer_id, buyer_name)
+    if not buyer_label:
+        _flash(request, "error", "Escolha ou cadastre o comprador.")
+        return _redirect("/producao/comercializacao")
     commercialization = repo.get_coffee_commercialization(record_id)
     if not commercialization or not _commercialization_record_matches_scope(commercialization, scope):
         _flash(request, "error", "Lançamento de comercialização não encontrado.")
@@ -20924,7 +20946,8 @@ def update_commercialization_action(
                 "farm_id": scope["active_farm_id"],
                 "finance_account_id": finance_account_id_value,
                 "sale_date": sale_date,
-                "buyer_name": (buyer_name or "").strip(),
+                "buyer_name": buyer_label,
+                "buyer_id": buyer_ref,
                 "coffee_type": (coffee_type or "").strip() or None,
                 "quantity_sold": quantity_sold,
                 "sale_unit": sale_unit,
@@ -20974,6 +20997,117 @@ def delete_commercialization_action(
     repo.delete(commercialization)
     _flash(request, "success", "Comercialização excluída com sucesso.")
     return _redirect("/producao/comercializacao")
+
+
+def _buyer_last_sales(db: Session, buyer_ids: list[int]) -> dict[int, date]:
+    if not buyer_ids:
+        return {}
+    rows = (db.query(CoffeeCommercializationRecord.buyer_id, func.max(CoffeeCommercializationRecord.sale_date))
+            .filter(CoffeeCommercializationRecord.buyer_id.in_(buyer_ids))
+            .group_by(CoffeeCommercializationRecord.buyer_id).all())
+    return {buyer_id: last for buyer_id, last in rows}
+
+
+def _buyer_json(db: Session, buyer: CoffeeBuyer) -> dict:
+    from app.services.coffee_buyers import serialize
+
+    return serialize(buyer, _buyer_last_sales(db, [buyer.id]).get(buyer.id))
+
+
+@router.get("/producao/compradores")
+def coffee_buyers_list(
+    request: Request,
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    from app.services.coffee_buyers import search, serialize
+
+    rows = search(db, user.organization_id, q)
+    last = _buyer_last_sales(db, [row.id for row in rows])
+    items = [serialize(row, last.get(row.id)) for row in rows]
+    items.sort(key=lambda item: (not item["last_sale"], item["name"].lower()) if not q else 0)
+    return JSONResponse({"items": items}, headers={"Cache-Control": "no-store"})
+
+
+async def _buyer_form(request: Request) -> dict:
+    form = await request.form()
+    validate_csrf(request, form.get("csrf_token"))
+    return {key: form.get(key) for key in form.keys()}
+
+
+@router.post("/producao/compradores")
+async def coffee_buyer_create(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    from app.services.coffee_buyers import clean_payload, find_duplicate
+
+    values, errors = clean_payload(await _buyer_form(request))
+    if errors:
+        return JSONResponse({"errors": errors}, status_code=422)
+    duplicate = find_duplicate(db, user.organization_id, values)
+    if duplicate:
+        return JSONResponse({"errors": ["Este comprador já está cadastrado."], "duplicate": _buyer_json(db, duplicate)}, status_code=409)
+    buyer = CoffeeBuyer(organization_id=user.organization_id, **values)
+    db.add(buyer)
+    db.commit()
+    db.refresh(buyer)
+    return JSONResponse({"buyer": _buyer_json(db, buyer)}, status_code=201)
+
+
+@router.post("/producao/compradores/{buyer_id}")
+async def coffee_buyer_update(
+    buyer_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    from app.services.coffee_buyers import clean_payload, find_duplicate
+
+    buyer = db.get(CoffeeBuyer, buyer_id)
+    if not buyer or not buyer.active or buyer.organization_id != user.organization_id:
+        return JSONResponse({"errors": ["Comprador não encontrado."]}, status_code=404)
+    values, errors = clean_payload(await _buyer_form(request))
+    if errors:
+        return JSONResponse({"errors": errors}, status_code=422)
+    duplicate = find_duplicate(db, user.organization_id, values, exclude_id=buyer.id)
+    if duplicate:
+        return JSONResponse({"errors": ["Já existe outro comprador com este documento."], "duplicate": _buyer_json(db, duplicate)}, status_code=409)
+    for key, value in values.items():
+        setattr(buyer, key, value)
+    db.query(CoffeeCommercializationRecord).filter(CoffeeCommercializationRecord.buyer_id == buyer.id).update(
+        {CoffeeCommercializationRecord.buyer_name: buyer.name}, synchronize_session=False)
+    db.commit()
+    db.refresh(buyer)
+    return JSONResponse({"buyer": _buyer_json(db, buyer)})
+
+
+@router.get("/producao/compradores/consulta/cnpj/{cnpj}")
+def coffee_buyer_cnpj_lookup(cnpj: str, user: User = Depends(get_current_user_web)):
+    from app.services.coffee_buyers import digits, lookup_cnpj, valid_cnpj
+
+    del user
+    if not valid_cnpj(digits(cnpj)):
+        return JSONResponse({"error": "CNPJ inválido. Confira os 14 números."}, status_code=422)
+    data = lookup_cnpj(cnpj)
+    if not data:
+        return JSONResponse({"error": "Não foi possível consultar agora. Preencha os dados à mão."}, status_code=502)
+    return JSONResponse({"data": data})
+
+
+@router.get("/producao/compradores/consulta/cep/{cep}")
+def coffee_buyer_cep_lookup(cep: str, user: User = Depends(get_current_user_web)):
+    from app.services.coffee_buyers import digits, lookup_cep
+
+    del user
+    if len(digits(cep)) != 8:
+        return JSONResponse({"error": "O CEP precisa ter 8 números."}, status_code=422)
+    data = lookup_cep(cep)
+    if not data:
+        return JSONResponse({"error": "CEP não encontrado. Preencha o endereço à mão."}, status_code=404)
+    return JSONResponse({"data": data})
 
 
 @router.get("/pragas")

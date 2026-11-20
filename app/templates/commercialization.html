@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline %}
+{% from "partials/buyer_picker.html" import buyer_field, buyer_modal %}
 {% block content %}
 <div class="stock-page-shell sf-page commercialization-page" data-modal-single-pane>
     <section class="stock-page-header">
@@ -287,10 +288,9 @@
                         <span class="text-sm font-medium leading-tight">Data da venda <span class="text-rose-500">*</span></span>
                         <input type="date" name="sale_date" value="{{ commercialization_edit.sale_date.isoformat() if commercialization_edit else today.isoformat() }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" required>
                     </label>
-                    <label class="flex flex-col gap-2 md:col-span-2">
-                        <span class="text-sm font-medium leading-tight">Comprador <span class="text-rose-500">*</span></span>
-                        <input type="text" name="buyer_name" value="{{ commercialization_edit.buyer_name if commercialization_edit else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" required>
-                    </label>
+                    <div class="md:col-span-2">
+                        {{ buyer_field(commercialization_buyer, commercialization_edit.buyer_name if commercialization_edit else '') }}
+                    </div>
                     <label class="flex flex-col gap-2">
                         <span class="text-sm font-medium leading-tight">Tipo do café</span>
                         <select name="coffee_type" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3">
@@ -407,8 +407,10 @@
         </div>
     </div>
 </dialog>
+{{ buyer_modal(csrf_token) }}
 
 <script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=8"></script>
+<script src="{{ url_for('static', path='js/buyer_picker.js') }}?v=1" defer></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('form[data-module-period-filter-root]').forEach((form) => {

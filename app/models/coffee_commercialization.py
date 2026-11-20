@@ -12,6 +12,7 @@ class CoffeeCommercializationRecord(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id", ondelete="CASCADE"), nullable=False, index=True)
     harvest_id: Mapped[int] = mapped_column(ForeignKey("harvest_records.id", ondelete="SET NULL"), nullable=True, index=True)
+    buyer_id: Mapped[int | None] = mapped_column(ForeignKey("coffee_buyers.id", ondelete="SET NULL"), nullable=True, index=True)
     finance_account_id: Mapped[int] = mapped_column(ForeignKey("finance_accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     finance_transaction_id: Mapped[int] = mapped_column(ForeignKey("finance_transactions.id", ondelete="SET NULL"), nullable=True, index=True)
     sale_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -36,6 +37,7 @@ class CoffeeCommercializationRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     farm = relationship("Farm")
+    buyer = relationship("CoffeeBuyer")
     harvest = relationship("HarvestRecord", back_populates="commercializations")
     finance_account = relationship("FinanceAccount")
     finance_transaction = relationship("FinanceTransaction", back_populates="commercializations")

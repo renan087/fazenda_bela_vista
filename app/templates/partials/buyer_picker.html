@@ -1,0 +1,137 @@
+{# Seletor de comprador + modal de cadastro. Use buyer_field() dentro do formulário e buyer_modal() fora dele. #}
+{% macro buyer_field(selected=None, fallback_name='') %}
+<div class="bp-field" data-buyer-picker data-selected="{{ (selected or {})|tojson|forceescape }}" data-fallback-name="{{ fallback_name or '' }}">
+    <span class="bp-label" id="bp-field-label">Comprador <span class="text-rose-500">*</span></span>
+    <input type="hidden" name="buyer_id" value="{{ selected.id if selected else '' }}" data-bp-id>
+    <input type="hidden" name="buyer_name" value="{{ selected.name if selected else (fallback_name or '') }}" data-bp-name>
+    <div class="bp-card" data-bp-card hidden></div>
+    <button type="button" class="bp-choose" data-bp-choose aria-describedby="bp-field-label">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        Escolher ou cadastrar comprador
+    </button>
+    <div class="bp-warn" data-bp-warn hidden></div>
+    <div class="bp-panel" data-bp-panel hidden>
+        <label class="bp-search">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input type="search" data-bp-query placeholder="Nome, CNPJ ou CPF" aria-label="Buscar comprador" autocomplete="off">
+        </label>
+        <div class="bp-results" data-bp-results aria-live="polite"></div>
+        <button type="button" class="bp-new" data-bp-new>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            <span data-bp-new-label>Cadastrar novo comprador</span>
+        </button>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro buyer_modal(csrf_token) %}
+<dialog class="bp-modal" data-bp-modal aria-labelledby="bp-title">
+    <form class="bp-sheet is-nf" data-bp-form novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <header class="bp-head">
+            <div>
+                <h2 id="bp-title" data-bp-title>Novo comprador</h2>
+                <p>Fica salvo para as próximas vendas e para emitir nota fiscal.</p>
+            </div>
+            <button type="button" class="bp-close" data-bp-close aria-label="Fechar">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+        </header>
+
+        <div class="bp-body">
+            <fieldset class="bp-kind">
+                <legend class="sr-only">Tipo de comprador</legend>
+                <label><input type="radio" name="person_type" value="pj" checked><span><strong>Empresa</strong><small>CNPJ · exportadora, cooperativa, torrefação</small></span></label>
+                <label><input type="radio" name="person_type" value="pf"><span><strong>Pessoa física</strong><small>CPF · comprador ou produtor</small></span></label>
+            </fieldset>
+
+            <label class="bp-switch">
+                <span><strong>Vou emitir nota fiscal para este comprador</strong><small data-bp-nf-hint>Campos marcados com * são exigidos na NF-e.</small></span>
+                <input type="checkbox" role="switch" data-bp-nf checked>
+                <span class="bp-switch-track" aria-hidden="true"></span>
+            </label>
+
+            <div class="bp-alert bp-alert-warn" data-bp-dup role="alert" hidden>
+                <span data-bp-dup-text></span>
+                <button type="button" class="sf-btn sf-btn-primary" data-bp-use-dup>Usar este comprador</button>
+            </div>
+            <div class="bp-alert bp-alert-error" data-bp-errors role="alert" hidden></div>
+
+            <section class="bp-section">
+                <h3>Identificação</h3>
+                <div class="bp-grid">
+                    <div class="bp-f bp-s6">
+                        <label for="bp-document"><span data-bp-doc-label>CNPJ</span><span class="bp-req"> *</span></label>
+                        <div class="bp-row">
+                            <input id="bp-document" name="document" inputmode="numeric" autocomplete="off" data-bp-doc placeholder="00.000.000/0000-00">
+                            <button type="button" class="sf-btn sf-btn-secondary bp-lookup" data-bp-cnpj data-bp-pj>Buscar dados</button>
+                        </div>
+                        <small class="bp-help" data-bp-doc-msg>Digite o CNPJ e toque em “Buscar dados” para preencher o resto.</small>
+                    </div>
+                    <div class="bp-f bp-s6">
+                        <label for="bp-name"><span data-bp-name-label>Razão social</span> *</label>
+                        <input id="bp-name" name="name" maxlength="180" required autocomplete="off">
+                    </div>
+                    <div class="bp-f bp-s3" data-bp-pj>
+                        <label for="bp-trade">Nome fantasia <small>opcional</small></label>
+                        <input id="bp-trade" name="trade_name" maxlength="180" autocomplete="off">
+                    </div>
+                    <label class="bp-check bp-s6" data-bp-pf hidden>
+                        <input type="checkbox" name="rural_producer" value="1" data-bp-rural>
+                        É produtor rural com inscrição estadual
+                    </label>
+                    <div class="bp-f bp-s3" data-bp-ie>
+                        <label for="bp-ie"><span data-bp-ie-label>Inscrição estadual</span><span class="bp-req" data-bp-ie-req> *</span></label>
+                        <input id="bp-ie" name="state_registration" maxlength="30" autocomplete="off">
+                        <label class="bp-check" data-bp-pj>
+                            <input type="checkbox" name="ie_exempt" value="1" data-bp-exempt>
+                            Isento / não contribuinte de ICMS
+                        </label>
+                    </div>
+                </div>
+            </section>
+
+            <section class="bp-section">
+                <h3>Endereço <span data-bp-addr-hint>· necessário para a nota</span></h3>
+                <div class="bp-grid">
+                    <div class="bp-f bp-s2">
+                        <label for="bp-cep">CEP<span class="bp-req"> *</span></label>
+                        <div class="bp-row">
+                            <input id="bp-cep" name="postal_code" inputmode="numeric" placeholder="00000-000" autocomplete="postal-code" data-bp-cep>
+                            <button type="button" class="bp-icon-btn" data-bp-cep-btn aria-label="Buscar endereço pelo CEP">
+                                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                            </button>
+                        </div>
+                        <small class="bp-help" data-bp-cep-msg></small>
+                    </div>
+                    <div class="bp-f bp-s4"><label for="bp-street">Rua / estrada<span class="bp-req"> *</span></label><input id="bp-street" name="street" maxlength="180" placeholder="Pode ser rodovia, km ou nome da fazenda"></div>
+                    <div class="bp-f bp-s2"><label for="bp-number">Número<span class="bp-req"> *</span></label><input id="bp-number" name="number" maxlength="20" placeholder="S/N se não houver"></div>
+                    <div class="bp-f bp-s4"><label for="bp-comp">Complemento <small>opcional</small></label><input id="bp-comp" name="complement" maxlength="120"></div>
+                    <div class="bp-f bp-s2"><label for="bp-district">Bairro / distrito<span class="bp-req"> *</span></label><input id="bp-district" name="district" maxlength="120"></div>
+                    <div class="bp-f bp-s4"><label for="bp-city">Cidade<span class="bp-req"> *</span></label><input id="bp-city" name="city" maxlength="120"></div>
+                    <div class="bp-f bp-s2"><label for="bp-uf">UF<span class="bp-req"> *</span></label>
+                        <select id="bp-uf" name="state"><option value=""></option>{% for uf in ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'] %}<option>{{ uf }}</option>{% endfor %}</select>
+                    </div>
+                </div>
+            </section>
+
+            <section class="bp-section">
+                <h3>Contato</h3>
+                <div class="bp-grid">
+                    <div class="bp-f bp-s3"><label for="bp-phone">Telefone / WhatsApp</label><input id="bp-phone" name="phone" type="tel" maxlength="40" placeholder="(00) 00000-0000"></div>
+                    <div class="bp-f bp-s3"><label for="bp-contact">Pessoa de contato <small>opcional</small></label><input id="bp-contact" name="contact_name" maxlength="120"></div>
+                    <div class="bp-f bp-s6"><label for="bp-email">E-mail para receber a nota <small>opcional · recebe o PDF e o XML da NF-e</small></label><input id="bp-email" name="email" type="email" maxlength="180" placeholder="fiscal@empresa.com.br"></div>
+                </div>
+            </section>
+        </div>
+
+        <footer class="bp-foot">
+            <div class="bp-checks" data-bp-checks aria-live="polite"></div>
+            <div class="bp-actions">
+                <button type="button" class="sf-btn sf-btn-secondary" data-bp-close>Cancelar</button>
+                <button type="submit" class="sf-btn sf-btn-primary" data-bp-save>Salvar e usar na venda</button>
+            </div>
+        </footer>
+    </form>
+</dialog>
+{% endmacro %}
