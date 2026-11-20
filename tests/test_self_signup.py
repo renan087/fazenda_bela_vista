@@ -62,9 +62,11 @@ def test_creates_organization_admin_and_14_day_trial_on_most_complete_plan():
 def test_chosen_plan_and_duplicate_organization_name():
     db = _db()
     essential = _plan(db, 'Essencial', [plans.PLAN_MODULES[0][0]], '99,00')
-    signup.create_self_signup(db, email='a@x.com', data=_data(), password_hash='h', plan_id=essential.id, today=TODAY)
+    first = signup.create_self_signup(db, email='a@x.com', data=_data(), password_hash='h', plan_id=essential.id, today=TODAY)
     second = signup.create_self_signup(db, email='b@x.com', data=_data(), password_hash='h', plan_id=essential.id, today=TODAY)
-    assert second.organization.name == 'Fazenda Boa Vista 2' and second.organization.slug == 'fazenda-boa-vista-2'
+    assert second.organization.name == first.organization.name == 'Fazenda Boa Vista'
+    assert first.organization.id != second.organization.id and second.organization.slug == 'fazenda-boa-vista-2'
+    assert first.organization.primary_user_id == first.id and second.organization.primary_user_id == second.id
     assert {g.plan_id for g in db.query(OrganizationAccessGrant)} == {essential.id}
 
 

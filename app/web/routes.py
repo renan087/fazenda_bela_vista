@@ -9667,6 +9667,36 @@ def organizations_page(
         for organization in organizations
     }
     billing_by_organization = {item.organization_id: item for item in db.query(OrganizationBilling).all()}
+    users_by_id = {item.id: item for item in users}
+    primary_users = {
+        org.id: users_by_id.get(org.primary_user_id)
+        if users_by_id.get(org.primary_user_id) and users_by_id[org.primary_user_id].organization_id == org.id else None
+        for org in organizations
+    }
+    signup_suggestions = {}
+    grants = (db.query(OrganizationAccessGrant)
+              .filter(OrganizationAccessGrant.organization_id.in_([org.id for org in organizations]),
+                      OrganizationAccessGrant.reason == "teste_gratis",
+                      OrganizationAccessGrant.created_by_user_id.isnot(None)).all())
+    for grant in grants:
+        suggested = users_by_id.get(grant.created_by_user_id)
+        if suggested and suggested.is_active and suggested.organization_id == grant.organization_id:
+            signup_suggestions.setdefault(grant.organization_id, set()).add(suggested.id)
+    signup_suggestions = {org_id: users_by_id[next(iter(ids))] for org_id, ids in signup_suggestions.items() if len(ids) == 1}
+    responsible_history = {}
+    events = (db.query(AuditLog).filter(AuditLog.event_type == "comercial.organizacao.definir_responsavel",
+                                        AuditLog.organization_id.in_([org.id for org in organizations]))
+              .order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).all())
+    for event in events:
+        history = responsible_history.setdefault(event.organization_id, [])
+        if len(history) >= 5:
+            continue
+        try:
+            details = json.loads(event.metadata_json or "{}")
+        except (TypeError, ValueError):
+            details = {}
+        history.append({"date": event.created_at, "actor": event.actor_email,
+                        "old": details.get("anterior"), "new": details.get("novo")})
     return templates.TemplateResponse(
         "organizations.html",
         _base_context(
@@ -9678,6 +9708,9 @@ def organizations_page(
             organizations=organizations,
             organization_stats=organization_stats,
             billing_by_organization=billing_by_organization,
+            primary_users=primary_users,
+            signup_suggestions=signup_suggestions,
+            responsible_history=responsible_history,
             users=users,
             farms=farms,
             _repo=repo,
@@ -11510,10 +11543,6 @@ def create_organization_action(
     if not normalized_name:
         _flash(request, "error", "Informe o nome da organizacao.")
         return _redirect("/organizacoes")
-    existing = db.query(Organization).filter(Organization.name == normalized_name).first()
-    if existing:
-        _flash(request, "error", "Ja existe uma organizacao com este nome.")
-        return _redirect("/organizacoes")
     organization = Organization(
         name=normalized_name,
         slug=_unique_organization_slug(db, normalized_name),
@@ -11523,6 +11552,68 @@ def create_organization_action(
     ensure_organization_roles(db, organization.id)
     _flash(request, "success", "Organizacao criada com sucesso.")
     return _redirect("/organizacoes")
+
+
+@router.post("/organizacoes/{organization_id}/responsavel")
+def update_organization_primary_user_action(
+    organization_id: int, request: Request, csrf_token: str = Form(...),
+    primary_user_id: str = Form(""), db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    organization = db.query(Organization).filter_by(id=organization_id, archived_at=None).with_for_update().first()
+    if not organization:
+        _flash(request, "error", "Organização não encontrada.")
+        return _redirect("/organizacoes")
+    target_id = _int_or_none(primary_user_id)
+    if primary_user_id and not target_id:
+        _flash(request, "error", "Selecione um responsável válido.")
+        return _redirect("/organizacoes")
+    target = db.query(User).filter_by(id=target_id, organization_id=organization.id, is_active=True).with_for_update().first() if target_id else None
+    if target_id and not target:
+        _flash(request, "error", "Selecione um usuário ativo vinculado a esta organização.")
+        return _redirect("/organizacoes")
+    previous = db.get(User, organization.primary_user_id) if organization.primary_user_id else None
+    if organization.primary_user_id != target_id:
+        def identity(person):
+            return {"id": person.id, "nome": person.name, "email": person.email} if person else None
+        record_commercial_event(db, user=user, organization_id=organization.id, resource="organizacao",
+                                resource_id=organization.id, action="definir_responsavel", outcome="success",
+                                details={"anterior": identity(previous), "novo": identity(target)})
+        organization.primary_user_id = target_id
+        db.commit()
+    _flash(request, "success", "Responsável principal atualizado.")
+    return _redirect_with_query("/organizacoes", organizacao=organization.id)
+
+
+@router.post("/organizacoes/{organization_id}/nome")
+def rename_organization_action(
+    organization_id: int, request: Request, csrf_token: str = Form(...), name: str = Form(...),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    organization = db.query(Organization).filter_by(id=organization_id, archived_at=None).with_for_update().first()
+    if not organization or organization.slug == "sisfarm":
+        _flash(request, "error", "Organização não encontrada ou protegida.")
+        return _redirect("/organizacoes")
+    new_name = (name or "").strip()
+    if not new_name or len(new_name) > 160:
+        _flash(request, "error", "Informe um nome de até 160 caracteres.")
+        return _redirect_with_query("/organizacoes", organizacao=organization_id)
+    if organization.name != new_name:
+        record_commercial_event(db, user=user, organization_id=organization.id, resource="organizacao",
+                                resource_id=organization.id, action="renomear", outcome="success",
+                                details={"nome_anterior": organization.name, "nome_novo": new_name})
+        organization.name = new_name
+        db.commit()
+    _flash(request, "success", "Nome da organização atualizado.")
+    return _redirect_with_query("/organizacoes", organizacao=organization.id)
 
 
 @router.post("/organizacoes/usuarios/vincular")
@@ -11539,7 +11630,7 @@ def link_user_organization_action(
         return denied
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    target_user = repo.get_user(user_id)
+    target_user = db.query(User).filter_by(id=user_id).with_for_update().populate_existing().first()
     organization = repo.get_organization(organization_id)
     if not target_user or not organization:
         _flash(request, "error", "Usuario ou organizacao nao encontrado.")
@@ -11552,6 +11643,14 @@ def link_user_organization_action(
         if error := user_limit_error(db, entitlements):
             _flash(request, "error", error)
             return _redirect("/organizacoes")
+    if target_user.organization_id != organization.id and target_user.organization_id:
+        previous_org = db.query(Organization).filter_by(id=target_user.organization_id).with_for_update().first()
+        if previous_org and previous_org.primary_user_id == target_user.id:
+            previous_org.primary_user_id = None
+            record_commercial_event(db, user=user, organization_id=previous_org.id, resource="organizacao",
+                                    resource_id=previous_org.id, action="definir_responsavel", outcome="success",
+                                    details={"anterior": {"id": target_user.id, "nome": target_user.name, "email": target_user.email},
+                                             "novo": None, "motivo": "usuario_transferido"})
     data = {"organization_id": organization.id}
     active_farm = repo.get_farm(target_user.active_farm_id) if target_user.active_farm_id else None
     if active_farm and active_farm.organization_id != organization.id:
@@ -11696,6 +11795,8 @@ def delete_organization_action(
 
     preserve_history = current is not None or subscriptions.first() is not None or migrations.first() is not None or bool(customer_id)
     try:
+        organization.primary_user_id = None
+        db.flush()
         farm_ids, plot_ids, user_count = _repository(db).delete_organization_operational_data(organization_id)
         if preserve_history:
             organization.archived_at = app_now()
@@ -12086,6 +12187,16 @@ def delete_user_action(
     if target_user.id == user.id:
         _flash(request, "error", "Nao e permitido excluir o usuario atualmente logado.")
         return _redirect("/usuarios")
+    organization = db.query(Organization).filter_by(id=target_user.organization_id).with_for_update().first()
+    if organization and organization.primary_user_id == target_user.id:
+        organization.primary_user_id = None
+        record_commercial_event(
+            db, user=user, organization_id=organization.id, resource="organizacao",
+            resource_id=organization.id, action="definir_responsavel", outcome="success",
+            details={"anterior": {"id": target_user.id, "nome": target_user.name, "email": target_user.email},
+                     "novo": None, "motivo": "usuario_excluido"},
+        )
+        db.flush()
     repo.delete(target_user)
     _flash(request, "success", "Usuario excluido com sucesso.")
     return _redirect("/usuarios")

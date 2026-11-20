@@ -82,7 +82,8 @@ class FarmRepository:
         return self.db.query(Organization).filter_by(id=organization_id, archived_at=None).first()
 
     def list_organizations(self) -> list[Organization]:
-        return self.db.query(Organization).order_by(Organization.name.asc()).all()
+        return (self.db.query(Organization).options(joinedload(Organization.primary_user))
+                .order_by(Organization.name.asc(), Organization.id.asc()).all())
 
     def get_default_organization(self) -> Organization | None:
         return self.db.query(Organization).filter(Organization.slug == "sisfarm").first()

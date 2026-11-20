@@ -135,6 +135,8 @@ def _sync_schema() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
+        "ALTER TABLE organizations DROP CONSTRAINT IF EXISTS organizations_name_key",
+        "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS primary_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
         """
         CREATE TABLE IF NOT EXISTS farms (
             id SERIAL PRIMARY KEY,

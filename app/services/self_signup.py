@@ -135,7 +135,7 @@ def create_self_signup(db: Session, *, email: str, data: SignupData, password_ha
     """Cria tudo numa transacao. Sem senha (cadastro via Google) gera uma senha aleatoria inutilizavel."""
     if db.query(User.id).filter(User.email == email).first():
         raise SignupError("Este e-mail já tem uma conta. Use Entrar.")
-    name = _unique(db, Organization.name, data.organization_name, " ")
+    name = data.organization_name
     organization = Organization(name=name, slug=_unique(db, Organization.slug, _slugify(name), "-"), is_active=True)
     db.add(organization)
     db.flush()
@@ -148,6 +148,13 @@ def create_self_signup(db: Session, *, email: str, data: SignupData, password_ha
     )
     db.add(user)
     db.flush()
+    organization.primary_user_id = user.id
+    from app.services.commercial_audit import record_commercial_event
+    record_commercial_event(
+        db, user=user, organization_id=organization.id, resource="organizacao", resource_id=organization.id,
+        action="definir_responsavel", outcome="success",
+        details={"anterior": None, "novo": {"id": user.id, "nome": user.name, "email": user.email}, "origem": "autocadastro"},
+    )
     sync_roles_from_admin_flag(db, user)
     plan = trial_plan(db, plan_id)
     if plan:

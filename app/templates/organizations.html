@@ -63,14 +63,25 @@
                     <h3 class="mt-2 text-2xl font-semibold text-slate-900">Ambientes cadastrados</h3>
                 </div>
             </div>
+            <label class="mt-4 block">
+                <span class="mb-2 block text-sm font-medium text-slate-700">Buscar organização, responsável, usuário ou fazenda</span>
+                <input type="search" data-organization-search placeholder="Nome, ID ou e-mail" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
+            </label>
             <div class="mt-5 space-y-3">
                 {% for organization in organizations %}
+                {% set primary = primary_users.get(organization.id) %}
                 {% set stats = organization_stats.get(organization.id, {'users': 0, 'farms': 0}) %}
-                <article class="rounded-[1.35rem] border border-slate-100 bg-slate-50 p-4">
+                {% set search_billing = billing_by_organization.get(organization.id) %}
+                <article id="organizacao-{{ organization.id }}" class="rounded-[1.35rem] border border-slate-100 bg-slate-50 p-4" data-organization-card data-organization-search-text="{{ organization.name }} {{ organization.id }} {{ primary.name if primary else '' }} {{ primary.email if primary else '' }} {{ search_billing.contact_name if search_billing else '' }} {{ search_billing.contact_email if search_billing else '' }} {% for member in users if member.organization_id == organization.id %} {{ member.name }} {{ member.email }} {% endfor %} {% for farm in farms if farm.organization_id == organization.id %} {{ farm.name }} {% endfor %}">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div class="min-w-0">
-                            <h4 class="text-lg font-semibold text-slate-900">{{ organization.name }}</h4>
-                            <p class="mt-1 text-sm text-slate-500">{{ organization.slug }}</p>
+                            <h4 class="break-words text-lg font-semibold text-slate-900">{{ organization.name }} <span class="text-sm font-medium text-slate-500">#{{ organization.id }}</span></h4>
+                            {% if primary %}
+                            <p class="mt-1 text-sm text-slate-700">Responsável principal · <strong>{{ primary.name }}</strong>{% if not primary.is_active %} <span class="font-semibold text-amber-700">(usuário inativo)</span>{% endif %}</p>
+                            <p class="break-all text-sm text-slate-500">{{ primary.email }}</p>
+                            {% else %}
+                            <p class="mt-1 text-sm font-semibold text-amber-700">Responsável principal não definido</p>
+                            {% endif %}
                         </div>
                         <div class="flex flex-wrap items-center justify-end gap-2">
                             <span class="rounded-full px-3 py-1 text-xs font-semibold {% if organization.is_active %}bg-emerald-100 text-emerald-700{% else %}bg-slate-200 text-slate-600{% endif %}">
@@ -103,6 +114,49 @@
                             <p class="mt-1 text-lg font-semibold text-slate-900">{{ stats.farms }}</p>
                         </div>
                     </div>
+                    {% if organization.slug != 'sisfarm' %}
+                    <details class="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                        <summary class="cursor-pointer text-sm font-semibold text-slate-700">Editar nome da organização</summary>
+                        <form method="post" action="/organizacoes/{{ organization.id }}/nome" class="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <label><span class="mb-1 block text-sm font-medium text-slate-700">Nome</span><input name="name" value="{{ organization.name }}" maxlength="160" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+                            <button type="submit" class="self-end rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">Salvar nome</button>
+                        </form>
+                    </details>
+                    <details class="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                        <summary class="cursor-pointer text-sm font-semibold text-slate-700">Responsável principal e histórico</summary>
+                        <p class="mt-2 text-xs leading-5 text-slate-500">Identifica o usuário principal desta organização. Os dados financeiros são cadastrados separadamente.</p>
+                        {% if not primary and signup_suggestions.get(organization.id) %}
+                        {% set suggestion = signup_suggestions[organization.id] %}
+                        <p class="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900">Sugestão baseada no registro do teste grátis: {{ suggestion.name }} · {{ suggestion.email }}. Confira e selecione o usuário abaixo.</p>
+                        {% endif %}
+                        <form method="post" action="/organizacoes/{{ organization.id }}/responsavel" class="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <label><span class="mb-1 block text-sm font-medium text-slate-700">Usuário responsável</span>
+                                <select name="primary_user_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
+                                    <option value="">Não definido</option>
+                                    {% for member in users if member.organization_id == organization.id and member.is_active %}
+                                    <option value="{{ member.id }}" {% if primary and primary.id == member.id %}selected{% endif %}>{{ member.name }} · {{ member.email }}{% if member.is_admin %} · Administrador{% endif %}</option>
+                                    {% endfor %}
+                                    {% if primary and not primary.is_active %}<option value="{{ primary.id }}" selected>{{ primary.name }} · usuário inativo</option>{% endif %}
+                                </select>
+                            </label>
+                            <button type="submit" class="self-end rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">Salvar responsável</button>
+                        </form>
+                        {% if primary and not primary.is_active %}<p class="mt-2 text-sm text-amber-800">Selecione um usuário ativo para regularizar o responsável.</p>{% endif %}
+                        <div class="mt-4 border-t border-slate-100 pt-3">
+                            <p class="text-sm font-semibold text-slate-700">Últimas alterações</p>
+                            <ul class="mt-2 space-y-2 text-xs leading-relaxed text-slate-600">
+                                {% for event in responsible_history.get(organization.id, []) %}
+                                <li>{{ event.date|datetime_sp if event.date else 'Data não informada' }} · {{ event.actor or 'Sistema' }}<br>
+                                    {{ event.old.nome ~ ' (' ~ event.old.email ~ ')' if event.old else 'Não definido' }}
+                                    → {{ event.new.nome ~ ' (' ~ event.new.email ~ ')' if event.new else 'Não definido' }}
+                                </li>
+                                {% else %}<li>Nenhuma alteração registrada.</li>{% endfor %}
+                            </ul>
+                        </div>
+                    </details>
+                    {% endif %}
                     {% set billing = billing_by_organization.get(organization.id) %}
                     <details class="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
                         <summary class="cursor-pointer text-sm font-semibold text-slate-700">Dados comerciais {% if billing %}<span class="ml-2 text-xs font-normal text-emerald-700">Responsável cadastrado</span>{% else %}<span class="ml-2 text-xs font-normal text-slate-500">Não configurados</span>{% endif %}</summary>
@@ -130,6 +184,7 @@
                 {% else %}
                 <p class="text-sm text-slate-500">Nenhuma organização cadastrada.</p>
                 {% endfor %}
+                <p class="hidden py-4 text-center text-sm text-slate-500" data-organization-empty>Nenhuma organização encontrada.</p>
             </div>
         </article>
     </section>
@@ -147,7 +202,7 @@
                     <select name="user_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                         <option value="">Selecione</option>
                         {% for item in users %}
-                        <option value="{{ item.id }}">{{ item.name }} · {{ item.email }}{% if item.organization %} · {{ item.organization.name }}{% endif %}</option>
+                        <option value="{{ item.id }}">{{ item.name }} · {{ item.email }}{% if item.organization %} · {{ item.organization.name }} #{{ item.organization.id }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </label>
@@ -156,7 +211,7 @@
                     <select name="organization_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                         <option value="">Selecione</option>
                         {% for organization in organizations %}
-                        <option value="{{ organization.id }}">{{ organization.name }}</option>
+                        <option value="{{ organization.id }}">{{ organization.name }} · #{{ organization.id }}{% if primary_users.get(organization.id) %} · {{ primary_users[organization.id].name }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </label>
@@ -178,7 +233,7 @@
                     <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                         <option value="">Selecione</option>
                         {% for farm in farms %}
-                        <option value="{{ farm.id }}">{{ farm.name }}{% if farm.organization %} · {{ farm.organization.name }}{% endif %}</option>
+                        <option value="{{ farm.id }}">{{ farm.name }}{% if farm.organization %} · {{ farm.organization.name }} #{{ farm.organization.id }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </label>
@@ -187,7 +242,7 @@
                     <select name="organization_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                         <option value="">Selecione</option>
                         {% for organization in organizations %}
-                        <option value="{{ organization.id }}">{{ organization.name }}</option>
+                        <option value="{{ organization.id }}">{{ organization.name }} · #{{ organization.id }}{% if primary_users.get(organization.id) %} · {{ primary_users[organization.id].name }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </label>
@@ -231,6 +286,27 @@
     mobile.addEventListener?.('change', schedule);
     header?.addEventListener('transitionend', schedule);
     update();
+})();
+</script>
+<script>
+(() => {
+    const input = document.querySelector('[data-organization-search]');
+    const cards = Array.from(document.querySelectorAll('[data-organization-card]'));
+    const empty = document.querySelector('[data-organization-empty]');
+    const normalize = value => (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    input?.addEventListener('input', () => {
+        const query = normalize(input.value);
+        let visible = 0;
+        cards.forEach(card => {
+            card.hidden = !normalize(card.dataset.organizationSearchText).includes(query.replace(/^#/, ''));
+            if (!card.hidden) visible++;
+        });
+        if (empty) empty.classList.toggle('hidden', visible > 0 || cards.length === 0);
+    });
+    const id = new URLSearchParams(location.search).get('organizacao');
+    if (/^[1-9]\d*$/.test(id || '')) {
+        document.getElementById('organizacao-' + id)?.scrollIntoView({block: 'center'});
+    }
 })();
 </script>
 {% endblock %}

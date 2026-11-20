@@ -33,5 +33,5 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     asaas_customer_id: Mapped[str] = mapped_column(String(40), nullable=True, index=True)
 
-    organization = relationship("Organization", back_populates="users")
+    organization = relationship("Organization", back_populates="users", foreign_keys=[organization_id])
     roles = relationship("Role", secondary=user_roles_table, back_populates="users")
