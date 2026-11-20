@@ -272,7 +272,7 @@ class AuditAuthenticatedHttpMiddleware(BaseHTTPMiddleware):
 
 
 @app.get("/health")
-def health():
+async def health():
     """Resposta mínima para health check (evite usar /login no Render)."""
     return PlainTextResponse("ok", status_code=200)
 

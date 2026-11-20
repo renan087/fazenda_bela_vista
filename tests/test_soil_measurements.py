@@ -28,6 +28,11 @@ def test_conversions_preserve_units_and_refuse_density_assumptions():
 
 def test_create_edit_and_ai_keep_lab_metadata(monkeypatch):
     routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+
+    async def run_inline(func):
+        return func()
+
+    monkeypatch.setattr(routes, "run_in_threadpool", run_inline)
     plot = Plot(name="Setor 1", farm_id=scope["active_farm_id"], area_hectares=1, plant_count=1)
     db.add(plot)
     db.commit()

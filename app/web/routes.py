@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, quote, urlencode, urlparse
 from uuid import uuid4
 import calendar
+import time as monotonic_time
 
 import hashlib
 import base64
@@ -37,6 +38,7 @@ from sqlalchemy.orm import Session, joinedload, defer, load_only, selectinload
 from app.models.coffee_classification import CoffeeClassification, CoffeeClassificationAttachment
 from app.models.coffee_sensory_profile import CoffeeSensoryProfile
 from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
 from app.models.assistant_thread import AssistantThread
@@ -3989,13 +3991,28 @@ def _soil_ai_allowed_pages(db: Session, user: User) -> set[str]:
     return {code for code in pages & permission_codes_for_user(db, user) if entitlements.module_allowed(code)}
 
 
+def _soil_timed(stage, operation, func, *args, **kwargs):
+    started = monotonic_time.perf_counter()
+    try:
+        return func(*args, **kwargs)
+    finally:
+        logging.getLogger("uvicorn.error").info(
+            "soil_analysis operation=%s stage=%s duration_ms=%.1f",
+            operation, stage, (monotonic_time.perf_counter() - started) * 1000,
+        )
+
+
 def _apply_soil_ai_recommendation(repo: FarmRepository, analysis: SoilAnalysis, user: User) -> SoilAnalysis:
-    refreshed = repo.get_soil_analysis(analysis.id) or analysis
-    ai_result = gerar_recomendacao_adubacao(repo.db, refreshed, _soil_ai_allowed_pages(repo.db, user))
+    refreshed = _soil_timed("load_db", "recommendation", repo.get_soil_analysis, analysis.id) or analysis
+    allowed_pages = _soil_timed("permissions_db", "recommendation", _soil_ai_allowed_pages, repo.db, user)
+    ai_result = gerar_recomendacao_adubacao(repo.db, refreshed, allowed_pages)
     if ai_result.get("status") != "generated" and refreshed.ai_recommendation:
-        return repo.update(refreshed, {"ai_status": ai_result["status"], "ai_error": ai_result.get("error")})
-    return repo.update(
-        refreshed,
+        return _soil_timed(
+            "save_db", "recommendation", repo.update, refreshed,
+            {"ai_status": ai_result["status"], "ai_error": ai_result.get("error")},
+        )
+    return _soil_timed(
+        "save_db", "recommendation", repo.update, refreshed,
         {
             "ai_recommendation": ai_result.get("recommendation"),
             "ai_status": ai_result.get("status"),
@@ -21210,57 +21227,73 @@ async def create_soil_analysis_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
+    started = monotonic_time.perf_counter()
     validate_csrf(request, csrf_token)
-    form_data = await request.form()
+    form_started = monotonic_time.perf_counter()
     try:
-        validate_measurements({key: form_data.get(key) for key in ("ph", *SOIL_FIELDS)})
-        metadata = validate_metadata(
-            {key: form_data.get("unit_" + key) for key in (*SOIL_FIELDS, *SOIL_EXTRA_FIELDS)},
-            {key: form_data.get("method_" + key) for key in SOIL_METHODS},
-            form_data.get("collection_date"), form_data.get("report_date"),
-            form_data.get("depth_from"), form_data.get("depth_to"),
-            {key: form_data.get(key) for key in SOIL_EXTRA_FIELDS},
+        form_data = await request.form()
+    finally:
+        logging.getLogger("uvicorn.error").info(
+            "soil_analysis operation=%s stage=form duration_ms=%.1f",
+            "create", (monotonic_time.perf_counter() - form_started) * 1000,
         )
-    except ValueError as exc:
-        _flash(request, "error", str(exc))
-        return _redirect("/analise-solo")
-    repo = _repository(db)
-    plot, scope, denied = _resolve_farm_plot_in_scope(request, repo, plot_id, "/analise-solo")
-    if denied:
-        return denied
-    pdf_filename, pdf_content_type, pdf_data = _read_upload(analysis_pdf)
-    analysis = create_soil_analysis(
-        repo,
-        _soil_payload(
-            farm_id=scope["active_farm_id"],
-            plot_id=plot.id,
-            analysis_date=analysis_date,
-            laboratory=laboratory,
-            ph=ph,
-            organic_matter=organic_matter,
-            phosphorus=phosphorus,
-            potassium=potassium,
-            calcium=calcium,
-            magnesium=magnesium,
-            aluminum=aluminum,
-            h_al=h_al,
-            ctc=ctc,
-            base_saturation=base_saturation,
-            observations=observations,
-            pdf_filename=pdf_filename,
-            pdf_content_type=pdf_content_type,
-            pdf_data=pdf_data,
-            laboratory_metadata=metadata,
-        ),
-    )
-    analysis = _apply_soil_ai_recommendation(repo, analysis, user)
-    if analysis.ai_status == "generated":
-        _flash(request, "success", "Analise de solo salva e recomendacao da IA gerada com sucesso.")
-    elif analysis.ai_status == "skipped":
-        _flash(request, "success", "Analise de solo salva. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
-    else:
-        _flash(request, "error", "Analise de solo salva, mas a recomendacao da IA falhou nesta tentativa.")
-    return _redirect_with_query("/analise-solo", plot_id=plot.id, compare_plot_id=plot.id)
+
+    def process_request():
+        try:
+            validate_measurements({key: form_data.get(key) for key in ("ph", *SOIL_FIELDS)})
+            metadata = validate_metadata(
+                {key: form_data.get("unit_" + key) for key in (*SOIL_FIELDS, *SOIL_EXTRA_FIELDS)},
+                {key: form_data.get("method_" + key) for key in SOIL_METHODS},
+                form_data.get("collection_date"), form_data.get("report_date"),
+                form_data.get("depth_from"), form_data.get("depth_to"),
+                {key: form_data.get(key) for key in SOIL_EXTRA_FIELDS},
+            )
+        except ValueError as exc:
+            _flash(request, "error", str(exc))
+            return _redirect("/analise-solo")
+        repo = _repository(db)
+        plot, scope, denied = _soil_timed("scope_db", "create", _resolve_farm_plot_in_scope, request, repo, plot_id, "/analise-solo")
+        if denied:
+            return denied
+        pdf_filename, pdf_content_type, pdf_data = _soil_timed("pdf", "create", _read_upload, analysis_pdf)
+        analysis = _soil_timed(
+            "save_db", "create", create_soil_analysis, repo,
+            _soil_payload(
+                farm_id=scope["active_farm_id"],
+                plot_id=plot.id,
+                analysis_date=analysis_date,
+                laboratory=laboratory,
+                ph=ph,
+                organic_matter=organic_matter,
+                phosphorus=phosphorus,
+                potassium=potassium,
+                calcium=calcium,
+                magnesium=magnesium,
+                aluminum=aluminum,
+                h_al=h_al,
+                ctc=ctc,
+                base_saturation=base_saturation,
+                observations=observations,
+                pdf_filename=pdf_filename,
+                pdf_content_type=pdf_content_type,
+                pdf_data=pdf_data,
+                laboratory_metadata=metadata,
+            ),
+        )
+        analysis = _soil_timed("recommendation", "create", _apply_soil_ai_recommendation, repo, analysis, user)
+        if analysis.ai_status == "generated":
+            _flash(request, "success", "Analise de solo salva e recomendacao da IA gerada com sucesso.")
+        elif analysis.ai_status == "skipped":
+            _flash(request, "success", "Analise de solo salva. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
+        else:
+            _flash(request, "error", "Analise de solo salva, mas a recomendacao da IA falhou nesta tentativa.")
+        return _redirect_with_query("/analise-solo", plot_id=plot.id, compare_plot_id=plot.id)
+
+    try:
+        return await run_in_threadpool(process_request)
+    finally:
+        logging.getLogger("uvicorn.error").info("soil_analysis operation=%s stage=total duration_ms=%.1f", "create",
+                    (monotonic_time.perf_counter() - started) * 1000)
 
 
 @router.post("/analise-solo/{analysis_id}/editar")
@@ -21286,68 +21319,84 @@ async def update_soil_analysis_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
+    started = monotonic_time.perf_counter()
     validate_csrf(request, csrf_token)
-    form_data = await request.form()
+    form_started = monotonic_time.perf_counter()
     try:
-        validate_measurements({key: form_data.get(key) for key in ("ph", *SOIL_FIELDS)})
-        metadata = validate_metadata(
-            {key: form_data.get("unit_" + key) for key in (*SOIL_FIELDS, *SOIL_EXTRA_FIELDS)},
-            {key: form_data.get("method_" + key) for key in SOIL_METHODS},
-            form_data.get("collection_date"), form_data.get("report_date"),
-            form_data.get("depth_from"), form_data.get("depth_to"),
-            {key: form_data.get(key) for key in SOIL_EXTRA_FIELDS},
+        form_data = await request.form()
+    finally:
+        logging.getLogger("uvicorn.error").info(
+            "soil_analysis operation=%s stage=form duration_ms=%.1f",
+            "edit", (monotonic_time.perf_counter() - form_started) * 1000,
         )
-    except ValueError as exc:
-        _flash(request, "error", str(exc))
-        return _redirect("/analise-solo")
-    repo = _repository(db)
-    plot, scope, denied = _resolve_farm_plot_in_scope(request, repo, plot_id, "/analise-solo")
-    if denied:
-        return denied
-    analysis = repo.get_soil_analysis(analysis_id)
-    if not analysis:
-        _flash(request, "error", "Analise de solo nao encontrada.")
-        return _redirect_for_request(request, "/analise-solo")
-    if analysis.farm_id != scope["active_farm_id"] or not analysis.plot or analysis.plot.farm_id != scope["active_farm_id"]:
-        _flash(request, "error", "Esta analise de solo nao pertence ao contexto ativo.")
-        return _redirect_for_request(request, "/analise-solo")
-    if not any("unit_" + field in form_data for field in SOIL_FIELDS):
-        metadata = parse_metadata(analysis.laboratory_metadata) or None
-    pdf_filename, pdf_content_type, pdf_data = _read_upload(analysis_pdf)
-    updated = update_soil_analysis(
-        repo,
-        analysis,
-        _soil_payload(
-            farm_id=scope["active_farm_id"],
-            plot_id=plot.id,
-            analysis_date=analysis_date,
-            laboratory=laboratory,
-            ph=ph,
-            organic_matter=organic_matter,
-            phosphorus=phosphorus,
-            potassium=potassium,
-            calcium=calcium,
-            magnesium=magnesium,
-            aluminum=aluminum,
-            h_al=h_al,
-            ctc=ctc,
-            base_saturation=base_saturation,
-            observations=observations,
-            pdf_filename=pdf_filename,
-            pdf_content_type=pdf_content_type,
-            pdf_data=pdf_data,
-            laboratory_metadata=metadata,
-            current_analysis=analysis,
-        ),
-    )
-    updated = _apply_soil_ai_recommendation(repo, updated, user)
-    if updated.ai_status == "generated":
-        _flash(request, "success", "Analise de solo atualizada e recomendacao regenerada.")
-    elif updated.ai_status == "skipped":
-        _flash(request, "success", "Analise de solo atualizada. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
-    else:
-        _flash(request, "error", "Analise de solo atualizada, mas a recomendacao da IA falhou nesta tentativa.")
-    return _redirect_for_request(request, "/analise-solo", plot_id=plot.id, compare_plot_id=plot.id)
+
+    def process_request():
+        try:
+            validate_measurements({key: form_data.get(key) for key in ("ph", *SOIL_FIELDS)})
+            metadata = validate_metadata(
+                {key: form_data.get("unit_" + key) for key in (*SOIL_FIELDS, *SOIL_EXTRA_FIELDS)},
+                {key: form_data.get("method_" + key) for key in SOIL_METHODS},
+                form_data.get("collection_date"), form_data.get("report_date"),
+                form_data.get("depth_from"), form_data.get("depth_to"),
+                {key: form_data.get(key) for key in SOIL_EXTRA_FIELDS},
+            )
+        except ValueError as exc:
+            _flash(request, "error", str(exc))
+            return _redirect("/analise-solo")
+        repo = _repository(db)
+        plot, scope, denied = _soil_timed("scope_db", "edit", _resolve_farm_plot_in_scope, request, repo, plot_id, "/analise-solo")
+        if denied:
+            return denied
+        analysis = _soil_timed("load_db", "edit", repo.get_soil_analysis, analysis_id)
+        if not analysis:
+            _flash(request, "error", "Analise de solo nao encontrada.")
+            return _redirect_for_request(request, "/analise-solo")
+        if analysis.farm_id != scope["active_farm_id"] or not analysis.plot or analysis.plot.farm_id != scope["active_farm_id"]:
+            _flash(request, "error", "Esta analise de solo nao pertence ao contexto ativo.")
+            return _redirect_for_request(request, "/analise-solo")
+        if not any("unit_" + field in form_data for field in SOIL_FIELDS):
+            metadata = parse_metadata(analysis.laboratory_metadata) or None
+        pdf_filename, pdf_content_type, pdf_data = _soil_timed("pdf", "edit", _read_upload, analysis_pdf)
+        updated = _soil_timed(
+            "save_db", "edit", update_soil_analysis, repo,
+            analysis,
+            _soil_payload(
+                farm_id=scope["active_farm_id"],
+                plot_id=plot.id,
+                analysis_date=analysis_date,
+                laboratory=laboratory,
+                ph=ph,
+                organic_matter=organic_matter,
+                phosphorus=phosphorus,
+                potassium=potassium,
+                calcium=calcium,
+                magnesium=magnesium,
+                aluminum=aluminum,
+                h_al=h_al,
+                ctc=ctc,
+                base_saturation=base_saturation,
+                observations=observations,
+                pdf_filename=pdf_filename,
+                pdf_content_type=pdf_content_type,
+                pdf_data=pdf_data,
+                laboratory_metadata=metadata,
+                current_analysis=analysis,
+            ),
+        )
+        updated = _soil_timed("recommendation", "edit", _apply_soil_ai_recommendation, repo, updated, user)
+        if updated.ai_status == "generated":
+            _flash(request, "success", "Analise de solo atualizada e recomendacao regenerada.")
+        elif updated.ai_status == "skipped":
+            _flash(request, "success", "Analise de solo atualizada. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
+        else:
+            _flash(request, "error", "Analise de solo atualizada, mas a recomendacao da IA falhou nesta tentativa.")
+        return _redirect_for_request(request, "/analise-solo", plot_id=plot.id, compare_plot_id=plot.id)
+
+    try:
+        return await run_in_threadpool(process_request)
+    finally:
+        logging.getLogger("uvicorn.error").info("soil_analysis operation=%s stage=total duration_ms=%.1f", "edit",
+                    (monotonic_time.perf_counter() - started) * 1000)
 
 
 @router.post("/analise-solo/{analysis_id}/regenerar")

@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 import unicodedata
 from datetime import date
 from decimal import Decimal
@@ -381,18 +382,26 @@ def gerar_recomendacao_adubacao(db: Session, analysis: SoilAnalysis, allowed_pag
     today = today_in_app_timezone()
     model = settings.openai_recommendation_model
     try:
-        context = build_soil_ai_context(db, analysis, today, allowed_pages)
-        context["referencias_tecnicas"] = _technical_references(context)
-        response = OpenAI(api_key=settings.openai_api_key).beta.chat.completions.parse(
-            model=model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(context, ensure_ascii=False, allow_nan=False)},
-            ],
-            response_format=SoilRecommendation,
-            max_completion_tokens=5000,
-            timeout=60,
-        )
+        context_started = time.perf_counter()
+        try:
+            context = build_soil_ai_context(db, analysis, today, allowed_pages)
+            context["referencias_tecnicas"] = _technical_references(context)
+        finally:
+            logging.getLogger("uvicorn.error").info("soil_ai stage=context duration_ms=%.1f", (time.perf_counter() - context_started) * 1000)
+        api_started = time.perf_counter()
+        try:
+            response = OpenAI(api_key=settings.openai_api_key, max_retries=0).beta.chat.completions.parse(
+                model=model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(context, ensure_ascii=False, allow_nan=False)},
+                ],
+                response_format=SoilRecommendation,
+                max_completion_tokens=5000,
+                timeout=60,
+            )
+        finally:
+            logging.getLogger("uvicorn.error").info("soil_ai stage=openai duration_ms=%.1f", (time.perf_counter() - api_started) * 1000)
         draft = response.choices[0].message.parsed
         if not draft:
             raise ValueError("Resposta estruturada indisponível")

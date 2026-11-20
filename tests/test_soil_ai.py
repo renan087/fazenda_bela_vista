@@ -244,6 +244,33 @@ def test_regeneration_rejects_analysis_outside_active_farm(soil_context, monkeyp
     assert response.headers["Location"] == "/analise-solo"
 
 
+def test_openai_timeout_has_no_automatic_retry_and_logs_duration(soil_context, monkeypatch, caplog):
+    _, db, _, analysis, _ = soil_context
+    calls = []
+    clients = []
+
+    def parse(**kwargs):
+        calls.append(kwargs)
+        raise TimeoutError("simulated external timeout")
+
+    def client(**kwargs):
+        clients.append(kwargs)
+        return SimpleNamespace(beta=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(parse=parse))))
+
+    monkeypatch.setattr(service, "get_settings", lambda: SimpleNamespace(
+        openai_api_key="fake-key", openai_recommendation_model="configured-model",
+    ))
+    monkeypatch.setattr(service, "today_in_app_timezone", lambda: TODAY)
+    monkeypatch.setattr("openai.OpenAI", client)
+    with caplog.at_level("INFO", logger="uvicorn.error"):
+        result = service.gerar_recomendacao_adubacao(db, analysis, PAGES)
+    assert result["status"] == "error"
+    assert len(calls) == 1 and calls[0]["timeout"] == 60
+    assert clients[0]["max_retries"] == 0
+    assert "soil_ai stage=openai duration_ms=" in caplog.text
+    assert "soil_ai stage=context duration_ms=" in caplog.text
+
+
 def test_incomplete_profile_can_generate_a_plan(soil_context, monkeypatch):
     routes, db, user, analysis, _ = soil_context
     completion, _ = routes._agronomic_profile_completion(analysis.farm.agronomic_profile)
