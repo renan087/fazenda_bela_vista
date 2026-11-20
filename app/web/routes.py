@@ -44,7 +44,7 @@ from app.core.config import get_settings
 from app.models.assistant_thread import AssistantThread
 from app.models.assistant_audio import AssistantAudio
 from app.models.assistant_attachment import AssistantAttachment
-from app.models.whatsapp import WhatsAppLink, WhatsAppRecordAccess
+from app.models.whatsapp import WhatsAppLink, WhatsAppRecordAccess, WhatsAppSurvey
 from app.services import whatsapp_bot
 from app.services.whatsapp import is_configured as whatsapp_is_configured, mask_phone
 from app.services.chat_format import to_html as chat_to_html
@@ -9716,6 +9716,45 @@ def organizations_page(
             _repo=repo,
         ),
     )
+
+
+@router.get("/organizacoes/avaliacoes-pezinho")
+def whatsapp_surveys_page(
+    request: Request, inicio: date | None = Query(None), fim: date | None = Query(None),
+    organizacao: int | None = Query(None, gt=0), pagina: int = Query(1, ge=1),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    if inicio and fim and inicio > fim:
+        raise HTTPException(status_code=400, detail="A data inicial deve ser anterior à data final.")
+    query = (db.query(WhatsAppSurvey, WhatsAppLink, Organization)
+             .join(WhatsAppLink, WhatsAppSurvey.link_id == WhatsAppLink.id)
+             .outerjoin(Organization, WhatsAppLink.organization_id == Organization.id))
+    if inicio:
+        query = query.filter(WhatsAppSurvey.created_at >= datetime.combine(inicio, time.min, tzinfo=get_app_timezone()).astimezone(timezone.utc))
+    if fim and fim < date.max:
+        query = query.filter(WhatsAppSurvey.created_at < datetime.combine(fim + timedelta(days=1), time.min, tzinfo=get_app_timezone()).astimezone(timezone.utc))
+    if organizacao:
+        query = query.filter(WhatsAppLink.organization_id == organizacao)
+    counts = {"good": 0, "fair": 0, "bad": 0, "unrated": 0, "pending": 0, "unavailable": 0, "sending": 0}
+    for survey_status, rating, count in query.with_entities(WhatsAppSurvey.status, WhatsAppSurvey.rating, func.count(WhatsAppSurvey.id)).group_by(WhatsAppSurvey.status, WhatsAppSurvey.rating).all():
+        key = rating if survey_status == "answered" else survey_status
+        if key in counts:
+            counts[key] += count
+    total = query.count()
+    page_size = 25
+    pages = max(1, (total + page_size - 1) // page_size)
+    pagina = min(pagina, pages)
+    rows = query.order_by(WhatsAppSurvey.created_at.desc(), WhatsAppSurvey.id.desc()).offset((pagina - 1) * page_size).limit(page_size).all()
+    organizations = db.query(Organization).order_by(Organization.name, Organization.id).all()
+    params = {key: str(value) for key, value in {"inicio": inicio, "fim": fim, "organizacao": organizacao}.items() if value is not None}
+    return templates.TemplateResponse("whatsapp_surveys.html", _base_context(
+        request, user, csrf_token, "whatsapp_surveys", title="Avaliações do Pezinho",
+        rows=rows, counts=counts, total=total, pagina=pagina, pages=pages, filters=params,
+        organizations=organizations, query_string=urlencode(params), _repo=_repository(db)))
 
 
 @router.get("/assinaturas")

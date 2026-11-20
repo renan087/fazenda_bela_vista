@@ -316,7 +316,7 @@
                         {% set config_pages = config_pages + ['users'] %}
                     {% endif %}
                     {% if menu_visibility.get('organizations') %}
-                        {% set config_pages = config_pages + ['organizations', 'subscriptions', 'subscription_plans', 'maintenance'] %}
+                        {% set config_pages = config_pages + ['organizations', 'subscriptions', 'subscription_plans', 'maintenance', 'whatsapp_surveys'] %}
                     {% endif %}
                     {% if menu_visibility.get('audit_logs') %}
                         {% set config_pages = config_pages + ['audit_logs'] %}
@@ -344,6 +344,7 @@
                             {% endif %}
                             {% if menu_visibility.get('organizations') %}
                             <a href="{{ module_href('/organizacoes') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'organizations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Organizações{{ module_lock('/organizacoes') }}</a>
+                            <a href="/organizacoes/avaliacoes-pezinho" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'whatsapp_surveys' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Avaliações do Pezinho</a>
                             <a href="{{ module_href('/assinaturas') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'subscriptions' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Assinaturas{{ module_lock('/assinaturas') }}</a>
                             <a href="{{ module_href('/planos') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'subscription_plans' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Planos{{ module_lock('/planos') }}</a>
                             <a href="{{ '/manutencao' }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'maintenance' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Manutenção</a>
