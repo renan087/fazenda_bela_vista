@@ -1,312 +1,251 @@
 {% extends "base.html" %}
+{% macro icon(name, css='') %}
+<svg class="{{ css }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{% if name == 'building' %}<path d="M4 21V5l8-3 8 3v16M2 21h20M9 21v-4h6v4M9 7h.01M15 7h.01M9 11h.01M15 11h.01M9 14h.01M15 14h.01"/>
+{% elif name == 'users' %}<circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M17 11a3 3 0 1 0-1-5.8M18 14a5 5 0 0 1 3 4.6V20"/>
+{% elif name == 'user' %}<circle cx="12" cy="7.5" r="3.5"/><path d="M4 21v-1a8 8 0 0 1 16 0v1Z"/>
+{% elif name == 'farm' %}<path d="M3 20c3-8 8-12 17-14M8 20c2-5 6-9 12-11M14 20c1-3 4-6 7-7M4 11c4-4 8-6 14-7"/>
+{% elif name == 'shield' %}<path d="M12 2 4 5v6c0 5 3 8.3 8 11 5-2.7 8-6 8-11V5L12 2Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/>
+{% elif name == 'plus' %}<path d="M12 5v14M5 12h14"/>
+{% elif name == 'search' %}<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/>
+{% elif name == 'link' %}<path d="m10 13 4-4M8 16l-1 1a3.5 3.5 0 0 1-5-5l4-4a3.5 3.5 0 0 1 5 0M16 8l1-1a3.5 3.5 0 0 1 5 5l-4 4a3.5 3.5 0 0 1-5 0"/>
+{% elif name == 'eye' %}<path d="M2 12s3.4-6 10-6 10 6 10 6-3.4 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/>
+{% elif name == 'external' %}<path d="M13 5h6v6M19 5l-9 9M18 13v5H5V6h5"/>
+{% elif name == 'card' %}<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/>
+{% elif name == 'info' %}<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>
+{% elif name == 'award' %}<circle cx="12" cy="9" r="6"/><path d="m8 14-1 8 5-3 5 3-1-8"/>
+{% elif name == 'more' %}<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+{% elif name == 'close' %}<path d="M6 6l12 12M18 6 6 18"/>{% endif %}
+</svg>
+{% endmacro %}
 {% block content %}
-<div class="stock-page-shell sf-page">
-    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel" data-sector-costs-header>
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-                <div class="stock-page-header-intro-inner">
-                    <h2 class="stock-page-card-title">Organizações</h2>
-                    <p class="stock-page-card-subtitle" data-sector-costs-description>Cadastre clientes e vincule usuários e fazendas ao ambiente correto.</p>
-                </div>
-            </div>
-            <div class="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-                Acesso restrito ao super administrador
+<div class="stock-page-shell sf-page organizations-page">
+    <header class="org-header">
+        <div class="org-title-group">
+            <span class="org-icon org-icon-large">{{ icon('building') }}</span>
+            <div><h2>Organizações</h2><p>Gerencie clientes, usuários e fazendas em um só lugar.</p></div>
+        </div>
+        <div class="org-header-actions">
+            <span class="org-restricted">{{ icon('shield') }} Acesso restrito · Superadministrador</span>
+            <button type="button" class="org-button org-button-primary" data-org-create-open>{{ icon('plus') }} Nova organização</button>
+        </div>
+    </header>
+
+    <section class="org-kpis" aria-label="Resumo de organizações">
+        <article><span class="org-icon">{{ icon('users') }}</span><div><span>Clientes</span><strong>{{ organizations|length }}</strong></div></article>
+        <article><span class="org-icon">{{ icon('user') }}</span><div><span>Usuários</span><strong>{{ users|length }}</strong></div></article>
+        <article><span class="org-icon">{{ icon('farm') }}</span><div><span>Fazendas</span><strong>{{ farms|length }}</strong></div></article>
+    </section>
+
+    <section class="org-panel org-directory">
+        <div class="org-directory-head">
+            <h3>{{ icon('building') }} Organizações cadastradas</h3>
+            <div class="org-filters">
+                <label class="org-search">{{ icon('search') }}<span class="sr-only">Buscar organização, usuário ou fazenda</span><input type="search" data-organization-search placeholder="Buscar por nome, usuário ou fazenda"></label>
+                <label><span class="sr-only">Filtrar por status</span><select data-org-status><option value="">Status: Todas</option><option value="ativa">Ativas</option><option value="inativa">Inativas</option></select></label>
             </div>
         </div>
-    </section>
-
-    <section class="grid gap-4 md:grid-cols-3" data-stock-fade-panel>
-        <article class="stock-panel rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-panel">
-            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Clientes</p>
-            <p class="mt-3 text-2xl font-semibold text-slate-900">{{ organizations|length }}</p>
-        </article>
-        <article class="stock-panel rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-panel">
-            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Usuários</p>
-            <p class="mt-3 text-2xl font-semibold text-slate-900">{{ users|length }}</p>
-        </article>
-        <article class="stock-panel rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-panel">
-            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fazendas</p>
-            <p class="mt-3 text-2xl font-semibold text-slate-900">{{ farms|length }}</p>
-        </article>
-    </section>
-
-    <section class="grid gap-5 xl:grid-cols-[1fr_1.2fr]" data-stock-fade-panel>
-        <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
-            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Nova organização</p>
-            <h3 class="mt-2 text-2xl font-semibold text-slate-900">Cadastrar cliente</h3>
-            <p class="mt-2 text-sm text-slate-500">Use uma organização para separar usuários, fazendas e dados operacionais de cada cliente.</p>
-
-            <form method="post" action="/organizacoes" class="mt-6 grid gap-4">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <label>
-                    <span class="mb-2 block text-sm font-medium text-slate-700">Nome da organização</span>
-                    <input name="name" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Fazenda São João" required>
-                </label>
-                <label class="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
-                    <input type="checkbox" name="is_active" value="true" class="rounded border-slate-300 text-brand-500" checked>
-                    Organização ativa
-                </label>
-                <button type="submit" class="stock-action-button stock-action-button-primary justify-center">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M12 5v14"/>
-                        <path d="M5 12h14"/>
-                    </svg>
-                    Criar organização
-                </button>
-            </form>
-        </article>
-
-        <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
-            <div class="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Organizações</p>
-                    <h3 class="mt-2 text-2xl font-semibold text-slate-900">Ambientes cadastrados</h3>
-                </div>
-            </div>
-            <label class="mt-4 block">
-                <span class="mb-2 block text-sm font-medium text-slate-700">Buscar organização, responsável, usuário ou fazenda</span>
-                <input type="search" data-organization-search placeholder="Nome, ID ou e-mail" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
-            </label>
-            <div class="mt-5 space-y-3">
+        <div class="org-table-scroll">
+            <table class="org-table">
+                <thead><tr>
+                    <th><button type="button" data-org-sort="name">Organização <span aria-hidden="true">↕</span></button></th>
+                    <th><button type="button" data-org-sort="primary">Responsável <span aria-hidden="true">↕</span></button></th>
+                    <th><button type="button" data-org-sort="users">Usuários <span aria-hidden="true">↕</span></button></th>
+                    <th><button type="button" data-org-sort="farms">Fazendas <span aria-hidden="true">↕</span></button></th>
+                    <th><button type="button" data-org-sort="status">Status <span aria-hidden="true">↕</span></button></th>
+                    <th>Assinatura</th><th>Ações</th>
+                </tr></thead>
+                <tbody data-org-rows>
                 {% for organization in organizations %}
                 {% set primary = primary_users.get(organization.id) %}
                 {% set stats = organization_stats.get(organization.id, {'users': 0, 'farms': 0}) %}
-                {% set search_billing = billing_by_organization.get(organization.id) %}
-                <article id="organizacao-{{ organization.id }}" class="rounded-[1.35rem] border border-slate-100 bg-slate-50 p-4" data-organization-card data-organization-search-text="{{ organization.name }} {{ organization.id }} {{ primary.name if primary else '' }} {{ primary.email if primary else '' }} {{ search_billing.contact_name if search_billing else '' }} {{ search_billing.contact_email if search_billing else '' }} {% for member in users if member.organization_id == organization.id %} {{ member.name }} {{ member.email }} {% endfor %} {% for farm in farms if farm.organization_id == organization.id %} {{ farm.name }} {% endfor %}">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
-                        <div class="min-w-0">
-                            <h4 class="break-words text-lg font-semibold text-slate-900">{{ organization.name }} <span class="text-sm font-medium text-slate-500">#{{ organization.id }}</span></h4>
-                            {% if primary %}
-                            <p class="mt-1 text-sm text-slate-700">Responsável principal · <strong>{{ primary.name }}</strong>{% if not primary.is_active %} <span class="font-semibold text-amber-700">(usuário inativo)</span>{% endif %}</p>
-                            <p class="break-all text-sm text-slate-500">{{ primary.email }}</p>
-                            {% else %}
-                            <p class="mt-1 text-sm font-semibold text-amber-700">Responsável principal não definido</p>
-                            {% endif %}
-                        </div>
-                        <div class="flex flex-wrap items-center justify-end gap-2">
-                            <span class="rounded-full px-3 py-1 text-xs font-semibold {% if organization.is_active %}bg-emerald-100 text-emerald-700{% else %}bg-slate-200 text-slate-600{% endif %}">
-                                {% if organization.is_active %}Ativa{% else %}Inativa{% endif %}
-                            </span>
-                            {% if organization.slug != 'sisfarm' %}
-                            <form method="post" action="/organizacoes/{{ organization.id }}/status">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <input type="hidden" name="is_active" value="{% if organization.is_active %}false{% else %}true{% endif %}">
-                                <button type="submit" class="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-100">
-                                    {% if organization.is_active %}Inativar{% else %}Reativar{% endif %}
-                                </button>
-                            </form>
-                            <form method="post" action="/organizacoes/{{ organization.id }}/excluir" onsubmit="return confirm('Excluir esta organização? Todos os usuários e fazendas vinculados, incluindo seus dados, serão excluídos permanentemente. O histórico comercial será preservado.');">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button type="submit" class="inline-flex h-9 items-center justify-center rounded-xl border border-rose-100 px-3 text-xs font-semibold text-rose-600 transition hover:bg-rose-50">
-                                    Excluir
-                                </button>
-                            </form>
-                            {% endif %}
-                        </div>
-                    </div>
-                    <div class="mt-4 grid gap-3 sm:grid-cols-2">
-                        <div class="rounded-2xl bg-white px-4 py-3">
-                            <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Usuários</p>
-                            <p class="mt-1 text-lg font-semibold text-slate-900">{{ stats.users }}</p>
-                        </div>
-                        <div class="rounded-2xl bg-white px-4 py-3">
-                            <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Fazendas</p>
-                            <p class="mt-1 text-lg font-semibold text-slate-900">{{ stats.farms }}</p>
-                        </div>
-                    </div>
-                    {% if organization.slug != 'sisfarm' %}
-                    <details class="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                        <summary class="cursor-pointer text-sm font-semibold text-slate-700">Editar nome da organização</summary>
-                        <form method="post" action="/organizacoes/{{ organization.id }}/nome" class="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <label><span class="mb-1 block text-sm font-medium text-slate-700">Nome</span><input name="name" value="{{ organization.name }}" maxlength="160" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                            <button type="submit" class="self-end rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">Salvar nome</button>
-                        </form>
-                    </details>
-                    <details class="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                        <summary class="cursor-pointer text-sm font-semibold text-slate-700">Responsável principal e histórico</summary>
-                        <p class="mt-2 text-xs leading-5 text-slate-500">Identifica o usuário principal desta organização. Os dados financeiros são cadastrados separadamente.</p>
-                        {% if not primary and signup_suggestions.get(organization.id) %}
-                        {% set suggestion = signup_suggestions[organization.id] %}
-                        <p class="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900">Sugestão baseada no registro do teste grátis: {{ suggestion.name }} · {{ suggestion.email }}. Confira e selecione o usuário abaixo.</p>
-                        {% endif %}
-                        <form method="post" action="/organizacoes/{{ organization.id }}/responsavel" class="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <label><span class="mb-1 block text-sm font-medium text-slate-700">Usuário responsável</span>
-                                <select name="primary_user_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
-                                    <option value="">Não definido</option>
-                                    {% for member in users if member.organization_id == organization.id and member.is_active %}
-                                    <option value="{{ member.id }}" {% if primary and primary.id == member.id %}selected{% endif %}>{{ member.name }} · {{ member.email }}{% if member.is_admin %} · Administrador{% endif %}</option>
-                                    {% endfor %}
-                                    {% if primary and not primary.is_active %}<option value="{{ primary.id }}" selected>{{ primary.name }} · usuário inativo</option>{% endif %}
-                                </select>
-                            </label>
-                            <button type="submit" class="self-end rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">Salvar responsável</button>
-                        </form>
-                        {% if primary and not primary.is_active %}<p class="mt-2 text-sm text-amber-800">Selecione um usuário ativo para regularizar o responsável.</p>{% endif %}
-                        <div class="mt-4 border-t border-slate-100 pt-3">
-                            <p class="text-sm font-semibold text-slate-700">Últimas alterações</p>
-                            <ul class="mt-2 space-y-2 text-xs leading-relaxed text-slate-600">
-                                {% for event in responsible_history.get(organization.id, []) %}
-                                <li>{{ event.date|datetime_sp if event.date else 'Data não informada' }} · {{ event.actor or 'Sistema' }}<br>
-                                    {{ event.old.nome ~ ' (' ~ event.old.email ~ ')' if event.old else 'Não definido' }}
-                                    → {{ event.new.nome ~ ' (' ~ event.new.email ~ ')' if event.new else 'Não definido' }}
-                                </li>
-                                {% else %}<li>Nenhuma alteração registrada.</li>{% endfor %}
-                            </ul>
-                        </div>
-                    </details>
-                    {% endif %}
-                    {% set billing = billing_by_organization.get(organization.id) %}
-                    <details class="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                        <summary class="cursor-pointer text-sm font-semibold text-slate-700">Dados comerciais {% if billing %}<span class="ml-2 text-xs font-normal text-emerald-700">Responsável cadastrado</span>{% else %}<span class="ml-2 text-xs font-normal text-slate-500">Não configurados</span>{% endif %}</summary>
-                        <p class="mt-3 text-xs leading-5 text-slate-500">Responsável financeiro desta organização. Este cadastro ainda não cria cliente ou cobrança no Asaas.</p>
-                        <form method="post" action="/organizacoes/{{ organization.id }}/dados-comerciais" class="mt-4 grid gap-3">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <label><span class="mb-1 block text-sm font-medium text-slate-700">Nome do responsável financeiro</span><input name="contact_name" value="{{ billing.contact_name if billing else '' }}" maxlength="160" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                            <label><span class="mb-1 block text-sm font-medium text-slate-700">E-mail</span><input type="email" name="contact_email" value="{{ billing.contact_email if billing else '' }}" maxlength="254" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                            <label><span class="mb-1 block text-sm font-medium text-slate-700">Telefone (opcional)</span><input type="tel" name="contact_phone" value="{{ billing.contact_phone or '' if billing else '' }}" maxlength="40" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                            <label><span class="mb-1 block text-sm font-medium text-slate-700">CPF ou CNPJ</span><input name="cpf_cnpj" value="{{ billing.cpf_cnpj or '' if billing else '' }}" {% if billing and billing.asaas_customer_id %}readonly{% endif %} class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                            <label><span class="mb-1 block text-sm font-medium text-slate-700">CEP</span><input name="postal_code" value="{{ billing.postal_code or '' if billing else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                            <label><span class="mb-1 block text-sm font-medium text-slate-700">Logradouro</span><input name="address" maxlength="255" value="{{ billing.address or '' if billing else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                            <label><span class="mb-1 block text-sm font-medium text-slate-700">Número</span><input name="address_number" maxlength="40" value="{{ billing.address_number or '' if billing else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                            <label><span class="mb-1 block text-sm font-medium text-slate-700">Complemento</span><input name="address_complement" maxlength="255" value="{{ billing.address_complement or '' if billing else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                            <label><span class="mb-1 block text-sm font-medium text-slate-700">Bairro</span><input name="province" maxlength="120" value="{{ billing.province or '' if billing else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                            <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]"><label><span class="mb-1 block text-sm font-medium text-slate-700">Município</span><input name="city" maxlength="120" value="{{ billing.city or '' if billing else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label><label><span class="mb-1 block text-sm font-medium text-slate-700">Estado (UF)</span><select name="state" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"><option value="">Selecione</option>{% for uf in ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'] %}<option value="{{ uf }}" {% if billing and billing.state == uf %}selected{% endif %}>{{ uf }}</option>{% endfor %}</select></label></div>
-                            <p class="text-xs text-slate-500">Município e estado ficam registrados no SiSFarm; no Asaas, a localização do cliente é identificada pelo CEP.</p>
-                            <button type="submit" name="intent" value="salvar" class="rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">Salvar dados comerciais</button>
-                            {% if not billing or not billing.asaas_customer_id %}<button type="submit" name="intent" value="consultar" class="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Salvar e consultar cliente no Asaas sandbox</button>{% endif %}
-                        </form>
-                        {% if billing and billing.asaas_customer_id %}<p class="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Asaas {{ billing.asaas_environment or 'ambiente não informado' }}: {{ billing.asaas_customer_id }}</p>{% endif %}
-                    </details>
-                    <a href="/assinaturas?organizacao={{ organization.id }}" class="mt-3 inline-flex rounded-xl border border-emerald-200 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">Gerenciar assinatura</a>
-                </article>
-                {% else %}
-                <p class="text-sm text-slate-500">Nenhuma organização cadastrada.</p>
+                {% set billing = billing_by_organization.get(organization.id) %}
+                <tr id="organizacao-{{ organization.id }}" data-organization-card data-name="{{ organization.name }}" data-primary="{{ primary.name if primary else '' }}" data-users="{{ stats.users }}" data-farms="{{ stats.farms }}" data-status="{{ 'ativa' if organization.is_active else 'inativa' }}" data-organization-search-text="{{ organization.name }} {{ organization.id }} {{ primary.name if primary else '' }} {{ primary.email if primary else '' }} {{ billing.contact_name if billing else '' }} {{ billing.contact_email if billing else '' }} {% for member in users if member.organization_id == organization.id %} {{ member.name }} {{ member.email }} {% endfor %} {% for farm in farms if farm.organization_id == organization.id %} {{ farm.name }} {% endfor %}">
+                    <td data-label="Organização"><div class="org-name"><span class="org-row-icon">{{ icon('building') }}</span><strong>{{ organization.name }} <span>#{{ organization.id }}</span></strong></div></td>
+                    <td data-label="Responsável">{% if primary %}<span class="org-primary">{{ primary.name }}</span><small class="org-email">{{ primary.email }}{% if not primary.is_active %} · Inativo{% endif %}</small>{% else %}<span class="org-undefined">Não definido</span>{% endif %}</td>
+                    <td data-label="Usuários">{{ stats.users }}</td><td data-label="Fazendas">{{ stats.farms }}</td>
+                    <td data-label="Status"><span class="org-badge {{ 'is-active' if organization.is_active else 'is-inactive' }}">{{ 'Ativa' if organization.is_active else 'Inativa' }}</span></td>
+                    <td data-label="Assinatura"><a class="org-manage" href="/assinaturas?organizacao={{ organization.id }}">Gerenciar {{ icon('external') }}</a></td>
+                    <td data-label="Ações"><div class="org-row-actions">
+                        <button type="button" class="org-button org-button-outline" data-org-open="{{ organization.id }}">{{ icon('eye') }} Ver detalhes</button>
+                        {% if organization.slug != 'sisfarm' %}
+                        <details class="org-actions-menu"><summary aria-label="Mais ações de {{ organization.name }}">{{ icon('more') }}</summary><div>
+                            <button type="button" data-org-open="{{ organization.id }}" data-org-target-tab="overview">Editar nome</button>
+                            <form method="post" action="/organizacoes/{{ organization.id }}/status"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="is_active" value="{{ 'false' if organization.is_active else 'true' }}"><button type="submit">{{ 'Inativar' if organization.is_active else 'Reativar' }}</button></form>
+                            <form method="post" action="/organizacoes/{{ organization.id }}/excluir" onsubmit="return confirm('Excluir esta organização? Todos os usuários e fazendas vinculados, incluindo seus dados, serão excluídos permanentemente. O histórico comercial será preservado.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="org-danger">Excluir</button></form>
+                        </div></details>{% endif %}
+                    </div></td>
+                </tr>
                 {% endfor %}
-                <p class="hidden py-4 text-center text-sm text-slate-500" data-organization-empty>Nenhuma organização encontrada.</p>
-            </div>
-        </article>
+                </tbody>
+            </table>
+        </div>
+        <p class="org-empty" data-organization-empty {% if organizations %}hidden{% endif %}>{{ 'Nenhuma organização encontrada.' if organizations else 'Nenhuma organização cadastrada.' }}</p>
     </section>
 
-    <section class="grid gap-5 xl:grid-cols-2" data-stock-fade-panel>
-        <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
-            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Vinculação</p>
-            <h3 class="mt-2 text-2xl font-semibold text-slate-900">Usuário por organização</h3>
-            <p class="mt-2 text-sm text-slate-500">Ao vincular, o usuário passa a enxergar somente as fazendas e dados dessa organização.</p>
-
-            <form method="post" action="/organizacoes/usuarios/vincular" class="mt-6 grid gap-4">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <label>
-                    <span class="mb-2 block text-sm font-medium text-slate-700">Usuário</span>
-                    <select name="user_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        <option value="">Selecione</option>
-                        {% for item in users %}
-                        <option value="{{ item.id }}">{{ item.name }} · {{ item.email }}{% if item.organization %} · {{ item.organization.name }} #{{ item.organization.id }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium text-slate-700">Organização</span>
-                    <select name="organization_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        <option value="">Selecione</option>
-                        {% for organization in organizations %}
-                        <option value="{{ organization.id }}">{{ organization.name }} · #{{ organization.id }}{% if primary_users.get(organization.id) %} · {{ primary_users[organization.id].name }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <button type="submit" class="rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white hover:bg-slate-800">
-                    Vincular usuário
-                </button>
-            </form>
-        </article>
-
-        <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
-            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Vinculação</p>
-            <h3 class="mt-2 text-2xl font-semibold text-slate-900">Fazenda por organização</h3>
-            <p class="mt-2 text-sm text-slate-500">Use este vínculo para mover ou corrigir a propriedade de uma fazenda entre clientes.</p>
-
-            <form method="post" action="/organizacoes/fazendas/vincular" class="mt-6 grid gap-4">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <label>
-                    <span class="mb-2 block text-sm font-medium text-slate-700">Fazenda</span>
-                    <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        <option value="">Selecione</option>
-                        {% for farm in farms %}
-                        <option value="{{ farm.id }}">{{ farm.name }}{% if farm.organization %} · {{ farm.organization.name }} #{{ farm.organization.id }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium text-slate-700">Organização</span>
-                    <select name="organization_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        <option value="">Selecione</option>
-                        {% for organization in organizations %}
-                        <option value="{{ organization.id }}">{{ organization.name }} · #{{ organization.id }}{% if primary_users.get(organization.id) %} · {{ primary_users[organization.id].name }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <button type="submit" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">
-                    Vincular fazenda
-                </button>
-            </form>
-        </article>
+    <section class="org-links-section">
+        <h3>{{ icon('link') }} Vinculações</h3>
+        <div class="org-links-grid">
+            <article class="org-panel org-link-card">
+                <div class="org-card-heading"><span class="org-icon">{{ icon('user') }}</span><div><h4>Vincular usuário</h4><p>Associe um usuário a uma organização para conceder acesso às suas fazendas e dados.</p></div></div>
+                <form method="post" action="/organizacoes/usuarios/vincular" class="org-link-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <label>Usuário<select name="user_id" required><option value="">Selecione</option>{% for item in users %}<option value="{{ item.id }}">{{ item.name }} · {{ item.email }}{% if item.organization %} · {{ item.organization.name }} #{{ item.organization.id }}{% endif %}</option>{% endfor %}</select></label>
+                    <label>Organização<select name="organization_id" required><option value="">Selecione</option>{% for organization in organizations %}<option value="{{ organization.id }}">{{ organization.name }} · #{{ organization.id }}{% if primary_users.get(organization.id) %} · {{ primary_users[organization.id].name }}{% endif %}</option>{% endfor %}</select></label>
+                    <button class="org-button org-button-primary">{{ icon('link') }} Vincular usuário</button>
+                </form>
+            </article>
+            <article class="org-panel org-link-card">
+                <div class="org-card-heading"><span class="org-icon">{{ icon('farm') }}</span><div><h4>Vincular fazenda</h4><p>Associe uma fazenda a uma organização para transferir ou corrigir sua propriedade.</p></div></div>
+                <form method="post" action="/organizacoes/fazendas/vincular" class="org-link-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <label>Fazenda<select name="farm_id" required><option value="">Selecione</option>{% for farm in farms %}<option value="{{ farm.id }}">{{ farm.name }}{% if farm.organization %} · {{ farm.organization.name }} #{{ farm.organization.id }}{% endif %}</option>{% endfor %}</select></label>
+                    <label>Organização<select name="organization_id" required><option value="">Selecione</option>{% for organization in organizations %}<option value="{{ organization.id }}">{{ organization.name }} · #{{ organization.id }}{% if primary_users.get(organization.id) %} · {{ primary_users[organization.id].name }}{% endif %}</option>{% endfor %}</select></label>
+                    <button class="org-button org-button-primary">{{ icon('link') }} Vincular fazenda</button>
+                </form>
+            </article>
+        </div>
     </section>
 </div>
+
+<dialog class="org-dialog org-create-dialog" data-org-create-dialog aria-labelledby="org-create-title">
+    <div class="org-modal-inner">
+        <header class="org-modal-header"><span class="org-icon">{{ icon('building') }}</span><div><h3 id="org-create-title">Nova organização</h3><p>Cadastre uma organização para o cliente.</p></div><button type="button" class="org-close" data-org-close aria-label="Fechar">{{ icon('close') }}</button></header>
+        <form method="post" action="/organizacoes" class="org-create-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label>Nome da organização<input name="name" maxlength="160" placeholder="Ex.: Fazenda São João" required></label>
+            <label class="org-check"><input type="checkbox" name="is_active" value="true" checked> Organização ativa</label>
+            <footer class="org-modal-footer"><button type="button" class="org-button org-button-outline" data-org-close>Cancelar</button><button class="org-button org-button-primary">Criar organização</button></footer>
+        </form>
+    </div>
+</dialog>
+
+{% for organization in organizations %}
+{% set primary = primary_users.get(organization.id) %}
+{% set stats = organization_stats.get(organization.id, {'users': 0, 'farms': 0}) %}
+{% set billing = billing_by_organization.get(organization.id) %}
+<dialog class="org-dialog org-detail-dialog" id="org-detail-{{ organization.id }}" aria-labelledby="org-title-{{ organization.id }}">
+    <div class="org-modal-inner">
+        <header class="org-modal-header"><span class="org-icon org-icon-large">{{ icon('building') }}</span><div><h3 id="org-title-{{ organization.id }}">{{ organization.name }} <span class="org-id">#{{ organization.id }}</span> <span class="org-badge {{ 'is-active' if organization.is_active else 'is-inactive' }}">{{ 'Ativa' if organization.is_active else 'Inativa' }}</span></h3><p>Organização · ID {{ organization.id }}</p></div><button type="button" class="org-close" data-org-close aria-label="Fechar">{{ icon('close') }}</button></header>
+        <div class="org-tabs" role="tablist" aria-label="Detalhes da organização">
+            <button type="button" role="tab" id="org-tab-overview-{{ organization.id }}" aria-controls="org-panel-overview-{{ organization.id }}" aria-selected="true" data-org-tab="overview">{{ icon('info') }} Visão geral</button>
+            <button type="button" role="tab" id="org-tab-primary-{{ organization.id }}" aria-controls="org-panel-primary-{{ organization.id }}" aria-selected="false" tabindex="-1" data-org-tab="primary">{{ icon('user') }} Responsável</button>
+            <button type="button" role="tab" id="org-tab-billing-{{ organization.id }}" aria-controls="org-panel-billing-{{ organization.id }}" aria-selected="false" tabindex="-1" data-org-tab="billing">{{ icon('card') }} Dados comerciais</button>
+            <button type="button" role="tab" id="org-tab-subscription-{{ organization.id }}" aria-controls="org-panel-subscription-{{ organization.id }}" aria-selected="false" tabindex="-1" data-org-tab="subscription">{{ icon('award') }} Assinatura</button>
+        </div>
+        <div class="org-modal-body" data-modal-scroll>
+            <section role="tabpanel" id="org-panel-overview-{{ organization.id }}" aria-labelledby="org-tab-overview-{{ organization.id }}" data-org-panel="overview">
+                <div class="org-section-title">{{ icon('info') }}<div><h4>Visão geral</h4><p>Dados da organização e vínculos cadastrados.</p></div></div>
+                <div class="org-overview-grid"><div><span>Usuários</span><strong>{{ stats.users }}</strong></div><div><span>Fazendas</span><strong>{{ stats.farms }}</strong></div><div><span>Status</span><strong>{{ 'Ativa' if organization.is_active else 'Inativa' }}</strong></div></div>
+                {% if organization.slug != 'sisfarm' %}
+                <form method="post" action="/organizacoes/{{ organization.id }}/nome" class="org-edit-name"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Nome da organização<input name="name" value="{{ organization.name }}" maxlength="160" required></label><button class="org-button org-button-primary">Salvar nome</button></form>
+                {% endif %}
+            </section>
+            <section role="tabpanel" id="org-panel-primary-{{ organization.id }}" aria-labelledby="org-tab-primary-{{ organization.id }}" data-org-panel="primary" hidden>
+                <div class="org-section-title">{{ icon('user') }}<div><h4>Responsável principal</h4><p>Usuário de referência da organização.</p></div></div>
+                <div class="org-notice">{{ icon('info') }}<span>O responsável principal e o responsável financeiro podem ser pessoas diferentes.</span></div>
+                {% if not primary and signup_suggestions.get(organization.id) %}{% set suggestion = signup_suggestions[organization.id] %}<p class="org-suggestion">Sugestão baseada no teste grátis: {{ suggestion.name }} · {{ suggestion.email }}. Confira e selecione o usuário abaixo.</p>{% endif %}
+                {% if not primary %}<p class="org-copy">Responsável principal não definido.</p>{% endif %}
+                {% if organization.slug != 'sisfarm' %}
+                <form method="post" action="/organizacoes/{{ organization.id }}/responsavel" class="org-primary-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <label>Usuário responsável<select name="primary_user_id"><option value="">Não definido</option>{% for member in users if member.organization_id == organization.id and member.is_active %}<option value="{{ member.id }}" {% if primary and primary.id == member.id %}selected{% endif %}>{{ member.name }} · {{ member.email }}{% if member.is_admin %} · Administrador{% endif %}</option>{% endfor %}{% if primary and not primary.is_active %}<option value="{{ primary.id }}" selected>{{ primary.name }} · usuário inativo</option>{% endif %}</select></label>
+                    {% if primary and not primary.is_active %}<p class="org-warning">Selecione um usuário ativo para regularizar o responsável.</p>{% endif %}
+                    <button class="org-button org-button-primary">Salvar responsável</button>
+                </form>
+                {% elif primary %}<p class="org-copy">{{ primary.name }} · {{ primary.email }}</p>{% endif %}
+                <div class="org-history"><h5>Últimas alterações</h5><ul>{% for event in responsible_history.get(organization.id, []) %}<li>{{ event.date|datetime_sp if event.date else 'Data não informada' }} · {{ event.actor or 'Sistema' }}<br>{{ event.old.nome ~ ' (' ~ event.old.email ~ ')' if event.old else 'Não definido' }} → {{ event.new.nome ~ ' (' ~ event.new.email ~ ')' if event.new else 'Não definido' }}</li>{% else %}<li>Nenhuma alteração registrada.</li>{% endfor %}</ul></div>
+            </section>
+            <section role="tabpanel" id="org-panel-billing-{{ organization.id }}" aria-labelledby="org-tab-billing-{{ organization.id }}" data-org-panel="billing" hidden>
+                <div class="org-section-title">{{ icon('card') }}<div><h4>Dados comerciais</h4><p>Informações de cobrança e identificação fiscal.</p></div></div>
+                <div class="org-notice">{{ icon('info') }}<span>Os dados cadastrais são utilizados na emissão e gerenciamento de cobranças.</span></div>
+                <form method="post" action="/organizacoes/{{ organization.id }}/dados-comerciais" class="org-billing-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <label class="org-span-all">Nome do responsável financeiro<input name="contact_name" value="{{ billing.contact_name if billing else '' }}" maxlength="160" placeholder="Informe o nome do responsável financeiro" required></label>
+                    <label>E-mail<input type="email" name="contact_email" value="{{ billing.contact_email if billing else '' }}" maxlength="254" placeholder="Ex.: financeiro@fazenda.com" required></label>
+                    <label>Telefone (opcional)<input type="tel" name="contact_phone" value="{{ billing.contact_phone or '' if billing else '' }}" maxlength="40" placeholder="Ex.: (11) 99999-0000"></label>
+                    <label>CPF ou CNPJ<input name="cpf_cnpj" value="{{ billing.cpf_cnpj or '' if billing else '' }}" {% if billing and billing.asaas_customer_id %}readonly{% endif %} placeholder="Ex.: 12.345.678/0001-90"></label>
+                    <label>CEP<input name="postal_code" value="{{ billing.postal_code or '' if billing else '' }}" placeholder="Ex.: 12345-678"></label>
+                    <label class="org-address">Logradouro<input name="address" maxlength="255" value="{{ billing.address or '' if billing else '' }}" placeholder="Ex.: Rua das Palmeiras"></label>
+                    <label class="org-address-number">Número<input name="address_number" maxlength="40" value="{{ billing.address_number or '' if billing else '' }}" placeholder="Ex.: 123"></label>
+                    <label>Complemento<input name="address_complement" maxlength="255" value="{{ billing.address_complement or '' if billing else '' }}" placeholder="Ex.: Bloco A, Sala 101"></label>
+                    <label>Bairro<input name="province" maxlength="120" value="{{ billing.province or '' if billing else '' }}" placeholder="Ex.: Centro"></label>
+                    <label>Município<input name="city" maxlength="120" value="{{ billing.city or '' if billing else '' }}" placeholder="Ex.: Ribeirão Preto"></label>
+                    <label>Estado (UF)<select name="state"><option value="">Selecione</option>{% for uf in ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'] %}<option value="{{ uf }}" {% if billing and billing.state == uf %}selected{% endif %}>{{ uf }}</option>{% endfor %}</select></label>
+                    <p class="org-billing-hint org-span-all">Município e estado ficam registrados no SiSFarm. No Asaas, a localização é identificada pelo CEP.</p>
+                    {% if billing and billing.asaas_customer_id %}<p class="org-suggestion org-span-all">Asaas {{ billing.asaas_environment or 'ambiente não informado' }}: {{ billing.asaas_customer_id }}</p>{% endif %}
+                    <footer class="org-modal-footer org-span-all">{% if not billing or not billing.asaas_customer_id %}<button type="submit" name="intent" value="consultar" class="org-button org-button-secondary">Salvar e consultar cliente no Asaas sandbox</button>{% endif %}<button type="submit" name="intent" value="salvar" class="org-button org-button-primary">Salvar dados comerciais</button></footer>
+                </form>
+            </section>
+            <section role="tabpanel" id="org-panel-subscription-{{ organization.id }}" aria-labelledby="org-tab-subscription-{{ organization.id }}" data-org-panel="subscription" hidden>
+                <div class="org-section-title">{{ icon('award') }}<div><h4>Assinatura</h4><p>Acompanhe os dados comerciais e a situação da assinatura.</p></div></div>
+                <a href="/assinaturas?organizacao={{ organization.id }}" class="org-button org-button-primary">Gerenciar assinatura {{ icon('external') }}</a>
+            </section>
+        </div>
+    </div>
+</dialog>
+{% endfor %}
 <script>
 (() => {
-    const header = document.querySelector('.stock-page-header');
-    const description = header?.querySelector('[data-sector-costs-description]');
-    const panels = document.querySelectorAll('[data-stock-fade-panel]');
-    const mobile = window.matchMedia('(max-width: 899px)');
-    let raf = null;
-    const update = () => {
-        raf = null;
-        if (!header) return;
-        const top = parseFloat(getComputedStyle(header).top) || 0;
-        const rect = header.getBoundingClientRect();
-        const current = header.classList.contains('is-compact');
-        const compact = mobile.matches && (rect.top <= top + 2 ? true : rect.top > top + 8 ? false : current);
-        header.classList.toggle('is-compact', compact);
-        if (mobile.matches) description?.setAttribute('aria-hidden', compact ? 'true' : 'false');
-        else description?.removeAttribute('aria-hidden');
-        const bottom = header.getBoundingClientRect().bottom;
-        panels.forEach((panel) => {
-            const bounds = panel.getBoundingClientRect();
-            const overlap = Math.min(Math.max(bottom - bounds.top, 0), bounds.height);
-            const feather = overlap > 0 ? Math.min(80, Math.max(22, overlap * 0.45 + 16)) : 0;
-            panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
-            panel.style.setProperty('--stock-fade-feather-end', `${(overlap + feather).toFixed(2)}px`);
-            panel.classList.toggle('stock-panel-under-header', mobile.matches && overlap > 0.02);
-        });
-    };
-    const schedule = () => { if (raf === null) raf = window.requestAnimationFrame(update); };
-    window.addEventListener('scroll', schedule, { passive: true });
-    window.addEventListener('resize', schedule);
-    mobile.addEventListener?.('change', schedule);
-    header?.addEventListener('transitionend', schedule);
-    update();
-})();
-</script>
-<script>
-(() => {
-    const input = document.querySelector('[data-organization-search]');
-    const cards = Array.from(document.querySelectorAll('[data-organization-card]'));
+    const search = document.querySelector('[data-organization-search]');
+    const status = document.querySelector('[data-org-status]');
+    const rows = Array.from(document.querySelectorAll('[data-organization-card]'));
     const empty = document.querySelector('[data-organization-empty]');
     const normalize = value => (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    input?.addEventListener('input', () => {
-        const query = normalize(input.value);
-        let visible = 0;
-        cards.forEach(card => {
-            card.hidden = !normalize(card.dataset.organizationSearchText).includes(query.replace(/^#/, ''));
-            if (!card.hidden) visible++;
+    const filter = () => {
+        const query = normalize(search?.value).replace(/^#/, '');
+        let count = 0;
+        rows.forEach(row => {
+            row.hidden = !normalize(row.dataset.organizationSearchText).includes(query) || (status.value && row.dataset.status !== status.value);
+            if (!row.hidden) count++;
         });
-        if (empty) empty.classList.toggle('hidden', visible > 0 || cards.length === 0);
+        if (empty) empty.hidden = count > 0;
+    };
+    search?.addEventListener('input', filter);
+    status?.addEventListener('change', filter);
+    let sortKey = '', ascending = true;
+    document.querySelectorAll('[data-org-sort]').forEach(button => button.addEventListener('click', () => {
+        const key = button.dataset.orgSort;
+        ascending = key === sortKey ? !ascending : true;
+        sortKey = key;
+        const sorted = [...rows].sort((a, b) => {
+            const result = ['users', 'farms'].includes(key) ? Number(a.dataset[key]) - Number(b.dataset[key]) : a.dataset[key].localeCompare(b.dataset[key], 'pt-BR', {sensitivity: 'base'});
+            return ascending ? result : -result;
+        });
+        sorted.forEach(row => document.querySelector('[data-org-rows]').appendChild(row));
+    }));
+    const selectTab = (dialog, name, focus = false) => {
+        dialog.querySelectorAll('[data-org-tab]').forEach(tab => {
+            const selected = tab.dataset.orgTab === name;
+            tab.setAttribute('aria-selected', String(selected));
+            tab.tabIndex = selected ? 0 : -1;
+            if (selected && focus) tab.focus();
+        });
+        dialog.querySelectorAll('[data-org-panel]').forEach(panel => { panel.hidden = panel.dataset.orgPanel !== name; });
+    };
+    document.querySelectorAll('[data-org-open]').forEach(button => button.addEventListener('click', () => {
+        const dialog = document.getElementById('org-detail-' + button.dataset.orgOpen);
+        button.closest('details')?.removeAttribute('open');
+        if (!dialog) return;
+        selectTab(dialog, button.dataset.orgTargetTab || 'overview');
+        dialog.showModal();
+    }));
+    document.querySelector('[data-org-create-open]')?.addEventListener('click', () => document.querySelector('[data-org-create-dialog]')?.showModal());
+    document.querySelectorAll('.org-dialog').forEach(dialog => {
+        dialog.querySelectorAll('[data-org-close]').forEach(button => button.addEventListener('click', () => dialog.close()));
+        const tabs = Array.from(dialog.querySelectorAll('[data-org-tab]'));
+        tabs.forEach((tab, index) => {
+            tab.addEventListener('click', () => selectTab(dialog, tab.dataset.orgTab));
+            tab.addEventListener('keydown', event => {
+                if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+                selectTab(dialog, tabs[next].dataset.orgTab, true);
+            });
+        });
     });
     const id = new URLSearchParams(location.search).get('organizacao');
-    if (/^[1-9]\d*$/.test(id || '')) {
-        document.getElementById('organizacao-' + id)?.scrollIntoView({block: 'center'});
-    }
+    if (/^[1-9]\d*$/.test(id || '')) document.getElementById('organizacao-' + id)?.scrollIntoView({block: 'center'});
 })();
 </script>
 {% endblock %}
