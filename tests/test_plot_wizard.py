@@ -167,3 +167,39 @@ def test_plot_area_exceeding_farm_area_is_blocked_and_large_area_with_thousands_
     assert created.plant_count == 1500
     assert created.irrigation_line_count == 1200
     assert float(created.irrigation_line_length_meters) == 1050.25
+
+
+def test_plot_edit_renders_attachments_clip_button_and_modal(plot_env):
+    from fastapi import BackgroundTasks
+    from app.models.plot_attachment import PlotAttachment
+
+    _create(plot_env, name="Setor Com Anexos", include_in_season=None)
+    env = plot_env.env
+    plot = env.db.query(Plot).filter(Plot.name == "Setor Com Anexos").one()
+    att = PlotAttachment(
+        plot_id=plot.id,
+        filename="laudo-solo-2026.pdf",
+        content_type="application/pdf",
+        file_data=b"%PDF-1.4 teste",
+    )
+    env.db.add(att)
+    env.db.commit()
+    env.db.refresh(att)
+
+    html = env.routes.plots_page(
+        env.request(f"/setores?edit_id={plot.id}"),
+        BackgroundTasks(),
+        edit_id=plot.id,
+        db=env.db,
+        user=env.user,
+        csrf_token="tok",
+    ).body.decode()
+
+    assert "data-stw-attachments" not in html
+    assert "stw-clip-btn has-files" in html
+    assert 'data-stw-att-count>1<' in html
+    assert "data-stw-att-dialog" in html
+    assert "laudo-solo-2026.pdf" in html
+    assert f"/setores/anexos/{att.id}" in html
+    assert f"/setores/{plot.id}/anexos/{att.id}/excluir" in html
+    assert "Ver 1 anexo salvo" in html

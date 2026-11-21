@@ -618,7 +618,6 @@
 
     // ---------- navegação ----------
     const stepsEl = $('[data-stw-steps]');
-    const attachments = dialog?.querySelector('[data-stw-attachments]');
     const show = () => {
         $$('[data-stw-panel]').forEach((panel) => { panel.hidden = Number(panel.dataset.stwPanel) !== step; });
         $$('.szw-step').forEach((li, i) => {
@@ -637,7 +636,6 @@
         $('[data-stw-back]').disabled = step === 0;
         $('[data-stw-next]').hidden = last;
         $('[data-stw-submit]').hidden = !last;
-        if (attachments) attachments.hidden = step !== 3;
         if (step === 1) window.setTimeout(() => { editor()?.invalidate?.(); if (!editor()?.pointCount?.()) editor()?.fit?.(); syncPrompt(); }, 80);
         refresh();
     };
@@ -733,6 +731,109 @@
     };
     if (!new URLSearchParams(window.location.search).get('voltar')) restoreDraft();
     if (hasPinCoords() && geometryPoints().length < 3) map.pointOnly = true;
+
+    // ---------- modal de anexos do setor ----------
+    const attDialog = dialog?.querySelector('[data-stw-att-dialog]');
+    if (attDialog) {
+        const attList = attDialog.querySelector('[data-stw-att-list]');
+        const attEmpty = attDialog.querySelector('[data-stw-att-empty]');
+        const attSubtitle = attDialog.querySelector('[data-stw-att-subtitle]');
+        const clipBtn = dialog.querySelector('.stw-clip-btn');
+        const clipBadge = dialog.querySelector('[data-stw-att-count]');
+        const inlineLink = form.querySelector('[data-stw-att-inline]');
+        const inlineText = form.querySelector('[data-stw-att-inline-text]');
+
+        const closeAllAttConfirms = () => {
+            attDialog.querySelectorAll('[data-stw-att-item]').forEach((item) => {
+                item.classList.remove('is-confirming');
+                const bar = item.querySelector('[data-stw-att-confirm]');
+                if (bar) bar.hidden = true;
+            });
+        };
+
+        const syncAttCounters = () => {
+            const count = attList ? attList.querySelectorAll('[data-stw-att-item]').length : 0;
+            if (clipBadge) clipBadge.textContent = String(count);
+            if (clipBtn) clipBtn.classList.toggle('has-files', count > 0);
+            if (attEmpty) attEmpty.hidden = count > 0;
+            if (attSubtitle) {
+                const plotName = attSubtitle.dataset.plotName || 'Setor';
+                const label = count === 0
+                    ? 'Nenhum arquivo salvo'
+                    : (count === 1 ? '1 arquivo salvo' : `${count} arquivos salvos`);
+                attSubtitle.textContent = `${plotName} · ${label}`;
+            }
+            if (inlineLink) {
+                inlineLink.hidden = count === 0;
+                if (inlineText && count > 0) {
+                    inlineText.textContent = count === 1 ? 'Ver 1 anexo salvo' : `Ver ${count} anexos salvos`;
+                }
+            }
+        };
+
+        dialog.querySelectorAll('[data-stw-att-open]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                closeAllAttConfirms();
+                syncAttCounters();
+                if (!attDialog.open) attDialog.showModal();
+            });
+        });
+
+        attDialog.querySelectorAll('[data-stw-att-close]').forEach((btn) => {
+            btn.addEventListener('click', () => attDialog.close());
+        });
+
+        attDialog.addEventListener('click', (event) => {
+            if (event.target === attDialog) { attDialog.close(); return; }
+            const askBtn = event.target.closest('[data-stw-att-ask-del]');
+            if (askBtn) {
+                const item = askBtn.closest('[data-stw-att-item]');
+                const bar = item?.querySelector('[data-stw-att-confirm]');
+                if (!item || !bar) return;
+                const willOpen = bar.hidden;
+                closeAllAttConfirms();
+                if (willOpen) {
+                    item.classList.add('is-confirming');
+                    bar.hidden = false;
+                }
+                return;
+            }
+            if (event.target.closest('[data-stw-att-cancel-del]')) {
+                closeAllAttConfirms();
+            }
+        });
+
+        attDialog.addEventListener('submit', async (event) => {
+            const delForm = event.target.closest('[data-stw-att-del-form]');
+            if (!delForm) return;
+            event.preventDefault();
+            const item = delForm.closest('[data-stw-att-item]');
+            const submitBtn = delForm.querySelector('[data-stw-att-confirm-submit]');
+            const msgEl = item?.querySelector('[data-stw-att-confirm-msg]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Excluindo...';
+            }
+            try {
+                const resp = await fetch(delForm.action, {
+                    method: 'POST',
+                    body: new FormData(delForm),
+                    credentials: 'same-origin',
+                });
+                if (!resp.ok) throw new Error('Falha ao excluir anexo');
+                item?.remove();
+                syncAttCounters();
+            } catch (_err) {
+                if (msgEl) msgEl.textContent = 'Não foi possível excluir agora. Tente novamente.';
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Excluir';
+                }
+            }
+        });
+
+        syncAttCounters();
+    }
 
     syncMapToolUi();
     renderColor();

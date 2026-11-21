@@ -1,5 +1,7 @@
 {# Novo setor / Editar setor — fiel ao canvas aprovado "Novo setor — assistente em 5 passos". #}
 {% set ep = edit_plot %}
+{% set ep_attachments = (ep.attachments|sort(attribute='id', reverse=True)) if ep else [] %}
+{% set ep_att_count = ep_attachments|length %}
 {% set single_farm = plots_farm_scope_locked or (farms|length == 1) %}
 {% set the_farm_id = (ep.farm_id if ep else (plots_scope_active_farm_id if plots_farm_scope_locked else (selected_farm_id or (farms[0].id if farms|length == 1 else '')))) %}
 {% set the_farm_name = (ep.farm.name if ep and ep.farm else (plots_locked_farm_name if plots_farm_scope_locked else (farms[0].name if farms|length == 1 else ''))) %}
@@ -14,6 +16,13 @@
                 </div>
             </div>
             <div class="szp-actions">
+                {% if ep %}
+                <button type="button" class="stw-clip-btn{% if ep_att_count > 0 %} has-files{% endif %}" data-stw-att-open aria-label="Ver anexos do setor">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                    <span class="stw-clip-label">Anexos</span>
+                    <span class="stw-clip-badge" data-stw-att-count>{{ ep_att_count }}</span>
+                </button>
+                {% endif %}
                 <button type="button" class="szw-btn" data-plots-launch-close>Cancelar</button>
                 <button type="button" class="szw-btn" data-stw-save-draft>Salvar rascunho</button>
                 <button type="button" class="modal-close-button" aria-label="Fechar" data-plots-launch-close>
@@ -287,7 +296,15 @@
                                             <span class="szw-grow"><strong data-stw-laudo-name></strong><small>Fica nos anexos do setor</small></span>
                                             <button type="button" class="szw-link stw-remove" data-stw-laudo-clear>Remover</button>
                                         </div>
-                                        <small data-stw-laudo-hint>Sem análise, a recomendação de adubação deste setor fica pendente.</small>
+                                        <div class="stw-laudo-meta">
+                                            <small data-stw-laudo-hint>Sem análise, a recomendação de adubação deste setor fica pendente.</small>
+                                            {% if ep %}
+                                            <button type="button" class="stw-inline-clip" data-stw-att-open data-stw-att-inline{% if ep_att_count == 0 %} hidden{% endif %}>
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                                                <span data-stw-att-inline-text>{% if ep_att_count == 1 %}Ver 1 anexo salvo{% else %}Ver {{ ep_att_count }} anexos salvos{% endif %}</span>
+                                            </button>
+                                            {% endif %}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -335,17 +352,103 @@
                     </aside>
                 </div>
             </form>
-            {% if ep %}
-            <div class="stw-attachments" data-stw-attachments hidden>
-                {% set attachment_owner = ep %}
-                {% set attachment_view_base = '/setores/anexos' %}
-                {% set attachment_delete_base = '/setores/' ~ ep.id ~ '/anexos' %}
-                <p class="szw-overline">Arquivos já anexados ao setor</p>
-                {% include "partials/attachment_list.html" %}
-            </div>
-            {% endif %}
         </div>
     </div>
+    {% if ep %}
+    <dialog class="stw-att-dialog" data-stw-att-dialog aria-labelledby="stw-att-title">
+        <div class="stw-att-box">
+            <header class="stw-att-head">
+                <div class="stw-att-head-left">
+                    <span class="stw-att-head-ico" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                    </span>
+                    <div class="stw-att-head-txt">
+                        <h3 id="stw-att-title">Anexos do setor</h3>
+                        <p data-stw-att-subtitle data-plot-name="{{ ep.name }}">{{ ep.name }} · {% if ep_att_count == 0 %}Nenhum arquivo salvo{% elif ep_att_count == 1 %}1 arquivo salvo{% else %}{{ ep_att_count }} arquivos salvos{% endif %}</p>
+                    </div>
+                </div>
+                <button type="button" class="modal-close-button" aria-label="Fechar anexos" data-stw-att-close>
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </header>
+            <div class="stw-att-body">
+                <div class="stw-att-list" data-stw-att-list>
+                    {% for attachment in ep_attachments %}
+                    {% set ct = (attachment.content_type or '')|lower %}
+                    {% set fn = (attachment.filename or '')|lower %}
+                    {% if 'pdf' in ct or fn.endswith('.pdf') %}
+                        {% set att_kind = 'pdf' %}
+                        {% set att_label = 'Laudo · PDF' %}
+                    {% elif ct.startswith('image/') or fn.endswith('.jpg') or fn.endswith('.jpeg') or fn.endswith('.png') or fn.endswith('.webp') %}
+                        {% set att_kind = 'img' %}
+                        {% set att_label = 'Imagem' %}
+                    {% elif 'geo' in ct or fn.endswith('.geojson') or fn.endswith('.kml') %}
+                        {% set att_kind = 'map' %}
+                        {% set att_label = 'Perímetro · Mapa' %}
+                    {% elif 'json' in ct or fn.endswith('.json') %}
+                        {% set att_kind = 'map' %}
+                        {% set att_label = 'Arquivo de mapa · JSON' %}
+                    {% else %}
+                        {% set att_kind = 'doc' %}
+                        {% set att_label = 'Arquivo' %}
+                    {% endif %}
+                    <article class="stw-att-item" data-stw-att-item>
+                        <div class="stw-att-item-row">
+                            <span class="stw-att-file-ico is-{{ att_kind }}" aria-hidden="true">
+                                {% if att_kind == 'pdf' or att_kind == 'doc' %}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                {% elif att_kind == 'img' %}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                {% else %}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+                                {% endif %}
+                            </span>
+                            <div class="stw-att-file-info">
+                                <a href="/setores/anexos/{{ attachment.id }}" target="_blank" rel="noopener noreferrer" class="stw-att-file-name" title="{{ attachment.filename }}">{{ attachment.filename }}</a>
+                                <div class="stw-att-file-meta">
+                                    <span class="stw-att-type-pill">{{ att_label }}</span>
+                                    <span>{{ attachment.content_type }}</span>
+                                </div>
+                            </div>
+                            <div class="stw-att-item-actions">
+                                <a href="/setores/anexos/{{ attachment.id }}" target="_blank" rel="noopener noreferrer" class="stw-att-icon-btn" title="Abrir arquivo em nova guia" aria-label="Abrir {{ attachment.filename }}">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                                </a>
+                                {% if can_write_page is not defined or can_write_page %}
+                                <button type="button" class="stw-att-icon-btn is-danger" data-stw-att-ask-del title="Excluir anexo" aria-label="Excluir {{ attachment.filename }}">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% if can_write_page is not defined or can_write_page %}
+                        <div class="stw-att-confirm-bar" role="alert" data-stw-att-confirm hidden>
+                            <span data-stw-att-confirm-msg>Excluir este arquivo permanentemente?</span>
+                            <form method="post" action="/setores/{{ ep.id }}/anexos/{{ attachment.id }}/excluir" class="stw-att-confirm-btns" data-stw-att-del-form>
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="button" class="stw-att-mini-btn" data-stw-att-cancel-del>Cancelar</button>
+                                <button type="submit" class="stw-att-mini-btn is-danger" data-stw-att-confirm-submit>Excluir</button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </article>
+                    {% endfor %}
+                </div>
+                <div class="stw-att-empty" data-stw-att-empty{% if ep_att_count > 0 %} hidden{% endif %}>
+                    <span class="stw-att-empty-ico" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                    </span>
+                    <strong>Nenhum anexo salvo neste setor</strong>
+                    <p>Quando você enviar uma análise de solo no passo Manejo ou importar um arquivo de mapa, ele aparecerá aqui.</p>
+                </div>
+            </div>
+            <footer class="stw-att-foot">
+                <span>Laudos e arquivos de perímetro enviados ficam guardados aqui.</span>
+                <button type="button" class="szw-btn" data-stw-att-close>Fechar</button>
+            </footer>
+        </div>
+    </dialog>
+    {% endif %}
     <dialog class="stw-confirm" data-stw-area-dialog aria-labelledby="stw-div-t">
         <span class="stw-confirm-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></span>
         <h3 id="stw-div-t">As áreas não batem</h3>
