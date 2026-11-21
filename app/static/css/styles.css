@@ -9168,15 +9168,72 @@ html.stw-lock, html.stw-lock body { overflow: hidden; }
 .stw-aside-sw { width: 14px; height: 14px; flex: none; border-radius: 4px; border: 2px solid transparent; }
 .stw-attachments { margin-top: 16px; padding: 16px; background: #fff; border: 1px solid #e3e8e2; border-radius: 18px; }
 .stw-attachments[hidden] { display: none; }
-.stw-confirm { max-width: 440px; width: calc(100% - 32px); padding: 22px; border: 0; border-radius: 18px; box-shadow: 0 20px 48px rgba(15, 21, 19, .3); color: #16201a; }
+.stw-confirm { max-width: 440px; width: calc(100% - 32px); padding: 24px; border: 0; border-radius: 18px; box-shadow: 0 20px 48px rgba(15, 21, 19, .3); color: #16201a; }
 .stw-confirm::backdrop { background: rgba(15, 21, 19, .45); }
-.stw-confirm h3 { margin: 12px 0 8px; font-size: 18px; font-weight: 700; }
-.stw-confirm p { margin: 0 0 14px; font-size: 13.5px; color: #5b6660; line-height: 1.5; }
+.stw-confirm h3 { margin: 12px 0 8px; font-size: 18px; font-weight: 700; color: #16201a; letter-spacing: -.01em; }
+.stw-confirm p { margin: 0 0 16px; font-size: 13.5px; color: #5b6660; line-height: 1.5; }
 .stw-confirm-ico { width: 44px; height: 44px; border-radius: 12px; background: #fff6e5; color: #8a5a00; display: grid; place-items: center; }
 .stw-confirm-ico svg { width: 22px; height: 22px; }
 .stw-confirm-actions { display: flex; flex-direction: column; gap: 8px; }
-.stw-confirm .szw-btn-primary { background: #446a36; border-color: #446a36; color: #fff; }
-.stw-confirm .stw-plain { border: 0; }
+
+/* Botões do modal de confirmação com feedback visual nítido e acessível */
+.stw-confirm .szw-btn {
+    cursor: pointer;
+    min-height: 44px;
+    padding: 0 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    justify-content: center;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+.stw-confirm .szw-btn:focus-visible {
+    outline: 2px solid #9bcb6b;
+    outline-offset: 2px;
+}
+.stw-confirm .szw-btn:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+/* 1. Botão primário (Usar a área do mapa) */
+.stw-confirm .szw-btn-primary {
+    background: #446a36;
+    border: 1px solid #446a36;
+    color: #ffffff;
+    box-shadow: 0 1px 2px rgba(41, 65, 39, .15);
+}
+.stw-confirm .szw-btn-primary:hover:not(:disabled) {
+    background: #3a5c2e !important;
+    border-color: #3a5c2e !important;
+    color: #ffffff !important;
+    box-shadow: 0 3px 8px rgba(41, 65, 39, .25);
+}
+
+/* 2. Botão secundário (Manter a informada) */
+.stw-confirm .szw-btn:not(.szw-btn-primary):not(.stw-plain) {
+    background: #ffffff;
+    border: 1px solid #d6ddd5;
+    color: #16201a;
+}
+.stw-confirm .szw-btn:not(.szw-btn-primary):not(.stw-plain):hover:not(:disabled) {
+    background: #f6f8f5 !important;
+    border-color: #b8c4b6 !important;
+    color: #16201a !important;
+    box-shadow: 0 2px 6px rgba(15, 21, 19, .06);
+}
+
+/* 3. Botão terciário / plain (Voltar e ajustar o desenho) */
+.stw-confirm .stw-plain {
+    background: transparent;
+    border: 1px solid transparent;
+    color: #5b6660;
+}
+.stw-confirm .stw-plain:hover:not(:disabled) {
+    background: #eef3eb !important;
+    border-color: #dbe5d8 !important;
+    color: #294127 !important;
+}
 .stw .szw-head h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.01em; }
 .stw .stw-fullmap-open { display: none; }
 @media (max-width: 1023px) { .stw .szw-side { display: flex; } }
