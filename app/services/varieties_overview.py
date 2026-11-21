@@ -60,7 +60,17 @@ def rust_key(value) -> str | None:
 
 def plot_variety_id(plot) -> int | None:
     planting = getattr(plot, "active_planting", None)
-    return (planting.variety_id if planting and planting.variety_id else None) or plot.variety_id
+    return (planting.variety_id if planting and planting.variety_id else None) or getattr(plot, "variety_id", None)
+
+
+NO_VARIETY_COLOR = "#9AA59E"
+
+
+def variety_colors(varieties) -> dict[int, str]:
+    """Cor de cada variedade: a salva no cadastro ou, sem ela, uma livre da paleta (mesma regra em Variedades e no Mapa)."""
+    used = {v.map_color for v in varieties if v.map_color}
+    free = [c for c, _ in PALETTE if c not in used] or [c for c, _ in PALETTE]
+    return {v.id: v.map_color or free[index % len(free)] for index, v in enumerate(varieties)}
 
 
 def _planting_value(plot, attr):
@@ -127,11 +137,10 @@ def build_varieties_overview(db, varieties, plots, active_season=None, today: da
     last_season = seasons[-1] if seasons else None
     active_plot_ids = {p.id for p in getattr(active_season, "plots", None) or []}
 
-    used_colors = {v.map_color for v in varieties if v.map_color}
-    free_palette = [c for c, _ in PALETTE if c not in used_colors] or [c for c, _ in PALETTE]
+    colors = variety_colors(varieties)
     items = []
-    for index, variety in enumerate(varieties):
-        color = variety.map_color or free_palette[index % len(free_palette)]
+    for variety in varieties:
+        color = colors[variety.id]
         vplots = sorted((p for p in plots if plot_variety_id(p) == variety.id), key=lambda p: p.name or "")
         area = sum(_num(p.area_hectares) for p in vplots)
         plants = int(sum(_num(_planting_value(p, "plant_count")) for p in vplots))

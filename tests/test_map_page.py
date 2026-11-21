@@ -36,3 +36,18 @@ def test_map_page_data_tolerates_invalid_geometry():
     data = _map_page_data("", [broken], {})
     assert data["map_kpis"]["mapped"] == 0
     assert data["map_kml_href"] is None
+
+
+def test_map_page_data_uses_variety_color_and_active_planting():
+    v1 = NS(id=7, name="Arara", map_color="#C99A1E")
+    v2 = NS(id=8, name="Topázio", map_color=None)
+    plot = _plot(1, 10, 400)
+    plot.variety_id = 8
+    plot.active_planting = NS(variety_id=7)
+    loose = _plot(2, 5, None)
+    loose.variety = None
+    loose.variety_id = None
+    data = _map_page_data("", [plot, loose], {}, [v1, v2])
+    first, second = data["map_plots"]
+    assert first["variety"] == "Arara" and first["variety_id"] == 7 and first["variety_color"] == "#C99A1E"
+    assert second["variety"] == "Sem variedade" and second["variety_id"] is None and second["variety_color"] == "#9AA59E"

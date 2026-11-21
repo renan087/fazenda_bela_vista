@@ -6374,6 +6374,43 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .fm-label b { display: block; font-size: .8125rem; font-weight: 700; }
 .fm-label span { display: block; font-size: .6875rem; color: #d5ddd7; }
 .fm-label.is-on { background: #16201a; box-shadow: 0 0 0 2px #fff; }
+.fm-label.is-dim { opacity: .35; }
+.fm-legend { max-height: calc(100% - 7rem); overflow-y: auto; scrollbar-width: none; }
+.fm-legend::-webkit-scrollbar { display: none; }
+.fm-leg { display: flex; align-items: center; gap: .5rem; min-height: 2.25rem; margin: 0 -.375rem; padding: 0 .375rem; border-radius: .5rem; text-align: left; font-size: .75rem; font-weight: 600; color: var(--sf-ink, #16201a); cursor: pointer; }
+.fm-leg span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-leg:hover { background: #f3f5f2; }
+.fm-leg.is-on { background: #eef3eb; }
+.fm-leg.is-dim { opacity: .5; }
+.fm-leg:focus-visible, .fm-leg-all:focus-visible, .fm-vf-x:focus-visible { outline: 2px solid #446a36; outline-offset: 1px; }
+.fm-leg-all { margin-top: .25rem; min-height: 2.25rem; border-radius: .5rem; border: 1px solid #e3e8e2; background: #fff; font-size: .75rem; font-weight: 600; color: #16201a; cursor: pointer; }
+.fm-var-head { display: flex; align-items: center; gap: .5rem; margin: 0; padding: .75rem 1rem .375rem; border-top: 1px solid #eef1ed; font-size: .6875rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #5b6660; }
+.fm-var-head:first-of-type { border-top: 0; }
+.fm-var-head i { flex: none; width: .625rem; height: .625rem; border: 2px solid; border-radius: 3px; box-sizing: border-box; }
+.fm-var-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-var-head b { font-weight: 600; text-transform: none; letter-spacing: 0; }
+.fm-var-head.is-var-hidden, .fm-item.is-var-hidden, .fm-unmapped.is-var-hidden { display: none; }
+.fm-vf { display: flex; flex-direction: column; gap: .625rem; margin: .5rem .75rem .75rem; padding: .875rem; border: 1px solid #e3e8e2; border-radius: .875rem; background: #f6f8f5; }
+.fm-vf[hidden] { display: none; }
+.fm-vf-head { display: flex; align-items: flex-start; gap: .625rem; }
+.fm-vf-head i { flex: none; width: 1rem; height: 1rem; margin-top: .125rem; border-radius: 4px; box-sizing: border-box; }
+.fm-vf-head div { flex: 1; min-width: 0; }
+.fm-vf-head strong { display: block; font-size: .9375rem; }
+.fm-vf-head span { display: block; margin-top: .125rem; font-size: .75rem; color: #5b6660; font-variant-numeric: tabular-nums; }
+.fm-vf-x { flex: none; width: 2.25rem; height: 2.25rem; margin: -.375rem -.375rem 0 0; border-radius: .5rem; font-size: 1.25rem; line-height: 1; color: #5b6660; cursor: pointer; }
+.fm-vf-x:hover { background: #fff; }
+.fm-vf .sf-btn { justify-content: center; }
+@media (max-width: 639px) {
+    .fm-legend { flex-direction: row; flex-wrap: nowrap; gap: .375rem; left: 0; right: 0; max-height: none; overflow-x: auto; overflow-y: hidden; padding: .375rem .875rem; border-radius: 0; background: transparent; box-shadow: none; }
+    .fm-leg, .fm-leg-all { flex: none; }
+    .fm-legend p, .fm-leg b { display: none; }
+    .fm-leg, .fm-leg-all { margin: 0; min-height: 2.75rem; padding: 0 .75rem; border-radius: 999px; background: rgba(255, 255, 255, .96); box-shadow: 0 2px 8px rgba(15, 21, 19, .2); }
+    .fm-leg span { flex: none; max-width: 9rem; }
+    .fm-leg.is-on { background: #16201a; color: #fff; }
+    .fm-leg.is-dim { display: none; }
+    .fm-leg-all { margin-top: 0; border: 0; }
+    .fm-vf-x { width: 2.75rem; height: 2.75rem; }
+}
 .fm-edit-bar { position: absolute; z-index: 500; left: 50%; bottom: 1.5rem; transform: translateX(-50%); display: flex; align-items: center; gap: .375rem; padding: .375rem; border-radius: .875rem; background: #fff; box-shadow: 0 6px 24px rgba(15, 21, 19, .28); }
 .fm-edit-bar button { display: inline-flex; align-items: center; gap: .5rem; min-height: 2.5rem; padding: 0 .875rem; border: 0; border-radius: .625rem; background: transparent; font-size: .8125rem; font-weight: 600; color: #3c4741; cursor: pointer; white-space: nowrap; }
 .fm-edit-bar button:hover:not(:disabled) { background: #f3f5f2; }

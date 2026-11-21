@@ -10,7 +10,7 @@
             <p class="sf-page-subtitle">As cultivares de café da propriedade, onde estão plantadas e como produzem.</p>
         </div>
         <div class="vr-head-actions">
-            <a href="/mapa" class="sf-btn sf-btn-secondary">
+            <a href="/mapa?cor=variedade" class="sf-btn sf-btn-secondary">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3Z"/><path d="M9 3v15M15 6v15"/></svg>
                 Ver no mapa
             </a>
@@ -209,7 +209,7 @@
                             {% if item.used %}
                             <a href="/setores?variety_id={{ v.id }}">{{ item.plots|length }} setor(es)</a>
                             {% if item.in_active_season %}<a href="/safras">Safra ativa · {{ item.in_active_season }} setor(es)</a>{% endif %}
-                            <a href="/mapa">Mapa</a>
+                            <a href="/mapa?cor=variedade&amp;variedade={{ v.id }}">Mapa</a>
                             <a href="/producao">Colheita</a>
                             {% else %}
                             <span class="vr-muted">Nenhum módulo ainda.</span>
@@ -230,7 +230,7 @@
                         {% endfor %}
                     </ul>
                     <div class="vr-panel-actions">
-                        <a href="/mapa" class="sf-btn sf-btn-secondary vr-grow">Ver no mapa</a>
+                        <a href="/mapa?cor=variedade&amp;variedade={{ v.id }}" class="sf-btn sf-btn-secondary vr-grow">Ver no mapa</a>
                         <a href="/variedades?edit_id={{ v.id }}&passo=2" class="sf-btn sf-btn-secondary vr-grow">Vincular outro setor</a>
                     </div>
                     {% else %}
@@ -392,7 +392,7 @@
                         </label>
                         {% endfor %}
                     </div>
-                    <p class="vr-help">Usada nos gráficos e no calendário desta página. Cores esmaecidas já são de outra variedade.</p>
+                    <p class="vr-help">Pinta os setores desta variedade no Mapa (opção “Por variedade”). Cores esmaecidas já são de outra variedade.</p>
                 </fieldset>
                 <fieldset>
                     <legend class="vr-label">Perfil na xícara</legend>

@@ -117,6 +117,8 @@ from app.services.varieties_overview import (
     build_varieties_overview,
     color_options,
     plot_variety_id,
+    variety_colors,
+    NO_VARIETY_COLOR,
 )
 from app.services.season_goals import (
     closing_rows,
@@ -23545,8 +23547,11 @@ def soil_recommendation_pdf_download(
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
-def _map_page_data(geojson: str, plots: list, scope: dict) -> dict:
+def _map_page_data(geojson: str, plots: list, scope: dict, varieties: list | None = None) -> dict:
     """Setores, fazendas e indicadores da pagina Mapa da Fazenda."""
+    varieties = varieties or []
+    variety_by_id = {v.id: v for v in varieties}
+    colors = variety_colors(varieties)
     try:
         features = json.loads(geojson or "{}").get("features") or []
     except (TypeError, ValueError):
@@ -23562,11 +23567,15 @@ def _map_page_data(geojson: str, plots: list, scope: dict) -> dict:
                 geometry = None
         area = float(plot.area_hectares or 0)
         estimated = float(plot.estimated_yield_sacks or 0)
+        variety_id = plot_variety_id(plot)
+        variety = variety_by_id.get(variety_id) or getattr(plot, "variety", None)
         map_plots.append({
             "id": plot.id,
             "name": plot.name,
             "farm": plot.farm.name if plot.farm else "Sem fazenda",
-            "variety": plot.variety.name if plot.variety else "Sem variedade",
+            "variety": variety.name if variety else "Sem variedade",
+            "variety_id": getattr(variety, "id", None),
+            "variety_color": colors.get(getattr(variety, "id", None), NO_VARIETY_COLOR) if variety else NO_VARIETY_COLOR,
             "area": area,
             "estimated": estimated,
             "yield": (estimated / area) if area and estimated else None,
@@ -23624,7 +23633,12 @@ def map_page(
             csrf_token,
             "map",
             _repo=repo,
-            **_map_page_data(geojson, repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids), scope),
+            **_map_page_data(
+                geojson,
+                repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
+                scope,
+                repo.list_varieties(organization_id=scope.get("active_organization_id")),
+            ),
             edit_plot=edit_plot,
             edit_plot_geometry=edit_plot.boundary_geojson if edit_plot and edit_plot.boundary_geojson else None,
             google_maps_web_key=google_maps_web_key,

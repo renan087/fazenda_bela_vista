@@ -127,8 +127,9 @@
                 <label class="fm-search">{{ ic('search', 15) }}<input type="search" placeholder="Buscar setor ou variedade" aria-label="Buscar setor ou variedade" data-map-search></label>
             </div>
             <div class="fm-side-body" data-fm-list>
+                <div class="fm-vf" data-fm-var-focus hidden></div>
                 {% for plot in map_plots if plot.geometry %}
-                <div class="fm-item" data-fm-item="{{ plot.id }}" data-map-plot-search-text="{{ plot.name }} {{ plot.variety }} {{ plot.farm }}">
+                <div class="fm-item" data-fm-item="{{ plot.id }}" data-fm-var="{{ plot.variety_id or 'none' }}" data-fm-var-name="{{ plot.variety }}" data-fm-var-color="{{ plot.variety_color }}" data-map-plot-search-text="{{ plot.name }} {{ plot.variety }} {{ plot.farm }}">
                     <button type="button" class="fm-row" aria-expanded="false" data-fm-pick="{{ plot.id }}">
                         <span class="fm-sw" data-fm-sw="{{ plot.id }}"></span>
                         <span class="fm-row-main"><span class="fm-row-name">{{ plot.name }}</span><span class="fm-row-meta">{{ plot.variety }} · {{ plot.area|decimal_br(1) }} ha</span></span>
@@ -155,7 +156,7 @@
                 </div>
                 {% endif %}
                 {% for plot in map_unmapped %}
-                <div class="fm-unmapped" data-fm-item-unmapped data-map-plot-search-text="{{ plot.name }} {{ plot.variety }} {{ plot.farm }}">
+                <div class="fm-unmapped" data-fm-item-unmapped data-fm-var="{{ plot.variety_id or 'none' }}" data-fm-var-name="{{ plot.variety }}" data-fm-var-color="{{ plot.variety_color }}" data-map-plot-search-text="{{ plot.name }} {{ plot.variety }} {{ plot.farm }}">
                     <span class="fm-sw fm-sw-empty"></span>
                     <span class="fm-row-main"><span class="fm-row-name">{{ plot.name }}</span><span class="fm-row-meta">Sem perímetro · {{ plot.area|decimal_br(1) }} ha no cadastro</span></span>
                     <a href="/mapa?edit_plot_id={{ plot.id }}">Desenhar</a>
@@ -186,10 +187,26 @@
     // ---------- Cores ----------
     const PAL = [['#2563eb', '#93c5fd'], ['#d97706', '#fcd34d'], ['#7c3aed', '#c4b5fd'], ['#0891b2', '#67e8f9'], ['#be123c', '#fda4af'], ['#4d7c0f', '#bef264'],
                  ['#c2410c', '#fdba74'], ['#0f766e', '#5eead4'], ['#a21caf', '#f0abfc'], ['#4338ca', '#a5b4fc'], ['#15803d', '#86efac'], ['#b45309', '#fde68a']];
-    const varieties = [...new Set(PLOTS.map((p) => p.variety))];
+    const PARAMS = new URLSearchParams(window.location.search);
+    if (PARAMS.get('cor') === 'variedade') store.set('sf-map-color', 'var');
+    if (PARAMS.get('cor') === 'setor') store.set('sf-map-color', 'setor');
+    const keyOf = (p) => (p.variety_id == null ? 'none' : String(p.variety_id));
+    // Variedades na ordem da maior área; "Sem variedade" sempre no fim.
+    const varGroups = (() => {
+        const m = new Map();
+        PLOTS.forEach((p) => {
+            const k = keyOf(p);
+            if (!m.has(k)) m.set(k, { key: k, name: p.variety, color: p.variety_color || '#9AA59E', area: 0, plots: [] });
+            m.get(k).area += p.area;
+            m.get(k).plots.push(p);
+        });
+        return [...m.values()].sort((a, b) => (a.key === 'none') - (b.key === 'none') || b.area - a.area);
+    })();
     let colorMode = store.get('sf-map-color') === 'var' ? 'var' : 'setor';
+    let focusVar = null;
+    let engineRef = null;
     let baseMode = store.get('sf-map-base') === 'map' ? 'map' : 'sat';
-    const colorOf = (p) => colorMode === 'var' ? PAL[varieties.indexOf(p.variety) % PAL.length] : PAL[PLOTS.indexOf(p) % PAL.length];
+    const colorOf = (p) => colorMode === 'var' ? [p.variety_color || '#9AA59E', p.variety_color || '#9AA59E'] : PAL[PLOTS.indexOf(p) % PAL.length];
 
     // ---------- Geometria ----------
     const ringToPoints = (ring) => (ring || []).slice(0, -1).map((c) => ({ lat: c[1], lng: c[0] }));
@@ -247,10 +264,12 @@
             clickable: !!s.clickable, zIndex: s.z || 1 });
         return {
             polygon(paths, style, onClick) {
-                const poly = new g.Polygon({ paths, map, ...gStyle(style) });
-                if (style.dashed) poly.setOptions({ strokeOpacity: 0, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: .85, strokeColor: '#fff', scale: 2 }, offset: '0', repeat: '10px' }] });
+                const dashOpts = (s) => (s.dashed
+                    ? { strokeOpacity: 0, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: .85 * (s.strokeOpacity ?? 1), strokeColor: s.z === 5 ? '#fff' : s.stroke, scale: 2 }, offset: '0', repeat: '10px' }] }
+                    : { icons: [] });
+                const poly = new g.Polygon({ paths, map, ...gStyle(style), ...dashOpts(style) });
                 if (onClick) poly.addListener('click', onClick);
-                return { setStyle: (s) => poly.setOptions(gStyle(s)), setPath: (p) => poly.setPath(p), remove: () => poly.setMap(null) };
+                return { setStyle: (s) => poly.setOptions({ ...gStyle(s), ...dashOpts(s) }), setPath: (p) => poly.setPath(p), remove: () => poly.setMap(null) };
             },
             label(pos, html) { const l = new Label(pos, html); return { el: l.div, remove: () => l.setMap(null) }; },
             marker(pos, o, h) {
@@ -281,7 +300,7 @@
             dashArray: s.dashed ? '6 5' : null, interactive: !!s.clickable });
         return {
             polygon(paths, style, onClick) {
-                const st = style.dashed ? { ...style, stroke: '#fff', strokeOpacity: .85 } : style;
+                const st = style.dashed && style.z === 5 ? { ...style, stroke: '#fff', strokeOpacity: .85 } : style;
                 const poly = L.polygon(paths.map((p) => p.map((c) => [c.lat, c.lng])), lStyle(st)).addTo(map);
                 if (onClick) poly.on('click', (e) => { L.DomEvent.stopPropagation(e); onClick(); });
                 return { setStyle: (s) => poly.setStyle(lStyle(s)), setPath: (p) => poly.setLatLngs(p.map((c) => [c.lat, c.lng])), remove: () => map.removeLayer(poly) };
@@ -320,7 +339,11 @@
                                     : { stroke, fill, fillOpacity: .1, strokeOpacity: .45, weight: 1.5, z: 1 };
         }
         const on = p.id === selected;
-        return { stroke: on ? '#fff' : stroke, fill, fillOpacity: on ? .55 : (baseMode === 'sat' ? .3 : .4), weight: on ? 3.5 : 2.2, clickable: true, z: on ? 10 : 2 };
+        const byVar = colorMode === 'var';
+        const dim = byVar && focusVar !== null && keyOf(p) !== focusVar;
+        const base = byVar ? (baseMode === 'sat' ? .45 : .5) : (baseMode === 'sat' ? .3 : .4);
+        return { stroke: on ? '#fff' : stroke, fill, fillOpacity: on ? .65 : (dim ? .08 : base), strokeOpacity: dim ? .3 : 1,
+                 weight: on ? 3.5 : 2.2, dashed: byVar && keyOf(p) === 'none', clickable: true, z: on ? 10 : (dim ? 1 : 2) };
     };
     const paintSwatches = () => {
         PLOTS.forEach((p) => {
@@ -329,18 +352,106 @@
             if (sw) sw.style.cssText = `background:${fill};border-color:${stroke}`;
         });
         if (!legend) return;
-        const show = colorMode === 'var' && EDIT_ID === null && varieties.length > 0;
+        const show = colorMode === 'var' && EDIT_ID === null && varGroups.length > 0;
         legend.hidden = !show;
-        if (show) {
-            legend.innerHTML = '<p>Variedade</p>' + varieties.map((v) => {
-                const [stroke, fill] = PAL[varieties.indexOf(v) % PAL.length];
-                const ha = PLOTS.filter((p) => p.variety === v).reduce((s, p) => s + p.area, 0);
-                const span = document.createElement('span'); span.textContent = v;
-                return `<div><i style="background:${fill};border-color:${stroke}"></i>${span.innerHTML}<b>${nf(ha, 1)} ha</b></div>`;
-            }).join('');
+        if (!show) return;
+        const hadFocus = legend.contains(document.activeElement) ? document.activeElement.dataset.fmLeg : null;
+        const title = document.createElement('p');
+        title.textContent = focusVar !== null ? 'Variedade destacada' : 'Variedade · toque para destacar';
+        legend.replaceChildren(title);
+        varGroups.forEach((g) => {
+            const b = document.createElement('button');
+            const on = focusVar === g.key;
+            b.type = 'button';
+            b.dataset.fmLeg = g.key;
+            b.className = 'fm-leg' + (on ? ' is-on' : '') + (focusVar !== null && !on ? ' is-dim' : '');
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            const sw = document.createElement('i');
+            sw.style.cssText = g.key === 'none' ? 'border-style:dashed;border-color:#9AA59E;background:#E3E8E2' : `background:${g.color};border-color:${g.color}`;
+            const name = document.createElement('span'); name.textContent = g.name;
+            const ha = document.createElement('b'); ha.textContent = `${nf(g.area, 1)} ha`;
+            b.append(sw, name, ha);
+            b.addEventListener('click', () => setFocus(on ? null : g.key));
+            legend.append(b);
+        });
+        if (focusVar !== null) {
+            const all = document.createElement('button');
+            all.type = 'button'; all.className = 'fm-leg-all'; all.dataset.fmLeg = 'all'; all.textContent = 'Mostrar todas';
+            all.addEventListener('click', () => setFocus(null));
+            legend.append(all);
+        }
+        if (hadFocus) legend.querySelector(`[data-fm-leg="${hadFocus}"]`)?.focus();
+    };
+
+    // Lista agrupada por variedade + resumo da variedade destacada
+    const listEl = $('[data-fm-list]');
+    const listAnchor = $('[data-map-search-empty]');
+    const listItems = $$('[data-fm-var]');
+    const focusBox = $('[data-fm-var-focus]');
+    const arrangeList = () => {
+        if (!listEl || !listAnchor) return;
+        $$('.fm-var-head', listEl).forEach((h) => h.remove());
+        const byVar = colorMode === 'var' && EDIT_ID === null;
+        if (!byVar) {
+            listItems.forEach((el) => { el.classList.remove('is-var-hidden'); listEl.insertBefore(el, listAnchor); });
+        } else {
+            const keys = varGroups.map((g) => g.key);
+            listItems.forEach((el) => { if (!keys.includes(el.dataset.fmVar)) keys.splice(keys.includes('none') ? keys.length - 1 : keys.length, 0, el.dataset.fmVar); });
+            [...new Set(keys)].forEach((k) => {
+                const els = listItems.filter((el) => el.dataset.fmVar === k);
+                if (!els.length) return;
+                const hidden = focusVar !== null && k !== focusVar;
+                const head = document.createElement('p');
+                head.className = 'fm-var-head' + (hidden ? ' is-var-hidden' : '');
+                const sw = document.createElement('i');
+                sw.style.cssText = k === 'none' ? 'border-style:dashed;border-color:#9AA59E;background:#E3E8E2' : `background:${els[0].dataset.fmVarColor};border-color:${els[0].dataset.fmVarColor}`;
+                const name = document.createElement('span'); name.textContent = els[0].dataset.fmVarName;
+                const count = document.createElement('b'); count.textContent = `${els.length} setor${els.length === 1 ? '' : 'es'}`;
+                head.append(sw, name, count);
+                listEl.insertBefore(head, listAnchor);
+                els.forEach((el) => { el.classList.toggle('is-var-hidden', hidden); listEl.insertBefore(el, listAnchor); });
+            });
+        }
+        if (!focusBox) return;
+        const g = byVar && focusVar !== null ? varGroups.find((x) => x.key === focusVar) : null;
+        const unmapped = byVar && focusVar !== null ? listItems.filter((el) => el.dataset.fmVar === focusVar && el.hasAttribute('data-fm-item-unmapped')).length : 0;
+        focusBox.hidden = !g;
+        focusBox.replaceChildren();
+        if (!g) return;
+        const head = document.createElement('div'); head.className = 'fm-vf-head';
+        const sw = document.createElement('i');
+        sw.style.cssText = g.key === 'none' ? 'border:2px dashed #9AA59E;background:#E3E8E2' : `background:${g.color}`;
+        const txt = document.createElement('div');
+        const strong = document.createElement('strong'); strong.textContent = g.name;
+        const meta = document.createElement('span');
+        meta.textContent = `${nf(g.area, 1)} ha no mapa · ${g.plots.length} setor${g.plots.length === 1 ? '' : 'es'}${unmapped ? ` · ${unmapped} sem perímetro` : ''}`;
+        txt.append(strong, meta);
+        const x = document.createElement('button');
+        x.type = 'button'; x.className = 'fm-vf-x'; x.setAttribute('aria-label', 'Mostrar todas as variedades'); x.textContent = '×';
+        x.addEventListener('click', () => setFocus(null));
+        head.append(sw, txt, x);
+        const link = document.createElement('a');
+        link.className = 'sf-btn sf-btn-secondary db-btn-sm';
+        link.href = g.key === 'none' ? '/setores' : `/variedades?variedade=${encodeURIComponent(g.key)}`;
+        link.textContent = g.key === 'none' ? 'Escolher a variedade nos setores' : 'Abrir em Variedades';
+        focusBox.append(head, link);
+    };
+    const setFocus = (key, { fit = true } = {}) => {
+        focusVar = key;
+        try {
+            const url = new URL(window.location.href);
+            if (key === null) url.searchParams.delete('variedade'); else { url.searchParams.set('variedade', key); url.searchParams.set('cor', 'variedade'); }
+            history.replaceState(null, '', url);
+        } catch (e) { /* sem histórico */ }
+        arrangeList();
+        restyle();
+        if (fit && engineRef) {
+            const pts = [];
+            PLOTS.forEach((p) => { if (key === null || keyOf(p) === key) { const sh = shapes.get(p.id); if (sh) pts.push(...sh.points); } });
+            if (pts.length) engineRef.fit(pts, 64);
         }
     };
-    const restyle = () => { PLOTS.forEach((p) => { const s = shapes.get(p.id); if (s) s.polys.forEach((poly) => poly.setStyle(plotStyle(p))); if (s && s.label && s.label.el) s.label.el.classList.toggle('is-on', p.id === selected); }); paintSwatches(); };
+    const restyle = () => { PLOTS.forEach((p) => { const s = shapes.get(p.id); if (s) s.polys.forEach((poly) => poly.setStyle(plotStyle(p))); if (s && s.label && s.label.el) { s.label.el.classList.toggle('is-on', p.id === selected); s.label.el.classList.toggle('is-dim', colorMode === 'var' && focusVar !== null && keyOf(p) !== focusVar); } }); paintSwatches(); };
 
     const select = (id, { fromList = false, engine = null } = {}) => {
         selected = selected === id ? null : id;
@@ -370,9 +481,13 @@
     const setPressed = (attr, val) => $$(`[${attr}]`).forEach((b) => b.setAttribute('aria-pressed', b.getAttribute(attr) === val ? 'true' : 'false'));
     setPressed('data-fm-base', baseMode);
     setPressed('data-fm-color', colorMode);
+    const wanted = PARAMS.get('variedade');
+    if (EDIT_ID === null && colorMode === 'var' && wanted && listItems.some((el) => el.dataset.fmVar === wanted)) focusVar = wanted;
+    arrangeList();
     paintSwatches();
 
     const start = (engine) => {
+        engineRef = engine;
         const all = [];
         (mapData.features || []).forEach((f) => pathsOf(f.geometry).forEach((path) => {
             all.push(...path);
@@ -398,7 +513,8 @@
             baseMode = b.dataset.fmBase; store.set('sf-map-base', baseMode); setPressed('data-fm-base', baseMode); engine.setBase(baseMode); restyle();
         }));
         $$('[data-fm-color]').forEach((b) => b.addEventListener('click', () => {
-            colorMode = b.dataset.fmColor; store.set('sf-map-color', colorMode); setPressed('data-fm-color', colorMode); restyle();
+            colorMode = b.dataset.fmColor; store.set('sf-map-color', colorMode); setPressed('data-fm-color', colorMode);
+            if (colorMode !== 'var' && focusVar !== null) setFocus(null, { fit: false }); else { arrangeList(); restyle(); }
         }));
         $$('[data-fm-zoom]').forEach((b) => b.addEventListener('click', () => engine.zoom(Number(b.dataset.fmZoom))));
         const fitBtn = $('[data-fm-fit]');
@@ -420,7 +536,9 @@
         else if (full) full.hidden = true;
 
         const editor = EDIT_ID !== null ? startEditor(engine) : null;
-        if (editor) editor.fit(false); else fitAll(false);
+        if (editor) editor.fit(false);
+        else if (focusVar !== null) { fitAll(false); setFocus(focusVar); }
+        else fitAll(false);
     };
 
     // ---------- Edição do perímetro ----------
