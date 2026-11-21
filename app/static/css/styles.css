@@ -8656,7 +8656,7 @@ body.erp-sidebar-collapsed .sf-toggle .sf-ic { transform: rotate(0); }
 .szw-head p, .szw-muted { font-size: .84rem; color: var(--szw-muted); line-height: 1.5; }
 .szw-head-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: .75rem; }
 .szw-head.szw-head-row { flex-direction: row; }
-.szw-head-row > div:not(.szw-actions) { display: flex; flex-direction: column; gap: .25rem; }
+.szw-head-row > div:not(.szw-actions):not(.stw-seg) { display: flex; flex-direction: column; gap: .25rem; }
 .szw-plot .szw-chip { align-self: flex-start; margin-top: .375rem; }
 .szw-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .szw-btn { min-height: 2.75rem; padding: 0 1rem; border-radius: 12px; border: 1px solid var(--szw-line); background: #fff; font-size: .875rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; white-space: nowrap; }
@@ -9160,9 +9160,15 @@ html.stw-lock, html.stw-lock body { overflow: hidden; }
     .stw.stw-full .stw-prompt { display: none; }
 }
 .szw-head.szw-head-row { flex-wrap: nowrap; align-items: flex-start; }
-.szw-head.szw-head-row > div:not(.szw-actions) { flex: 1 1 auto; min-width: 0; }
+.szw-head.szw-head-row > div:not(.szw-actions):not(.stw-seg) { flex: 1 1 auto; min-width: 0; }
+.szw-head.szw-head-row > .stw-seg { flex: 0 0 auto; flex-direction: row; flex-wrap: nowrap; align-items: center; width: fit-content; }
+.szw-head.szw-head-row > .stw-seg button { flex: 0 0 auto; white-space: nowrap; }
 .szw-head.szw-head-row > .szw-chip { flex: none; margin-top: 4px; }
-@media (max-width: 639px) { .szw-head.szw-head-row { flex-wrap: wrap; } }
+@media (max-width: 639px) {
+    .szw-head.szw-head-row { flex-wrap: wrap; }
+    .szw-head.szw-head-row > .stw-seg { width: 100%; }
+    .szw-head.szw-head-row > .stw-seg button { flex: 1 1 0; }
+}
 @media (max-width: 639px) {
     .stw-modal-head { position: relative; padding-right: 64px; }
     .stw-modal-head .szp-actions { position: absolute; top: 12px; right: 12px; }
@@ -9578,12 +9584,12 @@ dialog.pl-del-dialog::backdrop { background: rgba(15, 21, 19, .48); backdrop-fil
 }
 .stw .szw-field small.is-err { color: #B42318; font-weight: 500; }
 
-/* Tela cheia desktop: altura FIXA uniforme em todos os 5 passos (referência: Passo 4 - Manejo) */
+/* Tela cheia desktop: altura FIXA uniforme e expandida em todos os 5 passos */
 @media (min-width: 1024px) {
     dialog.stw-dialog {
         width: min(1220px, calc(100vw - 2rem));
         max-width: min(1220px, calc(100vw - 2rem)) !important;
-        height: min(710px, calc(100dvh - 1.5rem));
+        height: min(820px, calc(100dvh - 1.5rem));
         max-height: calc(100dvh - 1.5rem);
     }
     .stw-shell { height: 100%; max-height: 100%; }
@@ -9596,7 +9602,8 @@ dialog.pl-del-dialog::backdrop { background: rgba(15, 21, 19, .48); backdrop-fil
     .stw .szw-layout { flex: 1; min-height: 0; gap: 16px; align-items: stretch; }
     .stw .szw-card { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
     .stw .szw-card .szw-steps { padding: 9px 14px; flex: none; }
-    .stw .szw-card .szw-panel { flex: 1; min-height: 0; padding: 15px 20px; gap: 12px; overflow-y: auto; }
+    .stw .szw-card .szw-panel { flex: 1; min-height: 0; padding: 18px 22px; gap: 14px; overflow-y: auto; }
+    .stw .szw-card .szw-panel > * { flex-shrink: 0; }
     .stw .szw-card .szw-panel[hidden] { display: none; }
     .stw .szw-head h2 { font-size: 18px; }
     .stw .szw-head p { font-size: 13px; margin-top: 2px; }
@@ -9611,7 +9618,8 @@ dialog.pl-del-dialog::backdrop { background: rgba(15, 21, 19, .48); backdrop-fil
     .stw .szw-input, .stw-shell .szw-input { min-height: 38px; padding-top: 0; padding-bottom: 0; font-size: 14px; border-radius: 10px; }
     .stw-auto { padding: 9px 12px; }
     .stw-auto p { font-size: 12px; line-height: 1.35; }
-    .stw-seg button { min-height: 32px; font-size: 12.5px; padding: 0 12px; }
+    .stw-seg { display: inline-flex; flex-direction: row; flex-wrap: nowrap; align-items: center; width: fit-content; padding: 3px; gap: 2px; border-radius: 10px; border: 1px solid #e3e8e2; }
+    .stw-seg button { flex: 0 0 auto; white-space: nowrap; min-height: 32px; font-size: 12.5px; padding: 0 13px; border-radius: 8px; }
     .stw-pill span, .stw-pill-more { min-height: 34px; padding: 0 12px; font-size: 13px; }
     .stw-calcs { gap: 10px; }
     .stw-calc { padding: 9px 12px; }
@@ -9620,8 +9628,9 @@ dialog.pl-del-dialog::backdrop { background: rgba(15, 21, 19, .48); backdrop-fil
     .stw-calc small { font-size: 11.5px; }
     .stw-current { padding: 8px 12px; }
     .stw-current p { font-size: 12.5px; }
+    .stw-mapshell { flex-shrink: 0; }
     .stw-mapbar { padding: 6px 12px; font-size: 12px; }
-    .stw-map { height: 215px; min-height: 180px; }
+    .stw-map { height: 265px; min-height: 220px; }
     .stw-tools { padding: 7px 12px; }
     .stw-tools .szw-btn { min-height: 32px; font-size: 12.5px; padding: 0 11px; }
     .stw-drop { padding: 8px 12px; gap: 10px; }
