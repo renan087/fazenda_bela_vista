@@ -34,6 +34,7 @@ class Plot(Base):
     map_color: Mapped[str] = mapped_column(String(9), nullable=True)
     group_name: Mapped[str] = mapped_column(String(80), nullable=True)
     soil_texture: Mapped[str] = mapped_column(String(20), nullable=True)
+    field_reference: Mapped[str] = mapped_column(String(160), nullable=True)
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id"), nullable=True)
     variety_id: Mapped[int] = mapped_column(ForeignKey("coffee_varieties.id"), nullable=True)
 

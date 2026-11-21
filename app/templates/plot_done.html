@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="szp">
+    <header class="szp-head">
+        <div class="szp-title">
+            <nav aria-label="Caminho" class="szp-crumb"><a href="/setores">Setores</a> / {{ plot.name }}</nav>
+            <h1>Setor criado</h1>
+        </div>
+    </header>
+    <section class="szw-card szp-done">
+        <span class="szp-done-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span>
+        <h2>Setor {{ plot.name }} criado</h2>
+        <p>{% if season_name %}Já entrou na {{ season_name }} e aparece no mapa da fazenda.{% else %}Aparece no mapa da fazenda. Inclua numa safra quando quiser.{% endif %}</p>
+        <div class="szp-next">
+            <a href="/mapa" class="szp-next-card"><strong>Ver no mapa da fazenda</strong><span>Com os outros setores</span></a>
+            <a href="/insumos/recomendacao" class="szp-next-card"><strong>Gerar recomendação de adubação</strong><span>Usa a análise de solo</span></a>
+            <a href="/setores?novo=1" class="szp-next-card"><strong>Cadastrar outro setor</strong><span>Mantém fazenda e cor seguinte</span></a>
+        </div>
+        <a href="/setores" class="szw-btn">Ir para a lista de setores</a>
+    </section>
+</div>
+{% endblock %}

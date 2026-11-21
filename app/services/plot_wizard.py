@@ -128,3 +128,19 @@ def stroke_for(fill: str | None) -> str | None:
         if color == fill:
             return stroke
     return fill
+
+
+def wizard_color_context(plots) -> list[dict]:
+    """Cores e caixas dos setores existentes, para o navegador escolher a cor automática como o servidor."""
+    fills = [fill for _, _, fill in PLOT_COLORS]
+    rows = []
+    for index, plot in enumerate(plots):
+        pts = _points(getattr(plot, "boundary_geojson", None))
+        rows.append({
+            "id": plot.id,
+            "name": plot.name,
+            "farm_id": plot.farm_id,
+            "fill": (plot.map_color or "").lower() or fills[index % len(fills)],
+            "box": list(_bbox(pts)) if pts else None,
+        })
+    return rows

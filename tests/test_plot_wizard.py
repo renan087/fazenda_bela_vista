@@ -68,15 +68,19 @@ def _create(plot_env, **overrides):
         irrigation_type="none", irrigation_line_count=None, irrigation_line_length_meters=None, drip_spacing_centimeters=None,
         drip_liters_per_hour=None, sprinkler_count=None, sprinkler_liters_per_hour=None, notes=None,
         map_color=None, color_mode="auto", group_name="Gleba Sul", soil_texture="argiloso", include_in_season="1", return_to=None,
+        field_reference=None, new_variety_name=None, soil_report=None,
     )
     fields.update(overrides)
     return plot_env.env.routes.create_plot_action(plot_env.env.request("/setores"), db=plot_env.env.db, user=plot_env.env.user, **fields)
 
 
 def test_create_plot_without_planting_gets_auto_color_group_soil_and_joins_active_season(plot_env):
-    resp = _create(plot_env)
-    assert resp.status_code == 303
+    resp = _create(plot_env, area_hectares="5,4", field_reference="depois da represa", new_variety_name="Arara")
+    assert resp.status_code == 303 and "/pronto" in resp.headers["location"]
     plot = plot_env.env.db.query(Plot).filter(Plot.name == "Represa").one()
+    assert float(plot.area_hectares) == 5.4
+    assert plot.field_reference == "depois da represa"
+    assert plot.variety and plot.variety.name == "Arara"
     assert plot.plant_count == 0
     assert plot.map_color in {fill for _, _, fill in PLOT_COLORS}
     assert plot.group_name == "Gleba Sul"
@@ -108,4 +112,24 @@ def test_plots_page_renders_wizard_for_new_and_edit(plot_env):
         html = resp.body.decode("utf-8")
         assert resp.status_code == 200
         assert "data-plot-wizard" in html and label in html
+        for piece in ("Referência no campo", "Resumo do setor", "Dica do Pezinho", "Desfazer", "Remover ponto", "Limpar", "Restaurar anterior",
+                      "Sem perímetro", "Mês do plantio", "Entre plantas (m)", "Plantas contadas", "Produtividade esperada (sc/ha)",
+                      "Sequeiro", "Gotejamento", "Aspersão", "Anexar laudo"):
+            assert piece in html, piece
+        for gone in ('name="centroid_lat" value="" class', "Latitude", "Longitude", "Produção estimada (sacas)", "Espaçamento entre plantas (cm)", "Data de plantio"):
+            wizard = html[html.index('id="plots-form"'):html.index("</form>", html.index('id="plots-form"'))]
+            assert gone not in wizard, gone
         assert 'class="pzw' not in html.split("data-plot-wizard")[0][-400:]
+
+
+def test_auto_color_shown_in_browser_is_the_one_saved(plot_env):
+    _create(plot_env, name="Automatica", map_color="#2dd4bf", color_mode="auto", include_in_season=None)
+    assert plot_env.env.db.query(Plot).filter(Plot.name == "Automatica").one().map_color == "#2dd4bf"
+
+
+def test_plot_done_page(plot_env):
+    _create(plot_env, name="Pronto", include_in_season=None)
+    plot = plot_env.env.db.query(Plot).filter(Plot.name == "Pronto").one()
+    env = plot_env.env
+    html = env.routes.plot_done_page(plot.id, env.request("/x?safra=Safra 2026/27"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert "Setor Pronto criado" in html and "Gerar recomendação de adubação" in html

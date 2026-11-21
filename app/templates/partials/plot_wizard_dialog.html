@@ -1,0 +1,320 @@
+{# Novo setor / Editar setor — fiel ao canvas aprovado "Novo setor — assistente em 5 passos". #}
+{% set ep = edit_plot %}
+{% set single_farm = plots_farm_scope_locked or (farms|length == 1) %}
+{% set the_farm_id = (ep.farm_id if ep else (plots_scope_active_farm_id if plots_farm_scope_locked else (selected_farm_id or (farms[0].id if farms|length == 1 else '')))) %}
+{% set the_farm_name = (ep.farm.name if ep and ep.farm else (plots_locked_farm_name if plots_farm_scope_locked else (farms[0].name if farms|length == 1 else ''))) %}
+<dialog id="plots-launch-modal" class="app-modal stw-dialog rounded-[2rem] p-0 shadow-2xl w-full max-w-6xl overflow-hidden">
+    <div class="stw-shell">
+        <header class="stw-modal-head">
+            <div class="szp-title">
+                <nav aria-label="Caminho" class="szp-crumb"><a href="/setores">Setores</a> / {% if ep %}{{ ep.name }}{% else %}Novo setor{% endif %}</nav>
+                <h3 class="stw-h1">{% if ep %}Editar setor{% else %}Novo setor{% endif %}</h3>
+                <p><span data-stw-farm-label>{{ the_farm_name or 'Escolha a fazenda' }}</span> · <span data-stw-draft-status>rascunho salvo automaticamente</span></p>
+            </div>
+            <div class="szp-actions">
+                <button type="button" class="szw-btn" data-plots-launch-close>Cancelar</button>
+                <button type="button" class="szw-btn" data-stw-save-draft>Salvar rascunho</button>
+                <button type="button" class="modal-close-button" aria-label="Fechar" data-plots-launch-close>
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <div class="stw-scroll" data-modal-scroll>
+            <form method="post" enctype="multipart/form-data" action="{% if ep %}/setores/{{ ep.id }}/editar{% else %}/setores{% endif %}" class="szw stw szw-page" id="plots-form" novalidate data-plot-wizard data-plots-boundary-form{% if ep %} data-plots-edit-mode="1"{% endif %}>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="centroid_lat" value="{{ ep.centroid_lat if ep and ep.centroid_lat is not none else '' }}" data-stw-lat>
+                <input type="hidden" name="centroid_lng" value="{{ ep.centroid_lng if ep and ep.centroid_lng is not none else '' }}" data-stw-lng>
+                <input type="hidden" name="notes" value="{{ ep.notes if ep and ep.notes else '' }}">
+                <input type="hidden" name="color_mode" value="{{ 'manual' if ep and ep.map_color else 'auto' }}" data-stw-color-mode>
+                <input type="hidden" name="map_color" value="{{ ep.map_color if ep and ep.map_color else '' }}" data-stw-color>
+                <script type="application/json" id="plot-wizard-data">{{ plot_wizard_data|tojson }}</script>
+
+                <div class="szw-layout">
+                    <main class="szw-card">
+                        <ol class="szw-steps" aria-label="Passos" data-stw-steps>
+                            {% for label, hint in [('Identificação', 'Nome e área'), ('Mapa', 'Onde fica'), ('Plantio', 'Variedade e plantas'), ('Manejo', 'Irrigação e solo'), ('Conferir', 'Revise e confirme')] %}
+                            <li class="szw-step"><button type="button" data-stw-go="{{ loop.index0 }}"><span class="szw-step-num" aria-hidden="true"><span class="szw-step-n">{{ loop.index }}</span><svg class="szw-step-ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span><span class="szw-step-txt"><span class="szw-step-label">{{ label }}</span><span class="szw-step-hint">{{ hint }}</span></span></button></li>
+                            {% endfor %}
+                        </ol>
+
+                        {# PASSO 1 — IDENTIFICAÇÃO #}
+                        <section class="szw-panel" data-stw-panel="0" aria-labelledby="stw-t0">
+                            <div class="szw-head"><h2 id="stw-t0">Como vocês chamam este setor?</h2><p>Use o nome que a equipe fala no dia a dia. Ele aparece em aplicações, colheitas e relatórios.</p></div>
+                            <div class="szw-grid2">
+                                <label class="szw-field"><span>Nome do setor</span><input name="name" class="szw-input" maxlength="120" value="{{ ep.name if ep else '' }}" placeholder="Ex.: Talhão da Represa" data-stw-name></label>
+                                <div class="szw-field">
+                                    <span>Fazenda</span>
+                                    {% if single_farm %}
+                                    <input type="hidden" name="farm_id" value="{{ the_farm_id }}">
+                                    <div class="szw-input stw-static"><strong>{{ the_farm_name }}</strong><small>{% if plots_farm_scope_locked and not ep %}fazenda do topo{% else %}única fazenda{% endif %}</small></div>
+                                    {% else %}
+                                    <select name="farm_id" class="szw-input" data-stw-farm>
+                                        <option value="">Escolha a fazenda</option>
+                                        {% for farm in farms %}<option value="{{ farm.id }}" {% if the_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>{% endfor %}
+                                    </select>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="szw-grid2">
+                                <label class="szw-field"><span>Área informada (ha)</span><input name="area_hectares" class="szw-input" inputmode="decimal" value="{{ (ep.area_hectares|string).replace('.', ',') if ep else '' }}" data-stw-area><small>Da escritura, do projeto ou de medição. No próximo passo comparamos com o mapa.</small></label>
+                                <label class="szw-field"><span>Referência no campo <em class="szw-opt">(opcional)</em></span><input name="field_reference" class="szw-input" maxlength="160" value="{{ ep.field_reference if ep and ep.field_reference else '' }}" placeholder="Ex.: descendo a estrada, depois da represa"><small>Ajuda quem ainda não conhece a fazenda.</small></label>
+                            </div>
+                            <div class="szw-grid2 stw-idrow">
+                                <div class="szw-field">
+                                    <span>Cor no mapa</span>
+                                    <div class="stw-seg" role="radiogroup" aria-label="Como escolher a cor">
+                                        <button type="button" role="radio" data-stw-mode="auto">Automática</button>
+                                        <button type="button" role="radio" data-stw-mode="manual">Escolher cor</button>
+                                    </div>
+                                    <div class="stw-auto" data-stw-auto-note>
+                                        <span class="stw-auto-sw" data-stw-auto-swatch aria-hidden="true"></span>
+                                        <p>Escolhemos uma cor diferente dos setores vizinhos<span data-stw-auto-neighbors></span>. Com muitos setores, as cores só se repetem longe uma da outra.</p>
+                                    </div>
+                                    <div class="stw-swatches" role="radiogroup" aria-label="Cor no mapa" data-stw-swatches hidden>
+                                        {% for color_name, color_stroke, color_fill in plot_colors %}<button type="button" role="radio" class="stw-swatch" aria-label="{{ color_name }}" data-stw-swatch="{{ color_fill }}" style="--sw: {{ color_fill }}; --sw-b: {{ color_stroke }}"></button>{% endfor %}
+                                        <label class="stw-swatch stw-swatch-more" title="Outra cor"><span aria-hidden="true">+</span><input type="color" aria-label="Escolher outra cor" data-stw-custom></label>
+                                    </div>
+                                    <small>No mapa da fazenda dá para colorir todos os setores de uma vez por variedade, situação, idade ou grupo, e achar qualquer um pela busca.</small>
+                                </div>
+                                <label class="szw-field">
+                                    <span>Grupo <em class="szw-opt">(opcional)</em></span>
+                                    <input name="group_name" class="szw-input" list="stw-groups" maxlength="80" value="{{ ep.group_name if ep and ep.group_name else '' }}" placeholder="Ex.: Gleba Sul">
+                                    <datalist id="stw-groups">{% for group in plot_groups %}<option value="{{ group }}"></option>{% endfor %}</datalist>
+                                    <small>Junta setores para filtrar, colorir no mapa e lançar aplicações de uma vez. Útil quando a fazenda tem dezenas ou centenas de setores.</small>
+                                </label>
+                            </div>
+                        </section>
+
+                        {# PASSO 2 — MAPA #}
+                        <section class="szw-panel" data-stw-panel="1" aria-labelledby="stw-t1" hidden>
+                            <div class="szw-head szw-head-row">
+                                <div><h2 id="stw-t1">Onde fica o setor?</h2><p>Toque nos cantos do setor por dentro do contorno da fazenda, ou importe o arquivo. A área é calculada pelo desenho.</p></div>
+                                <span class="szw-chip is-warn" data-stw-poly-chip>Sem perímetro</span>
+                            </div>
+                            <button type="button" class="szw-btn szw-btn-primary stw-fullmap-open" data-stw-fullmap-open>Iniciar desenho no mapa</button>
+                            <div class="stw-fullbar" data-stw-fullbar hidden>
+                                <div class="stw-fulltop"><strong>Contorno do setor</strong><span data-stw-full-count>0 pontos</span></div>
+                                <svg class="stw-reticle" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="22" fill="none" stroke="#fff" stroke-width="3"/><path d="M32 2v14M32 48v14M2 32h14M48 32h14" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#446a36" stroke="#fff" stroke-width="1.5"/></svg>
+                                <p class="stw-fullmsg" role="status" data-stw-full-msg hidden></p>
+                                <div class="stw-fullsheet">
+                                    <p>Arraste o mapa até a mira ficar no canto do setor e toque em marcar. Os pontos ficam dentro do contorno da fazenda.</p>
+                                    <button type="button" class="szw-btn szw-btn-primary" data-stw-full-add>Marcar ponto aqui</button>
+                                    <div class="stw-fullrow"><button type="button" class="szw-btn" data-stw-full-undo>Desfazer</button><button type="button" class="szw-btn" data-stw-full-done>Concluir</button></div>
+                                </div>
+                            </div>
+                            <div class="stw-mapshell" data-plots-boundary-map-section>
+                                <div class="stw-mapbar">
+                                    <span>Vértices: <strong data-stw-vertices>0</strong> · Área estimada: <strong data-stw-map-area>0,00 ha</strong></span>
+                                    <span class="szw-chip {% if google_maps_web_key %}is-ok{% else %}is-muted{% endif %}">{% if google_maps_web_key %}Satélite (Google Maps){% else %}OpenStreetMap{% endif %}</span>
+                                </div>
+                                <p class="stw-mapmsg" data-plots-map-pick-farm-msg>Escolha a fazenda no passo 1 para carregar o mapa com o contorno da propriedade.</p>
+                                <div class="stw-mapwrap">
+                                    <div id="plots-form-boundary-map" class="stw-map hidden"></div>
+                                    <div class="stw-prompt" data-stw-prompt hidden>
+                                        <div><strong>Desenhar o setor</strong><span>Mostramos o contorno da fazenda. Marque os cantos do setor por dentro dele.</span><button type="button" class="szw-btn szw-btn-primary" data-stw-start>Iniciar desenho no mapa</button></div>
+                                    </div>
+                                </div>
+                                <input type="hidden" name="boundary_geojson" value="" data-plots-boundary-input>
+                                <div class="stw-tools" data-plots-map-toolbar>
+                                    <div class="stw-tools-left">
+                                        <button type="button" class="szw-btn" data-stw-undo>Desfazer</button>
+                                        <button type="button" class="szw-btn" data-plots-form-remove-point>Remover ponto</button>
+                                        <button type="button" class="szw-btn" data-stw-clear>Limpar</button>
+                                    </div>
+                                    <button type="button" class="szw-btn" data-stw-reset {% if not (ep and ep.boundary_geojson) %}disabled{% endif %}>Restaurar anterior</button>
+                                </div>
+                            </div>
+                            <p class="stw-alert" role="status" data-stw-snap hidden>Um ponto ficava fora da fazenda e foi colocado na divisa. O setor não pode passar do perímetro da fazenda.</p>
+                            <p class="stw-alert is-warn hidden" data-plots-no-farm-boundary-warning>Esta fazenda ainda não tem perímetro no mapa, então o desenho fica livre. Cadastre o perímetro em <a href="/fazendas">Fazendas</a>.</p>
+                            <div hidden data-plots-new-preview-card><img data-plots-new-preview-img alt=""></div>
+                            <div hidden data-plots-perimeter-default-cards></div>
+                            <div hidden data-plots-perimeter-draft-card><img data-plots-draft-preview-img alt=""></div>
+                            {% include "partials/plot_geojson_upload_field.html" %}
+                            <div class="stw-map-foot">
+                                <small data-stw-limit-text>Limite: perímetro da fazenda. Se a fazenda não tiver perímetro cadastrado, o desenho fica livre.</small>
+                                <button type="button" class="szw-link" data-stw-point-toggle>Não tenho o contorno agora: marcar só a localização</button>
+                            </div>
+                            <div class="stw-point" data-stw-point-box hidden>
+                                <p>Arraste o mapa até o setor ficar no centro e toque em marcar. O contorno pode ser desenhado depois.</p>
+                                <button type="button" class="szw-btn szw-btn-primary" data-stw-point-mark>Marcar a localização no centro do mapa</button>
+                            </div>
+                            <div class="stw-calcs">
+                                <div class="stw-calc"><span>Área pelo mapa</span><strong data-stw-calc-map>—</strong></div>
+                                <div class="stw-calc"><span>Área informada</span><strong data-stw-calc-declared>—</strong></div>
+                                <div class="stw-calc" data-stw-calc-div-box><span>Diferença</span><strong data-stw-calc-div>—</strong><small data-stw-calc-div-hint>Desenhe para comparar</small></div>
+                            </div>
+                        </section>
+
+                        {# PASSO 3 — PLANTIO #}
+                        <section class="szw-panel" data-stw-panel="2" aria-labelledby="stw-t2" hidden>
+                            <div class="szw-head"><h2 id="stw-t2">O que está plantado?</h2><p>Com a data e o espaçamento, o SiSFarm calcula plantas, idade e se o setor já produz.</p></div>
+                            {% if not ep %}
+                            <div class="stw-seg" role="radiogroup" aria-label="Cadastrar plantio agora?">
+                                <button type="button" role="radio" aria-checked="true" data-stw-skip="plant" data-value="now">Cadastrar plantio agora</button>
+                                <button type="button" role="radio" aria-checked="false" data-stw-skip="plant" data-value="later">Deixar para depois</button>
+                            </div>
+                            <p class="stw-later" data-stw-later="plant" hidden>Tudo bem. O setor fica como “Sem plantio informado” e não entra nas metas de sacas. Complete depois editando o setor.</p>
+                            {% elif ep.active_planting %}
+                            <div class="stw-current"><p>Plantio atual{% if ep.active_planting.planting_date %} desde {{ ep.active_planting.planting_date.strftime('%m/%Y') }}{% endif %}. Corrija aqui os dados; para trocar a lavoura use “Renovar plantio”.</p><button type="button" class="szw-btn" data-renew-open>Renovar plantio</button></div>
+                            {% endif %}
+                            <div class="stw-group" data-stw-group="plant">
+                                <div class="szw-field">
+                                    <span>Variedade</span>
+                                    <div class="stw-pills" role="radiogroup" aria-label="Variedade">
+                                        {% for variety in form_varieties %}<label class="stw-pill"><input type="radio" name="variety_id" value="{{ variety.id }}" {% if ep and ep.variety_id == variety.id %}checked{% endif %}><span>{{ variety.name }}</span></label>{% endfor %}
+                                        <button type="button" class="stw-pill-more" data-stw-new-variety>+ Outra</button>
+                                    </div>
+                                    <input name="new_variety_name" class="szw-input stw-newvar" maxlength="120" placeholder="Nome da variedade ou cultura" data-stw-new-variety-input hidden>
+                                    <small>Cultura: Café. Para outra cultura, toque em “+ Outra”.</small>
+                                </div>
+                                <div class="stw-grid3">
+                                    <label class="szw-field"><span>Mês do plantio</span><input type="month" class="szw-input" value="{{ ep.planting_date.strftime('%Y-%m') if ep and ep.planting_date else '' }}" data-stw-month></label>
+                                    <label class="szw-field"><span>Entre linhas (m)</span><input name="spacing_row_meters" class="szw-input" inputmode="decimal" value="{{ (ep.spacing_row_meters|string).replace('.', ',') if ep and ep.spacing_row_meters else '' }}" data-stw-row></label>
+                                    <label class="szw-field"><span>Entre plantas (m)</span><input class="szw-input" inputmode="decimal" value="{{ (ep.spacing_plant_meters|string).replace('.', ',') if ep and ep.spacing_plant_meters else '' }}" data-stw-plant></label>
+                                </div>
+                                <input type="hidden" name="planting_date" value="{{ ep.planting_date.isoformat() if ep and ep.planting_date else '' }}" data-stw-planting-date>
+                                <input type="hidden" name="spacing_plant_centimeters" value="{{ (ep.spacing_plant_meters * 100)|round(2) if ep and ep.spacing_plant_meters else '' }}" data-stw-plant-cm>
+                                <input type="hidden" name="plant_count" value="{{ ep.plant_count if ep and ep.plant_count else '' }}" data-stw-plant-count>
+                                <input type="hidden" name="estimated_yield_sacks" value="{{ ep.estimated_yield_sacks if ep and ep.estimated_yield_sacks else '' }}" data-stw-yield-total>
+                                <div class="stw-calcs">
+                                    <div class="stw-calc"><span>Plantas estimadas</span><strong data-stw-plants-est>—</strong><small data-stw-density>Informe o espaçamento</small></div>
+                                    <div class="stw-calc"><span>Idade</span><strong data-stw-age>—</strong><small data-stw-first-harvest></small></div>
+                                    <div class="stw-calc"><span>Situação</span><span><span class="szw-chip is-muted" data-stw-stage>Sem plantio informado</span></span><small>Calculada pela idade</small></div>
+                                </div>
+                                <div class="szw-grid2">
+                                    <label class="szw-field"><span>Plantas contadas <em class="szw-opt">(opcional)</em></span><input class="szw-input" inputmode="numeric" value="{{ ep.plant_count if ep and ep.plant_count else '' }}" placeholder="Se você contou, vale este número" data-stw-counted><small>Use quando houver falhas ou replantas.</small></label>
+                                    <label class="szw-field"><span>Produtividade esperada (sc/ha)</span><input class="szw-input" inputmode="decimal" value="{{ ((ep.estimated_yield_sacks / ep.area_hectares)|round(1)|string).replace('.', ',') if ep and ep.estimated_yield_sacks and ep.area_hectares else '' }}" data-stw-yield><small>Vira a meta inicial deste setor ao criar uma safra.</small></label>
+                                </div>
+                            </div>
+                        </section>
+
+                        {# PASSO 4 — MANEJO #}
+                        <section class="szw-panel" data-stw-panel="3" aria-labelledby="stw-t3" hidden>
+                            <div class="szw-head"><h2 id="stw-t3">Irrigação e solo</h2><p>Usado na recomendação de adubação, no controle de água e na leitura da chuva.</p></div>
+                            {% if not ep %}
+                            <div class="stw-seg" role="radiogroup" aria-label="Informar irrigação e solo agora?">
+                                <button type="button" role="radio" aria-checked="true" data-stw-skip="man" data-value="now">Informar agora</button>
+                                <button type="button" role="radio" aria-checked="false" data-stw-skip="man" data-value="later">Deixar para depois</button>
+                            </div>
+                            <p class="stw-later" data-stw-later="man" hidden>Sem problema. Irrigação e solo ficam como “Não informado”. A recomendação de adubação deste setor só fica disponível depois que você completar.</p>
+                            {% endif %}
+                            <div class="stw-group" data-stw-group="man">
+                                <div class="szw-field">
+                                    <span>Irrigação</span>
+                                    <div class="stw-irrigs" role="radiogroup" aria-label="Irrigação">
+                                        {% set it = ep.irrigation_type if ep else 'none' %}
+                                        {% for key, label, desc in [('none', 'Sequeiro', 'Só água da chuva'), ('gotejo', 'Gotejamento', 'Mangueiras com gotejadores'), ('aspersor', 'Aspersão', 'Aspersores ou canhão')] %}
+                                        <label class="stw-irrig"><input type="radio" name="irrigation_type" value="{{ key }}" {% if it == key %}checked{% endif %} data-stw-irrig><span><strong>{{ label }}</strong><small>{{ desc }}</small></span></label>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <div class="stw-irrig-box" data-stw-irrig-box="gotejo" hidden>
+                                    <div class="stw-grid4">
+                                        <label class="szw-field"><span>Linhas de mangueira</span><input name="irrigation_line_count" class="szw-input" inputmode="numeric" value="{{ ep.irrigation_line_count if ep and ep.irrigation_line_count else '' }}" data-stw-lines></label>
+                                        <label class="szw-field"><span>Comprimento médio (m)</span><input name="irrigation_line_length_meters" class="szw-input" inputmode="decimal" value="{{ (ep.irrigation_line_length_meters|string).replace('.', ',') if ep and ep.irrigation_line_length_meters else '' }}" data-stw-line-len></label>
+                                        <label class="szw-field"><span>Entre gotejadores (m)</span><input class="szw-input" inputmode="decimal" value="{{ (ep.drip_spacing_meters|string).replace('.', ',') if ep and ep.drip_spacing_meters else '' }}" data-stw-drip-m></label>
+                                        <label class="szw-field"><span>Vazão do gotejador (L/h)</span><input name="drip_liters_per_hour" class="szw-input" inputmode="decimal" value="{{ (ep.drip_liters_per_hour|string).replace('.', ',') if ep and ep.drip_liters_per_hour else '' }}" data-stw-drip-lh></label>
+                                    </div>
+                                    <input type="hidden" name="drip_spacing_centimeters" value="{{ (ep.drip_spacing_meters * 100)|round(2) if ep and ep.drip_spacing_meters else '' }}" data-stw-drip-cm>
+                                    <div class="stw-calcs">
+                                        <div class="stw-calc"><span>Gotejadores</span><strong data-stw-drippers>—</strong></div>
+                                        <div class="stw-calc"><span>Vazão total</span><strong data-stw-flow>—</strong></div>
+                                        <div class="stw-calc"><span>Lâmina por hora</span><strong data-stw-lamina>—</strong><small>quanto “chove” por hora irrigando</small></div>
+                                    </div>
+                                </div>
+                                <div class="stw-irrig-box" data-stw-irrig-box="aspersor" hidden>
+                                    <div class="stw-calcs">
+                                        <label class="szw-field"><span>Quantidade de aspersores</span><input name="sprinkler_count" class="szw-input" inputmode="numeric" value="{{ ep.sprinkler_count if ep and ep.sprinkler_count else '' }}" data-stw-spr-count></label>
+                                        <label class="szw-field"><span>Vazão de cada um (L/h)</span><input name="sprinkler_liters_per_hour" class="szw-input" inputmode="decimal" value="{{ (ep.sprinkler_liters_per_hour|string).replace('.', ',') if ep and ep.sprinkler_liters_per_hour else '' }}" data-stw-spr-lh></label>
+                                        <div class="stw-calc"><span>Lâmina por hora</span><strong data-stw-spr-lamina>—</strong></div>
+                                    </div>
+                                </div>
+                                <div class="szw-grid2">
+                                    <div class="szw-field">
+                                        <span>Tipo de solo</span>
+                                        <div class="stw-pills" role="radiogroup" aria-label="Tipo de solo">
+                                            {% for soil_key, soil_label in soil_textures.items() %}<label class="stw-pill"><input type="radio" name="soil_texture" value="{{ soil_key }}" {% if ep and ep.soil_texture == soil_key %}checked{% endif %}><span>{{ soil_label }}</span></label>{% endfor %}
+                                        </div>
+                                    </div>
+                                    <div class="szw-field">
+                                        <span>Análise de solo mais recente</span>
+                                        <label class="stw-laudo" data-stw-laudo-pick>
+                                            <input type="file" name="soil_report" accept=".pdf,image/*" class="sr-only" data-stw-laudo-input>
+                                            Anexar laudo (PDF ou foto)
+                                        </label>
+                                        <div class="stw-laudo-file" data-stw-laudo-file hidden>
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="#446A36" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>
+                                            <span class="szw-grow"><strong data-stw-laudo-name></strong><small>Fica nos anexos do setor</small></span>
+                                            <button type="button" class="szw-link stw-remove" data-stw-laudo-clear>Remover</button>
+                                        </div>
+                                        <small data-stw-laudo-hint>Sem análise, a recomendação de adubação deste setor fica pendente.</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="szw-info">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>
+                                <p>Chuva: este setor usa os registros de chuva da <strong data-stw-rain-farm>{{ the_farm_name or 'fazenda' }}</strong>. Dá para conferir em Pluviometria.</p>
+                            </div>
+                        </section>
+
+                        {# PASSO 5 — CONFERIR #}
+                        <section class="szw-panel" data-stw-panel="4" aria-labelledby="stw-t4" hidden>
+                            <div class="szw-head"><h2 id="stw-t4">{% if ep %}Confira antes de salvar{% else %}Confira antes de criar{% endif %}</h2><p>Toque em “Alterar” para voltar a qualquer passo. Nada foi gravado ainda.</p></div>
+                            <div class="szw-review" data-stw-review></div>
+                            {% if plot_wizard_season %}
+                            {% set already = ep and ep in plot_wizard_season.plots %}
+                            <label class="szw-integ stw-season">
+                                <span class="szw-grow"><strong>Incluir na {{ plot_wizard_season.name }} (ativa)</strong><small data-stw-season-desc>Entra com a meta de produção do setor. Sem isso, o setor fica fora dos custos e da produção desta safra.</small></span>
+                                <input type="checkbox" name="include_in_season" value="1" class="szw-check" data-stw-season {% if not ep or already %}checked{% endif %} {% if already %}disabled{% endif %}>
+                                <span class="szw-toggle" aria-hidden="true"><span></span></span>
+                            </label>
+                            {% endif %}
+                            <div class="szw-impact"><h3>Ao confirmar, o SiSFarm vai:</h3><ul data-stw-impact></ul></div>
+                        </section>
+
+                        <footer class="szw-foot">
+                            <button type="button" class="szw-btn" data-stw-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Voltar</button>
+                            <span class="szw-foot-txt" data-stw-steptxt aria-live="polite"></span>
+                            <button type="button" class="szw-btn szw-btn-primary" data-stw-next>Continuar<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+                            <button type="submit" class="szw-btn szw-btn-primary" data-stw-submit hidden>{% if ep %}Salvar setor{% else %}Criar setor{% endif %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+                        </footer>
+                    </main>
+
+                    <aside class="szw-side" aria-label="Resumo do setor">
+                        <div class="szw-aside">
+                            <span class="szw-overline">Resumo do setor</span>
+                            <div class="stw-mini" data-stw-mini></div>
+                            <div class="stw-aside-name"><span class="stw-aside-sw" data-stw-aside-sw aria-hidden="true"></span><strong data-stw-aside-name>Sem nome</strong></div>
+                            <span><span class="szw-chip is-muted" data-stw-aside-stage>Sem plantio informado</span></span>
+                            <dl data-stw-summary></dl>
+                        </div>
+                        <div class="szw-tip">
+                            <span class="szw-tip-avatar" aria-hidden="true">P</span>
+                            <div><strong>Dica do Pezinho</strong><p data-stw-tip></p></div>
+                        </div>
+                    </aside>
+                </div>
+            </form>
+            {% if ep %}
+            <div class="stw-attachments" data-stw-attachments hidden>
+                {% set attachment_owner = ep %}
+                {% set attachment_view_base = '/setores/anexos' %}
+                {% set attachment_delete_base = '/setores/' ~ ep.id ~ '/anexos' %}
+                <p class="szw-overline">Arquivos já anexados ao setor</p>
+                {% include "partials/attachment_list.html" %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <dialog class="stw-confirm" data-stw-area-dialog aria-labelledby="stw-div-t">
+        <span class="stw-confirm-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></span>
+        <h3 id="stw-div-t">As áreas não batem</h3>
+        <p data-stw-div-text></p>
+        <div class="stw-confirm-actions">
+            <button type="button" class="szw-btn szw-btn-primary" data-stw-use-map></button>
+            <button type="button" class="szw-btn" data-stw-keep-declared></button>
+            <button type="button" class="szw-btn stw-plain" data-stw-adjust>Voltar e ajustar o desenho</button>
+        </div>
+    </dialog>
+</dialog>

@@ -96,6 +96,7 @@ from app.services.audit_log_service import append_audit_event
 from app.services.maintenance import MODES as MAINTENANCE_MODES, MaintenanceError, compute_state as compute_maintenance_state, current_state as current_maintenance_state, save_state as save_maintenance_state
 from app.core.user_context import persist_user_context, sync_user_context_from_preferences
 from app.services.plot_wizard import (
+    wizard_color_context,
     PLOT_COLORS,
     SOIL_TEXTURES,
     geometry_outside_farm,
@@ -8813,6 +8814,16 @@ def plots_page(
     plots_field_variety_filtered = _plots_variety_query_is_user_filter(request, _plots_active_season_variety_id)
     plot_wizard_groups = sorted({plot.group_name for plot in repo.list_plots(farm_ids=context_farm_ids or None) if plot.group_name}, key=str.lower) if context_farm_ids else []
     plot_wizard_season = scope.get("active_season")
+    wizard_plots = repo.list_plots(farm_ids=context_farm_ids or None) if context_farm_ids else []
+    plot_wizard_data = {
+        "today": date.today().isoformat(),
+        "farms": {str(farm.id): farm.name for farm in scope.get("context_farms", [])},
+        "colors": [list(color) for color in PLOT_COLORS],
+        "used": wizard_color_context(wizard_plots),
+        "varieties": {str(variety.id): variety.name for variety in form_varieties},
+        "season": plot_wizard_season.name if plot_wizard_season and plot_wizard_season.status != "encerrada" else None,
+        "edit": {"id": edit_plot.id, "name": edit_plot.name} if edit_plot else None,
+    }
     return templates.TemplateResponse(
         "plots.html",
         _base_context(
@@ -8834,6 +8845,7 @@ def plots_page(
             plots_field_sort_filtered=plots_field_sort_filtered,
             edit_plot=edit_plot,
             plot_colors=PLOT_COLORS,
+            plot_wizard_data=plot_wizard_data,
             plot_groups=plot_wizard_groups,
             soil_textures=SOIL_TEXTURES,
             plot_wizard_season=plot_wizard_season if plot_wizard_season and plot_wizard_season.status != "encerrada" else None,
@@ -8859,11 +8871,47 @@ def plots_page(
     )
 
 
-def _apply_plot_wizard_fields(repo: FarmRepository, plot, farm, geometry, map_color, color_mode, group_name, soil_texture, *, is_new: bool) -> None:
-    """Cor no mapa (automática ou escolhida), grupo e tipo de solo vindos do assistente de setor."""
+def _create_variety_from_wizard(repo: FarmRepository, scope: dict, raw_name: str) -> int | None:
+    """"+ Outra" no passo Plantio: reaproveita a variedade com o mesmo nome ou cria uma nova na organização."""
+    name = " ".join((raw_name or "").split())[:120]
+    if not name:
+        return None
+    org_id = scope.get("active_organization_id")
+    for variety in repo.list_varieties(organization_id=org_id):
+        if variety.name.strip().lower() == name.lower():
+            return variety.id
+    variety = create_variety(repo, {"organization_id": org_id, "name": name, "species": "Não informada", "maturation_cycle": "Não informado"})
+    return variety.id
+
+
+@router.get("/setores/{plot_id}/pronto")
+def plot_done_page(plot_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+                   csrf_token: str = Depends(get_csrf_token)):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    plot = repo.get_plot(plot_id)
+    if not plot or not _farm_matches_scope(plot.farm_id, scope):
+        return _redirect("/setores")
+    return templates.TemplateResponse(
+        "plot_done.html",
+        _base_context(request, user, csrf_token, "plots", _repo=repo, title="Setor criado", plot=plot,
+                      season_name=request.query_params.get("safra")),
+    )
+
+
+def _apply_plot_wizard_fields(repo: FarmRepository, plot, farm, geometry, map_color, color_mode, group_name, soil_texture, *, is_new: bool,
+                              field_reference: str | None = None, soil_report=None) -> None:
+    """Cor no mapa, grupo, tipo de solo, referência no campo e laudo de solo vindos do assistente de setor."""
     if color_mode is None and map_color is None and group_name is None and soil_texture is None:
         return  # formulário antigo: não mexe
-    color = normalize_color(map_color) if color_mode == "manual" else None
+    if soil_report is not None and getattr(soil_report, "filename", None):
+        payload = soil_report.file.read()
+        if payload:
+            repo.db.add(PlotAttachment(plot_id=plot.id, filename=f"Laudo de solo - {soil_report.filename}"[:255],
+                                       content_type=soil_report.content_type or "application/octet-stream", file_data=payload))
+            repo.db.commit()
+    repo.update(plot, {"field_reference": " ".join((field_reference or "").split())[:160] or None})
+    color = normalize_color(map_color) if color_mode in {"manual", "auto"} else None
     if not color and (is_new or color_mode == "auto" or not plot.map_color):
         others = [other for other in repo.list_plots(farm_ids=[farm.id]) if other.id != plot.id]
         color = pick_auto_color(others, geometry)
@@ -8892,7 +8940,7 @@ def create_plot_action(
     request: Request,
     csrf_token: str = Form(...),
     name: str = Form(...),
-    area_hectares: float = Form(...),
+    area_hectares: str = Form(...),
     farm_id: str | None = Form(None),
     planting_date: str | None = Form(None),
     plant_count: str | None = Form(None),
@@ -8917,6 +8965,9 @@ def create_plot_action(
     group_name: str | None = Form(None),
     soil_texture: str | None = Form(None),
     include_in_season: str | None = Form(None),
+    field_reference: str | None = Form(None),
+    new_variety_name: str | None = Form(None),
+    soil_report: UploadFile | None = File(None),
     return_to: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -8924,11 +8975,20 @@ def create_plot_action(
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     scope = _global_scope_context(request, repo, user)
+    try:
+        parsed_area = _float_or_none(area_hectares)
+    except ValueError:
+        parsed_area = None
+    if not parsed_area or parsed_area <= 0:
+        _flash(request, "error", "Informe a área do setor em hectares (ex.: 5,4).")
+        return _redirect("/setores")
     selected_farm_id = _int_or_none(farm_id)
     if not selected_farm_id:
         _flash(request, "error", "Selecione uma fazenda antes de salvar o setor.")
         return _redirect("/setores")
     selected_variety_id = _int_or_none(variety_id)
+    if not selected_variety_id and (new_variety_name or "").strip():
+        selected_variety_id = _create_variety_from_wizard(repo, scope, new_variety_name)
     if selected_variety_id:
         selected_variety = repo.get_variety(selected_variety_id)
         if not _variety_matches_scope(selected_variety, scope):
@@ -8953,13 +9013,13 @@ def create_plot_action(
         _build_plot_payload(
             farm=farm,
             name=name,
-            area_hectares=area_hectares,
+            area_hectares=parsed_area,
             planting_date=planting_date,
             plant_count=_int_or_none(plant_count) or 0,
             spacing_row_meters=spacing_row_meters,
             spacing_plant_centimeters=spacing_plant_centimeters,
             estimated_yield_sacks=estimated_yield_sacks,
-            variety_id=variety_id,
+            variety_id=str(selected_variety_id) if selected_variety_id else None,
             centroid_lat=centroid_lat,
             centroid_lng=centroid_lng,
             boundary_geojson=geometry,
@@ -8988,14 +9048,16 @@ def create_plot_action(
         None,
         is_new_plot=True,
     )
-    _apply_plot_wizard_fields(repo, new_plot, farm, geometry, map_color, color_mode, group_name, soil_texture, is_new=True)
+    _apply_plot_wizard_fields(repo, new_plot, farm, geometry, map_color, color_mode, group_name, soil_texture, is_new=True,
+                              field_reference=field_reference, soil_report=soil_report)
     joined_season = _include_plot_in_active_season(repo, scope, new_plot) if include_in_season else None
-    _flash(request, "success", f"Setor {new_plot.name} criado." + (f" Já entrou na {joined_season.name}." if joined_season else ""))
+    if return_to and return_to.startswith("safra"):
+        _flash(request, "success", f"Setor {new_plot.name} criado." + (f" Já entrou na {joined_season.name}." if joined_season else ""))
     if return_to == "safra":
         return _redirect(f"/safras?novo=1&setor={new_plot.id}")
     if return_to and return_to.startswith("safra:") and return_to[6:].isdigit():
         return _redirect(f"/safras?edit_id={int(return_to[6:])}&rascunho=1&setor={new_plot.id}")
-    return _redirect("/setores")
+    return _redirect_with_query(f"/setores/{new_plot.id}/pronto", safra=joined_season.name if joined_season else None)
 
 
 @router.post("/talhoes/{plot_id}/editar", include_in_schema=False)
@@ -9056,7 +9118,7 @@ def update_plot_action(
     request: Request,
     csrf_token: str = Form(...),
     name: str = Form(...),
-    area_hectares: float = Form(...),
+    area_hectares: str = Form(...),
     farm_id: int = Form(...),
     planting_date: str | None = Form(None),
     plant_count: str | None = Form(None),
@@ -9081,12 +9143,22 @@ def update_plot_action(
     group_name: str | None = Form(None),
     soil_texture: str | None = Form(None),
     include_in_season: str | None = Form(None),
+    field_reference: str | None = Form(None),
+    new_variety_name: str | None = Form(None),
+    soil_report: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     scope = _global_scope_context(request, repo, user)
+    try:
+        parsed_area = _float_or_none(area_hectares)
+    except ValueError:
+        parsed_area = None
+    if not parsed_area or parsed_area <= 0:
+        _flash(request, "error", "Informe a área do setor em hectares (ex.: 5,4).")
+        return _redirect("/setores")
     plot = repo.get_plot(plot_id)
     if not plot or not _farm_matches_scope(plot.farm_id, scope):
         _flash(request, "error", "Setor nao encontrado.")
@@ -9100,6 +9172,8 @@ def update_plot_action(
         _flash(request, "error", f"Já existe um setor chamado {name.strip()} nesta fazenda. Use outro nome.")
         return _redirect_with_query("/setores", selected_farm_id=farm.id)
     selected_variety_id = _int_or_none(variety_id)
+    if not selected_variety_id and (new_variety_name or "").strip():
+        selected_variety_id = _create_variety_from_wizard(repo, scope, new_variety_name)
     if selected_variety_id:
         selected_variety = repo.get_variety(selected_variety_id)
         if not _variety_matches_scope(selected_variety, scope):
@@ -9120,13 +9194,13 @@ def update_plot_action(
         _build_plot_payload(
             farm=farm,
             name=name,
-            area_hectares=area_hectares,
+            area_hectares=parsed_area,
             planting_date=planting_date,
             plant_count=_int_or_none(plant_count) or 0,
             spacing_row_meters=spacing_row_meters,
             spacing_plant_centimeters=spacing_plant_centimeters,
             estimated_yield_sacks=estimated_yield_sacks,
-            variety_id=variety_id,
+            variety_id=str(selected_variety_id) if selected_variety_id else None,
             centroid_lat=centroid_lat,
             centroid_lng=centroid_lng,
             boundary_geojson=geometry,
@@ -9156,7 +9230,8 @@ def update_plot_action(
         old_geometry,
         is_new_plot=False,
     )
-    _apply_plot_wizard_fields(repo, plot, farm, geometry, map_color, color_mode, group_name, soil_texture, is_new=False)
+    _apply_plot_wizard_fields(repo, plot, farm, geometry, map_color, color_mode, group_name, soil_texture, is_new=False,
+                              field_reference=field_reference, soil_report=soil_report)
     if include_in_season:
         _include_plot_in_active_season(repo, scope, plot)
     _flash(request, "success", "Setor atualizado com sucesso.")

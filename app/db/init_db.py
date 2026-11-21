@@ -662,6 +662,7 @@ def _sync_schema() -> None:
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS map_color VARCHAR(9)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS group_name VARCHAR(80)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS soil_texture VARCHAR(20)",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS field_reference VARCHAR(160)",
         "ALTER TABLE stock_assistant_drafts ALTER COLUMN plot_id DROP NOT NULL",
         "ALTER TABLE assistant_threads ADD COLUMN IF NOT EXISTS channel VARCHAR(20)",
         "ALTER TABLE stock_assistant_drafts ADD COLUMN IF NOT EXISTS notes TEXT",

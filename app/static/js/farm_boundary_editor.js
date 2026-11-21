@@ -354,9 +354,10 @@
         let removeHandler = null;
         if (removePointButton) {
             removeHandler = () => {
-                if (selectedIndex === null || points.length <= 3) return;
+                if (!points.length) return;
+                const removeAt = selectedIndex === null || selectedIndex >= points.length ? points.length - 1 : selectedIndex;
                 pushHistory();
-                points.splice(selectedIndex, 1);
+                points.splice(removeAt, 1);
                 selectedIndex = null;
                 renderEditor();
             };
@@ -706,9 +707,10 @@
         let removeHandler = null;
         if (removePointButton) {
             removeHandler = () => {
-                if (selectedIndex === null || points.length <= 3) return;
+                if (!points.length) return;
+                const removeAt = selectedIndex === null || selectedIndex >= points.length ? points.length - 1 : selectedIndex;
                 pushHistory();
-                points.splice(selectedIndex, 1);
+                points.splice(removeAt, 1);
                 selectedIndex = null;
                 renderAll();
             };
