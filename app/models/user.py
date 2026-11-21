@@ -30,6 +30,7 @@ class User(Base):
     avatar_content_type: Mapped[str] = mapped_column(String(120), nullable=True)
     avatar_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
     last_login_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    welcome_email_sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     asaas_customer_id: Mapped[str] = mapped_column(String(40), nullable=True, index=True)
 

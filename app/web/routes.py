@@ -4352,11 +4352,63 @@ def maintenance_settings_action(
     return _redirect("/manutencao")
 
 
+def _send_welcome_email_safe(
+    recipient_email: str,
+    display_name: str | None,
+    full_name: str | None,
+    organization_name: str | None,
+    trial_days: int,
+) -> None:
+    from app.services.email_service import send_welcome_email
+
+    try:
+        send_welcome_email(
+            recipient_email=recipient_email,
+            display_name=display_name,
+            full_name=full_name,
+            organization_name=organization_name,
+            trial_days=trial_days,
+        )
+    except Exception:
+        logger.exception("Falha ao enviar e-mail de boas-vindas para %s", recipient_email)
+
+
+def _build_welcome_email_task_if_needed(db: Session, user: User) -> BackgroundTask | None:
+    if not user.email or user.welcome_email_sent_at is not None:
+        return None
+    from app.services.self_signup import TRIAL_DAYS
+
+    organization_name = user.organization.name if user.organization else None
+    user.welcome_email_sent_at = datetime.now(timezone.utc)
+    db.add(user)
+    db.commit()
+    return BackgroundTask(
+        _send_welcome_email_safe,
+        user.email,
+        user.display_name,
+        user.name,
+        organization_name,
+        TRIAL_DAYS,
+    )
+
+
 @router.get("/primeiros-passos")
-def onboarding_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token)):
+def onboarding_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    welcome_task = None
+    if request.query_params.get("cadastro") == "concluido":
+        welcome_task = _build_welcome_email_task_if_needed(db, user)
     if not user.organization_id or _onboarding_done(db, user):
-        return _redirect("/dashboard")
-    return _render_onboarding(request, db, user, csrf_token)
+        response = _redirect("/dashboard")
+    else:
+        response = _render_onboarding(request, db, user, csrf_token)
+    if welcome_task is not None and hasattr(response, "background"):
+        response.background = welcome_task
+    return response
 
 
 @router.post("/primeiros-passos")

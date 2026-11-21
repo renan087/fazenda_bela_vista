@@ -1,19 +1,38 @@
 import logging
 import smtplib
 from email.message import EmailMessage
+from pathlib import Path
+
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+_EMAIL_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates" / "emails"
+_email_jinja_env = Environment(
+    loader=FileSystemLoader(str(_EMAIL_TEMPLATES_DIR)),
+    autoescape=select_autoescape(["html", "xml"]),
+)
+
 
 def _generic_error_message(error_context: str) -> str:
     if error_context == "password_reset":
         return "Nao foi possivel enviar o email de redefinicao."
+    if error_context == "welcome":
+        return "Nao foi possivel enviar o email de boas-vindas."
     return "Nao foi possivel enviar o email de verificacao."
 
 
-def _send_email(recipient_email: str, subject: str, body: str, error_context: str) -> None:
+def _send_email(
+    recipient_email: str,
+    subject: str,
+    body: str,
+    error_context: str,
+    *,
+    html_body: str | None = None,
+    reply_to: str | None = None,
+) -> None:
     settings = get_settings()
     if not settings.smtp_host or not settings.smtp_from_email:
         raise RuntimeError("Servico de email nao configurado.")
@@ -22,7 +41,11 @@ def _send_email(recipient_email: str, subject: str, body: str, error_context: st
     message["Subject"] = subject
     message["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
     message["To"] = recipient_email
+    if reply_to:
+        message["Reply-To"] = reply_to
     message.set_content(body)
+    if html_body:
+        message.add_alternative(html_body, subtype="html")
 
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as server:
@@ -172,3 +195,90 @@ def send_bootstrap_admin_password_email(recipient_email: str, password: str) -> 
 def send_plain_email(recipient_email: str, subject: str, body: str, error_context: str) -> None:
     """Envio de e-mail de texto simples (avisos de cobrança e pedidos comerciais)."""
     _send_email(recipient_email, subject, body, error_context)
+
+
+def _welcome_first_name(display_name: str | None, full_name: str | None) -> str:
+    raw = (display_name or "").strip() or (full_name or "").strip()
+    if not raw:
+        return "Produtor"
+    return raw.split()[0]
+
+
+def build_welcome_email_content(
+    *,
+    display_name: str | None,
+    full_name: str | None,
+    organization_name: str | None,
+    trial_days: int = 14,
+    base_url: str | None = None,
+    support_email: str | None = None,
+    whatsapp_display: str | None = None,
+) -> tuple[str, str, str]:
+    """Monta assunto, versão texto puro e HTML do e-mail de boas-vindas."""
+    settings = get_settings()
+    first_name = _welcome_first_name(display_name, full_name)
+    org_name = (organization_name or "").strip() or "sua fazenda"
+    public_url = (base_url or settings.app_public_url or "https://app.sisfarm.com.br").rstrip("/")
+    resolved_support = (support_email if support_email is not None else (settings.support_email or "")).strip()
+    resolved_whatsapp = (
+        whatsapp_display if whatsapp_display is not None else (settings.whatsapp_display_number or "")
+    ).strip()
+
+    subject = f"Bem-vindo ao SiSFarm, {first_name}! Sua conta está pronta"
+    text_body = (
+        f"Olá, {first_name}! Que alegria ter você por aqui.\n\n"
+        f"A conta de {org_name} já está cadastrada no SiSFarm e você já pode começar "
+        "a organizar a sua safra, controlar os insumos, acompanhar a produção e o financeiro "
+        "da fazenda, tudo em um só lugar.\n\n"
+        f"Seu teste gratuito de {trial_days} dias já está ativo com todos os recursos liberados.\n"
+        f"Acesse seu SiSFarm: {public_url}/primeiros-passos\n\n"
+        "Principais recursos que você já pode usar:\n"
+        f"- Fazenda e Talhões: {public_url}/fazendas\n"
+        f"- Produção e Vendas: {public_url}/producao\n"
+        f"- Insumos: {public_url}/insumos/estoque\n"
+        f"- Financeiro: {public_url}/gestao-financeira\n\n"
+        "Conheça o Pezinho, seu assistente inteligente!\n"
+        "Converse por texto ou áudio no sistema ou no WhatsApp, consulte informações da fazenda "
+        f"e registre atividades com facilidade: {public_url}/mobile/assistente\n\n"
+        "Precisa de ajuda? Nossa equipe está pronta para te apoiar."
+        + (f"\nE-mail: {resolved_support}" if resolved_support else "")
+        + (f"\nWhatsApp: {resolved_whatsapp}" if resolved_whatsapp else "")
+        + "\n\nBoas safras!\nEquipe SiSFarm\n"
+        f"{public_url}\n"
+    )
+    html_body = _email_jinja_env.get_template("welcome.html").render(
+        first_name=first_name,
+        organization_name=org_name,
+        trial_days=trial_days,
+        base_url=public_url,
+        support_email=resolved_support,
+        whatsapp_display=resolved_whatsapp,
+    )
+    return subject, text_body, html_body
+
+
+def send_welcome_email(
+    *,
+    recipient_email: str,
+    display_name: str | None,
+    full_name: str | None,
+    organization_name: str | None,
+    trial_days: int = 14,
+) -> None:
+    """Envia o e-mail HTML de boas-vindas ao novo usuário."""
+    settings = get_settings()
+    support_email = (settings.support_email or "").strip() or None
+    subject, text_body, html_body = build_welcome_email_content(
+        display_name=display_name,
+        full_name=full_name,
+        organization_name=organization_name,
+        trial_days=trial_days,
+    )
+    _send_email(
+        recipient_email=recipient_email,
+        subject=subject,
+        body=text_body,
+        html_body=html_body,
+        reply_to=support_email,
+        error_context="welcome",
+    )

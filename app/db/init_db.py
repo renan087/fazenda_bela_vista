@@ -627,6 +627,7 @@ def _sync_schema() -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_content_type VARCHAR(120)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data BYTEA",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_email_sent_at TIMESTAMPTZ",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS asaas_customer_id VARCHAR(40)",
         "ALTER TABLE organization_billing ADD COLUMN IF NOT EXISTS cpf_cnpj VARCHAR(14)",
         "ALTER TABLE organization_billing ADD COLUMN IF NOT EXISTS postal_code VARCHAR(8)",
