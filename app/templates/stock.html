@@ -1,6 +1,6 @@
 {% extends "base.html" %}
+{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io4">{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io3">
 {%- set io_items = hub['items'] -%}
 {%- set io_sel = selected_stock_item if selected_stock_item in io_items|map(attribute='id')|list else (io_items[0].id if io_items else None) -%}
 {%- set KIND = {
@@ -122,7 +122,7 @@
         {% endif %}
     {% elif tab == 'movimentacoes' %}
     {%- set mf = mov_filters -%}
-    {%- set qbase = {'aba': 'movimentacoes', 'periodo': mf.periodo, 'tipo': mf.tipo, 'busca': mf.busca, 'de': mf.de, 'ate': mf.ate} -%}
+    {%- set qbase = {'aba': 'movimentacoes', 'periodo': mf.periodo, 'tipo': mf.tipo, 'busca': mf.busca, 'de': mf.de, 'ate': mf.ate, 'por': mf.por} -%}
     {%- set sm = moves.summary -%}
     <section class="io-card io-mv-kpis" aria-label="Resumo de {{ mf.label }}">
         <div class="io-kpi"><span>Entrou no estoque</span><strong class="io-txt-green">{{ sm.compra.value|money_br }}</strong><small>{{ sm.compra.count }} {{ 'compra' if sm.compra.count == 1 else 'compras' }}</small></div>
@@ -214,7 +214,23 @@
         {% else %}
         <div class="io-empty" style="padding:40px 16px"><strong>Nenhuma movimentação {{ 'deste tipo ' if mf.tipo != 'todos' else '' }}em {{ mf.label }}</strong><span>Troque o período ou o filtro.{% if mf.busca %} A busca foi por “{{ mf.busca }}”.{% endif %}</span></div>
         {% endfor %}
-        {% if moves.truncated %}<p class="io-sub" style="padding:14px 20px;margin:0;border-top:1px solid #EEF1ED">Mostrando os 60 dias mais recentes do período. Escolha um período menor para ver o resto.</p>{% endif %}
+        {%- set pg = moves.pagination -%}
+        {% if pg.total %}
+        <nav class="io-pager" aria-label="Páginas das movimentações">
+            <span class="io-pager-info">Mostrando {{ pg.first }}–{{ pg.last }} de {{ pg.total }}</span>
+            <div class="io-pager-nav">
+                {% if pg.page > 1 %}<a class="io-btn is-sm" href="/insumos/estoque?{{ dict(qbase, pagina=pg.page - 1)|urlencode }}" rel="prev">Anterior</a>{% else %}<span class="io-btn is-sm" aria-disabled="true">Anterior</span>{% endif %}
+                <span class="io-pager-page">Página {{ pg.page }} de {{ pg.pages }}</span>
+                {% if pg.page < pg.pages %}<a class="io-btn is-sm" href="/insumos/estoque?{{ dict(qbase, pagina=pg.page + 1)|urlencode }}" rel="next">Próxima</a>{% else %}<span class="io-btn is-sm" aria-disabled="true">Próxima</span>{% endif %}
+            </div>
+            <form method="get" action="/insumos/estoque" class="io-pager-size">
+                {% for k, v in qbase.items() if k != 'por' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+                <label for="io-per-page">Por página</label>
+                <select id="io-per-page" name="por" data-io-autosubmit>{% for n in pg.sizes %}<option value="{{ n }}"{% if n == pg.per_page %} selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+                <noscript><button class="io-btn is-sm" type="submit">Ok</button></noscript>
+            </form>
+        </nav>
+        {% endif %}
     </section>
     <dialog class="io-drawer" data-io-mov-dialog aria-label="Detalhe da movimentação"><div class="io-mv-sheet" data-io-mov-body></div></dialog>
     {% if mf.open %}<span hidden data-io-mov-autoopen="{{ mf.open }}"></span>{% endif %}
@@ -271,7 +287,7 @@
             <section class="io-card io-card-pad" aria-label="Contagens anteriores">
                 <h2 class="io-h3" style="margin-bottom:8px">Contagens anteriores</h2>
                 {% for h in count_history %}
-                <div class="io-kv"><span>{{ h.date.strftime('%d/%m/%Y') }} · {{ h.items }} {{ 'item' if h.items == 1 else 'itens' }}</span><strong class="{{ 'io-txt-green' if not h.adjustments else '' }}">{{ 'tudo bateu' if not h.adjustments else (h.adjustments ~ (' ajuste' if h.adjustments == 1 else ' ajustes')) }}</strong></div>
+                <div class="io-kv"><span>{{ h.date.strftime('%d/%m/%Y') }} · {{ h.item_count }} {{ 'item' if h.item_count == 1 else 'itens' }}</span><strong class="{{ 'io-txt-green' if not h.adjustments else '' }}">{{ 'tudo bateu' if not h.adjustments else (h.adjustments ~ (' ajuste' if h.adjustments == 1 else ' ajustes')) }}</strong></div>
                 {% else %}
                 <p class="io-sub" style="margin:0">Nenhuma contagem registrada ainda.</p>
                 {% endfor %}

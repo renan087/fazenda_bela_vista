@@ -613,6 +613,8 @@ MOVE_KINDS = [("todos", "Tudo"), ("compra", "Entradas"), ("uso", "Usos"), ("abas
 MANUAL_REFERENCE = "manual_stock_output"
 ALLOCATION_REFERENCE = "manual_stock_output_allocation"
 PERIODS = {"7": 7, "30": 30}
+MAX_COUNT_QUANTITY = 9_999_999.99
+PAGE_SIZES = (15, 30, 50, 100)
 
 
 def day_label(day: date, today: date) -> str:
@@ -703,7 +705,8 @@ def undo_movement(repo, db, output, farm_id) -> str:
     return f"Uso desfeito: {qty} de {name} voltaram para o estoque."
 
 
-def build_movements(repo, db, farm_id, *, today: date, start: date | None, end: date | None, kind: str = "todos", search: str = "", limit_days: int = 60) -> dict:
+def build_movements(repo, db, farm_id, *, today: date, start: date | None, end: date | None, kind: str = "todos", search: str = "",
+                    page: int = 1, per_page: int = 15, open_id: str | None = None) -> dict:
     entries = [e for e in repo.list_purchased_inputs(include_stock_adjustments=True) if _in_farm(e, farm_id) and e.input_id]
     outputs = [o for o in repo.list_stock_outputs() if _in_farm(o, farm_id)]
     fuel_ids = [o.id for o in outputs if o.reference_type == FUELING_REFERENCE]
@@ -802,13 +805,26 @@ def build_movements(repo, db, farm_id, *, today: date, start: date | None, end: 
     q = (search or "").strip().lower()
     shown = [m for m in in_period if (kind in ("todos", "", None) or m["kind"] == kind) and (not q or q in f"{m['title']} {m['where']}".lower())]
     shown.sort(key=lambda m: (m["date"], m["stamp"]), reverse=True)
+    per_page = per_page if per_page in PAGE_SIZES else PAGE_SIZES[0]
+    total = len(shown)
+    pages = max(1, -(-total // per_page))
+    if open_id:
+        index = next((i for i, m in enumerate(shown) if m["id"] == open_id), None)
+        if index is not None:
+            page = index // per_page + 1
+    page = min(max(1, int(page or 1)), pages)
+    chunk = shown[(page - 1) * per_page: page * per_page]
     days, by_day = [], defaultdict(list)
-    for m in shown:
+    for m in chunk:
         by_day[m["date"]].append(m)
-    for day in sorted(by_day, reverse=True)[:limit_days]:
+    for day in sorted(by_day, reverse=True):
         rows = by_day[day]
         days.append({"label": day_label(day, today), "count": len(rows), "rows": rows})
-    return {"days": days, "summary": summary, "counts": counts, "total": len(shown), "truncated": len(by_day) > limit_days}
+    pagination = {
+        "page": page, "pages": pages, "per_page": per_page, "total": total, "sizes": PAGE_SIZES,
+        "first": (page - 1) * per_page + 1 if total else 0, "last": min(page * per_page, total),
+    }
+    return {"days": days, "summary": summary, "counts": counts, "total": total, "pagination": pagination}
 
 
 # ---------------------------------------------------------------- contagem
@@ -816,7 +832,12 @@ def count_sheet(items: list[dict], counts: dict) -> dict:
     rows = []
     for item in sorted(items, key=lambda i: (i["group_label"], i["name"].lower())):
         raw = counts.get(str(item["id"]))
-        counted = parse_br_number(raw) if raw not in (None, "") else None
+        try:
+            counted = parse_br_number(raw) if raw not in (None, "") else None
+        except ValueError:
+            counted, raw = None, ""
+        if counted is not None and (counted < 0 or counted > MAX_COUNT_QUANTITY):
+            counted, raw = None, ""
         unit_cost = item["value"] / item["available"] if item["available"] else 0
         if counted is None:
             status, diff, diff_label = "todo", None, "falta contar"

@@ -25978,6 +25978,8 @@ def stock_page(
     busca: str | None = None,
     de: str | None = None,
     ate: str | None = None,
+    pagina: int | None = None,
+    por: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -25999,8 +26001,10 @@ def stock_page(
     if tab == "movimentacoes":
         key, start, end, label = _ih.period_range(periodo, scope.get("active_season"), hub["today"], de, ate)
         kind = tipo if tipo in dict(_ih.MOVE_KINDS) else "todos"
-        context["moves"] = _ih.build_movements(repo, db, farm_id, today=hub["today"], start=start, end=end, kind=kind, search=busca or "")
-        context["mov_filters"] = {"periodo": key, "tipo": kind, "busca": busca or "", "de": de or "", "ate": ate or "", "label": label,
+        per_page = por if por in _ih.PAGE_SIZES else _ih.PAGE_SIZES[0]
+        context["moves"] = _ih.build_movements(repo, db, farm_id, today=hub["today"], start=start, end=end, kind=kind, search=busca or "",
+                                               page=pagina or 1, per_page=per_page, open_id=request.query_params.get("mov"))
+        context["mov_filters"] = {"periodo": key, "tipo": kind, "busca": busca or "", "de": de or "", "ate": ate or "", "label": label, "por": per_page,
                                   "open": request.query_params.get("mov") or ""}
         context["mov_kinds"] = _ih.MOVE_KINDS
     if tab == "contagens":
@@ -26013,7 +26017,7 @@ def stock_page(
         context["count_draft"] = draft
         sessions = repo.list_stock_inventory_sessions(farm_id=farm_id) if farm_id else []
         context["count_history"] = [
-            {"date": s.inventory_date, "items": len(s.items or []),
+            {"date": s.inventory_date, "item_count": len(s.items or []),
              "adjustments": sum(1 for i in (s.items or []) if abs(float(i.difference_quantity or 0)) >= 0.005),
              "who": s.responsible_name}
             for s in sorted(sessions, key=lambda s: (s.inventory_date or date.min, s.id), reverse=True)[:6]
@@ -26079,7 +26083,7 @@ async def stock_count_action(
         if not draft:
             draft = StockCountDraft(farm_id=farm_id, counts="{}")
             db.add(draft)
-        draft.counts = json.dumps(counts)
+        draft.counts = json.dumps({k: v for k, v in counts.items() if len(v) <= 16})
         draft.updated_by = getattr(user, "id", None)
         db.commit()
         _flash(request, "success", f"Contagem salva ({len(counts)} {'item' if len(counts) == 1 else 'itens'}). Continue quando quiser.")
@@ -26090,6 +26094,8 @@ async def stock_count_action(
             value = _ih.parse_br_number(raw)
             if value is None or value < 0:
                 raise ValueError("Confira as quantidades contadas: use só números maiores ou iguais a zero.")
+            if value > _ih.MAX_COUNT_QUANTITY:
+                raise ValueError("Uma das quantidades contadas está grande demais. O máximo é 9.999.999,99.")
             items.append({"input_id": int(key), "counted_quantity": value})
         _, adjustments = register_stock_inventory(repo, {
             "farm_id": farm_id, "inventory_date": str(form.get("data") or ""),

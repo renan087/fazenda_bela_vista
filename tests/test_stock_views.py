@@ -117,3 +117,34 @@ def test_legacy_links_land_on_new_views(hub):
     resp = env.routes.edit_stock_output_entry(use.id, env.request("/x"), db=env.db, user=env.user)
     assert resp.headers["location"] == f"/insumos/estoque?aba=movimentacoes&periodo=safra&mov=o-{use.id}"
     assert 'aria-current="page">Contagens' in _page(env, "/insumos/estoque?stock_tab=inventories")
+
+
+def test_movements_paginate_15_by_default_and_allow_bigger_pages(hub):
+    env, x = hub
+    repo = env.routes._repository(env.db)
+    ih.register_uses(repo, [{"input_id": x["luva"].id, "quantity": "0,5"} for _ in range(20)],
+                     farm_id=env.scope["active_farm_id"], season_id=env.scope["active_season_id"], plots={})
+    html = _page(env, "/insumos/estoque", aba="movimentacoes", periodo="safra", tipo="uso")
+    assert html.count('class="io-mv"') == 15 and "Mostrando 1–15 de 20" in html and "Página 1 de 2" in html
+    html = _page(env, "/insumos/estoque", aba="movimentacoes", periodo="safra", tipo="uso", pagina=2)
+    assert html.count('class="io-mv"') == 5 and "Mostrando 16–20 de 20" in html
+    html = _page(env, "/insumos/estoque", aba="movimentacoes", periodo="safra", tipo="uso", por=30)
+    assert html.count('class="io-mv"') == 20 and '<option value="30" selected>' in html
+    assert _page(env, "/insumos/estoque", aba="movimentacoes", periodo="safra", tipo="uso", por=999).count('class="io-mv"') == 15
+
+
+def test_count_history_card_and_absurd_quantities(hub):
+    env, x = hub
+
+    def post(*pairs):
+        req = env.request("/insumos/estoque/contagem", form=list(pairs))
+        return asyncio.run(env.routes.stock_count_action(req, db=env.db, user=env.user))
+
+    post(("counted_%d" % x["kcl"].id, "151.515.151.515,00"), ("acao", "aplicar"))
+    assert "grande demais" in env.session["flash"]["message"]
+    post(("counted_%d" % x["kcl"].id, "8,00"), ("acao", "aplicar"))
+    html = _page(env, "/insumos/estoque", aba="contagens")
+    assert "built-in method" not in html and " · 1 item</span>" in html and "tudo bateu" in html
+    sheet = ih.count_sheet([{"id": 1, "name": "X", "unit": "L", "available": 5, "available_label": "5 L", "value": 50,
+                             "group_label": "G", "category": "C"}], {"1": "151515151515"})
+    assert sheet["rows"][0]["status"] == "todo"

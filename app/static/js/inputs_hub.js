@@ -550,7 +550,28 @@
       set('[data-io-sum-extra]', `+ ${money(extra)}`);
       return { done, diff };
     };
-    countForm.addEventListener('input', (e) => { if (e.target.closest('[data-io-crow]')) calc(); });
+    // Máscara de centavos: 1 → 0,01 · 10 → 0,10 · 12345 → 123,45 (máximo 9.999.999,99)
+    const MAX_DIGITS = 9;
+    const maskCents = (input) => {
+      const digits = input.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, MAX_DIGITS);
+      if (!digits) { input.value = ''; return; }
+      const padded = digits.padStart(3, '0');
+      const whole = Number(padded.slice(0, -2)).toLocaleString('pt-BR');
+      input.value = `${whole},${padded.slice(-2)}`;
+    };
+    rowsC.forEach((row) => {
+      const input = row.querySelector('input');
+      input.setAttribute('inputmode', 'numeric');
+      input.setAttribute('maxlength', '12');
+      const start = num(input.value);
+      if (input.value.trim() && !Number.isNaN(start)) input.value = Math.min(start, 9999999.99).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      else input.value = '';
+    });
+    countForm.addEventListener('input', (e) => {
+      if (!e.target.closest('[data-io-crow]')) return;
+      maskCents(e.target);
+      calc();
+    });
     countForm.querySelectorAll('[data-io-count-filter]').forEach((b) => b.addEventListener('click', () => {
       filter = b.dataset.ioCountFilter;
       countForm.querySelectorAll('[data-io-count-filter]').forEach((x) => { x.classList.toggle('is-on', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
@@ -577,6 +598,7 @@
     if (dialog) dialog.querySelector('[data-io-count-cancel]').addEventListener('click', () => dialog.close());
     calc();
   }
+  document.querySelectorAll('[data-io-autosubmit]').forEach((el) => el.addEventListener('change', () => el.form && el.form.submit()));
   document.querySelectorAll('[data-io-print]').forEach((b) => b.addEventListener('click', () => window.print()));
 
   const drawers = {};

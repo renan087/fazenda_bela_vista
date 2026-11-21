@@ -67,6 +67,7 @@
             pointer-events: auto;
         }
     </style>
+{% block head_extra %}{% endblock %}
 {% include "_google_tag.html" %}
 </head>
 <body class="bg-slate-100 text-slate-800" data-modal-mode="{% if modal_mode %}1{% else %}0{% endif %}" data-can-write-page="{% if can_write_page %}1{% else %}0{% endif %}">

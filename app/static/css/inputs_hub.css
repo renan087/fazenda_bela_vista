@@ -361,3 +361,12 @@ a.io-chip.is-on:hover{color:#fff}
   .io-count-input input{border:1px solid #999}
 }
 .io-note form .io-btn{flex:0 0 auto;width:auto}
+.io-count-diff,.io-kv strong,.io-mv-qty strong{overflow-wrap:anywhere}
+.io-count-input input{text-align:right;font-variant-numeric:tabular-nums}
+.io-pager{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;border-top:1px solid var(--io-line2)}
+.io-pager-info,.io-pager-page{font-size:13px;color:var(--io-muted)}
+.io-pager-nav{display:flex;align-items:center;gap:10px}
+.io-pager-nav [aria-disabled="true"]{opacity:.45;cursor:default}
+.io-pager-size{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--io-muted)}
+.io-pager-size select{min-height:36px;border:1px solid var(--io-line);border-radius:10px;padding:0 28px 0 10px;font-size:14px;font-weight:600;color:var(--io-ink);background-color:#fff}
+@media (max-width:639px){.io-pager{justify-content:center}.io-pager-info{width:100%;text-align:center}}
