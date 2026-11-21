@@ -143,7 +143,29 @@
     const pinClearBtn = $('[data-stw-pin-clear]');
     const hasPinCoords = () => Boolean(latInput?.value && lngInput?.value && Number.isFinite(parseFloat(latInput.value)) && Number.isFinite(parseFloat(lngInput.value)));
 
-    const syncPrompt = () => { if (prompt) prompt.hidden = !editor() || map.started || map.vertices > 0 || map.pointOnly || editing; };
+    let mapExpandTimer1 = null;
+    let mapExpandTimer2 = null;
+    const syncMapEditingHeight = () => {
+        const isEditingMap = Boolean(map.started || map.pointOnly || map.vertices > 0 || editing);
+        const changed = form.classList.contains('is-map-editing') !== isEditingMap;
+        form.classList.toggle('is-map-editing', isEditingMap);
+        if (changed) {
+            window.clearTimeout(mapExpandTimer1);
+            window.clearTimeout(mapExpandTimer2);
+            mapExpandTimer1 = window.setTimeout(() => editor()?.invalidate?.(), 160);
+            mapExpandTimer2 = window.setTimeout(() => editor()?.invalidate?.(), 350);
+        }
+    };
+    const syncPrompt = () => {
+        if (prompt) prompt.hidden = !editor() || map.started || map.vertices > 0 || map.pointOnly || editing;
+        syncMapEditingHeight();
+    };
+    $('#plots-form-boundary-map')?.addEventListener('pointerdown', () => {
+        if (!map.started) {
+            map.started = true;
+            syncPrompt();
+        }
+    });
     const syncMapToolUi = () => {
         const isPin = map.pointOnly;
         const hasPin = hasPinCoords();
