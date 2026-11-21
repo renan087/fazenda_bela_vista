@@ -65,9 +65,14 @@ def br_number(value, places: int = 0) -> str:
     return text.replace(",", "§").replace(".", ",").replace("§", ".")
 
 
+_PLURAL_UNITS = {"par": "pares", "saco": "sacos", "peça": "peças", "rolo": "rolos", "caixa": "caixas", "galão": "galões", "balde": "baldes"}
+
+
 def br_qty(value, unit: str | None = None) -> str:
     number = _f(value)
     places = 0 if abs(number - round(number)) < 0.005 else (1 if abs(number * 10 - round(number * 10)) < 0.05 else 2)
+    if unit and abs(number) > 1 and unit in _PLURAL_UNITS:
+        unit = _PLURAL_UNITS[unit]
     return f"{br_number(number, places)} {unit}".strip() if unit else br_number(number, places)
 
 
@@ -599,3 +604,237 @@ def fueling_rate(fueling, previous) -> dict | None:
     if fueling.meter_unit == "km":
         return {"value": worked / _f(fueling.liters), "label": f"{br_number(worked / _f(fueling.liters), 1)} km/L"}
     return {"value": _f(fueling.liters) / worked, "label": f"{br_number(_f(fueling.liters) / worked, 1)} L/h"}
+
+
+# ---------------------------------------------------------------- movimentações
+_WEEKDAYS = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
+_MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
+MOVE_KINDS = [("todos", "Tudo"), ("compra", "Entradas"), ("uso", "Usos"), ("abast", "Abastecimentos"), ("ajuste", "Ajustes")]
+MANUAL_REFERENCE = "manual_stock_output"
+ALLOCATION_REFERENCE = "manual_stock_output_allocation"
+PERIODS = {"7": 7, "30": 30}
+
+
+def day_label(day: date, today: date) -> str:
+    text = f"{_WEEKDAYS[day.weekday()]}, {day.day} de {_MONTHS[day.month - 1]}"
+    if day == today:
+        return f"Hoje · {text}"
+    if day == today - timedelta(days=1):
+        return f"Ontem · {text}"
+    if day.year != today.year:
+        text += f" de {day.year}"
+    return text[0].upper() + text[1:]
+
+
+def period_range(period: str | None, season, today: date, start: str | None = None, end: str | None = None) -> tuple[str, date | None, date | None, str]:
+    """Devolve (chave, início, fim, rótulo) do período escolhido nas Movimentações."""
+    if period == "personalizado":
+        try:
+            first = date.fromisoformat(start) if start else None
+            last = date.fromisoformat(end) if end else None
+        except ValueError:
+            first = last = None
+        if first or last:
+            label = f"{first.strftime('%d/%m/%Y') if first else 'início'} a {last.strftime('%d/%m/%Y') if last else 'hoje'}"
+            return "personalizado", first, last, label
+    if period == "safra" and getattr(season, "start_date", None):
+        return "safra", season.start_date, None, f"safra {season.name}"
+    if period == "7":
+        return "7", today - timedelta(days=6), None, "últimos 7 dias"
+    return "30", today - timedelta(days=29), None, "últimos 30 dias"
+
+
+def _origin_label(output) -> str | None:
+    origin = (output.origin or "").lower()
+    if origin.startswith("assistente"):
+        return "pelo Pezinho"
+    if origin.startswith("fertiliza"):
+        return "pela Adubação"
+    if origin == "whatsapp":
+        return "pelo WhatsApp"
+    return None
+
+
+def restore_output(repo, output) -> None:
+    """Devolve ao estoque o que uma saída manual tirou dos lotes (sem gravar ainda)."""
+    db = repo.db
+    allocations = (
+        db.query(type(output))
+        .filter(type(output).reference_type == ALLOCATION_REFERENCE, type(output).reference_id == output.id)
+        .all()
+    )
+    if allocations:
+        for allocation in allocations:
+            if allocation.purchased_input:
+                allocation.purchased_input.available_quantity = round(
+                    _f(allocation.purchased_input.available_quantity) + _f(allocation.quantity), 2
+                )
+            db.delete(allocation)
+    elif output.purchased_input:
+        output.purchased_input.available_quantity = round(_f(output.purchased_input.available_quantity) + _f(output.quantity), 2)
+    db.delete(output)
+
+
+def undo_movement(repo, db, output, farm_id) -> str:
+    """Desfaz um uso manual ou um abastecimento. Devolve o texto para o aviso."""
+    if not output or (farm_id and output.farm_id not in (None, farm_id)):
+        raise ValueError("Movimentação não encontrada nesta fazenda.")
+    name = output.input_catalog.name if output.input_catalog else "item"
+    qty = br_qty(output.quantity, output.unit)
+    if output.reference_type == FUELING_REFERENCE:
+        fueling = db.query(EquipmentFueling).filter(EquipmentFueling.stock_output_id == output.id).first()
+        try:
+            if fueling:
+                db.delete(fueling)
+            restore_output(repo, output)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        return f"Abastecimento desfeito: {qty} de {name} voltaram para o estoque."
+    if output.reference_type != MANUAL_REFERENCE:
+        raise ValueError("Este uso veio da Adubação. Corrija por lá para manter tudo ligado.")
+    try:
+        restore_output(repo, output)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return f"Uso desfeito: {qty} de {name} voltaram para o estoque."
+
+
+def build_movements(repo, db, farm_id, *, today: date, start: date | None, end: date | None, kind: str = "todos", search: str = "", limit_days: int = 60) -> dict:
+    entries = [e for e in repo.list_purchased_inputs(include_stock_adjustments=True) if _in_farm(e, farm_id) and e.input_id]
+    outputs = [o for o in repo.list_stock_outputs() if _in_farm(o, farm_id)]
+    fuel_ids = [o.id for o in outputs if o.reference_type == FUELING_REFERENCE]
+    fuelings = {}
+    if fuel_ids:
+        for fueling in db.query(EquipmentFueling).filter(EquipmentFueling.stock_output_id.in_(fuel_ids)).all():
+            fuelings[fueling.stock_output_id] = fueling
+
+    # saldo depois de cada movimento, por item (na ordem em que aconteceram)
+    events = [((e.purchase_date or date.min), 0, e.id, e.input_id, _f(e.total_quantity), ("e", e.id)) for e in entries]
+    events += [((o.movement_date or date.min), 1, o.id, o.input_id, -_f(o.quantity), ("o", o.id)) for o in outputs]
+    events.sort(key=lambda ev: (ev[0], ev[1], ev[2]))
+    running: dict[int, float] = defaultdict(float)
+    after: dict[tuple, float] = {}
+    for _, _, _, input_id, delta, key in events:
+        running[input_id] += delta
+        after[key] = round(running[input_id], 2)
+
+    moves = []
+    groups: dict = defaultdict(list)
+    for e in entries:
+        if e.entry_origin == "stock_adjustment_entry":
+            reason = e.notes or e.adjustment_reason or "Ajuste de saldo"
+            moves.append({
+                "kind": "ajuste", "date": e.purchase_date, "stamp": str(e.id), "id": f"ae-{e.id}",
+                "title": e.name, "where": reason[:120], "qty": "+ " + br_qty(e.total_quantity, e.package_unit), "tone": "green",
+                "after": br_qty(after.get(("e", e.id), 0), e.package_unit), "value": None, "value_num": 0.0,
+                "rows": [("Item", e.name), ("Motivo", reason)], "undo": None, "fix": None,
+            })
+        else:
+            groups[e.finance_transaction_id or f"e{e.id}"].append(e)
+    for key, items in groups.items():
+        first = items[0]
+        total = sum(_f(i.total_cost) for i in items)
+        marker = next((part.strip() for part in (first.notes or "").split("·") if part.strip().startswith("Nota fiscal")), None)
+        supplier = first.supplier_name or "fornecedor não informado"
+        if len(items) > 1:
+            title = f"{marker.replace('Nota fiscal', 'Nota')} · {supplier}" if marker else f"Compra · {supplier}"
+            where = ", ".join(i.name for i in items[:4]) + (f" e mais {len(items) - 4}" if len(items) > 4 else "")
+            qty, item_after = f"+ {len(items)} itens", None
+        else:
+            title = f"{br_qty(first.total_quantity, first.package_unit)} de {first.name}"
+            where = " · ".join(p for p in (supplier, marker.replace("Nota fiscal", "nota") if marker else None) if p)
+            qty, item_after = "+ " + br_qty(first.total_quantity, first.package_unit), br_qty(after.get(("e", first.id), 0), first.package_unit)
+        pay = {"a_prazo": f"{first.installment_count}x", "a_vista": "à vista"}.get(first.payment_condition or "", "")
+        moves.append({
+            "kind": "compra", "date": first.purchase_date, "stamp": str(first.id), "id": f"c-{first.id}",
+            "title": title, "where": where + (f" · {pay}" if pay and first.finance_transaction_id else ""), "qty": qty, "tone": "green",
+            "after": item_after, "value": br_money(total), "value_num": total,
+            "rows": [("Fornecedor", supplier)] + ([("Nota", marker.replace("Nota fiscal ", ""))] if marker else [])
+                    + [(i.name, f"{br_qty(i.total_quantity, i.package_unit)} · {br_money(i.total_cost)}" + (f" · lote {i.batch_number}" if i.batch_number else "")) for i in items],
+            "undo": None, "fix": None, "link": "/insumos/comprados",
+        })
+    for o in outputs:
+        name = o.input_catalog.name if o.input_catalog else "item"
+        base = {"date": o.movement_date, "stamp": f"{o.created_at or ''}{o.id}", "after": br_qty(after.get(("o", o.id), 0), o.unit), "item_id": o.input_id}
+        if o.reference_type == STOCK_ADJUSTMENT_OUTPUT_REFERENCE:
+            reason = o.notes or o.adjustment_reason or "Ajuste de saldo"
+            moves.append({**base, "kind": "ajuste", "id": f"ao-{o.id}", "title": name, "where": reason[:120],
+                          "qty": "− " + br_qty(o.quantity, o.unit), "tone": "red", "value": None, "value_num": 0.0,
+                          "rows": [("Item", name), ("Motivo", reason)], "undo": None, "fix": None})
+            continue
+        if o.reference_type == FUELING_REFERENCE:
+            f = fuelings.get(o.id)
+            machine = f.asset.name if f and f.asset else "máquina"
+            meter = f" · {'hodômetro' if f.meter_unit == 'km' else 'horímetro'} {br_number(f.meter_reading)} {f.meter_unit}" if f and f.meter_reading is not None else ""
+            who = f" · {f.responsible_name}" if f and f.responsible_name else ""
+            moves.append({**base, "kind": "abast", "id": f"o-{o.id}", "title": f"{br_qty(o.quantity, o.unit)} de {name}",
+                          "where": f"{machine}{meter}{who}", "qty": "− " + br_qty(o.quantity, o.unit), "tone": "ink",
+                          "value": br_money(o.total_cost), "value_num": _f(o.total_cost), "liters": _f(o.quantity),
+                          "rows": [("Máquina", machine), ("Combustível", name)] + ([("Horímetro", f"{br_number(f.meter_reading)} {f.meter_unit}")] if f and f.meter_reading is not None else [])
+                                  + ([("Quem abasteceu", f.responsible_name)] if f and f.responsible_name else []),
+                          "undo": o.id, "fix": None, "link": f"/insumos/patrimonio/{f.asset_id}/ficha" if f else None})
+            continue
+        place = o.plot.name if o.plot else "Uso geral"
+        bits = [place] + ([o.notes] if o.notes and o.reference_type == MANUAL_REFERENCE else []) + ([_origin_label(o)] if _origin_label(o) else [])
+        manual = o.reference_type == MANUAL_REFERENCE
+        moves.append({**base, "kind": "uso", "id": f"o-{o.id}", "title": f"{br_qty(o.quantity, o.unit)} de {name}",
+                      "where": " · ".join(b for b in bits if b)[:160], "qty": "− " + br_qty(o.quantity, o.unit), "tone": "ink",
+                      "value": br_money(o.total_cost) if o.total_cost else None, "value_num": _f(o.total_cost), "plot": o.plot.name if o.plot else None,
+                      "rows": [("Onde", place), ("Safra", o.season.name if getattr(o, "season", None) else "—")] + ([("Para quê", o.notes)] if o.notes and manual else []),
+                      "undo": o.id if manual else None,
+                      "fix": {"output": o.id, "item": o.input_id, "plot": o.plot_id, "qty": br_number(o.quantity, 2).rstrip("0").rstrip(","), "date": o.movement_date.isoformat() if o.movement_date else "", "notes": o.notes or ""} if manual else None,
+                      "link": None if manual else "/fertilizacao"})
+
+    in_period = [m for m in moves if m["date"] and (start is None or m["date"] >= start) and (end is None or m["date"] <= end)]
+    summary = {
+        "compra": {"value": sum(m["value_num"] for m in in_period if m["kind"] == "compra"), "count": sum(1 for m in in_period if m["kind"] == "compra")},
+        "uso": {"value": sum(m["value_num"] for m in in_period if m["kind"] == "uso"), "count": sum(1 for m in in_period if m["kind"] == "uso"),
+                "plots": len({m.get("plot") for m in in_period if m["kind"] == "uso" and m.get("plot")})},
+        "abast": {"value": sum(m["value_num"] for m in in_period if m["kind"] == "abast"), "count": sum(1 for m in in_period if m["kind"] == "abast"),
+                  "liters": br_qty(sum(m.get("liters", 0) for m in in_period if m["kind"] == "abast"), "L")},
+        "ajuste": {"count": sum(1 for m in in_period if m["kind"] == "ajuste")},
+    }
+    counts = {k: (len(in_period) if k == "todos" else sum(1 for m in in_period if m["kind"] == k)) for k, _ in MOVE_KINDS}
+    q = (search or "").strip().lower()
+    shown = [m for m in in_period if (kind in ("todos", "", None) or m["kind"] == kind) and (not q or q in f"{m['title']} {m['where']}".lower())]
+    shown.sort(key=lambda m: (m["date"], m["stamp"]), reverse=True)
+    days, by_day = [], defaultdict(list)
+    for m in shown:
+        by_day[m["date"]].append(m)
+    for day in sorted(by_day, reverse=True)[:limit_days]:
+        rows = by_day[day]
+        days.append({"label": day_label(day, today), "count": len(rows), "rows": rows})
+    return {"days": days, "summary": summary, "counts": counts, "total": len(shown), "truncated": len(by_day) > limit_days}
+
+
+# ---------------------------------------------------------------- contagem
+def count_sheet(items: list[dict], counts: dict) -> dict:
+    rows = []
+    for item in sorted(items, key=lambda i: (i["group_label"], i["name"].lower())):
+        raw = counts.get(str(item["id"]))
+        counted = parse_br_number(raw) if raw not in (None, "") else None
+        unit_cost = item["value"] / item["available"] if item["available"] else 0
+        if counted is None:
+            status, diff, diff_label = "todo", None, "falta contar"
+        else:
+            diff = round(counted - item["available"], 2)
+            status = "ok" if abs(diff) < 0.005 else "diff"
+            diff_label = "bateu" if status == "ok" else f"{'+' if diff > 0 else '−'} {br_qty(abs(diff), item['unit'])} · {'+' if diff > 0 else '−'} {br_money(abs(diff) * unit_cost)}"
+        rows.append({**{k: item[k] for k in ("id", "name", "unit", "available_label", "group_label", "category")},
+                     "available": item["available"], "unit_cost": round(unit_cost, 4),
+                     "counted": raw or "", "status": status, "diff": diff, "diff_label": diff_label, "diff_value": (diff or 0) * unit_cost})
+    done = [r for r in rows if r["status"] != "todo"]
+    return {
+        "rows": rows,
+        "done": len(done),
+        "total": len(rows),
+        "pct": round(len(done) / len(rows) * 100) if rows else 0,
+        "ok": sum(1 for r in rows if r["status"] == "ok"),
+        "diff": sum(1 for r in rows if r["status"] == "diff"),
+        "missing_value": br_money(sum(-r["diff_value"] for r in rows if r["status"] == "diff" and r["diff_value"] < 0)),
+        "extra_value": br_money(sum(r["diff_value"] for r in rows if r["status"] == "diff" and r["diff_value"] > 0)),
+    }

@@ -1,35 +1,48 @@
 {% extends "base.html" %}
-{% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline %}
 {% block content %}
-<div class="stock-page-shell sf-page">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io2">
-    {%- set io_items = hub['items'] -%}
-    {%- set io_sel = selected_stock_item if selected_stock_item in io_items|map(attribute='id')|list else (io_items[0].id if io_items else None) -%}
-    <div class="io-page" data-io-filter-root>
-        <header class="io-head">
-            <div>
-                <a class="io-crumb" href="/insumos">Insumos e máquinas ›</a>
-                <h1 class="io-title">Estoque</h1>
-                <p class="io-sub">Insumos, combustível e suprimentos no mesmo lugar</p>
-            </div>
-            <div class="io-actions">
-                <details class="io-menu">
-                    <summary class="io-btn">Mais opções</summary>
-                    <div class="io-menu-panel" role="menu">
-                        <button type="button" role="menuitem" data-stock-adjustment-open>Ajustar saldo</button>
-                        <a role="menuitem" href="/insumos/comprados">Ver todas as compras</a>
-                        <a role="menuitem" href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}">Exportar em PDF</a>
-                        <a role="menuitem" href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}">Exportar em planilha</a>
-                    </div>
-                </details>
-                <button type="button" class="io-btn" data-stock-inventory-open>Contar estoque</button>
-                <button type="button" class="io-btn" data-io-open="use">Registrar uso</button>
-                <a class="io-btn is-primary" href="/insumos/comprados/nova">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                    Lançar compra</a>
-            </div>
-        </header>
+<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io3">
+{%- set io_items = hub['items'] -%}
+{%- set io_sel = selected_stock_item if selected_stock_item in io_items|map(attribute='id')|list else (io_items[0].id if io_items else None) -%}
+{%- set KIND = {
+    'compra': {'label': 'Entrada', 'tone': 'green', 'icon': 'M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10'},
+    'uso': {'label': 'Uso na lavoura', 'tone': 'amber', 'icon': 'M12 21c-4-3-7-6.5-7-10.5A7 7 0 0 1 12 3a7 7 0 0 1 7 7.5c0 4-3 7.5-7 10.5z'},
+    'abast': {'label': 'Abastecimento', 'tone': 'blue', 'icon': 'M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M3 21h13M7 8h5M15 10h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V9l-3-3'},
+    'ajuste': {'label': 'Ajuste de contagem', 'tone': 'red', 'icon': 'M4 6h16M4 12h10M4 18h6'},
+} -%}
+<div class="sf-page io-page"{% if tab == 'saldo' %} data-io-filter-root{% endif %}>
+    <header class="io-head">
+        <div>
+            <a class="io-crumb" href="/insumos">Insumos e máquinas ›</a>
+            <h1 class="io-title">Estoque</h1>
+            <p class="io-sub">Insumos, combustível e suprimentos no mesmo lugar</p>
+        </div>
+        <div class="io-actions">
+            {% if tab == 'contagens' %}
+            <button type="button" class="io-btn" data-io-print>Imprimir folha de contagem</button>
+            {% else %}
+            <details class="io-menu">
+                <summary class="io-btn">Exportar</summary>
+                <div class="io-menu-panel" role="menu">
+                    <a role="menuitem" href="/insumos/estoque/exportar.pdf{% if export_query %}?{{ export_query }}{% endif %}">Em PDF</a>
+                    <a role="menuitem" href="/insumos/estoque/exportar.xlsx{% if export_query %}?{{ export_query }}{% endif %}">Em planilha</a>
+                    <a role="menuitem" href="/insumos/comprados">Ver todas as compras</a>
+                </div>
+            </details>
+            {% endif %}
+            <button type="button" class="io-btn" data-io-open="use">Registrar uso</button>
+            <a class="io-btn is-primary" href="/insumos/comprados/nova">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Lançar compra</a>
+        </div>
+    </header>
 
+    <nav class="io-segmented io-views" aria-label="Visões do estoque">
+        <a class="io-tab{% if tab == 'saldo' %} is-on{% endif %}" href="/insumos/estoque"{% if tab == 'saldo' %} aria-current="page"{% endif %}>Saldo</a>
+        <a class="io-tab{% if tab == 'movimentacoes' %} is-on{% endif %}" href="/insumos/estoque?aba=movimentacoes"{% if tab == 'movimentacoes' %} aria-current="page"{% endif %}>Movimentações</a>
+        <a class="io-tab{% if tab == 'contagens' %} is-on{% endif %}" href="/insumos/estoque?aba=contagens"{% if tab == 'contagens' %} aria-current="page"{% endif %}>Contagens</a>
+    </nav>
+
+    {% if tab == 'saldo' %}
         {% if io_items %}
         <div class="io-toolbar">
             <div class="io-chips" role="group" aria-label="Filtrar por tipo">
@@ -107,1290 +120,171 @@
             <div class="io-actions" style="justify-content:center"><a class="io-btn is-primary" href="/insumos/comprados/nova">Lançar compra</a></div>
         </section>
         {% endif %}
-        <h2 class="io-h2" style="margin-top:8px">Movimentações</h2>
-    </div>
+    {% elif tab == 'movimentacoes' %}
+    {%- set mf = mov_filters -%}
+    {%- set qbase = {'aba': 'movimentacoes', 'periodo': mf.periodo, 'tipo': mf.tipo, 'busca': mf.busca, 'de': mf.de, 'ate': mf.ate} -%}
+    {%- set sm = moves.summary -%}
+    <section class="io-card io-mv-kpis" aria-label="Resumo de {{ mf.label }}">
+        <div class="io-kpi"><span>Entrou no estoque</span><strong class="io-txt-green">{{ sm.compra.value|money_br }}</strong><small>{{ sm.compra.count }} {{ 'compra' if sm.compra.count == 1 else 'compras' }}</small></div>
+        <div class="io-kpi"><span>Saiu para a lavoura</span><strong>{{ sm.uso.value|money_br }}</strong><small>{{ sm.uso.count }} {{ 'uso' if sm.uso.count == 1 else 'usos' }}{% if sm.uso.plots %} em {{ sm.uso.plots }} {{ 'setor' if sm.uso.plots == 1 else 'setores' }}{% endif %}</small></div>
+        <div class="io-kpi"><span>Combustível nas máquinas</span><strong>{{ sm.abast.value|money_br }}</strong><small>{{ sm.abast.liters }} em {{ sm.abast.count }} {{ 'abastecimento' if sm.abast.count == 1 else 'abastecimentos' }}</small></div>
+        <div class="io-kpi"><span>Ajustes de contagem</span><strong{% if sm.ajuste.count %} class="io-txt-red"{% endif %}>{{ sm.ajuste.count }}</strong><small>{{ mf.label }}</small></div>
+    </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <div class="stock-filter-bar mt-6 {% if stock_filters_active %}is-mobile-collapsed{% endif %}">
-            <div class="stock-filter-mobile-toggle-wrap md:hidden">
-                <button type="button" class="stock-summary-toggle stock-filter-mobile-toggle {% if stock_filters_active %}is-filtered-state{% endif %}" data-stock-filter-toggle data-stock-filter-applied="{% if stock_filters_active %}true{% else %}false{% endif %}" aria-expanded="{% if stock_filters_active %}false{% else %}true{% endif %}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M5 12h14"/>
-                        <path d="M12 5v14" data-stock-filter-toggle-plus{% if stock_filters_active %} class="hidden"{% endif %}></path>
-                    </svg>
-                    <span data-stock-filter-toggle-label>{% if stock_filters_active %}Mostrar filtro aplicado{% else %}Recolher filtros{% endif %}</span>
-                </button>
+    <div class="io-toolbar">
+        <div class="io-chips" role="group" aria-label="Tipo de movimentação">
+            {% for key, label in mov_kinds %}
+            <a class="io-chip{% if mf.tipo == key %} is-on{% endif %}" href="/insumos/estoque?{{ dict(qbase, tipo=key)|urlencode }}"{% if mf.tipo == key %} aria-current="true"{% endif %}>{{ label }} <span>{{ moves.counts[key] }}</span></a>
+            {% endfor %}
+        </div>
+        <div class="io-mv-tools">
+            <div class="io-periods" role="group" aria-label="Período">
+                <a class="io-pchip{% if mf.periodo == '7' %} is-on{% endif %}" href="/insumos/estoque?{{ dict(qbase, periodo='7')|urlencode }}">7 dias</a>
+                <a class="io-pchip{% if mf.periodo == '30' %} is-on{% endif %}" href="/insumos/estoque?{{ dict(qbase, periodo='30')|urlencode }}">30 dias</a>
+                {% if active_season %}<a class="io-pchip{% if mf.periodo == 'safra' %} is-on{% endif %}" href="/insumos/estoque?{{ dict(qbase, periodo='safra')|urlencode }}">Esta safra</a>{% endif %}
+                <details class="io-menu">
+                    <summary class="io-pchip{% if mf.periodo == 'personalizado' %} is-on{% endif %}">{{ mf.label if mf.periodo == 'personalizado' else 'Escolher…' }}</summary>
+                    <form class="io-menu-panel io-dates" method="get" action="/insumos/estoque">
+                        <input type="hidden" name="aba" value="movimentacoes"><input type="hidden" name="periodo" value="personalizado">
+                        <input type="hidden" name="tipo" value="{{ mf.tipo }}"><input type="hidden" name="busca" value="{{ mf.busca }}">
+                        <label class="io-fld"><span>De</span><input type="date" name="de" value="{{ mf.de }}"></label>
+                        <label class="io-fld"><span>Até</span><input type="date" name="ate" value="{{ mf.ate }}"></label>
+                        <button class="io-btn is-primary" type="submit">Aplicar</button>
+                    </form>
+                </details>
             </div>
-            <form method="get" action="/insumos/estoque" class="stock-filter-grid" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
-                <input type="hidden" name="stock_tab" value="{{ selected_stock_tab }}" data-stock-tab-hidden>
-                <input type="hidden" name="stock_search" value="{{ stock_search_value }}" data-stock-search-hidden>
-                <div class="stock-summary-collapse {% if not stock_filters_active %}is-expanded{% endif %}" data-stock-filter-collapse>
-                <div class="stock-summary-collapse-inner">
-                <div class="stock-filter-fields-row {% if stock_filters_active %}has-clear-action{% endif %}">
-                    <label class="stock-filter-field stock-filter-field-type {% if selected_item_type %}is-filtered{% endif %}">
-                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo</span>
-                        <select name="item_type" class="w-full rounded-xl border-slate-200 bg-white">
-                            <option value="">Todos os consumiveis</option>
-                            <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' %}selected{% endif %}>Insumo agricola</option>
-                            <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
-                        </select>
-                    </label>
-                    <label class="stock-filter-field stock-filter-field-farm {% if selected_farm_id %}is-filtered{% endif %}">
-                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
-                        <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white">
-                            {% for farm in farms %}
-                            <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <label class="stock-filter-field stock-filter-field-input {% if selected_input_id %}is-filtered{% endif %}">
-                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-                        <select name="input_id" class="w-full rounded-xl border-slate-200 bg-white">
-                            <option value="">Todos</option>
-                            {% for input_item in inputs_catalog %}
-                            <option value="{{ input_item.id }}" {% if selected_input_id == input_item.id %}selected{% endif %}>{{ input_item.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <div class="stock-filter-field stock-filter-field-period {% if selected_start_date or selected_end_date %}is-filtered{% endif %}">
-                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período</span>
-                        <div class="module-filter-period-row">
-                            {{ module_period_picker_inline(request.query_params.get('schedule_range') or ('custom' if selected_start_date or selected_end_date else ''), selected_start_date, selected_end_date, 'past', 'Filtre por período') }}
-                        </div>
-                    </div>
-                    <label class="stock-filter-field stock-filter-field-movement {% if selected_movement_type and selected_movement_type != 'all' %}is-filtered{% endif %}">
-                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Movimentacao</span>
-                        <select name="movement_type" class="w-full rounded-xl border-slate-200 bg-white">
-                            <option value="all" {% if selected_movement_type == 'all' %}selected{% endif %}>Todas</option>
-                            <option value="entrada" {% if selected_movement_type == 'entrada' %}selected{% endif %}>Entrada</option>
-                            <option value="saida" {% if selected_movement_type == 'saida' %}selected{% endif %}>Saida</option>
-                        </select>
-                    </label>
-                    <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
-                        <button type="submit" class="shrink-0 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
-                        {% if stock_filters_active %}
-                        <a href="/insumos/estoque" class="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
-                        {% endif %}
-                    </div>
-                </div>
-                </div>
-                </div>
+            <form class="io-search" method="get" action="/insumos/estoque" role="search">
+                <input type="hidden" name="aba" value="movimentacoes"><input type="hidden" name="periodo" value="{{ mf.periodo }}"><input type="hidden" name="tipo" value="{{ mf.tipo }}">
+                <input type="hidden" name="de" value="{{ mf.de }}"><input type="hidden" name="ate" value="{{ mf.ate }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                <label class="sr-only" for="io-mv-search">Buscar movimentação</label>
+                <input id="io-mv-search" type="search" name="busca" value="{{ mf.busca }}" placeholder="Item, setor, máquina ou fornecedor">
             </form>
         </div>
+    </div>
 
-        <div data-stock-list-shell>
-        <div class="stock-history-toolbar mt-5">
-            <div class="stock-tab-nav stock-segmented-control" data-segmented-control>
-                <div class="stock-segmented-indicator" aria-hidden="true" data-segmented-indicator></div>
-                <a href="{{ stock_tab_urls.entries }}" class="stock-tab-link {% if selected_stock_tab == 'entries' %}is-active{% endif %}" data-stock-tab-button="entries">Entradas</a>
-                <a href="{{ stock_tab_urls.outputs }}" class="stock-tab-link {% if selected_stock_tab == 'outputs' %}is-active{% endif %}" data-stock-tab-button="outputs">Saídas</a>
-                <a href="{{ stock_tab_urls.extract }}" class="stock-tab-link {% if selected_stock_tab == 'extract' %}is-active{% endif %}" data-stock-tab-button="extract">Extrato</a>
-                <a href="{{ stock_tab_urls.inventories }}" class="stock-tab-link {% if selected_stock_tab == 'inventories' %}is-active{% endif %}" data-stock-tab-button="inventories">Inventários</a>
+    <section class="io-card io-mv-list" aria-label="Movimentações por dia">
+        {% for d in moves.days %}
+        <div class="io-mv-day"><strong>{{ d.label }}</strong><span>{{ d.count }} {{ 'movimento' if d.count == 1 else 'movimentos' }}</span></div>
+        {% for m in d.rows %}
+        {%- set k = KIND[m.kind] -%}
+        <button type="button" class="io-mv" data-io-mov="{{ m.id }}">
+            <span class="io-ico io-tone-{{ k.tone }}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ k.icon }}"/></svg></span>
+            <span class="io-mv-main"><strong>{{ m.title }}</strong><span>{{ m.where }}</span></span>
+            <span class="io-mv-qty"><strong class="{{ 'io-txt-green' if m.tone == 'green' else ('io-txt-red' if m.tone == 'red' else '') }}">{{ m.qty }}</strong>{% if m.after %}<small>fica {{ m.after }}</small>{% endif %}</span>
+            <span class="io-mv-val">{{ m.value or '—' }}</span>
+            <svg class="io-mv-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <template id="io-mov-{{ m.id }}">
+            <div class="io-dw-head io-mv-head">
+                <span class="io-ico io-tone-{{ k.tone }}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ k.icon }}"/></svg></span>
+                <div><span class="io-mv-kind io-txt-{{ k.tone if k.tone != 'blue' else 'muted' }}">{{ k.label }}</span><strong>{{ m.title }}</strong><span>{{ m.date.strftime('%d/%m/%Y') }}</span></div>
+                <button type="button" class="io-btn" data-io-mov-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
-            <div class="stock-search-field">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                    <path d="M13 13l4 4"></path>
-                </svg>
-                <input type="search" value="{{ stock_search_value }}" placeholder="Buscar insumo, fazenda, origem ou observação" data-stock-history-search>
+            <div class="io-dw-body">
+                <div class="io-panel-stats">
+                    <div class="io-stat"><span>Movimento</span><strong>{{ m.qty }}</strong></div>
+                    <div class="io-stat"><span>{{ 'Ficou no estoque' if m.after else 'Valor' }}</span><strong>{{ m.after or m.value or '—' }}</strong></div>
+                </div>
+                <div>{% for label, value in m.rows %}<div class="io-kv"><span>{{ label }}</span><strong>{{ value }}</strong></div>{% endfor %}
+                    {% if m.value and m.after %}<div class="io-kv"><span>Custo</span><strong>{{ m.value }}</strong></div>{% endif %}</div>
+                {% if m.kind == 'uso' and not m.undo %}<p class="io-note io-tone-blue">Este uso veio da Adubação. Para corrigir, abra a aplicação por lá.</p>{% endif %}
+                {% if m.undo %}
+                <div class="io-note io-tone-red io-hidden" data-io-undo-box>
+                    <strong style="display:block;margin-bottom:6px">Desfazer {{ 'este abastecimento' if m.kind == 'abast' else 'este uso' }}?</strong>
+                    <span style="font-weight:500;color:#16201A">{{ m.qty|replace('− ', '') }} {{ 'voltam' }} para o estoque{% if m.kind == 'uso' %} e o custo sai do setor{% endif %}.</span>
+                    <form method="post" action="/insumos/estoque/movimentos/{{ m.undo }}/desfazer" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="button" class="io-btn" data-io-undo-cancel>Manter</button>
+                        <button type="submit" class="io-btn io-btn-danger-solid">Sim, desfazer</button>
+                    </form>
+                </div>
+                {% endif %}
             </div>
-        </div>
-
-        <div class="stock-history-stage mt-4 {% if selected_stock_tab != 'entries' %}hidden{% endif %}" data-stock-tab="entries">
-            <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
-                <div class="overflow-x-auto">
-                    <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
-                        <thead class="bg-slate-50 text-left text-slate-500">
-                            <tr>
-                                <th class="px-4 py-3 font-medium">Mov.</th>
-                                <th class="px-4 py-3 font-medium">Data</th>
-                                <th class="px-4 py-3 font-medium">Insumo</th>
-                                <th class="px-4 py-3 font-medium">Tipo</th>
-                                <th class="px-4 py-3 font-medium">Fazenda</th>
-                                <th class="px-4 py-3 font-medium">Quantidade</th>
-                                <th class="px-4 py-3 font-medium">Saldo</th>
-                                <th class="px-4 py-3 font-medium">Valor</th>
-                                <th class="px-4 py-3 font-medium">Observações</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 bg-white">
-                            {% for entry in purchase_entries %}
-                            <tr data-stock-history-row data-stock-kind="entrada" data-stock-search-text="{{ (entry.purchase_date or '') ~ ' ' ~ (entry.input_catalog.name if entry.input_catalog else entry.name) ~ ' ' ~ (entry.farm.name if entry.farm else '') ~ ' ' ~ (entry.notes or '') ~ ' ' ~ ('Combustivel' if entry.input_catalog and entry.input_catalog.item_type == 'combustivel' else 'Insumo agricola') }}">
-                                <td class="px-4 py-3">
-                                    <span class="stock-movement-chip stock-movement-chip-entry">{% if entry.entry_origin == 'stock_adjustment_entry' %}Ajuste +{% else %}Entrada{% endif %}</span>
-                                </td>
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Entrada de estoque" data-history-view-title="{{ entry.input_catalog.name if entry.input_catalog else entry.name }}" data-history-view-subtitle="{{ entry.purchase_date.strftime('%d-%m-%Y') if entry.purchase_date else '-' }}" data-history-view-source="stock-entry-view-{{ entry.id }}">{{ entry.purchase_date.strftime('%d-%m-%Y') if entry.purchase_date else "-" }}</button>
-                                </td>
-                                <td class="px-4 py-3 font-semibold text-slate-900">
-                                    <button type="button" class="text-left font-semibold transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Entrada de estoque" data-history-view-title="{{ entry.input_catalog.name if entry.input_catalog else entry.name }}" data-history-view-subtitle="{{ entry.purchase_date.strftime('%d-%m-%Y') if entry.purchase_date else '-' }}" data-history-view-source="stock-entry-view-{{ entry.id }}">{{ entry.input_catalog.name if entry.input_catalog else entry.name }}</button>
-                                    <template id="stock-entry-view-{{ entry.id }}">
-                                        <div class="grid gap-3 sm:grid-cols-2">
-                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.purchase_date.strftime('%d-%m-%Y') if entry.purchase_date else "-" }}</p></div>
-                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.farm.name if entry.farm else "Sem vínculo" }}</p></div>
-                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'Combustivel' if entry.input_catalog and entry.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</p></div>
-                                            {% if entry.entry_origin == 'stock_adjustment_entry' %}<div class="rounded-2xl bg-amber-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-amber-700">Motivo do ajuste</p><p class="mt-2 text-sm font-medium text-amber-900">{{ (entry.adjustment_reason or 'outro')|replace('_', ' ')|capitalize }}</p></div>{% endif %}
-                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.total_quantity }} {{ entry.package_unit }}</p></div>
-                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Saldo do lote</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.available_quantity }} {{ entry.package_unit }}</p></div>
-                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ entry.total_cost }}</p></div>
-                                        </div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p><p class="mt-2 text-sm text-slate-600">{{ entry.notes or "Sem observacoes." }}</p></div>
-                                    </template>
-                                </td>
-                                <td class="px-4 py-3">{{ 'Combustivel' if entry.input_catalog and entry.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</td>
-                                <td class="px-4 py-3">{{ entry.farm.name if entry.farm else "Sem vínculo" }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">{{ entry.total_quantity }} {{ entry.package_unit }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">{{ entry.available_quantity }} {{ entry.package_unit }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">R$ {{ entry.total_cost }}</td>
-                                <td class="px-4 py-3 text-slate-500"><span class="stock-history-note-clamp" title="{{ entry.notes or '-' }}">{{ entry.notes or "-" }}</span></td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="9" class="px-4 py-6 text-center text-slate-500">Nenhuma entrada encontrada.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+            <div class="io-dw-foot">
+                {% if m.undo %}<button type="button" class="io-btn io-btn-danger" data-io-undo-ask>Desfazer</button>{% endif %}
+                <div>
+                    {% if m.link %}<a class="io-btn" href="{{ m.link }}">{{ 'Ver na Adubação' if m.link == '/fertilizacao' else ('Ver máquina' if m.kind == 'abast' else 'Ver compras') }}</a>{% endif %}
+                    {% if m.item_id %}<a class="io-btn" href="/insumos/estoque?item={{ m.item_id }}">Ver item</a>{% endif %}
+                    {% if m.fix %}<button type="button" class="io-btn is-primary" data-io-open="use" data-io-fix='{{ m.fix|tojson }}'>Corrigir</button>{% endif %}
                 </div>
             </div>
-            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-stock-search-empty>Nenhuma entrada corresponde à busca digitada.</p>
-            {% with pagination=purchase_entries_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
-        </div>
-
-        <div class="stock-history-stage mt-4 {% if selected_stock_tab != 'outputs' %}hidden{% endif %}" data-stock-tab="outputs">
-            <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
-                <div class="overflow-x-auto">
-                    <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
-                        <thead class="bg-slate-50 text-left text-slate-500">
-                            <tr>
-                                <th class="px-4 py-3 font-medium">Mov.</th>
-                                <th class="px-4 py-3 font-medium">Data</th>
-                                <th class="px-4 py-3 font-medium">Insumo</th>
-                                <th class="px-4 py-3 font-medium">Tipo</th>
-                                <th class="px-4 py-3 font-medium">Origem</th>
-                                <th class="px-4 py-3 font-medium">Fazenda / Setor</th>
-                                <th class="px-4 py-3 font-medium">Quantidade</th>
-                                <th class="px-4 py-3 font-medium">Custo</th>
-                                <th class="px-4 py-3 font-medium">Observações</th>
-                                <th class="px-4 py-3 font-medium text-right">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 bg-white">
-                            {% for output in stock_outputs %}
-                            <tr data-stock-history-row data-stock-kind="saida" data-stock-search-text="{{ output.movement_date ~ ' ' ~ (output.input_catalog.name if output.input_catalog else '') ~ ' ' ~ output.origin ~ ' ' ~ (output.farm.name if output.farm else '') ~ ' ' ~ (output.plot.name if output.plot else '') ~ ' ' ~ (output.notes or '') }}">
-                                <td class="px-4 py-3">
-                                    <span class="stock-movement-chip stock-movement-chip-output">{% if output.reference_type == 'stock_adjustment_output' %}Ajuste -{% else %}Saída{% endif %}</span>
-                                </td>
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else '-' }}" data-history-view-source="stock-output-table-view-{{ output.id }}"{% if output.reference_type not in ['stock_adjustment_output', 'equipment_fueling'] %} data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar"{% endif %}>{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else "-" }}</button>
-                                </td>
-                                <td class="px-4 py-3 font-semibold text-slate-900">
-                                    <button type="button" class="text-left font-semibold transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else '-' }}" data-history-view-source="stock-output-table-view-{{ output.id }}"{% if output.reference_type not in ['stock_adjustment_output', 'equipment_fueling'] %} data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar"{% endif %}>{{ output.input_catalog.name if output.input_catalog else "-" }}</button>
-                                    <template id="stock-output-table-view-{{ output.id }}">
-                                        <div class="grid gap-3 sm:grid-cols-2">
-                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else "-" }}</p></div>
-                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Origem</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.origin }}</p></div>
-                                            {% if output.reference_type == 'stock_adjustment_output' %}<div class="rounded-2xl bg-amber-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-amber-700">Motivo do ajuste</p><p class="mt-2 text-sm font-medium text-amber-900">{{ (output.adjustment_reason or 'outro')|replace('_', ' ')|capitalize }}</p></div>{% endif %}
-                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'Combustivel' if output.input_catalog and output.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</p></div>
-                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda / Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</p></div>
-                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.quantity }} {{ output.unit }}</p></div>
-                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo</p><p class="mt-2 text-sm font-medium text-slate-800">{% if output.total_cost is not none %}R$ {{ output.total_cost }}{% else %}-{% endif %}</p></div>
-                                        </div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p><p class="mt-2 text-sm text-slate-600">{{ output.notes or "Sem observacoes." }}</p></div>
-                                    </template>
-                                </td>
-                                <td class="px-4 py-3">{{ 'Combustivel' if output.input_catalog and output.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</td>
-                                <td class="px-4 py-3">{{ output.origin }}</td>
-                                <td class="px-4 py-3">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">{{ output.quantity }} {{ output.unit }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">{% if output.total_cost is not none %}R$ {{ output.total_cost }}{% else %}-{% endif %}</td>
-                                <td class="px-4 py-3 text-slate-500"><span class="stock-history-note-clamp" title="{{ output.notes or '-' }}">{{ output.notes or "-" }}</span></td>
-                                <td class="px-4 py-3">
-                                    <div class="flex items-center justify-end gap-2">
-                                        {% if output.reference_type not in ['stock_adjustment_output', 'equipment_fueling'] %}<a href="/insumos/estoque/saidas/{{ output.id }}/editar" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M12 20h9"/>
-                                                <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-                                            </svg>
-                                        </a>{% endif %}
-                                        {% if output.reference_type not in ['stock_adjustment_output', 'equipment_fueling'] %}<form method="post" action="/insumos/estoque/saidas/{{ output.id }}/excluir" onsubmit="return confirm('Confirma a exclusão deste lançamento de saída?');">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                            <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="{% if output.reference_type == 'manual_stock_output' %}Excluir{% else %}Exclusão bloqueada{% endif %}">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                    <path d="M3 6h18"/>
-                                                    <path d="M8 6V4h8v2"/>
-                                                    <path d="M19 6l-1 14H6L5 6"/>
-                                                    <path d="M10 11v6"/>
-                                                    <path d="M14 11v6"/>
-                                                </svg>
-                                            </button>
-                                        </form>{% endif %}
-                                    </div>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="10" class="px-4 py-6 text-center text-slate-500">Nenhuma saída encontrada.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-stock-search-empty>Nenhuma saída corresponde à busca digitada.</p>
-            {% with pagination=stock_outputs_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
-        </div>
-
-        <div class="stock-history-stage mt-4 {% if selected_stock_tab != 'extract' %}hidden{% endif %}" data-stock-tab="extract">
-            <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
-                <div class="overflow-x-auto">
-                    <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
-                        <thead class="bg-slate-50 text-left text-slate-500">
-                            <tr>
-                                <th class="px-4 py-3 font-medium">Mov.</th>
-                                <th class="px-4 py-3 font-medium">Data</th>
-                                <th class="px-4 py-3 font-medium">Insumo</th>
-                                <th class="px-4 py-3 font-medium">Origem / Ref.</th>
-                                <th class="px-4 py-3 font-medium">Quantidade</th>
-                                <th class="px-4 py-3 font-medium">Custo unit.</th>
-                                <th class="px-4 py-3 font-medium">Custo total</th>
-                                <th class="px-4 py-3 font-medium">Saldo</th>
-                                <th class="px-4 py-3 font-medium">Observações</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 bg-white">
-                            {% for row in extract_rows %}
-                            <tr data-stock-history-row data-stock-kind="{{ row.kind }}" data-stock-search-text="{{ (row.date or '') ~ ' ' ~ row.input_name ~ ' ' ~ row.kind ~ ' ' ~ row.origin ~ ' ' ~ row.reference ~ ' ' ~ (row.notes or '') }}">
-                                <td class="px-4 py-3">
-                                    <span class="stock-movement-chip {% if row.kind == 'entrada' %}stock-movement-chip-entry{% else %}stock-movement-chip-output{% endif %}">
-                                        {{ row.kind }}
-                                    </span>
-                                </td>
-                                <td class="px-4 py-3 whitespace-nowrap font-semibold text-slate-900">{{ row.date.strftime('%d-%m-%Y') if row.date else "-" }}</td>
-                                <td class="px-4 py-3 font-semibold text-slate-900">{{ row.input_name }}</td>
-                                <td class="px-4 py-3">{{ row.origin }} • {{ row.reference }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">{{ row.quantity }} {{ row.unit }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">{% if row.unit_cost is not none %}R$ {{ row.unit_cost }}{% else %}-{% endif %}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">{% if row.total_cost is not none %}R$ {{ row.total_cost }}{% else %}-{% endif %}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">{{ row.balance_after }} {{ row.unit }}</td>
-                                <td class="px-4 py-3 text-slate-500"><span class="stock-history-note-clamp" title="{{ row.notes or '-' }}">{{ row.notes or '-' }}</span></td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="9" class="px-4 py-6 text-center text-slate-500">Nenhuma movimentação encontrada.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-stock-search-empty>Nenhuma movimentação corresponde à busca digitada.</p>
-            {% with pagination=extract_rows_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
-        </div>
-
-        <div class="stock-history-stage mt-4 {% if selected_stock_tab != 'inventories' %}hidden{% endif %}" data-stock-tab="inventories">
-            <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
-                <div class="overflow-x-auto">
-                    <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
-                        <thead class="bg-slate-50 text-left text-slate-500">
-                            <tr>
-                                <th class="px-4 py-3 font-medium">Data</th>
-                                <th class="px-4 py-3 font-medium">Fazenda</th>
-                                <th class="px-4 py-3 font-medium">Responsável</th>
-                                <th class="px-4 py-3 font-medium">Itens conferidos</th>
-                                <th class="px-4 py-3 font-medium">Divergências</th>
-                                <th class="px-4 py-3 font-medium">Observações</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 bg-white">
-                            {% for inventory in inventory_sessions %}
-                            {% set divergence_count = inventory.items|selectattr('difference_quantity')|select|list|length %}
-                            <tr data-stock-history-row data-stock-kind="inventario" data-stock-search-text="{{ inventory.inventory_date ~ ' ' ~ (inventory.farm.name if inventory.farm else '') ~ ' ' ~ (inventory.responsible_name or '') ~ ' ' ~ (inventory.notes or '') }}">
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Inventário físico" data-history-view-title="Inventário de estoque" data-history-view-subtitle="{{ inventory.inventory_date.strftime('%d-%m-%Y') if inventory.inventory_date else '-' }}" data-history-view-source="stock-inventory-view-{{ inventory.id }}">{{ inventory.inventory_date.strftime('%d-%m-%Y') if inventory.inventory_date else '-' }}</button>
-                                </td>
-                                <td class="px-4 py-3">{{ inventory.farm.name if inventory.farm else "Sem vínculo" }}</td>
-                                <td class="px-4 py-3">{{ inventory.responsible_name or "Não informado" }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">{{ inventory.items|length }} item(ns)</td>
-                                <td class="px-4 py-3">
-                                    {% if divergence_count %}<span class="stock-movement-chip stock-movement-chip-output">{{ divergence_count }} ajuste(s)</span>{% else %}<span class="stock-movement-chip stock-movement-chip-entry">Sem ajustes</span>{% endif %}
-                                </td>
-                                <td class="px-4 py-3 text-slate-500"><span class="stock-history-note-clamp" title="{{ inventory.notes or '-' }}">{{ inventory.notes or "-" }}</span></td>
-                            </tr>
-                            <template id="stock-inventory-view-{{ inventory.id }}">
-                                <div class="grid gap-3 sm:grid-cols-2">
-                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ inventory.farm.name if inventory.farm else "Sem vínculo" }}</p></div>
-                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Responsável</p><p class="mt-2 text-sm font-medium text-slate-800">{{ inventory.responsible_name or "Não informado" }}</p></div>
-                                </div>
-                                <div class="mt-4 overflow-x-auto rounded-2xl border border-slate-200"><table class="min-w-full text-sm"><thead class="bg-slate-50 text-left text-slate-500"><tr><th class="px-3 py-2 font-medium">Insumo</th><th class="px-3 py-2 font-medium">Sistema</th><th class="px-3 py-2 font-medium">Contado</th><th class="px-3 py-2 font-medium">Diferença</th></tr></thead><tbody class="divide-y divide-slate-100">{% for item in inventory.items %}<tr><td class="px-3 py-2 font-medium text-slate-800">{{ item.input_catalog.name if item.input_catalog else '-' }}</td><td class="px-3 py-2">{{ item.system_quantity }} {{ item.unit }}</td><td class="px-3 py-2">{{ item.counted_quantity }} {{ item.unit }}</td><td class="px-3 py-2 {% if item.difference_quantity > 0 %}text-emerald-700{% elif item.difference_quantity < 0 %}text-rose-700{% else %}text-slate-500{% endif %}">{% if item.difference_quantity > 0 %}+{% endif %}{{ item.difference_quantity }} {{ item.unit }}</td></tr>{% endfor %}</tbody></table></div>
-                                <div class="mt-4 rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p><p class="mt-2 text-sm text-slate-600">{{ inventory.notes or "Sem observações." }}</p></div>
-                            </template>
-                            {% else %}
-                            <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">Nenhum inventário físico registrado.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-stock-search-empty>Nenhum inventário corresponde à busca digitada.</p>
-            {% with pagination=inventory_sessions_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
-        </div>
-        </div>
+        </template>
+        {% endfor %}
+        {% else %}
+        <div class="io-empty" style="padding:40px 16px"><strong>Nenhuma movimentação {{ 'deste tipo ' if mf.tipo != 'todos' else '' }}em {{ mf.label }}</strong><span>Troque o período ou o filtro.{% if mf.busca %} A busca foi por “{{ mf.busca }}”.{% endif %}</span></div>
+        {% endfor %}
+        {% if moves.truncated %}<p class="io-sub" style="padding:14px 20px;margin:0;border-top:1px solid #EEF1ED">Mostrando os 60 dias mais recentes do período. Escolha um período menor para ver o resto.</p>{% endif %}
     </section>
+    <dialog class="io-drawer" data-io-mov-dialog aria-label="Detalhe da movimentação"><div class="io-mv-sheet" data-io-mov-body></div></dialog>
+    {% if mf.open %}<span hidden data-io-mov-autoopen="{{ mf.open }}"></span>{% endif %}
+    {% else %}
+    {%- set c = count -%}
+    <form class="io-split" method="post" action="/insumos/estoque/contagem" data-io-count>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <section class="io-card io-main io-count" aria-labelledby="io-count-title">
+            <div class="io-count-head">
+                <div>
+                    <span class="io-mv-kind io-txt-{{ 'muted' if not count_draft else 'green' }}">{% if count_draft %}Contagem em andamento · salva em {{ count_draft.updated_at|datetime_sp }}{% else %}Nova contagem{% endif %}</span>
+                    <h2 class="io-h2" id="io-count-title" style="font-size:20px;font-weight:800">Contagem do galpão</h2>
+                    <p class="io-sub" style="margin:0">Conte o que está na prateleira e digite. Pode salvar e continuar depois.</p>
+                </div>
+                <div class="io-chips" role="group" aria-label="Mostrar">
+                    <button type="button" class="io-chip is-on" data-io-count-filter="all" aria-pressed="true">Todos</button>
+                    <button type="button" class="io-chip" data-io-count-filter="todo" aria-pressed="false">Faltam contar</button>
+                    <button type="button" class="io-chip" data-io-count-filter="diff" aria-pressed="false">Com diferença</button>
+                </div>
+            </div>
+            {% if c.rows %}
+            <div class="io-count-progress"><div><span data-io-count-done>{{ c.done }} de {{ c.total }} itens contados</span><strong data-io-count-pct>{{ c.pct }}%</strong></div><span class="io-bar"><span style="width: {{ c.pct }}%" data-io-count-bar></span></span></div>
+            <div class="io-table-wrap"><div class="io-count-table">
+                <div class="io-crow is-head"><span>Item</span><span>No sistema</span><span>Contado</span><span>Diferença</span></div>
+                {% for r in c.rows %}
+                <div class="io-crow" data-io-crow data-status="{{ r.status }}" data-available="{{ r.available }}" data-unit="{{ r.unit }}" data-cost="{{ r.unit_cost }}">
+                    <span class="io-row-name"><strong>{{ r.name }}</strong><span class="io-row-meta">{{ r.group_label }} · {{ r.category }}</span></span>
+                    <span class="io-txt-muted">{{ r.available_label }}</span>
+                    <label class="io-count-input"><span class="sr-only">Quantidade contada de {{ r.name }} ({{ r.unit }})</span><input type="text" inputmode="decimal" name="counted_{{ r.id }}" value="{{ r.counted }}" placeholder="—" autocomplete="off"{% if r.counted %} class="is-done"{% endif %}><em>{{ r.unit }}</em></label>
+                    <span class="io-count-diff io-txt-{{ 'red' if r.status == 'diff' else ('green' if r.status == 'ok' else 'muted') }}" data-io-cdiff>{{ r.diff_label }}</span>
+                </div>
+                {% endfor %}
+            </div></div>
+            {% else %}
+            <div class="io-empty"><strong>Nada para contar ainda</strong><span>Lance a primeira compra e os itens aparecem aqui.</span></div>
+            {% endif %}
+        </section>
+        <aside class="io-side">
+            <section class="io-card io-card-pad" aria-label="Resumo da contagem">
+                <h2 class="io-h3" style="margin-bottom:8px">Resumo da contagem</h2>
+                <div class="io-kv"><span>Itens contados</span><strong data-io-sum-done>{{ c.done }} de {{ c.total }}</strong></div>
+                <div class="io-kv"><span>Batem com o sistema</span><strong class="io-txt-green" data-io-sum-ok>{{ c.ok }}</strong></div>
+                <div class="io-kv"><span>Com diferença</span><strong class="io-txt-red" data-io-sum-diff>{{ c.diff }}</strong></div>
+                <div class="io-kv"><span>Faltou no galpão</span><strong class="io-txt-red" data-io-sum-missing>− {{ c.missing_value }}</strong></div>
+                <div class="io-kv"><span>Sobrou no galpão</span><strong class="io-txt-green" data-io-sum-extra>+ {{ c.extra_value }}</strong></div>
+                <label class="io-fld" style="margin-top:12px"><span>Data da contagem</span><input type="date" name="data" value="{{ hub.today.isoformat() }}"></label>
+                <p class="io-sub" style="font-size:12px;margin:10px 0 0">Ao aplicar, o estoque passa a ser o contado e cada diferença vira um ajuste nas Movimentações. Itens sem número não mudam.</p>
+                <div class="io-list" style="gap:8px;margin-top:12px">
+                    <button type="button" class="io-btn is-primary" data-io-count-check{% if not c.rows %} disabled{% endif %}>Conferir e aplicar ajustes</button>
+                    <button type="submit" class="io-btn" name="acao" value="salvar"{% if not c.rows %} disabled{% endif %}>Salvar e continuar depois</button>
+                    {% if count_draft %}<button type="submit" class="io-btn is-ghost" name="acao" value="descartar" style="color:#B42318">Descartar contagem</button>{% endif %}
+                </div>
+            </section>
+            <section class="io-card io-card-pad" aria-label="Contagens anteriores">
+                <h2 class="io-h3" style="margin-bottom:8px">Contagens anteriores</h2>
+                {% for h in count_history %}
+                <div class="io-kv"><span>{{ h.date.strftime('%d/%m/%Y') }} · {{ h.items }} {{ 'item' if h.items == 1 else 'itens' }}</span><strong class="{{ 'io-txt-green' if not h.adjustments else '' }}">{{ 'tudo bateu' if not h.adjustments else (h.adjustments ~ (' ajuste' if h.adjustments == 1 else ' ajustes')) }}</strong></div>
+                {% else %}
+                <p class="io-sub" style="margin:0">Nenhuma contagem registrada ainda.</p>
+                {% endfor %}
+                <a href="/insumos/estoque?aba=movimentacoes&amp;tipo=ajuste&amp;periodo=safra" style="font-size:13px;font-weight:600;color:#446A36;display:inline-block;margin-top:10px">Ver ajustes nas Movimentações</a>
+            </section>
+        </aside>
+        <dialog class="io-drawer io-confirm" data-io-count-dialog aria-labelledby="io-count-confirm-title">
+            <div class="io-dw-head"><div><strong id="io-count-confirm-title">Aplicar a contagem?</strong><span>O estoque passa a ser o que você contou</span></div></div>
+            <div class="io-dw-body"><div class="io-review" data-io-count-review></div></div>
+            <div class="io-dw-foot"><div><button type="button" class="io-btn" data-io-count-cancel>Voltar e corrigir</button><button type="submit" class="io-btn is-primary" name="acao" value="aplicar">Aplicar ajustes</button></div></div>
+        </dialog>
+    </form>
+    {% endif %}
 </div>
-
-{% if edit_output %}
-<dialog id="stock-output-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div>
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Editar saída</p>
-                <h3 class="mt-2 text-2xl font-semibold">
-                    {% if edit_output_mode == "fertilization" %}Editar consumo da fertilização{% else %}Editar consumo avulso{% endif %}
-                </h3>
-                <p class="mt-2 text-sm text-slate-500">
-                    {% if edit_output_mode == "fertilization" %}
-                    As alterações abaixo atualizam o lançamento de fertilização e refazem a baixa de estoque de forma consistente.
-                    {% else %}
-                    Atualize os dados do consumo manual sem sair do módulo de estoque.
-                    {% endif %}
-                </p>
-            </div>
-            <a href="/insumos/estoque" class="modal-close-button" aria-label="Fechar">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
-            </a>
-        </div>
-
-        <div class="mt-5 rounded-[1.25rem] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-            <p class="font-semibold text-slate-900">{{ edit_output.input_catalog.name if edit_output.input_catalog else "-" }}</p>
-            <p class="mt-1">Origem: <strong>{{ edit_output.origin }}</strong></p>
-            <p class="mt-1">
-                Fazenda: <strong>{{ edit_output.farm.name if edit_output.farm else "Sem vínculo" }}</strong>
-                {% if edit_output.plot %} • Setor: <strong>{{ edit_output.plot.name }}</strong>{% endif %}
-            </p>
-        </div>
-
-        <form method="post" action="/insumos/estoque/saidas/{{ edit_output.id }}/editar" class="mt-6 grid gap-4">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div class="min-w-0">
-                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
-                        <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
-                    </div>
-                    <button type="button" class="stock-summary-toggle" data-stock-launch-context-toggle aria-expanded="false">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <path d="M5 12h14"/>
-                            <path d="M12 5v14" data-stock-launch-context-toggle-plus></path>
-                        </svg>
-                        <span data-stock-launch-context-toggle-label>Expandir</span>
-                    </button>
-                </div>
-                <div class="stock-summary-collapse" data-stock-launch-context-collapse>
-                    <div class="stock-summary-collapse-inner">
-                        <div class="mt-4">
-                            {% include "partials/launch_context.html" %}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Setor</span>
-                    {% set selected_plot_id = edit_fertilization_record.plot_id if edit_output_mode == 'fertilization' and edit_fertilization_record else edit_output.plot_id %}
-                    {% if edit_output_mode == "fertilization" %}
-                    <input type="hidden" name="plot_id" value="{{ selected_plot_id or '' }}">
-                    {% endif %}
-                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 {% if edit_output_mode == 'fertilization' %}cursor-not-allowed opacity-70{% endif %}" {% if edit_output_mode == "fertilization" %}disabled{% endif %}>
-                        <option value="">Sem setor</option>
-                        {% for plot in plots %}
-                        <option value="{{ plot.id }}" {% if selected_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                    {% if edit_output_mode == "fertilization" %}
-                    <span class="mt-2 block text-xs text-slate-500">Setor vinculado à fertilização. Para trocar, exclua o lançamento e crie outro.</span>
-                    {% endif %}
-                </label>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Insumo</span>
-                    {% set selected_input_id = edit_fertilization_item.input_id if edit_output_mode == 'fertilization' and edit_fertilization_item else edit_output.input_id %}
-                    <input type="hidden" name="input_id" value="{{ selected_input_id or '' }}">
-                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 cursor-not-allowed opacity-70" required disabled>
-                        <option value="">Selecione</option>
-                        {% for input_item in edit_inputs_catalog %}
-                        {% set stock = input_stock.get(input_item.id, {}) %}
-                        <option value="{{ input_item.id }}" {% if selected_input_id == input_item.id %}selected{% endif %}>
-                            {{ input_item.name }} — disponível: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                    <span class="mt-2 block text-xs text-slate-500">O insumo é somente leitura na edição. Para trocar, exclua o lançamento e crie outro.</span>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Data</span>
-                    <input type="date" name="movement_date" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{{ edit_fertilization_record.application_date if edit_output_mode == 'fertilization' and edit_fertilization_record else edit_output.movement_date }}">
-                </label>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Quantidade</span>
-                    <input type="number" step="0.01" min="0" name="quantity" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required value="{{ edit_fertilization_item.total_quantity if edit_output_mode == 'fertilization' and edit_fertilization_item else edit_output.quantity }}">
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Unidade</span>
-                    <select name="unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                        {% set selected_unit = edit_fertilization_item.unit if edit_output_mode == 'fertilization' and edit_fertilization_item else edit_output.unit %}
-                        {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                        <option value="{{ unit }}" {% if selected_unit == unit %}selected{% endif %}>{{ unit }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-            </div>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Observações</span>
-                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_fertilization_record.notes if edit_output_mode == 'fertilization' and edit_fertilization_record else edit_output.notes or '' }}</textarea>
-            </label>
-            <div class="flex flex-wrap justify-end gap-3">
-                <a href="/insumos/estoque" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
-                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar alterações</button>
-            </div>
-        </form>
-    </div>
-</dialog>
-{% endif %}
-
-<dialog id="stock-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div>
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Registrar consumo</p>
-                <h3 class="mt-2 text-2xl font-semibold">Lançar consumo avulso</h3>
-                <p class="mt-2 text-sm text-slate-500">
-                    Registre uma baixa manual sem sair do histórico de estoque.
-                </p>
-            </div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-stock-launch-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
-            </button>
-        </div>
-
-        <form method="post" action="/insumos/estoque/saida-manual" class="mt-6 grid gap-4" data-stock-launch-form>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div class="min-w-0">
-                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
-                        <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
-                    </div>
-                    <button type="button" class="stock-summary-toggle" data-stock-launch-context-toggle aria-expanded="false">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <path d="M5 12h14"/>
-                            <path d="M12 5v14" data-stock-launch-context-toggle-plus></path>
-                        </svg>
-                        <span data-stock-launch-context-toggle-label>Expandir</span>
-                    </button>
-                </div>
-                <div class="stock-summary-collapse" data-stock-launch-context-collapse>
-                    <div class="stock-summary-collapse-inner">
-                        <div class="mt-4">
-                            {% include "partials/launch_context.html" %}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Setor</span>
-                <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                    <option value="">Sem setor</option>
-                    {% for plot in launch_plots %}
-                    <option value="{{ plot.id }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Insumo</span>
-                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-stock-launch-input-select>
-                        <option value="">Selecione</option>
-                        {% for input_item in inputs_catalog %}
-                        {% set stock = input_stock.get(input_item.id, {}) %}
-                        <option value="{{ input_item.id }}" data-default-unit="{{ input_item.default_unit }}">
-                            {{ input_item.name }} — disponível: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Data</span>
-                    <input type="date" name="movement_date" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{{ request.query_params.get('movement_date', '') }}">
-                </label>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Quantidade</span>
-                    <input type="number" step="0.01" min="0" name="quantity" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Unidade</span>
-                    <input type="hidden" name="unit" value="" data-stock-launch-unit-hidden>
-                    <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 cursor-not-allowed opacity-70" data-stock-launch-unit-display disabled>
-                        <option value=""></option>
-                        {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                        <option value="{{ unit }}">{{ unit }}</option>
-                        {% endfor %}
-                    </select>
-                    <span class="mt-2 block text-xs text-slate-500">A unidade segue o cadastro padrão do insumo selecionado.</span>
-                </label>
-            </div>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Observações</span>
-                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50"></textarea>
-            </label>
-            <div class="flex flex-wrap justify-end gap-3">
-                <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-stock-launch-close>Cancelar</button>
-                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Registrar consumo</button>
-            </div>
-        </form>
-    </div>
-</dialog>
-
-<dialog id="stock-adjustment-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div>
-                <p class="text-xs uppercase tracking-[0.35em] text-amber-700">Ajuste de estoque</p>
-                <h3 class="mt-2 text-2xl font-semibold">Corrigir saldo físico</h3>
-                <p class="mt-2 text-sm text-slate-500">Registre diferenças de inventário, perdas, avarias ou correções sem criar lançamento financeiro.</p>
-            </div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-stock-adjustment-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-                </svg>
-            </button>
-        </div>
-        <form method="post" action="/insumos/estoque/ajustes" class="mt-6 grid gap-4" data-stock-adjustment-form>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Tipo de ajuste</span>
-                    <select name="direction" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        <option value="entrada">Entrada: acrescentar ao saldo</option>
-                        <option value="saida">Saída: reduzir do saldo</option>
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Data do ajuste</span>
-                    <input type="date" name="movement_date" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{{ request.query_params.get('movement_date', '') }}">
-                </label>
-            </div>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Insumo</span>
-                <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-stock-adjustment-input>
-                    <option value="">Selecione</option>
-                    {% for input_item in adjustment_inputs %}
-                    {% set stock = input_stock.get(input_item.id, {}) %}
-                    <option value="{{ input_item.id }}" data-default-unit="{{ input_item.default_unit }}">{{ input_item.name }} — saldo: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Quantidade ajustada</span>
-                    <input type="number" step="0.01" min="0.01" name="quantity" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Unidade</span>
-                    <input type="hidden" name="unit" value="" data-stock-adjustment-unit-hidden>
-                    <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 cursor-not-allowed opacity-70" data-stock-adjustment-unit-display disabled>
-                        <option value=""></option>
-                        {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}<option value="{{ unit }}">{{ unit }}</option>{% endfor %}
-                    </select>
-                </label>
-            </div>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Motivo do ajuste</span>
-                <select name="reason" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    <option value="">Selecione</option>
-                    <option value="inventario">Inventário físico</option>
-                    <option value="perda">Perda</option>
-                    <option value="avaria">Avaria</option>
-                    <option value="vencimento">Vencimento</option>
-                    <option value="correcao_cadastral">Correção cadastral</option>
-                    <option value="outro">Outro</option>
-                </select>
-            </label>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Observação</span>
-                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Descreva a diferença identificada ou o motivo do ajuste."></textarea>
-            </label>
-            <p class="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">O ajuste será registrado no histórico e não gerará compra, pagamento ou lançamento financeiro.</p>
-            <div class="flex flex-wrap justify-end gap-3">
-                <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-stock-adjustment-close>Cancelar</button>
-                <button class="rounded-2xl bg-amber-700 px-4 py-3 font-semibold text-white hover:bg-amber-800">Registrar ajuste</button>
-            </div>
-        </form>
-    </div>
-</dialog>
-
-<dialog id="stock-inventory-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-5xl">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div>
-                <p class="text-xs uppercase tracking-[0.35em] text-sky-700">Inventário físico</p>
-                <h3 class="mt-2 text-2xl font-semibold">Conferir saldo dos insumos</h3>
-                <p class="mt-2 text-sm text-slate-500">Preencha apenas os itens contados. O sistema compara a contagem com o saldo atual e registra automaticamente as divergências.</p>
-            </div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-stock-inventory-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </button>
-        </div>
-        <form method="post" action="/insumos/estoque/inventario" class="mt-6 grid gap-4" data-stock-inventory-form>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Data do inventário</span>
-                    <input type="date" name="inventory_date" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{{ inventory_default_date }}">
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Buscar insumo</span>
-                    <input type="search" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Digite para localizar" data-stock-inventory-search>
-                </label>
-            </div>
-            <div class="overflow-hidden rounded-[1.25rem] border border-slate-200">
-                <div class="max-h-[min(52vh,34rem)] overflow-y-auto">
-                    <table class="w-full min-w-[54rem] divide-y divide-slate-200 text-sm">
-                        <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-[0.16em] text-slate-500"><tr><th class="px-4 py-3">Insumo</th><th class="px-4 py-3">Saldo do sistema</th><th class="px-4 py-3">Qtd. embalagens</th><th class="px-4 py-3">Conteúdo por embalagem</th><th class="px-4 py-3">Contagem física</th></tr></thead>
-                        <tbody class="divide-y divide-slate-100 bg-white">
-                            {% for item in inventory_items %}
-                            <tr data-stock-inventory-row data-stock-inventory-search="{{ item.name|lower }} {{ item.item_type|lower }}">
-                                <td class="px-4 py-3"><p class="font-semibold text-slate-900">{{ item.name }}</p><p class="mt-1 text-xs text-slate-500">{{ 'Combustível' if item.item_type == 'combustivel' else 'Insumo agrícola' }}</p></td>
-                                <td class="px-4 py-3 font-medium text-slate-700">{{ item.available_quantity }} {{ item.unit }}</td>
-                                <td class="px-4 py-3"><input type="number" min="0" step="0.01" name="package_count_{{ item.id }}" class="min-h-[2.75rem] w-28 rounded-xl border-slate-200 bg-slate-50" inputmode="decimal" data-stock-inventory-multiplier="count"></td>
-                                <td class="px-4 py-3"><div class="flex items-center gap-2"><input type="number" min="0" step="0.01" name="package_size_{{ item.id }}" class="min-h-[2.75rem] w-28 rounded-xl border-slate-200 bg-slate-50" inputmode="decimal" data-stock-inventory-multiplier="size"><span class="text-xs text-slate-500">{{ item.unit }}</span></div></td>
-                                <td class="px-4 py-3"><div class="flex items-center gap-2"><input type="number" min="0" step="0.01" name="counted_{{ item.id }}" class="min-h-[2.75rem] w-32 rounded-xl border-slate-200 bg-slate-50" inputmode="decimal" data-stock-inventory-count><span class="text-sm text-slate-500">{{ item.unit }}</span></div></td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="3" class="px-4 py-6 text-center text-slate-500">Não há insumos ativos com saldo para conferir.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Observação geral</span>
-                <textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: contagem mensal realizada pelo responsável do almoxarifado."></textarea>
-            </label>
-            <p class="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-900">Use o multiplicador quando a contagem for por embalagens: quantidade × conteúdo por embalagem preenche a contagem física automaticamente. A contagem não cria compras nem lançamentos financeiros.</p>
-            <div class="flex flex-wrap justify-end gap-3">
-                <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-stock-inventory-close>Cancelar</button>
-                <button class="rounded-2xl bg-sky-700 px-4 py-3 font-semibold text-white hover:bg-sky-800" data-stock-inventory-submit>Concluir inventário</button>
-            </div>
-        </form>
-    </div>
-</dialog>
-{% include "partials/history_view_modal.html" %}
-
-    <script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=8"></script>
-    <script src="{{ url_for('static', path='js/swipe_card_pager.js') }}?v=11"></script>
-    <script>
-        (() => {
-            const getTabs = () => Array.from(document.querySelectorAll('[data-stock-tab]'));
-            if (!getTabs().length) return;
-
-            let activeTab = {% if edit_output %}'outputs'{% else %}{{ selected_stock_tab|tojson }}{% endif %};
-            const getTabButtons = () => Array.from(document.querySelectorAll('[data-stock-tab-button]'));
-            let stockListShell = document.querySelector('[data-stock-list-shell]');
-            const stockFilterForm = document.querySelector('[data-stock-filter-form]');
-            const stockTabHiddenInput = stockFilterForm?.querySelector('[data-stock-tab-hidden]');
-            const movementTypeField = stockFilterForm?.querySelector('select[name="movement_type"]');
-            const bindSegmentedControls = (root = document) => {
-                root.querySelectorAll('[data-segmented-control]').forEach((control) => {
-                    const indicator = control.querySelector('[data-segmented-indicator]');
-                    const sync = () => {
-                        const active = control.querySelector('.stock-tab-link.is-active');
-                        if (!(active instanceof HTMLElement) || !(indicator instanceof HTMLElement)) return;
-                        const indicatorLeft = parseFloat(getComputedStyle(indicator).left || '0') || 0;
-                        indicator.style.width = `${active.offsetWidth}px`;
-                        indicator.style.transform = `translateX(${Math.max(active.offsetLeft - indicatorLeft, 0)}px)`;
-                        control.classList.add('is-ready');
-                    };
-                    sync();
-                    control._segmentedSync = sync;
-                });
-            };
-            const syncStockExportLinks = () => {
-                const pdf = document.querySelector('a.stock-export-button-pdf');
-                const xlsx = document.querySelector('a.stock-export-button-xlsx');
-                if (!(pdf instanceof HTMLAnchorElement) || !(xlsx instanceof HTMLAnchorElement)) return;
-                const params = new URLSearchParams(window.location.search);
-                params.set('stock_tab', activeTab);
-                ['entries_page', 'outputs_page', 'extract_page', 'inventories_page'].forEach((key) => params.delete(key));
-                const searchEl = document.querySelector('[data-stock-history-search]');
-                const q = (searchEl?.value || '').trim();
-                if (q) {
-                    params.set('stock_search', q);
-                } else {
-                    params.delete('stock_search');
-                }
-                const qs = params.toString();
-                const suffix = qs ? `?${qs}` : `?stock_tab=${encodeURIComponent(activeTab)}`;
-                pdf.href = `/insumos/estoque/exportar.pdf${suffix}`;
-                xlsx.href = `/insumos/estoque/exportar.xlsx${suffix}`;
-            };
-
-            const setActiveTabView = (tabName) => {
-                activeTab = tabName;
-                getTabs().forEach((tab) => {
-                    tab.classList.toggle('hidden', tab.dataset.stockTab !== tabName);
-                });
-                getTabButtons().forEach((button) => {
-                    button.classList.toggle('is-active', button.dataset.stockTabButton === tabName);
-                });
-                document.querySelectorAll('[data-segmented-control]').forEach((control) => {
-                    control._segmentedSync?.();
-                });
-                if (stockTabHiddenInput) {
-                    stockTabHiddenInput.value = tabName;
-                }
-            };
-
-            setActiveTabView(activeTab);
-            syncStockExportLinks();
-            bindSegmentedControls();
-
-            stockFilterForm?.addEventListener('submit', () => {
-                const searchField = stockListShell?.querySelector('[data-stock-history-search]');
-                const searchHiddenField = stockFilterForm?.querySelector('[data-stock-search-hidden]');
-                if (searchField && searchHiddenField) {
-                    searchHiddenField.value = (searchField.value || '').trim();
-                }
-                const selectedMovementType = movementTypeField?.value || 'all';
-                if (stockTabHiddenInput) {
-                    if (selectedMovementType === 'entrada') {
-                        stockTabHiddenInput.value = 'entries';
-                    } else if (selectedMovementType === 'saida') {
-                        stockTabHiddenInput.value = 'outputs';
-                    } else {
-                        stockTabHiddenInput.value = activeTab;
-                    }
-                }
-                stockFilterForm.querySelectorAll('select[name="farm_id"], select[name="input_id"]').forEach((field) => {
-                    if (!field.value) {
-                        field.disabled = true;
-                    }
-                });
-            });
-
-            const modal = document.getElementById('stock-output-modal');
-            if (modal) {
-                modal.showModal();
-                modal.addEventListener('cancel', (event) => {
-                    event.preventDefault();
-                    window.location.href = '/insumos/estoque';
-                });
-            }
-
-            const launchModal = document.getElementById('stock-launch-modal');
-            const openLaunchButton = document.querySelector('[data-stock-launch-open]');
-            const closeLaunchButtons = Array.from(document.querySelectorAll('[data-stock-launch-close]'));
-            const launchForm = launchModal?.querySelector('[data-stock-launch-form]');
-            const launchInputSelect = launchModal?.querySelector('[data-stock-launch-input-select]');
-            const launchUnitHidden = launchModal?.querySelector('[data-stock-launch-unit-hidden]');
-            const launchUnitDisplay = launchModal?.querySelector('[data-stock-launch-unit-display]');
-            if (launchModal) {
-                const syncLaunchUnit = () => {
-                    if (!(launchInputSelect instanceof HTMLSelectElement) || !(launchUnitHidden instanceof HTMLInputElement) || !(launchUnitDisplay instanceof HTMLSelectElement)) return;
-                    const selectedOption = launchInputSelect.selectedOptions[0];
-                    const unit = (selectedOption?.dataset.defaultUnit || '').trim();
-                    launchUnitHidden.value = unit;
-                    launchUnitDisplay.value = unit || '';
-                    if (!unit) {
-                        launchUnitDisplay.selectedIndex = 0;
-                    }
-                };
-
-                const resetLaunchContextPanels = () => {
-                    launchModal.querySelectorAll('[data-stock-launch-context-toggle]').forEach((toggle) => {
-                        const container = toggle.closest('.border-brand-100');
-                        const collapse = container?.querySelector('[data-stock-launch-context-collapse]');
-                        const label = toggle.querySelector('[data-stock-launch-context-toggle-label]');
-                        const plus = toggle.querySelector('[data-stock-launch-context-toggle-plus]');
-                        if (!collapse || !label) return;
-                        toggle.setAttribute('aria-expanded', 'false');
-                        collapse.classList.remove('is-expanded');
-                        label.textContent = 'Expandir';
-                        if (plus) plus.style.display = '';
-                    });
-                };
-
-                const resetLaunchForm = () => {
-                    launchForm?.reset();
-                    syncLaunchUnit();
-                    resetLaunchContextPanels();
-                };
-
-                /* Não resetar no submit: isso apaga campos antes do POST e quebra validação no backend. */
-                launchInputSelect?.addEventListener('change', syncLaunchUnit);
-                openLaunchButton?.addEventListener('click', () => {
-                    resetLaunchForm();
-                    launchModal.showModal();
-                });
-                closeLaunchButtons.forEach((button) => {
-                    button.addEventListener('click', () => {
-                        resetLaunchForm();
-                        launchModal.close();
-                    });
-                });
-                launchModal.addEventListener('cancel', (event) => {
-                    event.preventDefault();
-                    resetLaunchForm();
-                    launchModal.close();
-                });
-                resetLaunchForm();
-            }
-
-            const adjustmentModal = document.getElementById('stock-adjustment-modal');
-            const adjustmentOpenButton = document.querySelector('[data-stock-adjustment-open]');
-            const adjustmentCloseButtons = Array.from(document.querySelectorAll('[data-stock-adjustment-close]'));
-            const adjustmentForm = adjustmentModal?.querySelector('[data-stock-adjustment-form]');
-            const adjustmentInput = adjustmentModal?.querySelector('[data-stock-adjustment-input]');
-            const adjustmentUnitHidden = adjustmentModal?.querySelector('[data-stock-adjustment-unit-hidden]');
-            const adjustmentUnitDisplay = adjustmentModal?.querySelector('[data-stock-adjustment-unit-display]');
-            const closeStockActionMenus = () => document.querySelectorAll('.stock-action-menu[open]').forEach((menu) => menu.removeAttribute('open'));
-            const syncAdjustmentUnit = () => {
-                if (!(adjustmentInput instanceof HTMLSelectElement) || !(adjustmentUnitHidden instanceof HTMLInputElement) || !(adjustmentUnitDisplay instanceof HTMLSelectElement)) return;
-                const unit = (adjustmentInput.selectedOptions[0]?.dataset.defaultUnit || '').trim();
-                adjustmentUnitHidden.value = unit;
-                adjustmentUnitDisplay.value = unit;
-                if (!unit) adjustmentUnitDisplay.selectedIndex = 0;
-            };
-            const resetAdjustmentForm = () => {
-                adjustmentForm?.reset();
-                syncAdjustmentUnit();
-            };
-            adjustmentInput?.addEventListener('change', syncAdjustmentUnit);
-            adjustmentOpenButton?.addEventListener('click', () => {
-                closeStockActionMenus();
-                resetAdjustmentForm();
-                adjustmentModal?.showModal();
-            });
-            adjustmentCloseButtons.forEach((button) => button.addEventListener('click', () => {
-                resetAdjustmentForm();
-                adjustmentModal?.close();
-            }));
-            adjustmentModal?.addEventListener('cancel', (event) => {
-                event.preventDefault();
-                resetAdjustmentForm();
-                adjustmentModal.close();
-            });
-            resetAdjustmentForm();
-
-            const inventoryModal = document.getElementById('stock-inventory-modal');
-            const inventoryOpenButton = document.querySelector('[data-stock-inventory-open]');
-            const inventoryCloseButtons = Array.from(document.querySelectorAll('[data-stock-inventory-close]'));
-            const inventoryForm = inventoryModal?.querySelector('[data-stock-inventory-form]');
-            const inventorySearch = inventoryModal?.querySelector('[data-stock-inventory-search]');
-            const inventoryRows = Array.from(inventoryModal?.querySelectorAll('[data-stock-inventory-row]') || []);
-            const resetInventoryForm = () => {
-                inventoryForm?.reset();
-                inventoryRows.forEach((row) => row.classList.remove('hidden'));
-            };
-            inventorySearch?.addEventListener('input', () => {
-                const query = inventorySearch.value.trim().toLocaleLowerCase('pt-BR');
-                inventoryRows.forEach((row) => row.classList.toggle('hidden', Boolean(query) && !row.dataset.stockInventorySearch.includes(query)));
-            });
-            inventoryOpenButton?.addEventListener('click', () => { closeStockActionMenus(); resetInventoryForm(); inventoryModal?.showModal(); });
-            inventoryCloseButtons.forEach((button) => button.addEventListener('click', () => { resetInventoryForm(); inventoryModal?.close(); }));
-            inventoryModal?.addEventListener('cancel', (event) => { event.preventDefault(); resetInventoryForm(); inventoryModal.close(); });
-            inventoryForm?.addEventListener('submit', (event) => {
-                const hasCount = Array.from(inventoryForm.querySelectorAll('[data-stock-inventory-count]')).some((field) => field.value.trim() !== '');
-                if (hasCount) return;
-                event.preventDefault();
-                window.alert('Informe a contagem física de pelo menos um insumo para concluir o inventário.');
-            });
-            inventoryRows.forEach((row) => {
-                const packageCount = row.querySelector('[data-stock-inventory-multiplier="count"]');
-                const packageSize = row.querySelector('[data-stock-inventory-multiplier="size"]');
-                const counted = row.querySelector('[data-stock-inventory-count]');
-                const updateCountFromPackages = () => {
-                    const count = Number(packageCount?.value);
-                    const size = Number(packageSize?.value);
-                    if (!Number.isFinite(count) || !Number.isFinite(size) || !packageCount?.value || !packageSize?.value) return;
-                    counted.value = (count * size).toFixed(2).replace(/\.00$/, '');
-                };
-                packageCount?.addEventListener('input', updateCountFromPackages);
-                packageSize?.addEventListener('input', updateCountFromPackages);
-            });
-
-            const summaryToggle = document.querySelector('[data-stock-summary-toggle]');
-            const summaryCollapse = document.querySelector('[data-stock-summary-collapse]');
-            const summaryToggleLabel = document.querySelector('[data-stock-summary-toggle-label]');
-            const summaryTogglePlus = document.querySelector('[data-stock-summary-toggle-plus]');
-            if (summaryToggle && summaryCollapse && summaryToggleLabel) {
-                const summaryStorageKey = 'sisfarm.stock.summary.expanded';
-                const setSummaryExpanded = (expanded) => {
-                    summaryCollapse.classList.toggle('is-expanded', expanded);
-                    summaryToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                    summaryToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
-                    if (summaryTogglePlus) {
-                        summaryTogglePlus.classList.toggle('hidden', expanded);
-                    }
-                };
-
-                const savedSummaryState = window.localStorage.getItem(summaryStorageKey);
-                setSummaryExpanded(savedSummaryState !== 'false');
-                summaryToggle.addEventListener('click', () => {
-                    const expanded = summaryToggle.getAttribute('aria-expanded') === 'true';
-                    const nextExpanded = !expanded;
-                    setSummaryExpanded(nextExpanded);
-                    window.localStorage.setItem(summaryStorageKey, nextExpanded ? 'true' : 'false');
-                });
-            }
-
-            document.querySelectorAll('[data-stock-launch-context-toggle]').forEach((toggle) => {
-                const container = toggle.closest('.border-brand-100');
-                const collapse = container?.querySelector('[data-stock-launch-context-collapse]');
-                const label = toggle.querySelector('[data-stock-launch-context-toggle-label]');
-                const plus = toggle.querySelector('[data-stock-launch-context-toggle-plus]');
-                if (!collapse || !label) return;
-
-                const syncLaunchContext = (expanded) => {
-                    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                    collapse.classList.toggle('is-expanded', expanded);
-                    label.textContent = expanded ? 'Recolher' : 'Expandir';
-                    if (plus) plus.style.display = expanded ? 'none' : '';
-                };
-
-                syncLaunchContext(false);
-                toggle.addEventListener('click', () => {
-                    const expanded = toggle.getAttribute('aria-expanded') === 'true';
-                    syncLaunchContext(!expanded);
-                });
-            });
-
-            const filterToggle = document.querySelector('[data-stock-filter-toggle]');
-            const filterCollapse = document.querySelector('[data-stock-filter-collapse]');
-            const filterToggleLabel = document.querySelector('[data-stock-filter-toggle-label]');
-            const filterTogglePlus = document.querySelector('[data-stock-filter-toggle-plus]');
-            const filterMobileMq = window.matchMedia('(max-width: 899px)');
-            const filterBar = document.querySelector('.stock-filter-bar');
-            if (filterToggle && filterCollapse && filterToggleLabel) {
-                const hasAppliedFilters = filterToggle.dataset.stockFilterApplied === 'true';
-                const setFilterExpanded = (expanded) => {
-                    filterCollapse.classList.toggle('is-expanded', expanded);
-                    filterToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                    filterToggleLabel.textContent = expanded
-                        ? 'Recolher filtros'
-                        : (hasAppliedFilters ? 'Mostrar filtro aplicado' : 'Mostrar filtros');
-                    filterTogglePlus?.classList.toggle('hidden', expanded);
-                    filterBar?.classList.toggle('is-mobile-collapsed', filterMobileMq.matches && !expanded);
-                };
-
-                const syncFilterCollapseForViewport = () => {
-                    if (!filterMobileMq.matches) {
-                        filterCollapse.classList.add('is-expanded');
-                        filterToggle.setAttribute('aria-expanded', 'true');
-                        filterBar?.classList.remove('is-mobile-collapsed');
-                        return;
-                    }
-                    const expanded = filterToggle.getAttribute('aria-expanded') === 'true';
-                    setFilterExpanded(expanded);
-                };
-
-                syncFilterCollapseForViewport();
-                filterToggle.addEventListener('click', () => {
-                    const expanded = filterToggle.getAttribute('aria-expanded') === 'true';
-                    setFilterExpanded(!expanded);
-                });
-                filterMobileMq.addEventListener('change', syncFilterCollapseForViewport);
-            }
-
-            let stockSearchInput = stockListShell?.querySelector('[data-stock-history-search]') || null;
-            stockFilterForm && window.ModulePeriodFilters?.bind(stockFilterForm);
-            const stockSearchHidden = stockFilterForm?.querySelector('[data-stock-search-hidden]');
-            let stockSearchNavigateDebounce = null;
-            const STOCK_SEARCH_DEBOUNCE_MS = 350;
-
-            const syncStockSearchHidden = () => {
-                stockSearchInput = stockListShell?.querySelector('[data-stock-history-search]');
-                const raw = (stockSearchInput?.value || '').trim();
-                if (stockSearchHidden) {
-                    stockSearchHidden.value = raw;
-                }
-            };
-
-            const buildStockSearchUrl = () => {
-                const url = new URL(window.location.href);
-                stockSearchInput = stockListShell?.querySelector('[data-stock-history-search]');
-                const raw = (stockSearchInput?.value || '').trim();
-                if (raw) {
-                    url.searchParams.set('stock_search', raw);
-                } else {
-                    url.searchParams.delete('stock_search');
-                }
-                ['entries_page', 'outputs_page', 'extract_page'].forEach((key) => url.searchParams.delete(key));
-                return url.toString();
-            };
-
-            const flushStockSearchNavigation = () => {
-                stockSearchNavigateDebounce = null;
-                syncStockSearchHidden();
-                syncStockExportLinks();
-                syncStockListFromUrl(buildStockSearchUrl());
-            };
-
-            const scheduleStockSearchNavigation = () => {
-                syncStockSearchHidden();
-                syncStockExportLinks();
-                if (stockSearchNavigateDebounce !== null) {
-                    window.clearTimeout(stockSearchNavigateDebounce);
-                }
-                stockSearchNavigateDebounce = window.setTimeout(flushStockSearchNavigation, STOCK_SEARCH_DEBOUNCE_MS);
-            };
-
-            const onStockSearchInput = () => {
-                scheduleStockSearchNavigation();
-            };
-
-            const bindStockListShell = () => {
-                if (!stockListShell) return;
-                stockSearchInput = stockListShell.querySelector('[data-stock-history-search]');
-                stockSearchInput?.addEventListener('input', onStockSearchInput);
-                bindSegmentedControls(stockListShell);
-                syncStockExportLinks();
-            };
-
-            const syncStockListFromUrl = async (url) => {
-                if (!stockListShell) {
-                    window.location.href = url;
-                    return;
-                }
-                const currentQuery = stockSearchInput?.value || '';
-                stockListShell.classList.add('is-loading');
-                try {
-                    const response = await window.fetch(url, {
-                        credentials: 'same-origin',
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                    });
-                    if (!response.ok) {
-                        throw new Error(`Falha ao carregar paginação (${response.status})`);
-                    }
-
-                    const html = await response.text();
-                    const parsed = new window.DOMParser().parseFromString(html, 'text/html');
-                    const nextShell = parsed.querySelector('[data-stock-list-shell]');
-                    if (!nextShell) {
-                        throw new Error('Bloco da listagem não encontrado na resposta.');
-                    }
-
-                    stockListShell.replaceWith(nextShell);
-                    stockListShell = nextShell;
-                    stockSearchInput = stockListShell.querySelector('[data-stock-history-search]');
-                    if (stockSearchInput) {
-                        stockSearchInput.value = currentQuery;
-                    }
-                    const nextHidden = stockFilterForm?.querySelector('[data-stock-search-hidden]');
-                    if (nextHidden && stockSearchInput) {
-                        nextHidden.value = (stockSearchInput.value || '').trim();
-                    }
-                    bindStockListShell();
-                    setActiveTabView(parsed.querySelector('[data-stock-tab-button].is-active')?.dataset.stockTabButton || activeTab);
-                    window.history.replaceState({}, '', url);
-                    syncStockExportLinks();
-                } catch (error) {
-                    console.error(error);
-                    window.location.href = url;
-                }
-            };
-            bindStockListShell();
-
-            document.addEventListener('click', (event) => {
-                const link = event.target instanceof Element
-                    ? event.target.closest('[data-stock-tab-button], [data-stock-pagination-link]')
-                    : null;
-                if (!(link instanceof HTMLAnchorElement) || event.defaultPrevented) return;
-                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-                const href = link.getAttribute('href');
-                if (!href) return;
-                event.preventDefault();
-
-                if (link.hasAttribute('data-stock-tab-button')) {
-                    setActiveTabView(link.dataset.stockTabButton || 'entries');
-                    window.history.replaceState({}, '', href);
-                    syncStockExportLinks();
-                    return;
-                }
-
-                syncStockListFromUrl(href);
-            });
-
-            window.addEventListener('resize', () => {
-                document.querySelectorAll('[data-segmented-control]').forEach((control) => {
-                    control._segmentedSync?.();
-                });
-            });
-
-            const stickyHeader = document.querySelector('.stock-page-header');
-            const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
-            const stockActionMenus = Array.from(document.querySelectorAll('.stock-action-menu'));
-            const syncStockActionMenus = () => {
-                stickyHeader?.classList.toggle('is-action-menu-open', stockActionMenus.some((menu) => menu.open));
-            };
-            stockActionMenus.forEach((menu) => {
-                menu.addEventListener('toggle', () => {
-                    if (menu.open) {
-                        stockActionMenus.forEach((otherMenu) => {
-                            if (otherMenu !== menu) otherMenu.removeAttribute('open');
-                        });
-                    }
-                    syncStockActionMenus();
-                });
-            });
-            document.addEventListener('click', (event) => {
-                if (event.target instanceof Element && event.target.closest('.stock-action-menu')) return;
-                closeStockActionMenus();
-                syncStockActionMenus();
-            });
-            syncStockActionMenus();
-
-            const mobileCompactMq = window.matchMedia('(max-width: 899px)');
-            const parseStickyTopPx = (el) => {
-                const raw = getComputedStyle(el).top;
-                if (!raw || raw === 'auto') return 0;
-                const pxMatch = /^([\d.]+)px$/.exec(raw);
-                if (pxMatch) return parseFloat(pxMatch[1]);
-                const remMatch = /^([\d.]+)rem$/.exec(raw);
-                if (remMatch) {
-                    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-                    return parseFloat(remMatch[1]) * rootPx;
-                }
-                return 0;
-            };
-
-            let compactRaf = null;
-            const syncStockHeaderCompact = () => {
-                compactRaf = null;
-                if (!stickyHeader) return;
-                if (!mobileCompactMq.matches) {
-                    stickyHeader.classList.remove('is-compact');
-                    if (headerIntro) headerIntro.removeAttribute('aria-hidden');
-                    return;
-                }
-                const topPx = parseStickyTopPx(stickyHeader);
-                const rect = stickyHeader.getBoundingClientRect();
-                const isCompact = stickyHeader.classList.contains('is-compact');
-                let nextCompact = isCompact;
-                if (rect.top <= topPx + 2) nextCompact = true;
-                else if (rect.top > topPx + 8) nextCompact = false;
-                stickyHeader.classList.toggle('is-compact', nextCompact);
-                if (headerIntro) {
-                    headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
-                }
-            };
-
-            const scheduleStockHeaderCompact = () => {
-                if (compactRaf !== null) return;
-                compactRaf = window.requestAnimationFrame(syncStockHeaderCompact);
-            };
-
-            if (stickyHeader) {
-                window.addEventListener('scroll', scheduleStockHeaderCompact, { passive: true });
-                window.addEventListener('resize', scheduleStockHeaderCompact);
-                mobileCompactMq.addEventListener('change', scheduleStockHeaderCompact);
-                scheduleStockHeaderCompact();
-            }
-
-            const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
-            if (stickyHeader && fadingPanels.length) {
-                let rafId = null;
-                const updateFadingPanels = () => {
-                    rafId = null;
-                    const stickyRect = stickyHeader.getBoundingClientRect();
-                    const stickyBottom = stickyRect.bottom;
-                    fadingPanels.forEach((panel) => {
-                        const panelRect = panel.getBoundingClientRect();
-                        const panelTop = panelRect.top;
-                        const panelH = panelRect.height;
-                        /* Só zera quando o topo do painel já passou da base do cabeçalho sticky */
-                        if (panelTop >= stickyBottom || panelH <= 1) {
-                            panel.style.setProperty('--stock-fade-cutoff', '0px');
-                            panel.style.setProperty('--stock-fade-feather-end', '0px');
-                            return;
-                        }
-
-                        const rawOverlap = Math.max(stickyBottom - panelTop, 0);
-                        const overlap = Math.min(rawOverlap, panelH);
-                        const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
-                        const cutoff = overlap;
-                        const featherEnd = overlap + featherBand;
-                        panel.style.setProperty('--stock-fade-cutoff', `${cutoff.toFixed(2)}px`);
-                        panel.style.setProperty('--stock-fade-feather-end', `${featherEnd.toFixed(2)}px`);
-                    });
-                };
-
-                const scheduleFadeUpdate = () => {
-                    if (rafId !== null) return;
-                    rafId = window.requestAnimationFrame(updateFadingPanels);
-                };
-
-                window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
-                window.addEventListener('resize', scheduleFadeUpdate);
-                scheduleFadeUpdate();
-            }
-
-            const catalogCards = Array.from(document.querySelectorAll('[data-stock-catalog-card]'));
-            const catalogDots = document.querySelector('[data-stock-catalog-dots]');
-            const catalogGrid = document.querySelector('[data-stock-catalog-grid]');
-            const catalogViewport = document.querySelector('[data-stock-catalog-viewport]');
-            const catalogPageNavButtons = Array.from(document.querySelectorAll('[data-stock-catalog-page-nav]'));
-            const bindCatalogPagerNav = (pager) => {
-                if (!pager || !catalogPageNavButtons.length) return;
-                const sync = () => {
-                    const page = pager.getPage();
-                    const total = pager.getTotalPages();
-                    catalogPageNavButtons.forEach((button) => {
-                        const direction = button.dataset.stockCatalogPageNav;
-                        button.disabled = total <= 1 || (direction === 'prev' && page <= 0) || (direction === 'next' && page >= total - 1);
-                    });
-                };
-                catalogPageNavButtons.forEach((button) => {
-                    button.addEventListener('click', () => {
-                        const direction = button.dataset.stockCatalogPageNav;
-                        const page = pager.getPage();
-                        pager.setPage(direction === 'next' ? page + 1 : page - 1, direction);
-                        window.setTimeout(sync, 260);
-                    });
-                });
-                catalogDots?.addEventListener('click', () => window.setTimeout(sync, 260));
-                window.addEventListener('resize', sync);
-                sync();
-            };
-            const cardsPerPageDesktop = 4;
-            const cardsPerPageMobile = 1;
-            if (
-                catalogCards.length > cardsPerPageMobile &&
-                catalogDots &&
-                catalogGrid &&
-                catalogViewport &&
-                window.SiSFarmSwipePager
-            ) {
-                const catalogPager = window.SiSFarmSwipePager.create({
-                    root: catalogGrid,
-                    scrollViewport: catalogViewport,
-                    items: catalogCards,
-                    dotsContainer: catalogDots,
-                    itemsPerPageDesktop: cardsPerPageDesktop,
-                    itemsPerPageMobile: cardsPerPageMobile,
-                    mobileOnly: true,
-                });
-                bindCatalogPagerNav(catalogPager);
-            }
-
-        })();
-    </script>
 {% include "partials/io_drawers.html" %}
 {% endblock %}

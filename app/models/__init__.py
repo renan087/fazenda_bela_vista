@@ -18,6 +18,7 @@ from app.models.equipment_maintenance import EquipmentMaintenance
 from app.models.equipment_maintenance_attachment import EquipmentMaintenanceAttachment
 from app.models.equipment_maintenance_plan import EquipmentMaintenancePlan
 from app.models.equipment_fueling import EquipmentFueling
+from app.models.stock_count_draft import StockCountDraft
 from app.models.farm import Farm
 from app.models.farm_attachment import FarmAttachment
 from app.models.farm_preview_cache import FarmPreviewCache
@@ -109,6 +110,7 @@ __all__ = [
     "EquipmentMaintenanceAttachment",
     "EquipmentMaintenancePlan",
     "EquipmentFueling",
+    "StockCountDraft",
     "Farm",
     "FarmAttachment",
     "FarmPreviewCache",

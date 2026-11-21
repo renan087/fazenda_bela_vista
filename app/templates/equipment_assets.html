@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="stock-page-shell sf-page">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io2">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io3">
     {%- set io_cards = hub.machines -%}
     {%- set io_due = [] -%}
     {%- for c in io_cards -%}{%- for p in c.plans if p.overdue or p.soon -%}{%- set _ = io_due.append({'plan': p, 'card': c}) -%}{%- endfor -%}{%- endfor -%}

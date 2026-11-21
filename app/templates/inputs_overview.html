@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io2">
+<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io3">
 {% macro when(d) -%}
 {%- if not d -%}—{%- elif d == hub.today -%}hoje{%- elif (hub.today - d).days == 1 -%}ontem{%- else -%}{{ d.strftime('%d/%m') }}{%- endif -%}
 {%- endmacro %}

@@ -14208,187 +14208,6 @@ def export_purchased_inputs_pdf(
     )
 
 
-@router.get("/insumos/estoque")
-def stock_page(
-    request: Request,
-    edit_output_id: int | None = None,
-    farm_id: str | None = None,
-    input_id: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    movement_type: str = "all",
-    item_type: str | None = None,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_web),
-    csrf_token: str = Depends(get_csrf_token),
-):
-    repo = _repository(db)
-    scope = _global_scope_context(request, repo)
-    selected_farm_id = _int_or_none(farm_id) or scope["active_farm_id"]
-    selected_input_id = _int_or_none(input_id)
-    start = _date_or_none(start_date)
-    end = _date_or_none(end_date)
-    normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
-    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
-    stock_context = _build_stock_context(
-        repo,
-        farm_id=selected_farm_id,
-        input_id=selected_input_id,
-        start_date=start,
-        end_date=end,
-        movement_type=movement_type,
-        item_type=normalized_item_type,
-    )
-    raw_stock_tab = request.query_params.get("stock_tab")
-    if raw_stock_tab in {"entries", "outputs", "extract", "inventories"}:
-        selected_stock_tab = raw_stock_tab
-    else:
-        selected_stock_tab = "entries"
-        if movement_type == "entrada":
-            selected_stock_tab = "entries"
-        elif movement_type == "saida":
-            selected_stock_tab = "outputs"
-    if selected_stock_tab not in {"entries", "outputs", "extract", "inventories"}:
-        selected_stock_tab = "entries"
-    purchase_entries = _sort_collection_desc(
-        stock_context["purchase_entries"],
-        lambda item: item.purchase_date,
-        lambda item: item.id,
-    )
-    stock_outputs = _sort_collection_desc(
-        stock_context["stock_outputs"],
-        lambda item: item.movement_date,
-        lambda item: item.id,
-    )
-    extract_rows = _sort_collection_desc(
-        stock_context["extract_rows"],
-        lambda row: row.get("date"),
-        lambda row: row.get("reference"),
-    )
-    stock_search_value = (request.query_params.get("stock_search") or "").strip()
-    if stock_search_value:
-        purchase_entries, stock_outputs, extract_rows = _filter_stock_rows_by_search(
-            purchase_entries,
-            stock_outputs,
-            extract_rows,
-            stock_search_value,
-        )
-    purchase_entries_pagination = _paginate_collection(request, purchase_entries, "entries_page")
-    stock_outputs_pagination = _paginate_collection(request, stock_outputs, "outputs_page")
-    extract_rows_pagination = _paginate_collection(request, extract_rows, "extract_page")
-    inventory_sessions = repo.list_stock_inventory_sessions(farm_id=selected_farm_id)
-    if stock_search_value:
-        inventory_sessions = [
-            session
-            for session in inventory_sessions
-            if _normalize_search_value(
-                " ".join(
-                    [
-                        str(session.inventory_date or ""),
-                        session.farm.name if session.farm else "",
-                        session.responsible_name or "",
-                        session.notes or "",
-                        " ".join(item.input_catalog.name for item in session.items if item.input_catalog),
-                    ]
-                )
-            ).find(_normalize_search_value(stock_search_value)) >= 0
-        ]
-    inventory_sessions_pagination = _paginate_collection(request, inventory_sessions, "inventories_page")
-    edit_output = repo.get_stock_output(edit_output_id) if edit_output_id else None
-    edit_output_mode = None
-    edit_fertilization_item = None
-    edit_fertilization_record = None
-    edit_inputs_catalog = repo.list_input_catalog()
-    if edit_output:
-        if edit_output.reference_type == "manual_stock_output":
-            edit_output_mode = "manual"
-        elif edit_output.reference_type in {"fertilization_item", "fertilization_record"}:
-            edit_fertilization_item, edit_fertilization_record = _resolve_fertilization_output_context(repo, db, edit_output)
-            if edit_fertilization_record:
-                edit_output_mode = "fertilization"
-                edit_inputs_catalog = repo.list_input_catalog(item_type="insumo_agricola")
-            else:
-                edit_output = None
-        else:
-            edit_output = None
-    stock_filters_active = _stock_page_filters_active(
-        request,
-        active_farm_id=scope["active_farm_id"],
-        selected_input_id=selected_input_id,
-        movement_type=movement_type,
-        normalized_item_type=normalized_item_type,
-        edit_output_id=edit_output_id,
-    )
-    active_stock_input_ids = {
-        item.id for item in stock_context["catalog_inputs"] if item.is_active
-    }
-    inventory_items = [
-        item for item in stock_context["stock_catalog_rows"] if item["id"] in active_stock_input_ids
-    ]
-    hub = _inputs_hub_data(repo, db, scope)
-    selected_stock_item = _int_or_none(request.query_params.get("item"))
-    return templates.TemplateResponse(
-        "stock.html",
-        _base_context(
-            request,
-            user,
-            csrf_token,
-            "stock",
-            _repo=repo,
-            hub=hub,
-            selected_stock_item=selected_stock_item,
-            title="Estoque de Insumos",
-            farms=scope["context_farms"],
-            plots=repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
-            launch_plots=_season_launch_plots(repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids), scope),
-            selected_farm_id=selected_farm_id,
-            selected_input_id=selected_input_id,
-            selected_start_date=start_date,
-            selected_end_date=end_date,
-            selected_movement_type=movement_type,
-            selected_item_type=normalized_item_type or "",
-            stock_filters_active=stock_filters_active,
-            stock_search_value=stock_search_value,
-            stock_export_query=_stock_export_query(
-                farm_id=selected_farm_id,
-                input_id=selected_input_id,
-                start_date=start,
-                end_date=end,
-                movement_type=movement_type,
-                item_type=normalized_item_type,
-                stock_tab=selected_stock_tab,
-                stock_search=stock_search_value or None,
-            ),
-            inputs_catalog=stock_context["consumption_catalog_inputs"],
-            adjustment_inputs=[item for item in stock_context["catalog_inputs"] if item.is_active],
-            inventory_items=inventory_items,
-            inventory_default_date=today_in_app_timezone(),
-            input_stock=stock_context["input_stock"],
-            stock_catalog_rows=stock_context["stock_catalog_rows"],
-            purchase_entries=purchase_entries_pagination["items"],
-            purchase_entries_pagination=purchase_entries_pagination,
-            stock_outputs=stock_outputs_pagination["items"],
-            stock_outputs_pagination=stock_outputs_pagination,
-            extract_rows=extract_rows_pagination["items"],
-            extract_rows_pagination=extract_rows_pagination,
-            inventory_sessions=inventory_sessions_pagination["items"],
-            inventory_sessions_pagination=inventory_sessions_pagination,
-            selected_stock_tab=selected_stock_tab,
-            stock_tab_urls={
-                "entries": _url_with_query(request, stock_tab="entries"),
-                "outputs": _url_with_query(request, stock_tab="outputs"),
-                "extract": _url_with_query(request, stock_tab="extract"),
-                "inventories": _url_with_query(request, stock_tab="inventories"),
-            },
-            edit_output=edit_output,
-            edit_output_mode=edit_output_mode,
-            edit_fertilization_item=edit_fertilization_item,
-            edit_fertilization_record=edit_fertilization_record,
-            edit_inputs_catalog=edit_inputs_catalog,
-        ),
-    )
-
-
 @router.post("/insumos/estoque/saida-manual")
 def create_manual_stock_output_action(
     request: Request,
@@ -14560,8 +14379,8 @@ def edit_stock_output_entry(
     if output.reference_type == "stock_adjustment_output":
         _flash(request, "error", "Ajustes de estoque não são editáveis. Registre um novo ajuste compensatório.")
         return _redirect("/insumos/estoque")
-    if output.reference_type in {"manual_stock_output", "fertilization_item", "fertilization_record"}:
-        return _redirect_with_query("/insumos/estoque", edit_output_id=output_id)
+    if output.reference_type in {"manual_stock_output", "fertilization_item", "fertilization_record", "equipment_fueling"}:
+        return _redirect(f"/insumos/estoque?aba=movimentacoes&periodo=safra&mov=o-{output_id}")
     _flash(request, "error", f"Este lancamento ainda nao possui edicao integrada para o modulo {output.origin}.")
     return _redirect("/insumos/estoque")
 
@@ -25766,7 +25585,6 @@ def _inputs_hub_data(repo: FarmRepository, db: Session, scope: dict) -> dict:
             {"id": i["id"], "name": i["name"], "unit": i["unit"], "available": i["available"], "label": i["available_label"],
              "min": i["minimum"], "group": i["group"], "fuel": i["item_type"] == "combustivel"}
             for i in sorted(overview["items"], key=lambda r: r["name"].lower())
-            if i["available"] > 0
         ],
         "plots": [{"id": p.id, "name": p.name} for p in sorted(plots, key=lambda p: p.name.lower())],
         "machines": [
@@ -25814,6 +25632,7 @@ def register_inputs_use_action(
     csrf_token: str = Form(...),
     lines: str = Form(...),
     return_to: str | None = Form(None),
+    replace_output_id: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -25827,11 +25646,23 @@ def register_inputs_use_action(
     try:
         parsed = _parse_lines(lines)
         plots = {p.id: p for p in _season_launch_plots(repo.list_plots(farm_ids=[scope["active_farm_id"]]), scope)}
+        replace_id = _int_or_none(replace_output_id)
+        if replace_id:
+            # Corrigir = devolver o uso antigo e gravar o novo na mesma transação.
+            old = repo.get_stock_output(replace_id)
+            if not old or old.reference_type != _ih.MANUAL_REFERENCE or old.farm_id not in (None, scope["active_farm_id"]):
+                raise ValueError("Esse uso não pode ser corrigido por aqui.")
+            if len(parsed) != 1:
+                raise ValueError("Ao corrigir, informe um lançamento só.")
+            _ih.restore_output(repo, old)
         outputs = _ih.register_uses(repo, parsed, farm_id=scope["active_farm_id"], season_id=scope["active_season_id"], plots=plots)
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect(target)
     count = len(outputs)
+    if replace_id:
+        _flash(request, "success", "Uso corrigido. O estoque e o custo do setor já foram atualizados.")
+        return _redirect(target)
     _flash(request, "success", f"{count} uso{'s' if count > 1 else ''} registrado{'s' if count > 1 else ''}. O estoque e o custo dos setores já foram atualizados.")
     return _redirect(target)
 
@@ -26122,3 +25953,159 @@ async def register_purchase_note_action(
         "attached": bool(saved),
     }
     return _redirect(back + "?registrada=1")
+
+
+# ---------------------------------------------------------------------------
+# Estoque: Saldo · Movimentações · Contagens
+# ---------------------------------------------------------------------------
+from app.models.stock_count_draft import StockCountDraft  # noqa: E402
+
+_LEGACY_STOCK_TABS = {"entries": "movimentacoes", "outputs": "movimentacoes", "extract": "movimentacoes", "inventories": "contagens"}
+
+
+def _stock_count_draft(db: Session, farm_id: int | None) -> StockCountDraft | None:
+    if not farm_id:
+        return None
+    return db.query(StockCountDraft).filter(StockCountDraft.farm_id == farm_id).first()
+
+
+@router.get("/insumos/estoque")
+def stock_page(
+    request: Request,
+    aba: str | None = None,
+    periodo: str | None = None,
+    tipo: str | None = None,
+    busca: str | None = None,
+    de: str | None = None,
+    ate: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    hub = _inputs_hub_data(repo, db, scope)
+    legacy = request.query_params.get("stock_tab")
+    tab = aba if aba in {"saldo", "movimentacoes", "contagens"} else _LEGACY_STOCK_TABS.get(legacy or "", "saldo")
+    if request.query_params.get("contar") == "1":
+        tab = "contagens"
+    farm_id = scope.get("active_farm_id")
+    context = {
+        "hub": hub,
+        "tab": tab,
+        "selected_stock_item": _int_or_none(request.query_params.get("item")),
+        "export_query": urlencode({"farm_id": farm_id}) if farm_id else "",
+    }
+    if tab == "movimentacoes":
+        key, start, end, label = _ih.period_range(periodo, scope.get("active_season"), hub["today"], de, ate)
+        kind = tipo if tipo in dict(_ih.MOVE_KINDS) else "todos"
+        context["moves"] = _ih.build_movements(repo, db, farm_id, today=hub["today"], start=start, end=end, kind=kind, search=busca or "")
+        context["mov_filters"] = {"periodo": key, "tipo": kind, "busca": busca or "", "de": de or "", "ate": ate or "", "label": label,
+                                  "open": request.query_params.get("mov") or ""}
+        context["mov_kinds"] = _ih.MOVE_KINDS
+    if tab == "contagens":
+        draft = _stock_count_draft(db, farm_id)
+        try:
+            counts = json.loads(draft.counts) if draft else {}
+        except ValueError:
+            counts = {}
+        context["count"] = _ih.count_sheet(hub["items"], counts)
+        context["count_draft"] = draft
+        sessions = repo.list_stock_inventory_sessions(farm_id=farm_id) if farm_id else []
+        context["count_history"] = [
+            {"date": s.inventory_date, "items": len(s.items or []),
+             "adjustments": sum(1 for i in (s.items or []) if abs(float(i.difference_quantity or 0)) >= 0.005),
+             "who": s.responsible_name}
+            for s in sorted(sessions, key=lambda s: (s.inventory_date or date.min, s.id), reverse=True)[:6]
+        ]
+    return templates.TemplateResponse(
+        "stock.html",
+        _base_context(request, user, csrf_token, "stock", _repo=repo, title="Estoque", **context),
+    )
+
+
+@router.post("/insumos/estoque/movimentos/{output_id}/desfazer")
+def undo_stock_movement_action(
+    output_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/estoque?aba=movimentacoes", require_season=False)
+    if denied:
+        return denied
+    try:
+        message = _ih.undo_movement(repo, db, repo.get_stock_output(output_id), scope["active_farm_id"])
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+    else:
+        _flash(request, "success", message)
+    return _redirect("/insumos/estoque?aba=movimentacoes")
+
+
+@router.post("/insumos/estoque/contagem")
+async def stock_count_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    back = "/insumos/estoque?aba=contagens"
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, back, require_season=False)
+    if denied:
+        return denied
+    farm_id = scope["active_farm_id"]
+    counts = {}
+    for key, value in form.multi_items():
+        if key.startswith("counted_") and str(value).strip():
+            item_id = _int_or_none(key.removeprefix("counted_"))
+            if item_id:
+                counts[str(item_id)] = str(value).strip()
+    draft = _stock_count_draft(db, farm_id)
+    action = str(form.get("acao") or "salvar")
+    if action == "descartar":
+        if draft:
+            db.delete(draft)
+            db.commit()
+        _flash(request, "success", "Contagem descartada. Nada foi alterado no estoque.")
+        return _redirect(back)
+    if action == "salvar":
+        if not draft:
+            draft = StockCountDraft(farm_id=farm_id, counts="{}")
+            db.add(draft)
+        draft.counts = json.dumps(counts)
+        draft.updated_by = getattr(user, "id", None)
+        db.commit()
+        _flash(request, "success", f"Contagem salva ({len(counts)} {'item' if len(counts) == 1 else 'itens'}). Continue quando quiser.")
+        return _redirect(back)
+    items = []
+    try:
+        for key, raw in counts.items():
+            value = _ih.parse_br_number(raw)
+            if value is None or value < 0:
+                raise ValueError("Confira as quantidades contadas: use só números maiores ou iguais a zero.")
+            items.append({"input_id": int(key), "counted_quantity": value})
+        _, adjustments = register_stock_inventory(repo, {
+            "farm_id": farm_id, "inventory_date": str(form.get("data") or ""),
+            "responsible_name": getattr(user, "display_name", None) or getattr(user, "name", None),
+            "notes": "Contagem do galpão", "items": items,
+        })
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(back)
+    draft = _stock_count_draft(db, farm_id)
+    if draft:
+        db.delete(draft)
+        db.commit()
+    if adjustments:
+        _flash(request, "success", f"Contagem aplicada. {adjustments} {'ajuste foi registrado' if adjustments == 1 else 'ajustes foram registrados'} nas Movimentações.")
+    else:
+        _flash(request, "success", "Contagem aplicada. Tudo bateu com o sistema.")
+    return _redirect(back)

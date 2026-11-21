@@ -7,6 +7,7 @@
 <dialog class="io-drawer" data-io-drawer="use" aria-labelledby="io-use-title">
     <form method="post" action="/insumos/uso" data-io-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="replace_output_id" data-io-replace>
         <input type="hidden" name="return_to" value="{{ back_to }}">
         <input type="hidden" name="lines" data-io-lines>
         <div class="io-dw-head">
@@ -132,4 +133,4 @@
         </div>
     </form>
 </dialog>
-<script src="{{ url_for('static', path='js/inputs_hub.js') }}?v=20261121io2" defer></script>
+<script src="{{ url_for('static', path='js/inputs_hub.js') }}?v=20261121io3" defer></script>

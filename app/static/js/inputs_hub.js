@@ -42,6 +42,7 @@
     const draftKey = `sisfarm.io-draft.${kind}`;
     let mode = 'one';
     let rows = [];
+    let fixBonus = null;
     if (!form || !rowsEl) return null;
 
     // ---------- fonte do combustível (abastecimento)
@@ -339,6 +340,7 @@
     // ---------- eventos
     dlg.querySelectorAll('[data-io-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.ioMode)));
     dlg.querySelectorAll('[data-io-close]').forEach((b) => b.addEventListener('click', () => dlg.close()));
+    dlg.addEventListener('close', () => { if (fixBonus) { fixBonus.item.available -= fixBonus.qty; fixBonus = null; } });
     dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
     dlg.querySelector('[data-io-pane="one"]') && dlg.querySelector('[data-io-pane="one"]').addEventListener('input', renderImpact);
     dlg.querySelector('[data-io-pane="one"]') && dlg.querySelector('[data-io-pane="one"]').addEventListener('change', renderImpact);
@@ -386,11 +388,28 @@
     return {
       open(opts) {
         form.querySelector('[data-io-lines]').value = '';
+        const replace = form.querySelector('[data-io-replace]');
+        if (fixBonus) { fixBonus.item.available -= fixBonus.qty; fixBonus = null; }
+        if (replace) replace.value = opts.fix ? String(opts.fix.output) : '';
+        const title = dlg.querySelector('#io-use-title');
+        if (title) title.textContent = opts.fix ? 'Corrigir uso' : 'Registrar uso';
+        dlg.querySelectorAll('[data-io-mode="many"]').forEach((b) => { b.disabled = !!opts.fix; });
         setStep('edit');
         showError('');
         rows = [];
         if (one('date')) one('date').value = TODAY;
-        const restored = !opts.item && !opts.machine && loadDraft();
+        const restored = !opts.item && !opts.machine && !opts.fix && loadDraft();
+        if (opts.fix && kind === 'use') {
+          const item = ITEM[String(opts.fix.item)];
+          const q = num(opts.fix.qty) || 0;
+          if (item) { item.available += q; fixBonus = { item, qty: q }; }
+          setMode('one');
+          one('input_id').value = String(opts.fix.item);
+          one('plot_id').value = opts.fix.plot ? String(opts.fix.plot) : '';
+          one('date').value = opts.fix.date || TODAY;
+          one('quantity').value = opts.fix.qty || '';
+          one('notes').value = opts.fix.notes || '';
+        }
         if (!restored) setMode(opts.mode === 'many' ? 'many' : 'one');
         if (opts.item && one('input_id')) one('input_id').value = opts.item;
         if (opts.machine && one('asset_id')) one('asset_id').value = opts.machine;
@@ -450,6 +469,116 @@
     }));
   });
 
+  // ---------- Movimentações: detalhe num painel ao lado, com desfazer e corrigir
+  const movDialog = document.querySelector('[data-io-mov-dialog]');
+  if (movDialog) {
+    const body = movDialog.querySelector('[data-io-mov-body]');
+    const openMov = (id) => {
+      const tpl = document.getElementById(`io-mov-${id}`);
+      if (!tpl) return;
+      body.innerHTML = '';
+      body.appendChild(tpl.content.cloneNode(true));
+      if (typeof movDialog.showModal === 'function') movDialog.showModal(); else movDialog.setAttribute('open', '');
+      const close = body.querySelector('[data-io-mov-close]');
+      if (close) close.focus();
+    };
+    document.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-io-mov]');
+      if (row) { openMov(row.dataset.ioMov); return; }
+      if (e.target.closest('[data-io-mov-close]')) { movDialog.close(); return; }
+      if (e.target === movDialog) { movDialog.close(); return; }
+      if (e.target.closest('[data-io-undo-ask]')) {
+        const box = body.querySelector('[data-io-undo-box]');
+        if (box) { box.classList.remove('io-hidden'); box.scrollIntoView({ block: 'nearest' }); }
+        e.target.closest('[data-io-undo-ask]').classList.add('io-hidden');
+      }
+      if (e.target.closest('[data-io-undo-cancel]')) {
+        const box = body.querySelector('[data-io-undo-box]');
+        if (box) box.classList.add('io-hidden');
+        const ask = body.querySelector('[data-io-undo-ask]');
+        if (ask) ask.classList.remove('io-hidden');
+      }
+    });
+    const auto = document.querySelector('[data-io-mov-autoopen]');
+    if (auto) openMov(auto.dataset.ioMovAutoopen);
+  }
+
+  // ---------- Contagem do galpão: diferença na hora, filtros e conferência
+  const countForm = document.querySelector('[data-io-count]');
+  if (countForm) {
+    const rowsC = Array.from(countForm.querySelectorAll('[data-io-crow]'));
+    const money = (n) => `R$ ${fmt(Math.abs(n), 2)}`;
+    let filter = 'all';
+    const calc = () => {
+      let done = 0; let ok = 0; let diff = 0; let missing = 0; let extra = 0;
+      rowsC.forEach((row) => {
+        const input = row.querySelector('input');
+        const cell = row.querySelector('[data-io-cdiff]');
+        const counted = num(input.value);
+        const avail = Number(row.dataset.available) || 0;
+        const cost = Number(row.dataset.cost) || 0;
+        const unit = row.dataset.unit;
+        input.classList.toggle('is-done', input.value.trim() !== '');
+        let status = 'todo';
+        if (input.value.trim() === '') { cell.textContent = 'falta contar'; cell.className = 'io-count-diff io-txt-muted'; }
+        else if (Number.isNaN(counted) || counted < 0) { cell.textContent = 'número inválido'; cell.className = 'io-count-diff io-txt-red'; status = 'diff'; done += 1; diff += 1; }
+        else {
+          done += 1;
+          const d = Math.round((counted - avail) * 100) / 100;
+          if (Math.abs(d) < 0.005) { status = 'ok'; ok += 1; cell.textContent = 'bateu'; cell.className = 'io-count-diff io-txt-green'; }
+          else {
+            status = 'diff'; diff += 1;
+            if (d < 0) missing += -d * cost; else extra += d * cost;
+            cell.textContent = `${d > 0 ? '+' : '−'} ${qty(Math.abs(d), unit)} · ${d > 0 ? '+' : '−'} ${money(d * cost)}`;
+            cell.className = 'io-count-diff io-txt-red';
+          }
+        }
+        row.dataset.status = status;
+        row.classList.toggle('io-hidden', filter !== 'all' && status !== filter);
+      });
+      const total = rowsC.length;
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      const set = (sel, text) => { const el = document.querySelector(sel); if (el) el.textContent = text; };
+      set('[data-io-count-done]', `${done} de ${total} itens contados`);
+      set('[data-io-count-pct]', `${pct}%`);
+      const bar = document.querySelector('[data-io-count-bar]');
+      if (bar) bar.style.width = `${pct}%`;
+      set('[data-io-sum-done]', `${done} de ${total}`);
+      set('[data-io-sum-ok]', String(ok));
+      set('[data-io-sum-diff]', String(diff));
+      set('[data-io-sum-missing]', `− ${money(missing)}`);
+      set('[data-io-sum-extra]', `+ ${money(extra)}`);
+      return { done, diff };
+    };
+    countForm.addEventListener('input', (e) => { if (e.target.closest('[data-io-crow]')) calc(); });
+    countForm.querySelectorAll('[data-io-count-filter]').forEach((b) => b.addEventListener('click', () => {
+      filter = b.dataset.ioCountFilter;
+      countForm.querySelectorAll('[data-io-count-filter]').forEach((x) => { x.classList.toggle('is-on', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      calc();
+    }));
+    const dialog = countForm.querySelector('[data-io-count-dialog]');
+    const check = countForm.querySelector('[data-io-count-check]');
+    if (check && dialog) check.addEventListener('click', () => {
+      const r = calc();
+      const review = dialog.querySelector('[data-io-count-review]');
+      const bad = rowsC.some((row) => { const v = row.querySelector('input').value.trim(); return v !== '' && (Number.isNaN(num(v)) || num(v) < 0); });
+      if (!r.done || bad) {
+        review.innerHTML = `<div><strong>${bad ? 'Há quantidades inválidas. Use só números.' : 'Nenhum item foi contado ainda.'}</strong></div>`;
+        dialog.querySelector('[value="aplicar"]').disabled = true;
+      } else {
+        dialog.querySelector('[value="aplicar"]').disabled = false;
+        const diffs = rowsC.filter((row) => row.dataset.status === 'diff');
+        review.innerHTML = `<div><span>Itens contados</span><strong>${r.done}</strong></div>` +
+          (diffs.length ? diffs.map((row) => `<div><span>${row.querySelector('strong').textContent}</span><strong>${row.querySelector('[data-io-cdiff]').textContent}</strong></div>`).join('')
+            : '<div><span>Diferenças</span><strong class="io-txt-green">tudo bateu</strong></div>');
+      }
+      dialog.showModal();
+    });
+    if (dialog) dialog.querySelector('[data-io-count-cancel]').addEventListener('click', () => dialog.close());
+    calc();
+  }
+  document.querySelectorAll('[data-io-print]').forEach((b) => b.addEventListener('click', () => window.print()));
+
   const drawers = {};
   document.querySelectorAll('[data-io-drawer]').forEach((dlg) => { drawers[dlg.dataset.ioDrawer] = setupDrawer(dlg, dlg.dataset.ioDrawer); });
   document.addEventListener('click', (e) => {
@@ -458,7 +587,11 @@
     const drawer = drawers[trigger.dataset.ioOpen];
     if (!drawer) return;
     e.preventDefault();
-    drawer.open({ item: trigger.dataset.ioItem, machine: trigger.dataset.ioMachine, mode: trigger.dataset.ioModeOpen });
+    let fix = null;
+    try { fix = trigger.dataset.ioFix ? JSON.parse(trigger.dataset.ioFix) : null; } catch (err) { fix = null; }
+    const movDialog = trigger.closest('[data-io-mov-dialog]');
+    if (movDialog) movDialog.close();
+    drawer.open({ item: trigger.dataset.ioItem, machine: trigger.dataset.ioMachine, mode: trigger.dataset.ioModeOpen, fix });
   });
   const params = new URLSearchParams(window.location.search);
   if (params.get('contar') === '1') { const b = document.querySelector('[data-stock-inventory-open]'); if (b) window.setTimeout(() => b.click(), 50); }

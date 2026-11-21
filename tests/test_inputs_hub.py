@@ -180,14 +180,13 @@ def test_asset_sheet_page_shows_timeline_plans_and_costs(hub):
 
 def test_stock_page_lists_supplies_with_item_panel_and_use_shortcut(hub):
     env, x = hub
-    resp = env.routes.stock_page(env.request(f"/insumos/estoque?item={x['luva'].id}"), edit_output_id=None, farm_id=None, input_id=None,
-                                 start_date=None, end_date=None, movement_type="all", item_type=None, db=env.db, user=env.user, csrf_token="x")
+    resp = env.routes.stock_page(env.request(f"/insumos/estoque?item={x['luva'].id}"), db=env.db, user=env.user, csrf_token="x")
     html = resp.body.decode()
     assert f'data-io-stock-row="{x["luva"].id}"' in html and 'data-io-chip="sup"' in html
     assert f'data-io-open="use" data-io-item="{x["luva"].id}"' in html
     assert 'class="io-row is-on" data-io-fitem data-group="sup"' in html
     assert "Lote vencendo" in html and "Abaixo do mínimo" in html
-    assert "data-stock-inventory-open" in html and 'data-io-drawer="use"' in html
+    assert 'href="/insumos/estoque?aba=contagens"' in html and 'data-io-drawer="use"' in html
 
 
 def test_assets_page_shows_cards_agenda_and_fuel_drawer(hub):
