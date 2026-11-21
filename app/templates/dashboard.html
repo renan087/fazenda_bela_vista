@@ -15,83 +15,157 @@
 {% include "partials/onboarding_checklist.html" %}
 
 <div class="stock-page-shell sf-page db-page">
-    <header class="db-greeting">
-        <p class="db-muted">{{ ov.weekday }}, {{ ov.date_label }}{% if active_farm %} · {{ active_farm.name }}{% endif %}</p>
-        <h1 class="db-title"><span data-db-greeting>Olá</span>, {{ (((user.display_name or user.name or '')|string|trim).split(' ')[0]) or 'bem-vindo' }}.{% if hero.ready %} {% if hero.margin >= 0 %}A safra está com margem positiva.{% else %}A safra está com margem negativa.{% endif %}{% endif %}</h1>
+    <header class="dt-head">
+        <div class="dt-head-text">
+            <p class="db-muted">{{ ov.weekday }}, {{ ov.date_label }}{% if active_farm %} · {{ active_farm.name }}{% endif %}</p>
+            <h1 class="db-title"><span data-db-greeting>Olá</span>, {{ (((user.display_name or user.name or '')|string|trim).split(' ')[0]) or 'bem-vindo' }}.</h1>
+        </div>
+        <div class="dt-chips">
+            {% if can_rainfall and ov.rain and ov.rain.month_total is not none %}
+            <a href="/pluviometria" class="dt-chip is-rain"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z"/></svg>{{ ov.rain.month_total|decimal_br(0) }} mm em {{ ov.rain.month_label }}</a>
+            {% endif %}
+            {% if hero.ready %}
+            <span class="dt-chip {{ 'is-good' if hero.margin >= 0 else 'is-bad' }}"><i aria-hidden="true"></i>{{ 'Safra no positivo' if hero.margin >= 0 else 'Safra no negativo' }}</span>
+            {% endif %}
+        </div>
     </header>
 
-    <div class="db-row">
+    <div class="dt-grid">
         {% if can_production or can_finance %}
-        <section class="db-hero" aria-label="Resultado previsto da safra" data-db-hero
+        {% set tl = hero.timeline %}
+        <section class="dt-card dt-season" aria-label="Resumo da safra" data-dt-season
             data-sacks="{{ hero.sacks }}" data-cost="{{ hero.cost }}" data-price="{{ hero.price }}">
-            <div class="db-hero-ring-row">
-                <div class="db-ring" role="img" aria-label="{{ hero.cycle_pct if hero.cycle_pct is not none else 0 }}% do ciclo da safra" style="--pct: {{ hero.cycle_pct or 0 }}">
-                    <div><strong>{{ hero.cycle_pct if hero.cycle_pct is not none else '—' }}{% if hero.cycle_pct is not none %}%{% endif %}</strong><span>do ciclo</span></div>
+            <div class="dt-season-head">
+                <div class="dt-season-id">
+                    <span class="dt-leaf" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 21c-4.4-1.5-7-5.4-7-10 0-3.6 3.1-7 7-8 3.9 1 7 4.4 7 8 0 4.6-2.6 8.5-7 10Z"/><path d="M12 3c-1.8 3.5-1.8 13.5 0 18"/></svg></span>
+                    <div class="min-w-0"><strong>{{ hero.season_name or 'Nenhuma safra ativa' }}</strong><span>{{ hero.area|decimal_br }} ha · {{ hero.plot_count }} setor{{ '' if hero.plot_count == 1 else 'es' }}</span></div>
                 </div>
-                <div class="min-w-0">
-                    <p class="db-hero-kicker">{% if hero.season_name %}{{ hero.season_name }}{% else %}Nenhuma safra ativa{% endif %} · {{ hero.area|decimal_br }} ha · {{ hero.plot_count }} setor(es)</p>
-                    {% if hero.ready %}
-                    <p class="db-hero-headline">Margem prevista de <span data-db-margin>{{ hero.margin_fmt }}</span></p>
-                    <p class="db-hero-sub">Colheita estimada em {{ hero.sacks|decimal_br(0) }} sacas{% if hero.days_left is not none %} · faltam {{ hero.days_left }} dias para fechar o ciclo{% endif %}</p>
-                    {% else %}
-                    <p class="db-hero-headline">Resultado previsto da safra</p>
-                    <p class="db-hero-sub">{% if not hero.season_name %}Selecione uma safra no topo para ver a previsão.{% elif not hero.sacks %}Informe a estimativa de produção dos setores para calcular a margem.{% else %}Aguardando a cotação do café para calcular a receita.{% endif %}</p>
-                    {% endif %}
-                </div>
+                {% if can_production %}<a href="/producao" class="dt-link">Ver safra →</a>{% endif %}
             </div>
+
             {% if hero.ready %}
-            <div class="db-hero-stats">
-                <div><span>Receita prevista</span><strong data-db-revenue>{{ hero.revenue_fmt }}</strong><small>{{ hero.sacks|decimal_br(0) }} sc × <span data-db-price-label>{{ hero.price|money_br }}</span></small></div>
-                <div><span>Custo da safra</span><strong>{{ hero.cost_fmt }}</strong><small>{{ hero.cost_per_ha|money_br }}/ha · {{ hero.cost_per_sack|money_br }}/sc</small></div>
-                <div class="is-accent"><span>Margem</span><strong data-db-margin>{{ hero.margin_fmt }}</strong><small><span data-db-margin-pct>{{ hero.margin_pct }}%</span> da receita</small></div>
-            </div>
-            <div class="db-sim">
-                <div class="db-sim-head">
-                    <label for="db-price">E se o café estiver a <strong data-db-price-label>{{ hero.price|money_br }}</strong> por saca?</label>
-                    <span>CEPEA hoje: {{ hero.price|money_br }} · equilíbrio: {{ hero.cost_per_sack|money_br }}/sc</span>
+            <div class="dt-split">
+                <div class="dt-block">
+                    <span class="dt-label">Sobra prevista no fim da safra</span>
+                    <div class="dt-margin-row">
+                        <span class="dt-big {{ 'is-bad' if hero.margin < 0 else '' }}" data-dt-margin data-count="{{ hero.margin }}">{{ hero.margin|money_br }}</span>
+                        <span class="dt-badge {{ 'is-bad' if hero.margin < 0 else '' }}" title="Sobra em relação à receita" data-dt-margin-pct>{{ hero.margin_pct }}%</span>
+                    </div>
                 </div>
-                <input id="db-price" type="range" min="{{ ((hero.price * 0.4) // 10 * 10)|int }}" max="{{ ((hero.price * 1.6) // 10 * 10)|int }}" step="10" value="{{ hero.price|int }}" data-db-price aria-label="Simular preço da saca">
+                <div class="dt-block">
+                    <span class="dt-label">Colheita estimada · <strong>{{ hero.sacks|decimal_br(0) }} saca{{ '' if (hero.sacks|round|int) == 1 else 's' }}</strong></span>
+                    <div class="dt-sacks" role="img" aria-label="{{ hero.sacks|decimal_br(0) }} sacas estimadas">
+                        {% for i in hero.sack_icons %}<span class="dt-sack" style="animation-delay: {{ 250 + i * 90 }}ms"><svg width="34" height="40" viewBox="0 0 34 40" aria-hidden="true"><path d="M11 4h12l-3 6h-6z" fill="#294127"/><path d="M9 11h16c5 6 7 13 6 20-.5 4-3 6-7 6H10c-4 0-6.5-2-7-6-1-7 1-14 6-20Z" fill="#446A36"/><path d="M12 22c2.5-3 7.5-3 10 0M12 27c2.5-3 7.5-3 10 0" stroke="#9BCB6B" stroke-width="2" fill="none" stroke-linecap="round"/></svg></span>{% endfor %}
+                        {% if hero.sack_more %}<span class="dt-sack-more">+</span>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            {% set cost_pct = [hero.cost / ([hero.revenue, hero.cost]|max) * 100 if ([hero.revenue, hero.cost]|max) else 100, 100]|min %}
+            <div class="dt-mix">
+                <div class="dt-mix-bar" role="img" aria-label="Custo {{ hero.cost|money_br }} de uma receita de {{ hero.revenue|money_br }}">
+                    <div class="dt-mix-grow"><span class="is-cost" data-dt-cost-bar style="width: {{ cost_pct|round(1) }}%"></span><span class="is-margin" data-dt-margin-bar style="width: {{ (100 - cost_pct)|round(1) if hero.margin >= 0 else 0 }}%"></span></div>
+                </div>
+                <div class="dt-mix-legend">
+                    <span><i class="is-cost"></i>Custo <strong>{{ hero.cost|money_br }}</strong>{% if can_finance and hero.cost_groups %} <button type="button" class="dt-mini-link" data-db-cost-open>Detalhar</button>{% endif %}</span>
+                    <span><i class="is-margin"></i>Sobra <strong data-dt-margin-short>{{ ([hero.margin, 0]|max)|money_br }}</strong></span>
+                    <span>Receita <strong data-dt-revenue>{{ hero.revenue|money_br }}</strong></span>
+                </div>
+            </div>
+
+            {% set p_min = ((([hero.cost_per_sack * 0.6, hero.price * 0.3]|min) // 10) * 10)|int %}
+            {% set p_max = ((hero.price * 1.6) // 10 * 10)|int %}
+            {% set p_span = [p_max - p_min, 1]|max %}
+            <div class="dt-sim">
+                <div class="dt-sim-main">
+                    <div class="dt-sim-head"><label for="dt-price">E se a saca valer…</label><strong data-dt-price-label>{{ hero.price|money_br }}</strong></div>
+                    <div class="dt-range-wrap" style="--p: {{ ((hero.price - p_min) / p_span * 100)|round(1) }}%">
+                        <div class="dt-range-track"><span></span></div>
+                        <i class="dt-mark is-eq" style="--x: {{ ([[(hero.cost_per_sack - p_min) / p_span, 0]|max, 1]|min)|round(4) }}" aria-hidden="true"></i>
+                        <i class="dt-mark is-now" style="--x: {{ ((hero.price - p_min) / p_span)|round(4) }}" aria-hidden="true"></i>
+                        <input id="dt-price" class="dt-range" type="range" min="{{ p_min }}" max="{{ p_max }}" step="10" value="{{ hero.price|int }}" data-dt-price data-min="{{ p_min }}" data-max="{{ p_max }}">
+                    </div>
+                    <div class="dt-sim-keys">
+                        <span><i class="is-eq"></i>Empata em {{ hero.cost_per_sack|money_br }}</span>
+                        <button type="button" data-dt-price-reset data-value="{{ hero.price|int }}"><i class="is-now"></i>CEPEA hoje {{ hero.price|money_br }}</button>
+                    </div>
+                </div>
+                {% if hero.spark %}
+                <div class="dt-spark">
+                    <div class="dt-spark-head"><span>CEPEA 12 meses</span><strong class="{{ 'is-up' if hero.spark.change >= 0 else 'is-down' }}">{{ '+' if hero.spark.change >= 0 else '' }}{{ hero.spark.change|decimal_br(1) }}%</strong></div>
+                    <svg viewBox="0 0 168 56" role="img" aria-label="Preço CEPEA variou {{ hero.spark.change|decimal_br(1) }}% em 12 meses">
+                        <path d="{{ hero.spark.area }}" fill="#EEF3EB"/>
+                        <path class="dt-spark-line" d="{{ hero.spark.line }}" fill="none" stroke="#446A36" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle class="dt-ping" cx="{{ hero.spark.x }}" cy="{{ hero.spark.y }}" r="3.5" fill="#446A36"/>
+                        <circle cx="{{ hero.spark.x }}" cy="{{ hero.spark.y }}" r="3.5" fill="#446A36"/>
+                    </svg>
+                </div>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="dt-empty">
+                <strong>Resultado previsto da safra</strong>
+                <span>{% if not hero.season_name %}Selecione uma safra no topo para ver a previsão.{% elif not hero.sacks %}Informe a estimativa de produção dos setores para calcular a sobra.{% else %}Aguardando a cotação do café para calcular a receita.{% endif %}</span>
             </div>
             {% endif %}
-            {% set tl = hero.timeline %}
-            {% set show_mix = can_finance and hero.cost_groups %}
-            {% if tl or show_mix %}
-            <div class="db-hero-foot{% if not (tl and show_mix) %} is-single{% endif %}">
-                {% if tl %}
-                <div class="db-cycle">
-                    <div class="db-hero-foot-head"><span>Linha do ciclo</span><small>{% if tl.total %}{{ tl.done }} de {{ tl.total }} aplicaç{{ 'ão feita' if tl.total == 1 else 'ões feitas' }}{% if tl.late %} · {{ tl.late }} atrasada{{ 's' if tl.late > 1 else '' }}{% endif %}{% else %}Nenhuma aplicação programada{% endif %}</small></div>
-                    <div class="db-cycle-track" role="img" aria-label="{{ hero.cycle_pct }}% do ciclo; {{ tl.done }} de {{ tl.total }} aplicações feitas">
-                        <span class="db-cycle-line"></span><span class="db-cycle-fill" style="width: {{ hero.cycle_pct }}%"></span>
-                        {% for m in tl.marks %}<span class="db-cycle-dot is-{{ m.status }}" style="left: {{ m.pos }}%" title="{{ m.title }}"></span>{% endfor %}
-                        <span class="db-cycle-today" style="left: {{ hero.cycle_pct }}%" aria-hidden="true"></span>
+
+            {% if tl %}
+            <div class="dt-cycle">
+                <div class="dt-cycle-head">
+                    <strong>Ciclo da safra</strong>
+                    <div class="dt-tags">
+                        {% if tl.done %}<span class="dt-tag is-good">{{ tl.done }} feita{{ 's' if tl.done > 1 else '' }}</span>{% endif %}
+                        {% if tl.late %}<span class="dt-tag is-warn">{{ tl.late }} atrasada{{ 's' if tl.late > 1 else '' }}</span>{% endif %}
+                        {% if hero.days_left is not none %}<span class="dt-tag">faltam {{ hero.days_left }} dia{{ '' if hero.days_left == 1 else 's' }}</span>{% endif %}
+                        {% if not tl.total %}<span class="dt-tag">Nenhuma aplicação programada</span>{% endif %}
                     </div>
-                    <div class="db-cycle-labels"><span>Início · {{ tl.start }}</span><strong>Hoje</strong><span>Fim · {{ tl.end }}</span></div>
                 </div>
-                {% endif %}
-                {% if show_mix %}
-                <div class="db-costmix">
-                    <div class="db-hero-foot-head"><span>Para onde vai o custo</span><button type="button" class="db-costmix-link" data-db-cost-open>Detalhar →</button></div>
-                    <div class="db-costmix-bar" aria-hidden="true">{% for g in hero.cost_groups %}<span style="flex: {{ g.value }}; background: {{ g.color }}" title="{{ g.name }} · {{ g.value|money_br }}"></span>{% endfor %}</div>
-                    <ul class="db-costmix-legend">{% for g in hero.cost_groups %}<li><i style="background: {{ g.color }}"></i>{{ g.name }} <strong>{{ g.pct }}%</strong></li>{% endfor %}</ul>
+                <div class="dt-cycle-track">
+                    <span class="dt-cycle-line"></span>
+                    <span class="dt-cycle-fill" style="width: {{ hero.cycle_pct }}%"></span>
+                    {% for m in tl.marks %}
+                    <a class="dt-dotw" href="{{ m.link or '/fertilizacao/agendamentos' }}" style="left: {{ m.pos }}%" aria-label="Abrir aplicação: {{ m.title }}">
+                        <span class="dt-dot is-{{ m.status }}" style="animation-delay: {{ 300 + loop.index0 * 40 }}ms"></span>
+                        <span class="dt-tip">{{ {'done': 'Feita', 'late': 'Atrasada'}.get(m.status, 'Programada') }} · {{ m.title }} · abrir →</span>
+                    </a>
+                    {% endfor %}
+                    <span class="dt-today" style="left: {{ hero.cycle_pct }}%" aria-hidden="true"><b>Hoje</b></span>
                 </div>
-                {% endif %}
+                <div class="dt-cycle-labels"><span>{{ tl.start }}</span><span>{{ tl.end }}</span></div>
             </div>
             {% endif %}
         </section>
         {% endif %}
 
-        <section class="db-card" aria-label="Precisa de você hoje">
-            <div class="db-card-head"><h2>Precisa de você hoje</h2><span class="db-count {% if not ov.inbox_all %}is-zero{% endif %}">{{ ov.inbox_all|length }}</span></div>
-            {% for item in ov.inbox %}
-            <div class="db-inbox-item">
-                <span class="db-dot db-dot-{{ item.tone }}" aria-hidden="true"></span>
-                <div class="min-w-0 flex-1"><p class="db-inbox-title">{{ item.title }}</p><p class="db-muted">{{ item.text }}</p></div>
-                <a href="{{ item.link }}" class="sf-btn sf-btn-secondary db-btn-sm">{{ item.action }}</a>
+        {% set at = ov.attention %}
+        <section class="dt-card dt-pend" aria-label="Precisa de você" data-dt-pend>
+            <div class="dt-pend-head"><h2>Precisa de você</h2><span class="dt-count {% if not at.count %}is-zero{% endif %}" data-count="{{ at.count }}">{{ at.count }}</span></div>
+            {% if at.count %}
+            {% if can_finance %}
+            <div class="dt-due">
+                <div class="dt-due-total"><strong data-count="{{ at.overdue_total }}" data-money>{{ at.overdue_total|money_br }}</strong><span>vencidos</span></div>
+                <div class="dt-days" role="img" aria-label="Contas a pagar dos últimos 7 dias e dos próximos 7 dias">
+                    {% for d in at.days %}
+                    <div class="dt-colw"><span class="dt-tip">{{ d.label }} · {{ d.value|money_br if d.value else 'nada vence' }}</span><span class="dt-col {{ 'is-past' if d.offset < 0 else ('is-today' if d.offset == 0 else 'is-next') }}" style="height: {{ d.pct }}%; animation-delay: {{ 200 + loop.index0 * 40 }}ms"></span></div>
+                    {% endfor %}
+                </div>
+                <div class="dt-days-axis"><span>7 dias atrás</span><strong>Hoje</strong><span>Próx. 7 dias · {{ at.next_total|money_br }}</span></div>
             </div>
+            {% endif %}
+            <div class="dt-tabs" role="tablist" aria-label="Filtrar pendências">
+                <button type="button" role="tab" aria-selected="true" data-dt-tab="all">Tudo <span>{{ at.count }}</span></button>
+                {% if at.bill_count %}<button type="button" role="tab" aria-selected="false" data-dt-tab="bill">Contas <span>{{ at.bill_count }}</span></button>{% endif %}
+                {% if at.field_count %}<button type="button" role="tab" aria-selected="false" data-dt-tab="field">Campo <span>{{ at.field_count }}</span></button>{% endif %}
+            </div>
+            <div class="dt-list" data-dt-list>
+                {% for sec in at.sections if sec.key != 'next' %}{% for r in sec.rows %}
+                {% include "partials/dashboard_pend_row.html" %}
+                {% endfor %}{% endfor %}
+            </div>
+            <button type="button" class="dt-link dt-more" data-dt-pend-open>Ver todas as {{ at.count }} pendências →</button>
             {% else %}
             <div class="db-empty-ok"><strong>Tudo em dia</strong><span>Nada pendente por hoje.</span></div>
-            {% endfor %}
-            {% if ov.inbox_all|length > 6 %}<button type="button" class="db-link" data-db-attention-open>Ver todas as {{ ov.inbox_all|length }} pendências →</button>{% endif %}
+            {% endif %}
         </section>
     </div>
 
@@ -247,22 +321,55 @@
     </div>
 </div>
 
-{% if ov.inbox_all|length > 6 %}
-<dialog id="db-attention-modal" class="app-modal db-history db-attention-modal" aria-labelledby="db-attention-title">
-    <div class="db-history-shell">
-        <div class="db-history-head">
-            <div class="min-w-0 flex-1"><h2 id="db-attention-title">Precisa de você hoje</h2><p class="db-muted">{{ ov.inbox_all|length }} pendências que precisam de atenção</p></div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-db-attention-close><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+{% set at = ov.attention %}
+{% if at.count or at.sections[2].rows %}
+<dialog id="dt-pend-modal" class="dt-modal" aria-labelledby="dt-pend-title" data-dt-modal>
+    <div class="dt-modal-shell">
+        <span class="dt-handle" aria-hidden="true"></span>
+        <div class="dt-modal-head">
+            <div class="dt-modal-title">
+                <div><h2 id="dt-pend-title">Todas as pendências</h2></div>
+                <span class="dt-count">{{ at.count }}</span>
+                <button type="button" class="dt-x" aria-label="Fechar" data-dt-pend-close><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+            </div>
+            <div class="dt-stats">
+                {% if can_finance %}
+                <button type="button" class="dt-stat is-late" data-dt-go="bill"><span><i class="dt-live"></i>Vencido</span><strong data-count="{{ at.overdue_total }}" data-money>{{ at.overdue_total|money_br }}</strong></button>
+                <button type="button" class="dt-stat" data-dt-go="bill"><span>Próx. 7 dias</span><strong data-count="{{ at.next_total }}" data-money>{{ at.next_total|money_br }}</strong></button>
+                {% endif %}
+                <button type="button" class="dt-stat is-field" data-dt-go="field"><span>Campo e estoque</span><strong>{{ at.field_count }} {{ 'item' if at.field_count == 1 else 'itens' }}</strong></button>
+            </div>
+            <div class="dt-tools">
+                <div class="dt-tabs" role="tablist" aria-label="Filtrar pendências">
+                    <button type="button" role="tab" aria-selected="true" data-dt-tab="all">Tudo</button>
+                    <button type="button" role="tab" aria-selected="false" data-dt-tab="bill">Contas</button>
+                    <button type="button" role="tab" aria-selected="false" data-dt-tab="field">Campo</button>
+                </div>
+                <div class="dt-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <label for="dt-q" class="sr-only">Buscar pendência</label>
+                    <input id="dt-q" type="search" placeholder="Buscar por nome ou setor" data-dt-search autocomplete="off">
+                </div>
+            </div>
         </div>
-        <div class="db-history-body"><div class="db-attention-list">
-            {% for item in ov.inbox_all %}
-            <div class="db-inbox-item">
-                <span class="db-dot db-dot-{{ item.tone }}" aria-hidden="true"></span>
-                <div class="min-w-0 flex-1"><p class="db-inbox-title">{{ item.title }}</p><p class="db-muted">{{ item.text }}</p></div>
-                <a href="{{ item.link }}" class="sf-btn sf-btn-secondary db-btn-sm">{{ item.action }}</a>
+        <div class="dt-modal-body">
+            {% for sec in at.sections %}
+            <div class="dt-sec" data-dt-sec="{{ sec.key }}">
+                <div class="dt-sec-title"><i class="is-{{ sec.key }}"></i>{{ sec.title }}</div>
+                {% for r in sec.rows %}{% set full = true %}{% include "partials/dashboard_pend_row.html" %}{% endfor %}
+                <div class="dt-ok" data-dt-sec-empty {% if sec.rows %}hidden{% endif %}><svg viewBox="0 0 24 24" fill="none" stroke="#1F7A3A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>{{ {'late': 'Nada atrasado.', 'today': 'Nada vence hoje.', 'next': 'Nada vence nos próximos 7 dias.'}[sec.key] }}</div>
             </div>
             {% endfor %}
-        </div></div>
+            <div class="dt-ok" data-dt-noresult hidden>Nada encontrado. Tente outro nome ou limpe a busca.</div>
+        </div>
+        <div class="dt-modal-foot" data-dt-foot>
+            {% if can_finance %}<a href="/gestao-financeira/contas?finance_tab=payables" class="dt-link">Abrir contas a pagar →</a>{% else %}<span></span>{% endif %}
+            <button type="button" class="dt-ghost" data-dt-pend-close>Fechar</button>
+        </div>
+        <div class="dt-modal-foot is-sel" data-dt-selbar hidden>
+            <div><strong data-dt-sel-label>0 selecionadas</strong><button type="button" class="dt-mini-link" data-dt-sel-clear>Limpar seleção</button></div>
+            <a href="/gestao-financeira/contas?finance_tab=payables" class="dt-primary">Pagar em Contas <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
     </div>
 </dialog>
 {% endif %}
@@ -436,5 +543,6 @@
 <script src="{{ url_for('static', path='js/dashboard_costs.js') }}?v=1" defer></script>
 {% endif %}
 <script src="{{ url_for('static', path='js/dashboard.js') }}?v=4"></script>
+<script src="{{ url_for('static', path='js/dashboard_top.js') }}?v=1"></script>
 {% if can_rainfall %}<script src="{{ url_for('static', path='js/dashboard_weather.js') }}?v=6"></script>{% endif %}
 {% endblock %}

@@ -1,0 +1,28 @@
+{# Linha de pendência do Dashboard. Variáveis: r (linha de attention), full (modal com seleção e parcelas). #}
+{% set is_bill = r.kind == 'bill' %}
+{% set multi = is_bill and r.kids|length > 1 %}
+<div class="dt-row-wrap" data-dt-row data-kind="{{ r.kind }}" data-section="{{ r.section }}" data-search="{{ (r.title ~ ' ' ~ r.meta)|lower }}">
+    <div class="dt-row">
+        {% if full %}
+        {% if is_bill and not r.receive %}<label class="dt-chk"><input type="checkbox" class="dt-check" data-dt-select data-amount="{{ r.amount }}" aria-label="Selecionar {{ r.title }}"></label>{% else %}<span class="dt-chk-gap" aria-hidden="true"></span>{% endif %}
+        {% endif %}
+        <span class="dt-ico is-{{ 'field' if not is_bill else ('next' if r.section == 'next' else 'bill') }}" aria-hidden="true">
+            {% if is_bill %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
+            {% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 21c0-6 4-10 10-11-1 6-5 10-10 11Z"/><path d="M7 21 14 14"/></svg>{% endif %}
+        </span>
+        <div class="dt-row-text">
+            <strong>{{ r.title }}</strong>
+            <span class="{{ 'is-late' if r.section == 'late' else '' }} {{ 'is-field' if not is_bill else '' }}">{{ r.meta }}</span>
+        </div>
+        {% if full and multi %}
+        <button type="button" class="dt-chev" data-dt-expand aria-expanded="false" aria-label="Ver parcelas de {{ r.title }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        {% endif %}
+        {% if is_bill %}<span class="dt-amount">{{ r.amount|money_br }}</span>{% endif %}
+        <a href="{{ r.link }}" class="dt-btn" aria-label="{{ r.action }}: {{ r.title }}">{{ r.action }}</a>
+    </div>
+    {% if full and multi %}
+    <div class="dt-kids" hidden>
+        {% for k in r.kids %}<div class="dt-kid"><span>Parcela {{ k.n }} · {{ k.date }}</span><strong>{{ k.amount|money_br }}</strong></div>{% endfor %}
+    </div>
+    {% endif %}
+</div>

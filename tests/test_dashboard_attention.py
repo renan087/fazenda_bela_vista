@@ -39,15 +39,34 @@ def test_attention_permissions_apply_before_six_item_limit():
     assert all(item['permission'] == 'page.inputs' for item in overview['inbox_all'])
 
 
-def test_attention_link_only_when_more_than_six():
-    from pathlib import Path
-    from jinja2 import Environment
-    source = (Path(__file__).resolve().parents[1] / 'app/templates/dashboard.html').read_text()
-    card = source.split('<section class="db-card" aria-label="Precisa de você hoje">', 1)[1].split('</section>', 1)[0]
-    template = Environment(autoescape=True).from_string(card)
-    items = [{'title': f'Pendência {i}', 'text': '', 'tone': 'warning', 'link': '/agenda', 'action': 'Ver'} for i in range(7)]
-    six = template.render(ov={'inbox': items[:6], 'inbox_all': items[:6]})
-    seven = template.render(ov={'inbox': items[:6], 'inbox_all': items})
-    assert 'data-db-attention-open' not in six
-    assert 'Ver todas as 7 pendências' in seven
-    assert 'Pendência 6' not in seven
+def test_attention_groups_installments_and_splits_sections():
+    today = date(2026, 11, 21)
+    bill = lambda name, n, status, day, amount: {'permission': 'page.finance', 'kind': 'bill', 'name': name, 'type': 'pagar', 'status': status, 'date': day, 'amount': amount, 'installment': n, 'source': 'Patrimônio', 'link': '/contas', 'title': name, 'text': ''}
+    inbox = [bill('Bomba', '8/18', 'overdue', date(2026, 9, 25), 116.11), bill('Bomba', '9/18', 'overdue', date(2026, 10, 25), 116.11),
+             bill('Coelba', '1/1', 'today', today, 575.97),
+             {'permission': 'page.agenda', 'title': 'Aplicação atrasada — Setor 1', 'text': 'Foliar', 'action': 'Ver', 'link': '/agenda', 'tone': 'danger'}]
+    upcoming = [{'status': 'upcoming', 'type': 'pagar', 'title': 'Diesel', 'date': date(2026, 11, 24), 'amount': 120.0, 'installment': '1/1', 'source': 'Suprimentos', 'link': '/contas'}]
+    result = dashboard.build_attention(inbox, upcoming, today)
+    late, today_sec, nxt = result['sections']
+    assert [r['title'] for r in late['rows']] == ['Bomba', 'Aplicação atrasada — Setor 1']
+    assert late['rows'][0]['amount'] == 232.22 and len(late['rows'][0]['kids']) == 2
+    assert late['rows'][0]['meta'].startswith('2 parcelas vencidas')
+    assert today_sec['rows'][0]['meta'].startswith('Vence hoje')
+    assert nxt['rows'][0]['title'] == 'Diesel' and result['next_total'] == 120.0
+    assert result['overdue_total'] == 232.22 and result['count'] == 4
+    assert result['bill_count'] == 3 and result['field_count'] == 1
+    assert result['card_rows'][0]['title'] == 'Coelba'
+    assert [d['value'] for d in result['days']][7] == 575.97 and [d['value'] for d in result['days']][10] == 120.0
+
+
+def test_attention_filter_hides_finance_sections_without_permission():
+    overview = {'today': date(2026, 11, 21), 'inbox_all': [{'permission': 'page.agenda', 'title': 'A', 'text': '', 'action': 'Ver', 'link': '/a'}],
+                'finance_upcoming': [{'status': 'upcoming', 'type': 'pagar', 'title': 'Diesel', 'date': date(2026, 11, 24), 'amount': 1.0, 'installment': '1/1', 'source': 'S', 'link': '/c'}]}
+    dashboard.filter_dashboard_attention(overview, {'page.agenda'})
+    assert overview['attention']['sections'][2]['rows'] == [] and overview['attention']['field_count'] == 1
+
+
+def test_spark_path_needs_two_points():
+    assert dashboard._spark_path([1500]) is None
+    spark = dashboard._spark_path([1500, 1650])
+    assert spark['line'].startswith('M4.0') and spark['change'] == 10.0

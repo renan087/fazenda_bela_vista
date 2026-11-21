@@ -20,6 +20,75 @@ def filter_dashboard_attention(overview: dict, permissions) -> None:
     items = [item for item in overview.get("inbox_all", []) if item.get("permission") in permissions]
     overview["inbox_all"] = items
     overview["inbox"] = items[:6]
+    upcoming = overview.get("finance_upcoming", []) if "page.finance" in permissions else []
+    overview["attention"] = build_attention(items, upcoming, overview.get("today") or date.today())
+
+
+_SHORT_MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+
+
+def _day_label(day) -> str:
+    return f"{day.day} {_SHORT_MONTHS[day.month - 1]}" if day else ""
+
+
+def build_attention(inbox: list[dict], upcoming: list[dict], today: date) -> dict:
+    """Agrupa as pendencias para o cartao e o modal: parcelas da mesma conta viram uma linha."""
+    def group_bills(items: list[dict], section: str) -> list[dict]:
+        groups: dict = {}
+        for item in items:
+            key = (item.get("name") or item.get("title"), item.get("type"))
+            groups.setdefault(key, []).append(item)
+        rows = []
+        for (name, kind), parts in groups.items():
+            receive = kind == "receber"
+            total = round(sum(_float(p.get("amount")) for p in parts), 2)
+            source = parts[0].get("source") or ""
+            first = parts[0].get("date")
+            if section == "late":
+                meta = f"{len(parts)} parcelas vencidas" if len(parts) > 1 else f"Venceu em {_day_label(first)}"
+            elif section == "today":
+                meta = "Vence hoje"
+            else:
+                meta = f"Vence em {_day_label(first)}"
+            if receive:
+                meta += " · a receber"
+            rows.append({
+                "kind": "bill", "section": section, "title": name or "Conta", "meta": f"{meta} · {source}" if source else meta,
+                "amount": total, "receive": receive, "action": "Receber" if receive else "Pagar", "link": parts[0].get("link"),
+                "kids": [{"n": p.get("installment"), "date": _day_label(p.get("date")), "amount": _float(p.get("amount"))} for p in parts],
+            })
+        return rows
+
+    bills = [i for i in inbox if i.get("kind") == "bill"]
+    fields = [i for i in inbox if i.get("kind") != "bill"]
+    late_rows = group_bills([i for i in bills if i.get("status") == "overdue"], "late")
+    late_rows += [{"kind": "field", "section": "late", "title": i.get("title"), "meta": i.get("text"), "amount": None,
+                   "action": i.get("action"), "link": i.get("link"), "tone": i.get("tone"), "kids": []} for i in fields]
+    today_rows = group_bills([i for i in bills if i.get("status") == "today"], "today")
+    next_rows = group_bills(upcoming, "next")
+    payables = [i for i in bills if i.get("type") != "receber"] + [i for i in upcoming if i.get("type") != "receber"]
+    days = []
+    for offset in range(-7, 7):
+        day = today + timedelta(days=offset)
+        value = round(sum(_float(i.get("amount")) for i in payables if i.get("date") == day), 2)
+        days.append({"value": value, "offset": offset, "label": "Hoje" if offset == 0 else _day_label(day)})
+    peak = max([d["value"] for d in days] + [0])
+    for d in days:
+        d["pct"] = round(d["value"] / peak * 100, 1) if peak else 0
+    return {
+        "count": len(inbox),
+        "bill_count": len(bills),
+        "field_count": len(fields),
+        "overdue_total": round(sum(_float(i.get("amount")) for i in bills if i.get("status") == "overdue" and i.get("type") != "receber"), 2),
+        "next_total": round(sum(_float(i.get("amount")) for i in upcoming if i.get("type") != "receber"), 2),
+        "days": days,
+        "card_rows": (today_rows + late_rows)[:4],
+        "sections": [
+            {"key": "late", "title": "Atrasadas", "rows": late_rows},
+            {"key": "today", "title": "Hoje", "rows": today_rows},
+            {"key": "next", "title": "Próximos 7 dias", "rows": next_rows},
+        ],
+    }
 
 
 def _compact_currency_label(value) -> str:
@@ -852,6 +921,24 @@ _MONTHS_SHORT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", 
 _MONTHS_LONG = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
 
 
+def _spark_path(values: list, width: float = 168, height: float = 56) -> dict | None:
+    """Linha e area do mini grafico de cotacao (SVG); None quando ha menos de 2 pontos."""
+    values = [float(v) for v in values][-12:]
+    if len(values) < 2:
+        return None
+    low, high = min(values), max(values)
+    span = (high - low) or 1
+    step = (width - 8) / (len(values) - 1)
+    points = [(4 + i * step, height - 6 - (v - low) / span * (height - 14)) for i, v in enumerate(values)]
+    line = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y) in enumerate(points))
+    return {
+        "line": line,
+        "area": f"{line} L{points[-1][0]:.1f} {height} L4 {height} Z",
+        "x": round(points[-1][0], 1), "y": round(points[-1][1], 1),
+        "change": round((values[-1] / values[0] - 1) * 100, 1) if values[0] else 0,
+    }
+
+
 def _brl(value: float, decimals: int = 0) -> str:
     text = f"{abs(value):,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return ("− " if value < 0 else "") + "R$ " + text
@@ -1068,7 +1155,7 @@ def build_dashboard_overview(
             day = date.fromisoformat(item["date"])
             if season.start_date <= day <= season.end_date:
                 marks.append({"pos": round((day - season.start_date).days / total_days * 100, 2), "status": item["status"],
-                              "title": f"{day.strftime('%d/%m')} · {item['method']} — {item['plot']}"})
+                              "title": f"{day.strftime('%d/%m')} · {item['method']} — {item['plot']}", "link": item.get("link")})
         hero["timeline"] = {
             "start": season.start_date.strftime("%d/%m/%Y"), "end": season.end_date.strftime("%d/%m/%Y"),
             "marks": marks, "done": sum(1 for m in marks if m["status"] == "done"),
@@ -1098,7 +1185,10 @@ def build_dashboard_overview(
             "title": f"{item['title']} — {when}",
             "text": f"{_brl(item['amount'], 2)} · parcela {item['installment']} · {item['source']}",
             "action": verb, "link": item["link"],
+            "kind": "bill", "name": item["title"], "type": item["type"], "status": item["status"], "date": item.get("date"),
+            "amount": item["amount"], "installment": item["installment"], "source": item["source"],
         })
+    finance_upcoming = [item for item in finance_flow.get("all_action_items", finance_flow.get("action_items", [])) if item["status"] == "upcoming"]
     late = [item for item in schedule_alerts if item["status"] == "late"]
     for item in late:
         inbox.append({
@@ -1178,6 +1268,10 @@ def build_dashboard_overview(
         cash.append({"label": label, "in": round(bucket["in"], 2), "out": round(bucket["out"], 2), "net": round(bucket["in"] - bucket["out"], 2)})
     cash_max = max([c["in"] for c in cash] + [c["out"] for c in cash] + [1])
 
+    hero["spark"] = _spark_path([v for v in (history_12m.get("arabica") or []) if v])
+    sacks_whole = int(round(_float(hero["sacks"])))
+    hero["sack_icons"] = list(range(min(sacks_whole, 10)))
+    hero["sack_more"] = sacks_whole > 10
     return {
         "today": today,
         "weekday": ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"][today.weekday()],
@@ -1185,6 +1279,8 @@ def build_dashboard_overview(
         "hero": hero,
         "inbox": inbox[:6],
         "inbox_all": inbox,
+        "finance_upcoming": finance_upcoming,
+        "attention": build_attention(inbox, finance_upcoming, today),
         "tiles": tiles,
         "market": {
             "history": history_12m,
