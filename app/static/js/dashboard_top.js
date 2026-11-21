@@ -66,16 +66,30 @@
     if (pend) {
         $$('[data-count]', pend).forEach(countUp);
         const rows = $$('[data-dt-row]', pend);
+        const list = $('[data-dt-list]', pend);
+        let current = 'all';
+        // Mostra só as linhas que cabem inteiras no cartão (nenhuma fica cortada).
+        const fitRows = () => {
+            if (!list) return;
+            const limit = list.getBoundingClientRect().bottom + 1;
+            rows.filter((row) => !row.hidden).forEach((row, i) => {
+                if (i > 0 && row.getBoundingClientRect().bottom > limit) row.hidden = true;
+            });
+        };
         const show = (kind) => {
+            current = kind;
             let shown = 0;
             rows.forEach((row) => {
                 const ok = (kind === 'all' || row.dataset.kind === kind) && shown < 4;
                 row.hidden = !ok;
                 if (ok) { shown += 1; const r = $('.dt-row', row); r.style.animation = 'none'; void r.offsetWidth; r.style.animation = ''; r.style.animationDelay = (shown * 60) + 'ms'; }
             });
+            fitRows();
         };
         show('all');
         bindTabs(pend, show);
+        let t;
+        window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => show(current), 150); });
     }
 
     // ---- Modal ----

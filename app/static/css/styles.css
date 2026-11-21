@@ -10415,6 +10415,11 @@ dialog.stw-dialog::-webkit-scrollbar { display: none; }
 .dt-btn { flex: none; min-height: 36px; padding: 0 .875rem; border-radius: 10px; border: 1px solid #e3e8e2; background: #fff; font-size: .8125rem; font-weight: 600; color: #16201a; text-decoration: none; display: inline-flex; align-items: center; transition: all .2s; }
 .dt-btn:hover { border-color: #446a36; color: #446a36; background: #eef3eb; }
 @media (max-width: 639px) { .dt-amount { display: none; } }
+.dt-row-text span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dt-row-text span b { font-weight: 700; color: #16201a; }
+.dt-pend .dt-amount { display: none; }
+.dt-meta-amount { display: none; }
+.dt-pend .dt-meta-amount { display: inline; }
 .dt-tabs button:focus-visible, .dt-btn:focus-visible, .dt-link:focus-visible, .dt-mini-link:focus-visible, .dt-sim-keys button:focus-visible { outline: 2px solid #446a36; outline-offset: 2px; }
 /* modal */
 dialog.dt-modal { width: min(760px, calc(100vw - 2rem)); max-height: min(780px, calc(100vh - 3rem)); padding: 0; border: 0; border-radius: 20px; background: #fff; color: #16201a; box-shadow: 0 24px 64px rgba(15,21,19,.28); overflow: hidden; }
@@ -10452,11 +10457,14 @@ dialog.dt-modal::backdrop { background: rgba(15,21,19,.48); animation: dtFade .3
 .dt-ok[hidden] { display: none; }
 .dt-chk { width: 44px; height: 44px; margin: -11px; flex: none; display: grid; place-items: center; cursor: pointer; }
 .dt-chk-gap { width: 22px; flex: none; }
-.dt-check { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; margin: 0; border-radius: 7px; border: 2px solid #c9d2c6; background: #fff; cursor: pointer; display: grid; place-items: center; transition: all .2s; }
-.dt-check::after { content: ""; width: 6px; height: 11px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg) scale(0); margin-top: -3px; transition: transform .25s cubic-bezier(.3,1.6,.5,1); }
-.dt-check:checked { background: #446a36; border-color: #446a36; }
-.dt-check:checked::after { transform: rotate(45deg) scale(1); }
-.dt-check:focus-visible { outline: 2px solid #446a36; outline-offset: 2px; }
+input[type="checkbox"].dt-check { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; margin: 0; padding: 0; border-radius: 7px; border: 2px solid #c9d2c6; background-color: #fff; background-image: none; color: transparent; box-shadow: none; cursor: pointer; display: grid; place-items: center; flex: none; transition: background-color .2s, border-color .2s, transform .15s; }
+input[type="checkbox"].dt-check::after { content: ""; width: 6px; height: 11px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg) scale(0); margin-top: -3px; transition: transform .25s cubic-bezier(.3,1.6,.5,1); }
+input[type="checkbox"].dt-check:hover { border-color: #446a36; }
+input[type="checkbox"].dt-check:active { transform: scale(.9); }
+input[type="checkbox"].dt-check:checked, input[type="checkbox"].dt-check:checked:hover, input[type="checkbox"].dt-check:checked:focus { background-color: #446a36; border-color: #446a36; background-image: none; }
+input[type="checkbox"].dt-check:checked::after { transform: rotate(45deg) scale(1); }
+input[type="checkbox"].dt-check:focus { outline: none; box-shadow: none; }
+input[type="checkbox"].dt-check:focus-visible { outline: 2px solid #446a36; outline-offset: 2px; }
 .dt-chev { width: 32px; height: 32px; flex: none; border: 0; border-radius: 8px; background: transparent; color: #5b6660; display: grid; place-items: center; cursor: pointer; transition: transform .25s, background .2s; }
 .dt-chev svg { width: 18px; height: 18px; }
 .dt-chev:hover { background: #eef1ed; }
