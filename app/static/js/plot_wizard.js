@@ -119,7 +119,91 @@
 
     // ---------- mapa ----------
     const prompt = $('[data-stw-prompt]');
+    const latInput = $('[data-stw-lat]');
+    const lngInput = $('[data-stw-lng]');
+    const mapSubtitle = $('[data-stw-map-subtitle]');
+    const mapbarDraw = $('[data-stw-mapbar-draw]');
+    const mapbarPin = $('[data-stw-mapbar-pin]');
+    const pinStatusEl = $('[data-stw-pin-status]');
+    const pinPillEl = $('[data-stw-pin-pill]');
+    const toolsDraw = $('[data-stw-tools-draw]');
+    const toolsPin = $('[data-stw-tools-pin]');
+    const pinHintEl = $('[data-stw-pin-hint]');
+    const pinClearBtn = $('[data-stw-pin-clear]');
+    const hasPinCoords = () => Boolean(latInput?.value && lngInput?.value && Number.isFinite(parseFloat(latInput.value)) && Number.isFinite(parseFloat(lngInput.value)));
+
     const syncPrompt = () => { if (prompt) prompt.hidden = !editor() || map.started || map.vertices > 0 || map.pointOnly || editing; };
+    const syncMapToolUi = () => {
+        const isPin = map.pointOnly;
+        const hasPin = hasPinCoords();
+        $$('[data-stw-map-tool]').forEach((btn) => {
+            btn.setAttribute('aria-checked', String((btn.dataset.stwMapTool === 'pin') === isPin));
+        });
+        if (mapSubtitle) {
+            mapSubtitle.textContent = isPin
+                ? 'Clique no mapa para posicionar o marcador do setor. Para alterar, clique em outro ponto.'
+                : 'Toque nos cantos do setor por dentro do contorno da fazenda, ou importe o arquivo. A área é calculada pelo desenho.';
+        }
+        if (mapbarDraw) mapbarDraw.hidden = isPin;
+        if (mapbarPin) mapbarPin.hidden = !isPin;
+        if (toolsDraw) toolsDraw.hidden = isPin;
+        if (toolsPin) toolsPin.hidden = !isPin;
+        if (pinPillEl) pinPillEl.hidden = !isPin || hasPin || !editor();
+        if (pinClearBtn) pinClearBtn.disabled = !hasPin;
+        if (pinStatusEl) {
+            if (hasPin) {
+                const latStr = parseFloat(latInput.value).toFixed(4).replace('.', ',');
+                const lngStr = parseFloat(lngInput.value).toFixed(4).replace('.', ',');
+                pinStatusEl.innerHTML = `<strong style="color:#16201a">Ponto salvo</strong> · ${latStr}, ${lngStr}`;
+            } else {
+                pinStatusEl.textContent = 'Clique no mapa para marcar a localização do setor';
+            }
+        }
+        if (pinHintEl) {
+            pinHintEl.textContent = hasPin
+                ? 'Clique em qualquer outro ponto do mapa para alterar a localização.'
+                : 'Nenhum ponto marcado ainda. Clique no mapa acima.';
+        }
+        syncPrompt();
+    };
+    const applyEditorMapTool = () => {
+        const ed = editor();
+        if (!ed) return;
+        if (hasPinCoords()) {
+            ed.setPin?.(parseFloat(latInput.value), parseFloat(lngInput.value), true);
+        } else {
+            ed.setPin?.(NaN, NaN, true);
+        }
+        ed.setInteractionMode?.(map.pointOnly ? 'pin' : 'draw');
+    };
+    const setMapTool = (tool) => {
+        map.pointOnly = tool === 'pin';
+        applyEditorMapTool();
+        syncMapToolUi();
+        refresh();
+    };
+    $$('[data-stw-map-tool]').forEach((btn) => {
+        btn.addEventListener('click', () => setMapTool(btn.dataset.stwMapTool));
+    });
+    pinClearBtn?.addEventListener('click', () => {
+        if (latInput) latInput.value = '';
+        if (lngInput) lngInput.value = '';
+        editor()?.clearPin?.();
+        syncMapToolUi();
+        refresh();
+    });
+    window.addEventListener('plot-pin-changed', (event) => {
+        const pt = event.detail;
+        if (pt && Number.isFinite(pt.lat) && Number.isFinite(pt.lng)) {
+            if (latInput) latInput.value = pt.lat.toFixed(6);
+            if (lngInput) lngInput.value = pt.lng.toFixed(6);
+        } else {
+            if (latInput) latInput.value = '';
+            if (lngInput) lngInput.value = '';
+        }
+        syncMapToolUi();
+        refresh();
+    });
     window.addEventListener('plot-boundary-stats', (event) => {
         map.vertices = event.detail?.vertices || 0;
         map.area = event.detail?.area || 0;
@@ -128,11 +212,16 @@
         $('[data-stw-map-area]').textContent = `${n2(map.area)} ha`;
         const counter = $('[data-stw-full-count]');
         if (counter) counter.textContent = `${map.vertices} ${map.vertices === 1 ? 'ponto' : 'pontos'}`;
-        syncPrompt();
+        syncMapToolUi();
         renderColor();
         refresh();
     });
-    window.addEventListener('plot-boundary-ready', () => { syncPrompt(); renderColor(); refresh(); });
+    window.addEventListener('plot-boundary-ready', () => {
+        applyEditorMapTool();
+        syncMapToolUi();
+        renderColor();
+        refresh();
+    });
     $('[data-stw-start]')?.addEventListener('click', () => { map.started = true; syncPrompt(); });
     $('[data-stw-reset]')?.addEventListener('click', () => editor()?.resetToInitial?.());
     let snapTimer = null;
@@ -149,24 +238,6 @@
         snap.hidden = false;
         window.clearTimeout(snapTimer);
         snapTimer = window.setTimeout(() => { snap.hidden = true; }, 6000);
-    });
-    const pointBox = $('[data-stw-point-box]');
-    $('[data-stw-point-toggle]').addEventListener('click', () => {
-        map.pointOnly = !map.pointOnly;
-        pointBox.hidden = !map.pointOnly;
-        $('[data-stw-point-toggle]').textContent = map.pointOnly ? 'Voltar a desenhar o contorno' : 'Não tenho o contorno agora: marcar só a localização';
-        syncPrompt(); refresh();
-    });
-    $('[data-stw-point-mark]').addEventListener('click', () => {
-        const ed = editor();
-        if (!ed?.map) return;
-        const c = ed.map.getCenter();
-        const lat = typeof c.lat === 'function' ? c.lat() : c.lat;
-        const lng = typeof c.lng === 'function' ? c.lng() : c.lng;
-        $('[data-stw-lat]').value = lat.toFixed(6);
-        $('[data-stw-lng]').value = lng.toFixed(6);
-        $('[data-stw-point-mark]').textContent = 'Localização marcada · marcar de novo';
-        refresh();
     });
 
     // celular: desenho sempre em tela cheia
@@ -203,6 +274,41 @@
     });
     areaDialog.querySelector('[data-stw-keep-declared]').addEventListener('click', () => { map.areaChoice = 'declared'; areaDialog.close(); goTo(2); });
     areaDialog.querySelector('[data-stw-adjust]').addEventListener('click', () => areaDialog.close());
+
+    // ---------- máscara decimal fixa (0,00 da direita para a esquerda) ----------
+    const formatDecimalCents = (raw) => {
+        const clean = String(raw ?? '').replace(/\D/g, '').slice(0, 7);
+        if (!clean) return '';
+        const cents = parseInt(clean, 10);
+        if (!cents) return '';
+        const str = String(cents).padStart(3, '0');
+        return `${str.slice(0, -2)},${str.slice(-2)}`;
+    };
+    const formatDecimalInitial = (raw) => {
+        const txt = String(raw ?? '').trim();
+        if (!txt) return '';
+        const v = num(txt);
+        if (!(v > 0)) return '';
+        return formatDecimalCents(String(Math.round(v * 100)));
+    };
+    const bindDecimalMask = (input) => {
+        if (!input) return;
+        if (input.value) input.value = formatDecimalInitial(input.value);
+        input.addEventListener('input', () => {
+            const formatted = formatDecimalCents(input.value);
+            if (input.value !== formatted) input.value = formatted;
+            try { input.setSelectionRange(formatted.length, formatted.length); } catch (e) { /* ignore */ }
+        });
+        input.addEventListener('paste', (event) => {
+            const pasted = (event.clipboardData || window.clipboardData)?.getData('text') || '';
+            if (/[.,]/.test(pasted)) {
+                event.preventDefault();
+                input.value = formatDecimalInitial(pasted);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+    };
+    $$('[data-stw-decimal]').forEach(bindDecimalMask);
 
     // ---------- plantio ----------
     const newVarInput = $('[data-stw-new-variety-input]');
@@ -287,18 +393,25 @@
     // ---------- miniatura do mapa ----------
     const miniMap = () => {
         const farmPts = window.extractFarmBoundaryPoints?.(farmBounds[farmId()]) || [];
-        const pts = geometryPoints();
-        const all = [...farmPts, ...pts];
+        const pts = map.pointOnly ? [] : geometryPoints();
+        const pinPt = map.pointOnly && hasPinCoords() ? { lat: parseFloat(latInput.value), lng: parseFloat(lngInput.value) } : null;
+        const all = [...farmPts, ...pts, ...(pinPt ? [pinPt] : [])];
         if (!all.length) return '<div class="stw-mini-empty">Sem desenho ainda</div>';
         const b = box(all);
         const w = 300, h = 190, padX = (b[2] - b[0]) * 0.08 || 0.001, padY = (b[3] - b[1]) * 0.08 || 0.001;
         const sx = w / ((b[2] - b[0]) + padX * 2), sy = h / ((b[3] - b[1]) + padY * 2), sc = Math.min(sx, sy);
-        const px = (p) => `${((p.lng - b[0] + padX) * sc).toFixed(1)},${(h - (p.lat - b[1] + padY) * sc).toFixed(1)}`;
+        const pxObj = (p) => ({ x: (p.lng - b[0] + padX) * sc, y: h - (p.lat - b[1] + padY) * sc });
+        const px = (p) => { const c = pxObj(p); return `${c.x.toFixed(1)},${c.y.toFixed(1)}`; };
         const fill = currentColor();
+        const pinSvg = pinPt ? (() => {
+            const c = pxObj(pinPt);
+            return `<g transform="translate(${c.x.toFixed(1)}, ${c.y.toFixed(1)})"><path d="M0 -24C-6.6 -24 -12 -18.6 -12 -12c0 8.2 10.4 18.2 11.4 19.2a.9.9 0 0 0 1.2 0C1.6 6.2 12 -3.8 12 -12c0-6.6-5.4-12-12-12Z" fill="#446A36" stroke="#FFFFFF" stroke-width="2.4"/><circle cx="0" cy="-12.2" r="4" fill="#FFFFFF"/></g>`;
+        })() : '';
         return `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Miniatura do setor no mapa da fazenda">
             <rect width="${w}" height="${h}" fill="#4B5532"/>
             ${farmPts.length >= 3 ? `<polygon points="${farmPts.map(px).join(' ')}" fill="#5BB34A" fill-opacity="0.2" stroke="#418436" stroke-width="2.5"/>` : ''}
             ${pts.length >= 3 ? `<polygon points="${pts.map(px).join(' ')}" fill="${fill}" fill-opacity="0.45" stroke="${strokeOf(fill)}" stroke-width="3"/>` : ''}
+            ${pinSvg}
         </svg>`;
     };
 
@@ -330,7 +443,8 @@
         $('[data-stw-drip-cm]').value = dripM ? String(Math.round(dripM * 10000) / 100) : '';
         // plantio
         if (monthHint) {
-            monthHint.textContent = p.monthError || 'Ex.: 03/2021 (mês e ano)';
+            monthHint.textContent = p.monthError || '';
+            monthHint.hidden = !p.monthError;
             monthHint.classList.toggle('is-err', Boolean(p.monthError));
         }
         $('[data-stw-plants-est]').textContent = p.estimate ? int(p.estimate) : '—';
@@ -358,17 +472,27 @@
         $('[data-stw-spr-lamina]').textContent = spr && area ? `${n2(spr / (area * 10000))} mm/h` : '—';
         // mapa: selo e áreas
         const chip = $('[data-stw-poly-chip]');
-        const located = $('[data-stw-lat]').value && $('[data-stw-lng]').value;
-        if (map.vertices >= 3) { chip.textContent = 'Perímetro pronto'; chip.className = 'szw-chip is-ok'; }
-        else if (map.pointOnly && located) { chip.textContent = 'Só localização'; chip.className = 'szw-chip is-info'; }
-        else { chip.textContent = 'Sem perímetro'; chip.className = 'szw-chip is-warn'; }
+        const located = hasPinCoords();
+        if (map.pointOnly) {
+            if (located) { chip.textContent = 'Localização marcada'; chip.className = 'szw-chip is-ok'; }
+            else { chip.textContent = 'Sem localização'; chip.className = 'szw-chip is-warn'; }
+        } else if (map.vertices >= 3) {
+            chip.textContent = 'Perímetro pronto'; chip.className = 'szw-chip is-ok';
+        } else if (located) {
+            chip.textContent = 'Só localização'; chip.className = 'szw-chip is-info';
+        } else {
+            chip.textContent = 'Sem perímetro'; chip.className = 'szw-chip is-warn';
+        }
         const d = divergence();
-        $('[data-stw-calc-map]').textContent = map.vertices >= 3 ? `${n2(map.area)} ha` : '—';
+        const showDrawStats = !map.pointOnly && map.vertices >= 3;
+        $('[data-stw-calc-map]').textContent = showDrawStats ? `${n2(map.area)} ha` : '—';
         $('[data-stw-calc-declared]').textContent = declared() ? `${n2(declared())} ha` : '—';
-        $('[data-stw-calc-div]').textContent = map.vertices >= 3 && declared() ? `${n1(d)}%` : '—';
-        $('[data-stw-calc-div-hint]').textContent = map.vertices < 3 ? 'Desenhe para comparar' : d > 5 ? 'Acima de 5%: vamos pedir para confirmar' : 'Dentro da margem de 5%';
-        $('[data-stw-calc-div-box]').className = `stw-calc${map.vertices >= 3 ? (d > 5 ? ' is-warn' : ' is-ok') : ''}`;
-        $('[data-stw-limit-text]').textContent = farmBounds[farmId()] ? `Limite: perímetro da ${farmName() || 'fazenda'}. Se a fazenda não tiver perímetro cadastrado, o desenho fica livre.` : 'Esta fazenda ainda não tem perímetro cadastrado: o desenho fica livre.';
+        $('[data-stw-calc-div]').textContent = showDrawStats && declared() ? `${n1(d)}%` : '—';
+        $('[data-stw-calc-div-hint]').textContent = map.pointOnly
+            ? (located ? 'Usando apenas localização (sem contorno)' : 'Desenhe a área para comparar')
+            : map.vertices < 3 ? 'Desenhe para comparar' : d > 5 ? 'Acima de 5%: vamos pedir para confirmar' : 'Dentro da margem de 5%';
+        $('[data-stw-calc-div-box]').className = `stw-calc${showDrawStats ? (d > 5 ? ' is-warn' : ' is-ok') : ''}`;
+        $('[data-stw-limit-text]').textContent = farmBounds[farmId()] ? `Limite: perímetro da ${farmName() || 'fazenda'}. Se a fazenda não tiver perímetro cadastrado, o mapa fica livre.` : 'Esta fazenda ainda não tem perímetro cadastrado: o mapa fica livre.';
         $('[data-stw-rain-farm]').textContent = farmName() || 'fazenda';
         const farmLabel = dialog?.querySelector('[data-stw-farm-label]');
         if (farmLabel) farmLabel.textContent = farmName() || 'Escolha a fazenda';
@@ -530,6 +654,9 @@
                 el.value = el.matches('[data-stw-month]') ? formatPlantingMonth(draft.values[`__ui${i}`]) : draft.values[`__ui${i}`];
             }
         });
+        $$('[data-stw-decimal]').forEach((el) => {
+            if (el.value) el.value = formatDecimalInitial(el.value);
+        });
         Object.assign(later, draft.later || {});
         applySkip('plant'); applySkip('man');
         if (draftStatus && draft.savedAt) {
@@ -539,7 +666,9 @@
         }
     };
     if (!new URLSearchParams(window.location.search).get('voltar')) restoreDraft();
+    if (hasPinCoords() && geometryPoints().length < 3) map.pointOnly = true;
 
+    syncMapToolUi();
     renderColor();
     show();
 })();

@@ -59,7 +59,7 @@
                                 </div>
                             </div>
                             <div class="szw-grid2">
-                                <label class="szw-field"><span>Área informada (ha)</span><input name="area_hectares" class="szw-input" inputmode="decimal" value="{{ (ep.area_hectares|string).replace('.', ',') if ep else '' }}" data-stw-area><small>Da escritura, do projeto ou de medição. No próximo passo comparamos com o mapa.</small></label>
+                                <label class="szw-field"><span>Área informada (ha)</span><input name="area_hectares" class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.area_hectares)).replace('.', ',') if ep and ep.area_hectares is not none else '' }}" data-stw-area data-stw-decimal><small>Da escritura, do projeto ou de medição. No próximo passo comparamos com o mapa.</small></label>
                                 <label class="szw-field"><span>Referência no campo <em class="szw-opt">(opcional)</em></span><input name="field_reference" class="szw-input" maxlength="160" value="{{ ep.field_reference if ep and ep.field_reference else '' }}" placeholder="Ex.: descendo a estrada, depois da represa"><small>Ajuda quem ainda não conhece a fazenda.</small></label>
                             </div>
                             <div class="szw-grid2 stw-idrow">
@@ -91,8 +91,17 @@
                         {# PASSO 2 — MAPA #}
                         <section class="szw-panel" data-stw-panel="1" aria-labelledby="stw-t1" hidden>
                             <div class="szw-head szw-head-row">
-                                <div><h2 id="stw-t1">Onde fica o setor?</h2><p>Toque nos cantos do setor por dentro do contorno da fazenda, ou importe o arquivo. A área é calculada pelo desenho.</p></div>
-                                <span class="szw-chip is-warn" data-stw-poly-chip>Sem perímetro</span>
+                                <div><h2 id="stw-t1">Onde fica o setor?</h2><p data-stw-map-subtitle>Toque nos cantos do setor por dentro do contorno da fazenda, ou importe o arquivo. A área é calculada pelo desenho.</p></div>
+                                <div class="stw-seg" role="radiogroup" aria-label="Ferramenta do mapa">
+                                    <button type="button" role="radio" aria-checked="true" data-stw-map-tool="draw">
+                                        <svg class="stw-seg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 3 21 9 18 20 6 20 3 9"/></svg>
+                                        <span>Desenhar área</span>
+                                    </button>
+                                    <button type="button" role="radio" aria-checked="false" data-stw-map-tool="pin">
+                                        <svg class="stw-seg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                                        <span>Marcar localização</span>
+                                    </button>
+                                </div>
                             </div>
                             <button type="button" class="szw-btn szw-btn-primary stw-fullmap-open" data-stw-fullmap-open>Iniciar desenho no mapa</button>
                             <div class="stw-fullbar" data-stw-fullbar hidden>
@@ -107,24 +116,39 @@
                             </div>
                             <div class="stw-mapshell" data-plots-boundary-map-section>
                                 <div class="stw-mapbar">
-                                    <span>Vértices: <strong data-stw-vertices>0</strong> · Área estimada: <strong data-stw-map-area>0,00 ha</strong></span>
-                                    <span class="szw-chip {% if google_maps_web_key %}is-ok{% else %}is-muted{% endif %}">{% if google_maps_web_key %}Satélite (Google Maps){% else %}OpenStreetMap{% endif %}</span>
+                                    <span data-stw-mapbar-draw>Vértices: <strong data-stw-vertices>0</strong> · Área estimada: <strong data-stw-map-area>0,00 ha</strong></span>
+                                    <span class="stw-mapbar-pin" data-stw-mapbar-pin hidden>
+                                        <svg class="stw-seg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                                        <span data-stw-pin-status>Clique no mapa para marcar a localização do setor</span>
+                                    </span>
+                                    <span class="stw-mapbar-chips">
+                                        <span class="szw-chip is-warn" data-stw-poly-chip>Sem perímetro</span>
+                                        <span class="szw-chip {% if google_maps_web_key %}is-muted{% else %}is-muted{% endif %}">{% if google_maps_web_key %}Satélite{% else %}OpenStreetMap{% endif %}</span>
+                                    </span>
                                 </div>
                                 <p class="stw-mapmsg" data-plots-map-pick-farm-msg>Escolha a fazenda no passo 1 para carregar o mapa com o contorno da propriedade.</p>
                                 <div class="stw-mapwrap">
                                     <div id="plots-form-boundary-map" class="stw-map hidden"></div>
+                                    <div class="stw-pin-pill" data-stw-pin-pill hidden>
+                                        <svg class="stw-seg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                                        <span>Clique em qualquer ponto para posicionar o marcador</span>
+                                    </div>
                                     <div class="stw-prompt" data-stw-prompt hidden>
                                         <div><strong>Desenhar o setor</strong><span>Mostramos o contorno da fazenda. Marque os cantos do setor por dentro dele.</span><button type="button" class="szw-btn szw-btn-primary" data-stw-start>Iniciar desenho no mapa</button></div>
                                     </div>
                                 </div>
                                 <input type="hidden" name="boundary_geojson" value="" data-plots-boundary-input>
-                                <div class="stw-tools" data-plots-map-toolbar>
+                                <div class="stw-tools" data-plots-map-toolbar data-stw-tools-draw>
                                     <div class="stw-tools-left">
                                         <button type="button" class="szw-btn" data-stw-undo>Desfazer</button>
                                         <button type="button" class="szw-btn" data-plots-form-remove-point>Remover ponto</button>
                                         <button type="button" class="szw-btn" data-stw-clear>Limpar</button>
                                     </div>
                                     <button type="button" class="szw-btn" data-stw-reset {% if not (ep and ep.boundary_geojson) %}disabled{% endif %}>Restaurar anterior</button>
+                                </div>
+                                <div class="stw-tools stw-tools-pin" data-stw-tools-pin hidden>
+                                    <span class="stw-pin-hint" data-stw-pin-hint>Nenhum ponto marcado ainda. Clique no mapa acima.</span>
+                                    <button type="button" class="szw-btn" data-stw-pin-clear disabled>Remover marcador</button>
                                 </div>
                             </div>
                             <p class="stw-alert" role="status" data-stw-snap hidden>Um ponto ficava fora da fazenda e foi colocado na divisa. O setor não pode passar do perímetro da fazenda.</p>
@@ -134,12 +158,7 @@
                             <div hidden data-plots-perimeter-draft-card><img data-plots-draft-preview-img alt=""></div>
                             {% include "partials/plot_geojson_upload_field.html" %}
                             <div class="stw-map-foot">
-                                <small data-stw-limit-text>Limite: perímetro da fazenda. Se a fazenda não tiver perímetro cadastrado, o desenho fica livre.</small>
-                                <button type="button" class="szw-link" data-stw-point-toggle>Não tenho o contorno agora: marcar só a localização</button>
-                            </div>
-                            <div class="stw-point" data-stw-point-box hidden>
-                                <p>Arraste o mapa até o setor ficar no centro e toque em marcar. O contorno pode ser desenhado depois.</p>
-                                <button type="button" class="szw-btn szw-btn-primary" data-stw-point-mark>Marcar a localização no centro do mapa</button>
+                                <small data-stw-limit-text>Limite: perímetro da fazenda. Se a fazenda não tiver perímetro cadastrado, o mapa fica livre.</small>
                             </div>
                             <div class="stw-calcs">
                                 <div class="stw-calc"><span>Área pelo mapa</span><strong data-stw-calc-map>—</strong></div>
@@ -175,9 +194,19 @@
                                     <small>Cultura: Café. Para outra cultura, toque em “+ Outra”.</small>
                                 </div>
                                 <div class="stw-grid3">
-                                    <label class="szw-field"><span>Mês do plantio</span><input type="text" class="szw-input" inputmode="numeric" maxlength="7" placeholder="MM/AAAA" autocomplete="off" value="{{ ep.planting_date.strftime('%m/%Y') if ep and ep.planting_date else '' }}" data-stw-month><small data-stw-month-hint>Ex.: 03/2021 (mês e ano)</small></label>
-                                    <label class="szw-field"><span>Entre linhas (m)</span><input name="spacing_row_meters" class="szw-input" inputmode="decimal" value="{{ (ep.spacing_row_meters|string).replace('.', ',') if ep and ep.spacing_row_meters else '' }}" data-stw-row></label>
-                                    <label class="szw-field"><span>Entre plantas (m)</span><input class="szw-input" inputmode="decimal" value="{{ (ep.spacing_plant_meters|string).replace('.', ',') if ep and ep.spacing_plant_meters else '' }}" data-stw-plant></label>
+                                    <label class="szw-field sf-field-tip">
+                                        <span class="sf-label-tip">Mês do plantio <span class="sf-help-tip" tabindex="0" aria-label="Ajuda sobre mês do plantio" data-tip="Ex.: 03/2021 (mês e ano do plantio)">?</span></span>
+                                        <input type="text" class="szw-input" inputmode="numeric" maxlength="7" placeholder="MM/AAAA" autocomplete="off" value="{{ ep.planting_date.strftime('%m/%Y') if ep and ep.planting_date else '' }}" data-stw-month>
+                                        <small data-stw-month-hint hidden></small>
+                                    </label>
+                                    <label class="szw-field sf-field-tip">
+                                        <span class="sf-label-tip">Entre linhas (m) <span class="sf-help-tip" tabindex="0" aria-label="Ajuda sobre espaçamento entre linhas" data-tip="Digite os números · ex.: 350 → 3,50 m">?</span></span>
+                                        <input name="spacing_row_meters" class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.spacing_row_meters)).replace('.', ',') if ep and ep.spacing_row_meters else '' }}" data-stw-row data-stw-decimal>
+                                    </label>
+                                    <label class="szw-field sf-field-tip">
+                                        <span class="sf-label-tip">Entre plantas (m) <span class="sf-help-tip" tabindex="0" aria-label="Ajuda sobre espaçamento entre plantas" data-tip="Digite os números · ex.: 70 → 0,70 m">?</span></span>
+                                        <input class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.spacing_plant_meters)).replace('.', ',') if ep and ep.spacing_plant_meters else '' }}" data-stw-plant data-stw-decimal>
+                                    </label>
                                 </div>
                                 <input type="hidden" name="planting_date" value="{{ ep.planting_date.isoformat() if ep and ep.planting_date else '' }}" data-stw-planting-date>
                                 <input type="hidden" name="spacing_plant_centimeters" value="{{ (ep.spacing_plant_meters * 100)|round(2) if ep and ep.spacing_plant_meters else '' }}" data-stw-plant-cm>
@@ -190,7 +219,7 @@
                                 </div>
                                 <div class="szw-grid2">
                                     <label class="szw-field"><span>Plantas contadas <em class="szw-opt">(opcional)</em></span><input class="szw-input" inputmode="numeric" value="{{ ep.plant_count if ep and ep.plant_count else '' }}" placeholder="Se você contou, vale este número" data-stw-counted><small>Use quando houver falhas ou replantas.</small></label>
-                                    <label class="szw-field"><span>Produtividade esperada (sc/ha)</span><input class="szw-input" inputmode="decimal" value="{{ ((ep.estimated_yield_sacks / ep.area_hectares)|round(1)|string).replace('.', ',') if ep and ep.estimated_yield_sacks and ep.area_hectares else '' }}" data-stw-yield><small>Vira a meta inicial deste setor ao criar uma safra.</small></label>
+                                    <label class="szw-field"><span>Produtividade esperada (sc/ha)</span><input class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.estimated_yield_sacks / ep.area_hectares)).replace('.', ',') if ep and ep.estimated_yield_sacks and ep.area_hectares else '' }}" data-stw-yield data-stw-decimal><small>Vira a meta inicial deste setor ao criar uma safra.</small></label>
                                 </div>
                             </div>
                         </section>
@@ -222,9 +251,9 @@
                                 <div class="stw-irrig-box" data-stw-irrig-box="gotejo" hidden>
                                     <div class="stw-grid4">
                                         <label class="szw-field" title="Linhas de mangueira"><span>Linhas</span><input name="irrigation_line_count" class="szw-input" inputmode="numeric" value="{{ ep.irrigation_line_count if ep and ep.irrigation_line_count else '' }}" data-stw-lines></label>
-                                        <label class="szw-field" title="Comprimento médio (m)"><span>Comp. médio (m)</span><input name="irrigation_line_length_meters" class="szw-input" inputmode="decimal" value="{{ (ep.irrigation_line_length_meters|string).replace('.', ',') if ep and ep.irrigation_line_length_meters else '' }}" data-stw-line-len></label>
-                                        <label class="szw-field" title="Espaçamento entre gotejadores (m)"><span>Gotejadores (m)</span><input class="szw-input" inputmode="decimal" value="{{ (ep.drip_spacing_meters|string).replace('.', ',') if ep and ep.drip_spacing_meters else '' }}" data-stw-drip-m></label>
-                                        <label class="szw-field" title="Vazão de cada gotejador (L/h)"><span>Vazão (L/h)</span><input name="drip_liters_per_hour" class="szw-input" inputmode="decimal" value="{{ (ep.drip_liters_per_hour|string).replace('.', ',') if ep and ep.drip_liters_per_hour else '' }}" data-stw-drip-lh></label>
+                                        <label class="szw-field" title="Comprimento médio (m)"><span>Comp. médio (m)</span><input name="irrigation_line_length_meters" class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.irrigation_line_length_meters)).replace('.', ',') if ep and ep.irrigation_line_length_meters else '' }}" data-stw-line-len data-stw-decimal></label>
+                                        <label class="szw-field" title="Espaçamento entre gotejadores (m)"><span>Gotejadores (m)</span><input class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.drip_spacing_meters)).replace('.', ',') if ep and ep.drip_spacing_meters else '' }}" data-stw-drip-m data-stw-decimal></label>
+                                        <label class="szw-field" title="Vazão de cada gotejador (L/h)"><span>Vazão (L/h)</span><input name="drip_liters_per_hour" class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.drip_liters_per_hour)).replace('.', ',') if ep and ep.drip_liters_per_hour else '' }}" data-stw-drip-lh data-stw-decimal></label>
                                     </div>
                                     <input type="hidden" name="drip_spacing_centimeters" value="{{ (ep.drip_spacing_meters * 100)|round(2) if ep and ep.drip_spacing_meters else '' }}" data-stw-drip-cm>
                                     <div class="stw-calcs">
@@ -236,7 +265,7 @@
                                 <div class="stw-irrig-box" data-stw-irrig-box="aspersor" hidden>
                                     <div class="stw-calcs">
                                         <label class="szw-field"><span>Quantidade de aspersores</span><input name="sprinkler_count" class="szw-input" inputmode="numeric" value="{{ ep.sprinkler_count if ep and ep.sprinkler_count else '' }}" data-stw-spr-count></label>
-                                        <label class="szw-field"><span>Vazão de cada um (L/h)</span><input name="sprinkler_liters_per_hour" class="szw-input" inputmode="decimal" value="{{ (ep.sprinkler_liters_per_hour|string).replace('.', ',') if ep and ep.sprinkler_liters_per_hour else '' }}" data-stw-spr-lh></label>
+                                        <label class="szw-field"><span>Vazão de cada um (L/h)</span><input name="sprinkler_liters_per_hour" class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.sprinkler_liters_per_hour)).replace('.', ',') if ep and ep.sprinkler_liters_per_hour else '' }}" data-stw-spr-lh data-stw-decimal></label>
                                         <div class="stw-calc"><span>Lâmina por hora</span><strong data-stw-spr-lamina>—</strong></div>
                                     </div>
                                 </div>

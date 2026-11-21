@@ -178,6 +178,14 @@
         return null;
     }
 
+    const MAP_PIN_SVG =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="34" height="42" viewBox="0 0 34 42" fill="none">' +
+        '<ellipse cx="17" cy="39.5" rx="7" ry="2.2" fill="rgba(0,0,0,0.34)"/>' +
+        '<path d="M17 2C9.268 2 3 8.268 3 16c0 9.6 12.1 21.3 13.3 22.4a1.05 1.05 0 0 0 1.4 0C18.9 37.3 31 25.6 31 16 31 8.268 24.732 2 17 2Z" fill="#446A36" stroke="#FFFFFF" stroke-width="2.4"/>' +
+        '<circle cx="17" cy="15.5" r="5" fill="#FFFFFF"/>' +
+        '</svg>';
+    const MAP_PIN_DATA_URL = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(MAP_PIN_SVG)}`;
+
     function initLeafletEditor(options) {
         const {
             containerId,
@@ -189,6 +197,7 @@
             undoButton,
             clearButton,
             onStats,
+            onPinChange,
             initialCenter,
             initialZoom,
         } = options;
@@ -278,6 +287,29 @@
             emitStats();
         };
 
+        let interactionMode = 'draw';
+        let pinPoint = null;
+        let pinMarker = null;
+
+        const renderPin = () => {
+            if (pinMarker) {
+                map.removeLayer(pinMarker);
+                pinMarker = null;
+            }
+            if (interactionMode === 'pin' && pinPoint) {
+                pinMarker = L.marker([pinPoint.lat, pinPoint.lng], {
+                    interactive: false,
+                    zIndexOffset: 500,
+                    icon: L.divIcon({
+                        className: 'stw-map-pin-icon',
+                        html: MAP_PIN_SVG,
+                        iconSize: [34, 42],
+                        iconAnchor: [17, 40],
+                    }),
+                }).addTo(map);
+            }
+        };
+
         const renderEditor = () => {
             if (editLayer) {
                 map.removeLayer(editLayer);
@@ -285,6 +317,12 @@
             }
             markerLayer.clearLayers();
             midpointLayer.clearLayers();
+            if (interactionMode === 'pin') {
+                renderPin();
+                syncToHidden();
+                return;
+            }
+            renderPin();
             if (points.length >= 3) {
                 editLayer = L.polygon(points, {
                     color: '#ffffff',
@@ -345,8 +383,15 @@
         };
 
         map.on('click', (event) => {
+            const pt = clamp({ lat: event.latlng.lat, lng: event.latlng.lng });
+            if (interactionMode === 'pin') {
+                pinPoint = pt;
+                renderPin();
+                if (typeof onPinChange === 'function') onPinChange(pinPoint);
+                return;
+            }
             pushHistory();
-            points.push(clamp({ lat: event.latlng.lat, lng: event.latlng.lng }));
+            points.push(pt);
             selectedIndex = points.length - 1;
             renderEditor();
         });
@@ -420,6 +465,25 @@
             undo,
             clearPoints,
             resetToInitial,
+            setInteractionMode(mode) {
+                interactionMode = mode === 'pin' ? 'pin' : 'draw';
+                el.classList.toggle('is-pin-mode', interactionMode === 'pin');
+                renderEditor();
+            },
+            setPin(lat, lng, silent) {
+                if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                    pinPoint = { lat, lng };
+                } else {
+                    pinPoint = null;
+                }
+                renderPin();
+                if (!silent && typeof onPinChange === 'function') onPinChange(pinPoint);
+            },
+            clearPin() {
+                pinPoint = null;
+                renderPin();
+                if (typeof onPinChange === 'function') onPinChange(null);
+            },
             invalidate() {
                 window.requestAnimationFrame(() => {
                     map.invalidateSize();
@@ -454,6 +518,7 @@
             undoButton,
             clearButton,
             onStats,
+            onPinChange,
             initialCenter,
             initialZoom,
         } = options;
@@ -688,7 +753,42 @@
             });
         };
 
+        let interactionMode = 'draw';
+        let pinPoint = null;
+        let pinMarker = null;
+
+        const renderPin = () => {
+            if (pinMarker) {
+                pinMarker.setMap(null);
+                pinMarker = null;
+            }
+            if (interactionMode === 'pin' && pinPoint) {
+                pinMarker = new google.maps.Marker({
+                    position: pinPoint,
+                    map,
+                    clickable: false,
+                    zIndex: 260,
+                    icon: {
+                        url: MAP_PIN_DATA_URL,
+                        scaledSize: new google.maps.Size(34, 42),
+                        anchor: new google.maps.Point(17, 40),
+                    },
+                });
+            }
+        };
+
         const renderAll = () => {
+            if (interactionMode === 'pin') {
+                if (polygon) {
+                    polygon.setMap(null);
+                    polygon = null;
+                }
+                clearMarkers();
+                renderPin();
+                syncToHidden();
+                return;
+            }
+            renderPin();
             renderPolygon();
             renderMarkers();
             syncToHidden();
@@ -697,8 +797,15 @@
         listenerHandles.push(
             google.maps.event.addListener(map, 'click', (e) => {
                 if (skipNextMapClick) return;
+                const pt = clamp({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+                if (interactionMode === 'pin') {
+                    pinPoint = pt;
+                    renderPin();
+                    if (typeof onPinChange === 'function') onPinChange(pinPoint);
+                    return;
+                }
                 pushHistory();
-                points.push(clamp({ lat: e.latLng.lat(), lng: e.latLng.lng() }));
+                points.push(pt);
                 selectedIndex = points.length - 1;
                 renderAll();
             }),
@@ -774,6 +881,26 @@
             undo,
             clearPoints,
             resetToInitial,
+            setInteractionMode(mode) {
+                interactionMode = mode === 'pin' ? 'pin' : 'draw';
+                el.classList.toggle('is-pin-mode', interactionMode === 'pin');
+                map.setOptions({ draggableCursor: interactionMode === 'pin' ? 'crosshair' : null });
+                renderAll();
+            },
+            setPin(lat, lng, silent) {
+                if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                    pinPoint = { lat, lng };
+                } else {
+                    pinPoint = null;
+                }
+                renderPin();
+                if (!silent && typeof onPinChange === 'function') onPinChange(pinPoint);
+            },
+            clearPin() {
+                pinPoint = null;
+                renderPin();
+                if (typeof onPinChange === 'function') onPinChange(null);
+            },
             invalidate() {
                 window.requestAnimationFrame(() => {
                     if (window.google && window.google.maps) {
@@ -785,6 +912,10 @@
                 listenerHandles.forEach((h) => google.maps.event.removeListener(h));
                 listenerHandles.length = 0;
                 clearMarkers();
+                if (pinMarker) {
+                    pinMarker.setMap(null);
+                    pinMarker = null;
+                }
                 if (polygon) {
                     polygon.setMap(null);
                     polygon = null;
