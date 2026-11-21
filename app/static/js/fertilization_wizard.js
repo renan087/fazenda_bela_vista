@@ -387,19 +387,20 @@
             <div class="ftw-adder-box">
                 <div class="ftw-adder-head">
                     <div>
-                        <strong>Adicionar insumo do estoque</strong>
+                        <h3 class="ftw-adder-title">Adicionar insumo do estoque</h3>
                         <small>${INPUTS.length} cadastrados · ${inStockCount} com saldo disponível</small>
                     </div>
-                    <button type="button" class="sf-btn sf-btn-secondary sf-btn-sm" data-ftw-open-catalog>
-                        Explorar catálogo (${INPUTS.length})
+                    <button type="button" class="sf-btn sf-btn-secondary sf-btn-sm ftw-catalog-btn" data-ftw-open-catalog>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                        <span>Explorar catálogo (${INPUTS.length})</span>
                     </button>
                 </div>
 
                 <div class="ftw-quick-wrap">
-                    <label class="sl-search ftw-quick-search">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <label class="ftw-search-field">
                         <span class="sr-only">Buscar insumo do estoque</span>
-                        <input type="search" placeholder="Digite nome ou nutriente (ex.: Ureia, Boro, NPK)..." value="${esc(wiz.quickQuery)}" data-ftw-quick-input autocomplete="off">
+                        <svg class="ftw-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                        <input type="search" class="ftw-search-input" placeholder="Digite nome ou nutriente (ex.: Ureia, Boro, NPK)..." value="${esc(wiz.quickQuery)}" data-ftw-quick-input autocomplete="off">
                     </label>
                     ${qq ? `
                         <div class="ftw-quick-drop">
@@ -539,14 +540,27 @@
                 <span class="pd-chip is-${METHOD_META[wiz.method].tone}">${METHOD_META[wiz.method].label}${wiz.method === 'fertirrigacao' ? ` · ${wiz.durationMinutes} min` : ''}</span>
             </div>
 
-            ${hasShort ? `
-                <div class="pd-alert ${IS_SCHED ? 'is-warn' : 'is-error'}" role="alert">
-                    <strong>${IS_SCHED ? 'Aviso de estoque insuficiente para o planejamento:' : 'Estoque insuficiente para registrar agora:'}</strong>
-                    ${IS_SCHED
-                        ? 'Você pode salvar o agendamento agora — os itens faltantes aparecerão na lista de compras da Agenda.'
-                        : 'Volte ao passo 2 para ajustar as doses ou registre primeiro a entrada em Compras.'}
+            ${hasShort ? (IS_SCHED ? `
+                <div class="ftw-stock-notice" role="status">
+                    <span class="ftw-stock-notice-ico" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11 12h1v4h1"/></svg>
+                    </span>
+                    <div class="ftw-stock-notice-body">
+                        <strong>Alguns insumos estão com estoque insuficiente</strong>
+                        <p>Você pode salvar o agendamento normalmente e realizar a reposição depois, pela Agenda.</p>
+                    </div>
                 </div>
-            ` : ''}
+            ` : `
+                <div class="ftw-stock-notice is-block" role="alert">
+                    <span class="ftw-stock-notice-ico" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.3 3.9-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3.1l-8-14a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                    </span>
+                    <div class="ftw-stock-notice-body">
+                        <strong>Estoque insuficiente para registrar agora</strong>
+                        <p>Volte ao passo 2 para ajustar as doses ou registre primeiro a entrada em Compras.</p>
+                    </div>
+                </div>
+            `) : ''}
 
             <div class="ftw-rev-kpis">
                 <div><span class="pd-eyebrow">Operação</span><strong>${totals.ops} ${IS_SCHED ? (totals.ops > 1 ? 'agendamentos' : 'agendamento') : (totals.ops > 1 ? 'aplicações' : 'aplicação')}</strong><small>${totals.plots.length} talh${totals.plots.length > 1 ? 'ões' : 'ão'} × ${totals.datesCount} data${totals.datesCount > 1 ? 's' : ''}</small></div>
@@ -778,9 +792,10 @@
             </div>
             <div class="ftw-cat-tools">
                 <div class="ftw-cat-bar">
-                    <label class="sl-search ftw-cat-search">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                        <input type="search" placeholder="Buscar entre ${INPUTS.length} insumos..." value="${esc(wiz.catalogSearch)}" data-ftw-cat-search>
+                    <label class="ftw-search-field ftw-cat-search">
+                        <span class="sr-only">Buscar insumo no catálogo</span>
+                        <svg class="ftw-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                        <input type="search" class="ftw-search-input" placeholder="Buscar entre ${INPUTS.length} insumos..." value="${esc(wiz.catalogSearch)}" data-ftw-cat-search autocomplete="off">
                     </label>
                     <select class="ft-method-select" data-ftw-cat-sort aria-label="Ordenar">
                         <option value="popular" ${wiz.catalogSort === 'popular' ? 'selected' : ''}>Mais usados</option>

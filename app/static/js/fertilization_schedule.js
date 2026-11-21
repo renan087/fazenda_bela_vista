@@ -310,7 +310,7 @@
             <div class="ft-row ${checked ? 'is-selected' : ''}" ${CAN_WRITE ? `draggable="true" data-ft-drag="${s.id}"` : ''}>
                 <div class="ft-row-left">
                     ${CAN_WRITE ? `<span class="ft-grip" title="Arraste para outra data">${IC.grip}</span>` : ''}
-                    ${CAN_WRITE ? `<input type="checkbox" class="ft-check" ${checked ? 'checked' : ''} data-ft-check="${s.id}" aria-label="Selecionar ${esc(s.plot_name)}">` : ''}
+                    ${CAN_WRITE ? `<label class="dt-chk"><input type="checkbox" class="dt-check" ${checked ? 'checked' : ''} data-ft-check="${s.id}" aria-label="Selecionar ${esc(s.plot_name)}"></label>` : ''}
                     <div class="ft-row-info">
                         <div class="ft-row-title-line">
                             <button type="button" class="ft-row-title" data-ft-detail="${s.id}">${esc(s.plot_name)}</button>
