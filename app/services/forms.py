@@ -478,6 +478,9 @@ def create_variety(repository: FarmRepository, form: dict) -> CoffeeVariety:
             maturation_cycle=form["maturation_cycle"],
             flavor_profile=form.get("flavor_profile"),
             notes=form.get("notes"),
+            plant_height=form.get("plant_height"),
+            rust_resistance=form.get("rust_resistance"),
+            map_color=form.get("map_color"),
         )
     )
 
@@ -491,8 +494,27 @@ def update_variety(repository: FarmRepository, variety: CoffeeVariety, form: dic
             "maturation_cycle": form["maturation_cycle"],
             "flavor_profile": form.get("flavor_profile"),
             "notes": form.get("notes"),
+            "plant_height": form.get("plant_height"),
+            "rust_resistance": form.get("rust_resistance"),
+            "map_color": form.get("map_color"),
         },
     )
+
+
+def assign_variety_to_plots(repository: FarmRepository, variety: CoffeeVariety, plots: list[Plot]) -> list[Plot]:
+    """Passa os setores para a variedade (cadastro do setor e plantio ativo). Colheitas antigas não mudam."""
+    changed = []
+    for plot in plots:
+        planting = plot.active_planting
+        if plot.variety_id == variety.id and (planting is None or planting.variety_id == variety.id):
+            continue
+        plot.variety_id = variety.id
+        if planting is not None:
+            planting.variety_id = variety.id
+        changed.append(plot)
+    if changed:
+        repository.db.commit()
+    return changed
 
 
 def planting_for_season(plot: Plot, start, end):

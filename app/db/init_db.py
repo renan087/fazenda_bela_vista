@@ -837,6 +837,9 @@ def _sync_schema() -> None:
         "ALTER TABLE fertilization_schedule_items ADD COLUMN IF NOT EXISTS input_id INTEGER",
         "ALTER TABLE coffee_varieties ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL",
         "ALTER TABLE coffee_varieties ADD COLUMN IF NOT EXISTS flavor_profile VARCHAR(180)",
+        "ALTER TABLE coffee_varieties ADD COLUMN IF NOT EXISTS plant_height VARCHAR(20)",
+        "ALTER TABLE coffee_varieties ADD COLUMN IF NOT EXISTS rust_resistance VARCHAR(20)",
+        "ALTER TABLE coffee_varieties ADD COLUMN IF NOT EXISTS map_color VARCHAR(9)",
         "ALTER TABLE coffee_varieties DROP CONSTRAINT IF EXISTS coffee_varieties_name_key",
         "CREATE INDEX IF NOT EXISTS ix_coffee_varieties_organization_id ON coffee_varieties(organization_id)",
         """

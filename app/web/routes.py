@@ -106,6 +106,18 @@ from app.services.plot_wizard import (
     pick_auto_color,
 )
 from app.services.plots_overview import build_plots_overview_context
+from app.services.varieties_overview import (
+    CYCLES as VARIETY_CYCLES,
+    FLAVOR_TAGS,
+    HEIGHTS as VARIETY_HEIGHTS,
+    KNOWN_CULTIVARS,
+    RUSTS as VARIETY_RUSTS,
+    SPECIES as VARIETY_SPECIES,
+    br_number,
+    build_varieties_overview,
+    color_options,
+    plot_variety_id,
+)
 from app.services.season_goals import (
     closing_rows,
     copy_fertilization_program,
@@ -170,7 +182,7 @@ from app.models import (
     SoilAnalysis,
     User,
 )
-from app.repositories.farm import FarmRepository
+from app.repositories.farm import FarmRepository, _normalize_plot_search_text
 from app.services.asaas_customers import (
     asaas_digits,
     build_asaas_customer_payload,
@@ -336,6 +348,7 @@ from app.services.forms import (
     update_soil_analysis,
     update_user,
     update_variety,
+    assign_variety_to_plots,
     conclude_fertilization_schedule,
     delete_fertilization,
     delete_fertilization_schedule,
@@ -17579,10 +17592,49 @@ def delete_input_recommendation_action(
     return _redirect("/insumos/recomendacao")
 
 
+def _variety_form_values(name, species, maturation_cycle, flavor_profile, notes, plant_height, rust_resistance, map_color) -> dict:
+    clean = lambda value: (value or "").strip() or None  # noqa: E731
+    color = clean(map_color)
+    if color and not re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
+        color = None
+    return {
+        "name": " ".join((name or "").split()),
+        "species": clean(species) or "Arábica",
+        "maturation_cycle": clean(maturation_cycle) or "Médio",
+        "flavor_profile": (clean(flavor_profile) or "")[:180] or None,
+        "notes": clean(notes),
+        "plant_height": clean(plant_height),
+        "rust_resistance": clean(rust_resistance),
+        "map_color": color,
+    }
+
+
+def _variety_name_taken(repo: FarmRepository, scope: dict, name: str, ignore_id: int | None = None) -> bool:
+    needle = _normalize_plot_search_text(name).strip()
+    return any(
+        v.id != ignore_id and _normalize_plot_search_text(v.name).strip() == needle
+        for v in repo.list_varieties(organization_id=scope.get("active_organization_id"))
+    )
+
+
+def _variety_scope_plots(request: Request, repo: FarmRepository, scope: dict) -> list[Plot]:
+    farm_ids, _ = _scoped_plot_filters(request, scope.get("active_season"))
+    return repo.list_plots(farm_ids=farm_ids)
+
+
+def _link_variety_plots(request: Request, repo: FarmRepository, scope: dict, variety: CoffeeVariety, plot_ids: list[str]) -> int:
+    wanted = set(_int_list([value for value in plot_ids if str(value).isdigit()]))
+    if not wanted:
+        return 0
+    plots = [plot for plot in _variety_scope_plots(request, repo, scope) if plot.id in wanted]
+    return len(assign_variety_to_plots(repo, variety, plots))
+
+
 @router.get("/variedades")
 def varieties_page(
     request: Request,
     edit_id: int | None = None,
+    variedade: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -17592,6 +17644,27 @@ def varieties_page(
     edit_variety = repo.get_variety(edit_id) if edit_id else None
     if edit_variety and not _variety_matches_scope(edit_variety, scope):
         edit_variety = None
+    varieties = repo.list_varieties(organization_id=scope.get("active_organization_id"))
+    plots = _variety_scope_plots(request, repo, scope)
+    overview = build_varieties_overview(db, varieties, plots, scope.get("active_season"))
+    by_id = {item["id"]: item for item in overview["items"]}
+    selected_id = variedade if variedade in by_id else (edit_variety.id if edit_variety else None)
+    if selected_id is None and overview["items"]:
+        selected_id = max(overview["items"], key=lambda item: item["area"])["id"]
+    names = {v.id: v.name for v in varieties}
+    colors = {item["id"]: item["color"] for item in overview["items"]}
+    assign_plots = [
+        {
+            "id": plot.id,
+            "name": plot.name,
+            "area": br_number(float(plot.area_hectares or 0)),
+            "current_id": plot_variety_id(plot),
+            "current": names.get(plot_variety_id(plot)),
+            "color": colors.get(plot_variety_id(plot)),
+            "year": (plot.active_planting.planting_date.year if plot.active_planting and plot.active_planting.planting_date else (plot.planting_date.year if plot.planting_date else None)),
+        }
+        for plot in sorted(plots, key=lambda p: p.name or "")
+    ]
     return templates.TemplateResponse(
         "varieties.html",
         _base_context(
@@ -17600,8 +17673,20 @@ def varieties_page(
             csrf_token,
             "varieties",
             _repo=repo,
-            varieties=repo.list_varieties(organization_id=scope.get("active_organization_id")),
+            varieties=varieties,
+            overview=overview,
+            selected_id=selected_id,
             edit_variety=edit_variety,
+            edit_item=by_id.get(edit_variety.id) if edit_variety else None,
+            assign_plots=assign_plots,
+            known_cultivars=KNOWN_CULTIVARS,
+            variety_cycles=[label for label, _ in VARIETY_CYCLES],
+            variety_heights=VARIETY_HEIGHTS,
+            variety_rusts=[label for label, _ in VARIETY_RUSTS],
+            variety_species=VARIETY_SPECIES,
+            flavor_tags=FLAVOR_TAGS,
+            color_options=color_options(overview["items"], edit_variety.id if edit_variety else None),
+            existing_variety_names=[v.name for v in varieties if not edit_variety or v.id != edit_variety.id],
         ),
     )
 
@@ -17611,29 +17696,32 @@ def create_variety_action(
     request: Request,
     csrf_token: str = Form(...),
     name: str = Form(...),
-    species: str = Form(...),
-    maturation_cycle: str = Form(...),
+    species: str = Form("Arábica"),
+    maturation_cycle: str = Form("Médio"),
     flavor_profile: str | None = Form(None),
     notes: str | None = Form(None),
+    plant_height: str | None = Form(None),
+    rust_resistance: str | None = Form(None),
+    map_color: str | None = Form(None),
+    plot_ids: list[str] = Form(default=[]),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     scope = _global_scope_context(request, repo, user)
-    create_variety(
-        repo,
-        {
-            "organization_id": scope.get("active_organization_id"),
-            "name": name,
-            "species": species,
-            "maturation_cycle": maturation_cycle,
-            "flavor_profile": flavor_profile,
-            "notes": notes,
-        },
-    )
-    _flash(request, "success", "Variedade cadastrada com sucesso.")
-    return _redirect("/variedades")
+    values = _variety_form_values(name, species, maturation_cycle, flavor_profile, notes, plant_height, rust_resistance, map_color)
+    if not values["name"]:
+        _flash(request, "error", "Escreva o nome da variedade.")
+        return _redirect("/variedades")
+    if _variety_name_taken(repo, scope, values["name"]):
+        _flash(request, "error", f"{values['name']} já está cadastrada. Edite a existente ou use outro nome.")
+        return _redirect("/variedades")
+    variety = create_variety(repo, {"organization_id": scope.get("active_organization_id"), **values})
+    linked = _link_variety_plots(request, repo, scope, variety, plot_ids)
+    suffix = f" e vinculada a {linked} setor(es)" if linked else ""
+    _flash(request, "success", f"Variedade cadastrada{suffix}.")
+    return _redirect(f"/variedades?variedade={variety.id}")
 
 
 @router.post("/variedades/{variety_id}/editar")
@@ -17642,10 +17730,14 @@ def update_variety_action(
     request: Request,
     csrf_token: str = Form(...),
     name: str = Form(...),
-    species: str = Form(...),
-    maturation_cycle: str = Form(...),
+    species: str = Form("Arábica"),
+    maturation_cycle: str = Form("Médio"),
     flavor_profile: str | None = Form(None),
     notes: str | None = Form(None),
+    plant_height: str | None = Form(None),
+    rust_resistance: str | None = Form(None),
+    map_color: str | None = Form(None),
+    plot_ids: list[str] = Form(default=[]),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -17654,21 +17746,20 @@ def update_variety_action(
     scope = _global_scope_context(request, repo, user)
     variety = repo.get_variety(variety_id)
     if not variety or not _variety_matches_scope(variety, scope):
-        _flash(request, "error", "Variedade nao encontrada.")
+        _flash(request, "error", "Variedade não encontrada.")
         return _redirect("/variedades")
-    update_variety(
-        repo,
-        variety,
-        {
-            "name": name,
-            "species": species,
-            "maturation_cycle": maturation_cycle,
-            "flavor_profile": flavor_profile,
-            "notes": notes,
-        },
-    )
-    _flash(request, "success", "Variedade atualizada com sucesso.")
-    return _redirect("/variedades")
+    values = _variety_form_values(name, species, maturation_cycle, flavor_profile, notes, plant_height, rust_resistance, map_color)
+    if not values["name"]:
+        _flash(request, "error", "Escreva o nome da variedade.")
+        return _redirect(f"/variedades?edit_id={variety.id}")
+    if _variety_name_taken(repo, scope, values["name"], ignore_id=variety.id):
+        _flash(request, "error", f"{values['name']} já está cadastrada. Use outro nome.")
+        return _redirect(f"/variedades?edit_id={variety.id}")
+    update_variety(repo, variety, values)
+    linked = _link_variety_plots(request, repo, scope, variety, plot_ids)
+    suffix = f" e vinculada a mais {linked} setor(es)" if linked else ""
+    _flash(request, "success", f"Variedade atualizada{suffix}.")
+    return _redirect(f"/variedades?variedade={variety.id}")
 
 
 @router.post("/variedades/{variety_id}/excluir")
@@ -17684,13 +17775,13 @@ def delete_variety_action(
     scope = _global_scope_context(request, repo, user)
     variety = repo.get_variety(variety_id)
     if not variety or not _variety_matches_scope(variety, scope):
-        _flash(request, "error", "Variedade nao encontrada.")
+        _flash(request, "error", "Variedade não encontrada.")
         return _redirect("/variedades")
     if variety.plots:
-        _flash(request, "error", "Nao e possivel excluir a variedade enquanto houver setores vinculados.")
-        return _redirect("/variedades")
+        _flash(request, "error", f"{variety.name} ainda está em {len(variety.plots)} setor(es). Troque a variedade desses setores antes de excluir.")
+        return _redirect(f"/variedades?variedade={variety.id}")
     repo.delete(variety)
-    _flash(request, "success", "Variedade excluida com sucesso.")
+    _flash(request, "success", "Variedade excluída.")
     return _redirect("/variedades")
 
 

@@ -1,160 +1,475 @@
 {% extends "base.html" %}
+{% macro br1(value) %}{{ ('%.1f'|format(value))|replace('.', ',') }}{% endmacro %}
 {% block content %}
-{% set variety_stats = namespace(total=varieties|length, arabica=0, robusta=0, flavor=0, notes=0) %}
-{% for variety in varieties %}
-    {% set species_norm = (variety.species or '')|lower %}
-    {% if 'arab' in species_norm %}
-        {% set variety_stats.arabica = variety_stats.arabica + 1 %}
-    {% elif 'rob' in species_norm or 'conilon' in species_norm %}
-        {% set variety_stats.robusta = variety_stats.robusta + 1 %}
-    {% endif %}
-    {% if variety.flavor_profile %}
-        {% set variety_stats.flavor = variety_stats.flavor + 1 %}
-    {% endif %}
-    {% if variety.notes %}
-        {% set variety_stats.notes = variety_stats.notes + 1 %}
-    {% endif %}
-{% endfor %}
-<div class="stock-page-shell sf-page">
+<link rel="stylesheet" href="{{ url_for('static', path='css/varieties.css') }}?v=20261121vr1">
+{% set ov = overview %}
+<div class="sf-page vr-page" data-vr-page data-selected="{{ selected_id or '' }}">
     <header class="sf-page-header">
         <div class="min-w-0">
             <h1 class="sf-page-title">Variedades</h1>
-            <p class="sf-page-subtitle">Catálogo varietal com ciclo, perfil sensorial e observações de manejo.</p>
+            <p class="sf-page-subtitle">As cultivares de café da propriedade, onde estão plantadas e como produzem.</p>
         </div>
-        <button type="button" class="sf-btn sf-btn-primary" data-variety-modal-open>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-            Nova variedade
-        </button>
+        <div class="vr-head-actions">
+            <a href="/mapa" class="sf-btn sf-btn-secondary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3Z"/><path d="M9 3v15M15 6v15"/></svg>
+                Ver no mapa
+            </a>
+            {% if edit_variety %}
+            <a href="/variedades?novo=1" class="sf-btn sf-btn-primary">
+            {% else %}
+            <button type="button" class="sf-btn sf-btn-primary" data-vr-new>
+            {% endif %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Nova variedade
+            {% if edit_variety %}</a>{% else %}</button>{% endif %}
+        </div>
     </header>
 
+    {% if ov['items'] %}
     <section class="sf-kpis" aria-label="Resumo das variedades">
-        <div class="sf-kpi"><span class="sf-kpi-label">Variedades cadastradas</span><span class="sf-kpi-value">{{ variety_stats.total }}</span><span class="sf-kpi-hint">base varietal do sistema</span></div>
-        <div class="sf-kpi"><span class="sf-kpi-label">Arábica</span><span class="sf-kpi-value">{{ variety_stats.arabica }}</span><span class="sf-kpi-hint">{{ variety_stats.robusta }} robusta / conilon</span></div>
-        <div class="sf-kpi"><span class="sf-kpi-label">Com perfil sensorial</span><span class="sf-kpi-value">{{ variety_stats.flavor }}</span><span class="sf-kpi-hint">de {{ variety_stats.total }} variedade(s)</span></div>
-        <div class="sf-kpi"><span class="sf-kpi-label">Com observações</span><span class="sf-kpi-value">{{ variety_stats.notes }}</span><span class="sf-kpi-hint">notas de campo registradas</span></div>
+        <div class="sf-kpi"><span class="sf-kpi-label">Variedades cadastradas</span><span class="sf-kpi-value">{{ ov.total }}</span><span class="sf-kpi-hint">{{ ov.used_count }} plantada(s){% if ov.unused_count %} · {{ ov.unused_count }} sem setor{% endif %}</span></div>
+        <div class="sf-kpi"><span class="sf-kpi-label">Área com café</span><span class="sf-kpi-value">{{ ov.area_label }} ha</span><span class="sf-kpi-hint">em {{ ov.plot_count }} setor(es) da fazenda</span></div>
+        <div class="sf-kpi"><span class="sf-kpi-label">Plantas</span><span class="sf-kpi-value">{{ ov.plants_label }}</span><span class="sf-kpi-hint">{% if ov.plants_per_ha %}média de {{ ov.plants_per_ha }} por hectare{% else %}informe as plantas nos setores{% endif %}</span></div>
+        <div class="sf-kpi">
+            {% if ov.best %}
+            <span class="sf-kpi-label">Mais produtiva em {{ ov.last_label }}</span><span class="sf-kpi-value vr-kpi-name">{{ ov.best.variety.name }}</span><span class="sf-kpi-hint vr-good">{{ br1(ov.best.last_yield) }} sc/ha{% if ov.farm_last %} · fazenda {{ br1(ov.farm_last) }}{% endif %}</span>
+            {% else %}
+            <span class="sf-kpi-label">Produtividade</span><span class="sf-kpi-value">—</span><span class="sf-kpi-hint">aparece quando houver colheita lançada</span>
+            {% endif %}
+        </div>
     </section>
 
-    <section class="sf-toolbar" aria-label="Busca">
-        <label class="sf-search">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-            <span class="sr-only">Buscar variedades</span>
-            <input type="search" placeholder="Buscar nome, espécie, ciclo ou perfil" data-varieties-search>
-        </label>
-    </section>
-
-    {% if varieties %}
-    <section class="sf-table-card" aria-label="Variedades cadastradas">
-        <table class="sf-table sf-table-responsive">
-            <thead><tr><th>Variedade</th><th>Espécie</th><th>Ciclo</th><th>Perfil sensorial</th><th>Observações</th><th><span class="sr-only">Ações</span></th></tr></thead>
-            <tbody>
-                {% for variety in varieties %}
-                <tr data-variety-row data-variety-search="{{ (variety.name or '') ~ ' ' ~ (variety.species or '') ~ ' ' ~ (variety.maturation_cycle or '') ~ ' ' ~ (variety.flavor_profile or '') ~ ' ' ~ (variety.notes or '') }}">
-                    <td data-label="Variedade" class="sf-td-title">{{ variety.name }}</td>
-                    <td data-label="Espécie"><span class="sf-pill">{{ variety.species }}</span></td>
-                    <td data-label="Ciclo">{{ variety.maturation_cycle or '—' }}</td>
-                    <td data-label="Perfil sensorial"><span class="stock-history-note-clamp" title="{{ variety.flavor_profile or '' }}">{{ variety.flavor_profile or '—' }}</span></td>
-                    <td data-label="Observações"><span class="stock-history-note-clamp text-slate-500" title="{{ variety.notes or '' }}">{{ variety.notes or '—' }}</span></td>
-                    <td class="sf-td-actions">
-                        <a href="/variedades?edit_id={{ variety.id }}" class="sf-icon-btn" aria-label="Editar {{ variety.name }}" title="Editar">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                        </a>
-                        <details class="sf-menu" data-sf-dropdown>
-                            <summary class="sf-icon-btn" aria-label="Mais ações para {{ variety.name }}" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
-                            <div class="sf-menu-panel">
-                                <form method="post" action="/variedades/{{ variety.id }}/excluir" onsubmit="return confirm('Excluir a variedade {{ variety.name }}? Esta ação não pode ser desfeita.');">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                    <button type="submit" class="sf-menu-danger">Excluir variedade</button>
-                                </form>
-                            </div>
-                        </details>
-                    </td>
-                </tr>
+    {% if ov.used_count %}
+    <section class="vr-insights">
+        <div class="vr-box">
+            <div class="vr-box-head"><h2>Área por variedade</h2><span>{{ ov.area_label }} ha plantados</span></div>
+            <div class="vr-stack" role="img" aria-label="{% for s in ov.segments %}{{ s.item.variety.name }} {{ s.pct }}%{% if not loop.last %}, {% endif %}{% endfor %}">
+                {% for s in ov.segments %}<span style="flex: {{ s.item.area }} 1 0; background: {{ s.item.color }}"></span>{% endfor %}
+            </div>
+            <ul class="vr-legend">
+                {% for s in ov.segments %}
+                <li><span class="vr-dot" style="background: {{ s.item.color }}"></span><span class="vr-legend-name">{{ s.item.variety.name }}</span><span class="vr-num">{{ s.item.area_label }} ha · {{ s.pct }}%</span></li>
                 {% endfor %}
-            </tbody>
-        </table>
+            </ul>
+        </div>
+        <div class="vr-box">
+            <div class="vr-box-head"><h2>Quando cada uma fica pronta</h2><span>pelo ciclo de maturação</span></div>
+            <div class="vr-cal" role="table" aria-label="Janela de colheita por variedade">
+                <div class="vr-cal-row" role="row"><span role="columnheader"><span class="sr-only">Variedade</span></span>{% for m in ov.months %}<span class="vr-cal-m" role="columnheader">{{ m }}</span>{% endfor %}</div>
+                {% for item in ov.calendar %}
+                <div class="vr-cal-row" role="row">
+                    <span class="vr-cal-name" role="rowheader">{{ item.variety.name }}</span>
+                    {% for on in item.cells %}<span role="cell" class="vr-cal-cell" {% if on %}style="background: {{ item.color }}"{% endif %}><span class="sr-only">{{ ov.months[loop.index0] }}: {{ 'colheita' if on else '—' }}</span></span>{% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+            <p class="vr-cal-foot">Ordem sugerida de colheita: {% for item in ov.calendar %}{{ item.variety.name }}{% if not loop.last %} → {% endif %}{% endfor %}. <a href="/producao" class="vr-link">Ir para Colheita</a></p>
+        </div>
     </section>
-    <p class="sf-empty hidden" data-varieties-empty>Nenhuma variedade corresponde à busca digitada.</p>
+    {% endif %}
+
+    <section class="vr-toolbar" aria-label="Filtros">
+        <label class="sf-search vr-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <span class="sr-only">Buscar variedade</span>
+            <input type="search" placeholder="Buscar por nome, ciclo ou sabor" data-vr-search>
+        </label>
+        <div class="vr-chips" role="group" aria-label="Mostrar">
+            <button type="button" class="vr-chip is-on" aria-pressed="true" data-vr-filter="todas">Todas <span class="vr-num">{{ ov.total }}</span></button>
+            <button type="button" class="vr-chip" aria-pressed="false" data-vr-filter="uso">Plantadas <span class="vr-num">{{ ov.used_count }}</span></button>
+            <button type="button" class="vr-chip" aria-pressed="false" data-vr-filter="sem">Sem setor <span class="vr-num">{{ ov.unused_count }}</span></button>
+        </div>
+        <div class="vr-view" role="group" aria-label="Visualização">
+            <button type="button" class="is-on" aria-pressed="true" aria-label="Ver em cartões" data-vr-view="cards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
+            <button type="button" aria-pressed="false" aria-label="Ver em lista" data-vr-view="lista"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
+        </div>
+    </section>
+
+    <div class="vr-body">
+        <div class="vr-main">
+            <div class="vr-grid" data-vr-cards>
+                {% for item in ov['items'] %}
+                {% set v = item.variety %}
+                <button type="button" class="vr-card" data-vr-item="{{ item.id }}" data-vr-used="{{ 1 if item.used else 0 }}" data-vr-search="{{ item.search }}" aria-pressed="false" aria-controls="vr-detail">
+                    <span class="vr-card-top">
+                        <span class="vr-swatch" style="background: {{ item.color }}"></span>
+                        <span class="min-w-0">
+                            <span class="vr-card-name">{{ v.name }}</span>
+                            <span class="vr-card-meta">{{ v.species }} · ciclo {{ item.cycle_label|lower }} · colhe {{ item.window }}</span>
+                        </span>
+                    </span>
+                    {% if item.used %}
+                    <span class="vr-stats">
+                        <span><small>Área</small><strong class="vr-num">{{ item.area_label }} ha</strong></span>
+                        <span><small>Setores</small><strong class="vr-num">{{ item.plots|length }}</strong></span>
+                        <span><small>Plantas</small><strong class="vr-num">{{ item.plants_label }}</strong></span>
+                    </span>
+                    <span class="vr-card-foot">
+                        {% if item.last_yield is not none %}
+                        <span>Safra {{ item.last_label }} <strong class="vr-num">{{ br1(item.last_yield) }} sc/ha</strong></span>
+                        {% if item.delta is not none %}<span class="vr-num {{ 'vr-good' if item.delta >= 0 else 'vr-bad' }}">{{ ('%+.1f'|format(item.delta))|replace('.', ',')|replace('-', '−') }} vs. fazenda</span>{% endif %}
+                        {% else %}
+                        <span>Sem colheita lançada ainda</span>
+                        {% endif %}
+                    </span>
+                    {% else %}
+                    <span class="vr-unused">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+                        Ainda não está em nenhum setor.
+                    </span>
+                    {% endif %}
+                </button>
+                {% endfor %}
+            </div>
+
+            <div class="vr-table hidden" data-vr-table>
+                <div class="vr-trow vr-thead" aria-hidden="true"><span>Variedade</span><span>Espécie</span><span>Ciclo</span><span class="vr-hide-t">Setores</span><span class="vr-hide-t">Área</span><span class="vr-hide-t">Plantas</span><span class="vr-hide-t">Última safra</span><span></span></div>
+                {% for item in ov['items'] %}
+                <button type="button" class="vr-trow" data-vr-item="{{ item.id }}" data-vr-used="{{ 1 if item.used else 0 }}" data-vr-search="{{ item.search }}" aria-controls="vr-detail">
+                    <span class="vr-tname"><span class="vr-dot" style="background: {{ item.color }}"></span><span>{{ item.variety.name }}</span></span>
+                    <span>{{ item.variety.species }}</span>
+                    <span>{{ item.cycle_label }}</span>
+                    <span class="vr-num vr-hide-t">{{ item.plots|length }}</span>
+                    <span class="vr-num vr-hide-t">{{ item.area_label ~ ' ha' if item.used else '—' }}</span>
+                    <span class="vr-num vr-hide-t">{{ item.plants_label if item.used else '—' }}</span>
+                    <span class="vr-num vr-hide-t">{{ br1(item.last_yield) ~ ' sc/ha' if item.last_yield is not none else '—' }}</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                </button>
+                {% endfor %}
+            </div>
+
+            <div class="sf-empty hidden" data-vr-empty>
+                <p class="font-semibold text-slate-900">Nenhuma variedade encontrada</p>
+                <p>Confira a grafia ou mude o filtro.</p>
+            </div>
+        </div>
+
+        <div class="vr-backdrop" data-vr-close-detail></div>
+        <aside class="vr-detail" id="vr-detail" aria-label="Detalhes da variedade" data-vr-detail>
+            {% for item in ov['items'] %}
+            {% set v = item.variety %}
+            <section class="vr-panel" data-vr-panel="{{ item.id }}" hidden>
+                <div class="vr-grab" aria-hidden="true"></div>
+                <div class="vr-panel-head">
+                    <span class="vr-swatch vr-swatch-lg" style="background: {{ item.color }}"></span>
+                    <div class="min-w-0 flex-1">
+                        <h2>{{ v.name }}</h2>
+                        <div class="vr-pills">
+                            <span class="vr-pill vr-pill-brand">{{ v.species }}</span>
+                            <span class="vr-pill">Ciclo {{ item.cycle_label|lower }}</span>
+                            {% if item.rust_key == 'res' %}<span class="vr-pill vr-pill-ok">Resistente à ferrugem</span>
+                            {% elif item.rust_key == 'mod' %}<span class="vr-pill vr-pill-info">Resistência moderada</span>
+                            {% elif item.rust_key == 'sus' %}<span class="vr-pill vr-pill-warn">Suscetível à ferrugem</span>{% endif %}
+                        </div>
+                    </div>
+                    <button type="button" class="sf-icon-btn vr-close" aria-label="Fechar detalhes" data-vr-close-detail><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+                </div>
+                <div class="vr-panel-actions">
+                    <a href="/variedades?edit_id={{ v.id }}" class="sf-btn sf-btn-secondary vr-grow">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                        Editar
+                    </a>
+                    <button type="button" class="sf-icon-btn vr-ib" aria-label="Excluir {{ v.name }}" data-vr-del-open="{{ v.id }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button>
+                </div>
+                <div class="vr-tabs" role="tablist" aria-label="Seções">
+                    <button type="button" role="tab" aria-selected="true" data-vr-tab="geral">Visão geral</button>
+                    <button type="button" role="tab" aria-selected="false" data-vr-tab="setores">Setores ({{ item.plots|length }})</button>
+                    <button type="button" role="tab" aria-selected="false" data-vr-tab="safras">Safras</button>
+                </div>
+
+                <div class="vr-tabpanel" data-vr-tabpanel="geral">
+                    {% if item.used %}
+                    <div class="vr-mini">
+                        <div><small>Área plantada</small><strong class="vr-num">{{ item.area_label }} ha</strong></div>
+                        <div><small>Plantas</small><strong class="vr-num">{{ item.plants_label }}</strong></div>
+                        <div><small>Idade média</small><strong class="vr-num">{{ item.age_label }}</strong></div>
+                        <div><small>Produtividade {{ item.last_label or '' }}</small><strong class="vr-num">{{ br1(item.last_yield) ~ ' sc/ha' if item.last_yield is not none else '—' }}</strong></div>
+                    </div>
+                    {% else %}
+                    <div class="vr-note-warn">
+                        <span><strong>Ainda sem setor.</strong> Vincule esta variedade a um setor para ver área, plantas e colheita aqui.</span>
+                        <a href="/variedades?edit_id={{ v.id }}&passo=2" class="sf-btn sf-btn-secondary">Vincular setores</a>
+                    </div>
+                    {% endif %}
+                    <div>
+                        <span class="vr-sub">Janela de colheita prevista</span>
+                        <div class="vr-window">
+                            {% for on in item.cells %}<span><span class="vr-window-bar" {% if on %}style="background: {{ item.color }}"{% endif %}></span><small>{{ ov.months[loop.index0] }}</small></span>{% endfor %}
+                        </div>
+                    </div>
+                    <dl class="vr-dl">
+                        <dt>Porte</dt><dd>{{ v.plant_height or 'Não informado' }}</dd>
+                        <dt>Ferrugem</dt><dd>{{ v.rust_resistance or 'Não informado' }}</dd>
+                        <dt>Perfil na xícara</dt><dd>{{ v.flavor_profile or 'Não informado' }}</dd>
+                        <dt>Observações</dt><dd class="vr-muted">{{ v.notes or '—' }}</dd>
+                    </dl>
+                    <div>
+                        <span class="vr-sub">Aparece em</span>
+                        <div class="vr-links">
+                            {% if item.used %}
+                            <a href="/setores?variety_id={{ v.id }}">{{ item.plots|length }} setor(es)</a>
+                            {% if item.in_active_season %}<a href="/safras">Safra ativa · {{ item.in_active_season }} setor(es)</a>{% endif %}
+                            <a href="/mapa">Mapa</a>
+                            <a href="/producao">Colheita</a>
+                            {% else %}
+                            <span class="vr-muted">Nenhum módulo ainda.</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="vr-tabpanel" data-vr-tabpanel="setores" hidden>
+                    {% if item.used %}
+                    <ul class="vr-plots">
+                        {% for p in item.plots %}
+                        <li><a href="/setores?edit_id={{ p.plot.id }}">
+                            <span class="min-w-0 flex-1"><strong>{{ p.plot.name }}</strong><small>{% if p.year %}Plantado em {{ p.year }}{% else %}Plantio sem data{% endif %}{% if p.spacing %} · {{ p.spacing }}{% endif %}</small></span>
+                            <span class="vr-right"><strong class="vr-num">{{ p.area }} ha</strong><small class="vr-num">{{ p.plants }} pl.</small></span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                        </a></li>
+                        {% endfor %}
+                    </ul>
+                    <div class="vr-panel-actions">
+                        <a href="/mapa" class="sf-btn sf-btn-secondary vr-grow">Ver no mapa</a>
+                        <a href="/variedades?edit_id={{ v.id }}&passo=2" class="sf-btn sf-btn-secondary vr-grow">Vincular outro setor</a>
+                    </div>
+                    {% else %}
+                    <p class="vr-muted">Nenhum setor usa esta variedade. <a href="/variedades?edit_id={{ v.id }}&passo=2" class="vr-link">Vincular setores</a></p>
+                    {% endif %}
+                </div>
+
+                <div class="vr-tabpanel" data-vr-tabpanel="safras" hidden>
+                    {% if item.history and item.used %}
+                    <div class="vr-chart-head"><span class="vr-sub">Produtividade (sc/ha)</span><span class="vr-legend-avg"><span></span>média da fazenda</span></div>
+                    <div class="vr-bars">
+                        {% for h in item.history %}
+                        <div class="vr-bar-col">
+                            <span class="vr-num vr-bar-val">{{ br1(h.value) if h.value is not none else '—' }}</span>
+                            <span class="vr-bar" style="height: {{ [h.bar_pct, 3]|max }}%; background: {{ item.color if h.value is not none else '#EEF1ED' }}"></span>
+                            {% if h.farm %}<span class="vr-bar-avg" style="bottom: {{ h.farm_pct }}%"></span>{% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="vr-bars-labels">{% for h in item.history %}<span>{{ h.label }}</span>{% endfor %}</div>
+                    {% endif %}
+                    {% if item.used %}
+                    <ul class="vr-plots">
+                        {% if item.in_active_season %}
+                        <li><a href="/safras"><span class="flex-1"><strong>Safra ativa</strong><small>{{ item.in_active_season }} setor(es){% if item.estimate %} · estimativa {{ item.estimate }} sacas{% endif %}</small></span><span class="vr-pill vr-pill-info">Em andamento</span></a></li>
+                        {% endif %}
+                        {% if item.last_label %}
+                        <li><a href="/producao"><span class="flex-1"><strong>Safra {{ item.last_label }}</strong><small>colhidas {{ item.last_sacks }} sacas</small></span></a></li>
+                        {% endif %}
+                    </ul>
+                    {% if not item.history %}<p class="vr-muted">Sem colheitas ainda. Os números aparecem quando um setor com esta variedade tiver colheita lançada.</p>{% endif %}
+                    {% else %}
+                    <p class="vr-muted">Sem colheitas ainda. Os números aparecem quando um setor com esta variedade tiver colheita lançada.</p>
+                    {% endif %}
+                </div>
+
+                <dialog class="app-modal vr-dialog" data-vr-del="{{ v.id }}" aria-labelledby="vr-del-t-{{ v.id }}">
+                    {% if item.used %}
+                    <div class="vr-dialog-ic vr-dialog-warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3 2 20h20Z"/><path d="M12 10v4M12 17h.01"/></svg></div>
+                    <h2 id="vr-del-t-{{ v.id }}">Ainda não dá para excluir</h2>
+                    <p>{{ v.name }} está em {{ item.plots|length }} setor(es), com {{ item.area_label }} ha. Troque a variedade desses setores primeiro. O histórico de colheitas continua guardado.</p>
+                    <div class="vr-dialog-actions">
+                        <button type="button" class="sf-btn sf-btn-secondary" data-vr-del-close>Entendi</button>
+                        <button type="button" class="sf-btn sf-btn-primary" data-vr-del-close data-vr-goto-tab="setores">Ver os setores</button>
+                    </div>
+                    {% else %}
+                    <div class="vr-dialog-ic vr-dialog-danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></div>
+                    <h2 id="vr-del-t-{{ v.id }}">Excluir {{ v.name }}?</h2>
+                    <p>Ela não está em nenhum setor desta fazenda. Esta ação não pode ser desfeita.</p>
+                    <form method="post" action="/variedades/{{ v.id }}/excluir" class="vr-dialog-actions">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="button" class="sf-btn sf-btn-secondary" data-vr-del-close>Cancelar</button>
+                        <button type="submit" class="sf-btn vr-btn-danger">Excluir variedade</button>
+                    </form>
+                    {% endif %}
+                </dialog>
+            </section>
+            {% endfor %}
+        </aside>
+    </div>
     {% else %}
-    <div class="sf-empty">
+    <div class="sf-empty vr-empty">
         <p class="font-semibold text-slate-900">Nenhuma variedade cadastrada</p>
-        <p>Cadastre as variedades para usá-las em setores, safras e colheita.</p>
+        <p>Cadastre as cultivares plantadas para ver área, setores e colheita de cada uma.</p>
+        <button type="button" class="sf-btn sf-btn-primary" data-vr-new>Cadastrar a primeira variedade</button>
     </div>
     {% endif %}
 </div>
 
-<dialog id="variety-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-2xl overflow-hidden" aria-labelledby="variety-modal-title">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
-                <h2 id="variety-modal-title" class="text-2xl font-semibold">{% if edit_variety %}Editar variedade{% else %}Nova variedade{% endif %}</h2>
-                <p class="mt-2 text-sm text-slate-500">Mantenha o catálogo técnico organizado para uso em setores, colheita e análise operacional.</p>
+{% set ev = edit_variety %}
+<dialog id="vr-form-modal" class="app-modal vr-modal" aria-labelledby="vr-form-title" data-vr-form-modal data-editing="{{ 1 if ev else 0 }}" data-close-url="{{ '/variedades?variedade=' ~ ev.id if ev else '' }}">
+    <form method="post" action="{% if ev %}/variedades/{{ ev.id }}/editar{% else %}/variedades{% endif %}" class="vr-form" data-vr-form novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="flavor_profile" value="{{ ev.flavor_profile if ev and ev.flavor_profile else '' }}" data-vr-flavor>
+        <div class="vr-form-head">
+            <div class="vr-form-title">
+                <div>
+                    <h2 id="vr-form-title">{% if ev %}Editar variedade{% else %}Nova variedade{% endif %}</h2>
+                    <p>Fica disponível em Setores, Safras, Colheita e no Mapa.</p>
+                </div>
+                <button type="button" class="modal-close-button" aria-label="Fechar" data-vr-form-close>
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
             </div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-variety-modal-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </button>
+            <ol class="vr-steps" aria-label="Passos">
+                <li data-vr-step-ind="1" class="is-current"><span></span>1. Dados</li>
+                <li data-vr-step-ind="2"><span></span>2. Setores</li>
+                <li data-vr-step-ind="3"><span></span>3. Conferir</li>
+            </ol>
         </div>
-        <div class="max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
-            <form method="post" action="{% if edit_variety %}/variedades/{{ edit_variety.id }}/editar{% else %}/variedades{% endif %}" class="mt-6 grid gap-4" id="variety-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <div class="grid gap-4 md:grid-cols-2">
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Nome</span>
-                        <input name="name" value="{{ edit_variety.name if edit_variety else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    </label>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Espécie</span>
-                        <input name="species" value="{{ edit_variety.species if edit_variety else 'Arabica' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    </label>
+
+        <div class="vr-form-body" data-modal-scroll>
+            <div data-vr-step="1" class="vr-step">
+                {% if not ev %}
+                <div class="vr-presets">
+                    <div class="vr-presets-head"><span>Começar de uma cultivar conhecida</span><small>preenche os campos; você pode ajustar</small></div>
+                    <div class="vr-chips">
+                        {% for c in known_cultivars %}<button type="button" class="vr-chip" aria-pressed="false" data-vr-preset="{{ loop.index0 }}">{{ c.name }}</button>{% endfor %}
+                    </div>
+                    <script type="application/json" data-vr-presets>{{ known_cultivars|tojson }}</script>
                 </div>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Ciclo de maturação</span>
-                    <input name="maturation_cycle" value="{{ edit_variety.maturation_cycle if edit_variety else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Perfil sensorial</span>
-                    <input name="flavor_profile" value="{{ edit_variety.flavor_profile if edit_variety else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Observações</span>
-                    <textarea name="notes" rows="5" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_variety.notes if edit_variety else '' }}</textarea>
-                </label>
-                <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-1 py-1">
-                    <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-variety-modal-close>Cancelar</button>
-                    <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_variety %}Salvar alterações{% else %}Salvar variedade{% endif %}</button>
+                {% endif %}
+                <div class="vr-row2">
+                    <div>
+                        <label class="vr-label" for="vr-name">Nome da variedade</label>
+                        <input id="vr-name" name="name" class="vr-input" maxlength="120" autocomplete="off" value="{{ ev.name if ev else '' }}" placeholder="Ex.: Catuaí Vermelho IAC 144" aria-describedby="vr-name-msg" data-vr-name>
+                        <p id="vr-name-msg" class="vr-error" data-vr-name-msg hidden></p>
+                        <script type="application/json" data-vr-existing>{{ existing_variety_names|tojson }}</script>
+                    </div>
+                    <fieldset>
+                        <legend class="vr-label">Espécie</legend>
+                        <div class="vr-seg">
+                            {% set cur_species = (ev.species if ev else 'Arábica') %}
+                            {% for opt in variety_species %}
+                            <label><input type="radio" name="species" value="{{ opt }}" {% if cur_species|lower|replace('á','a') == opt|lower|replace('á','a') %}checked{% endif %}><span>{{ 'Canéfora (conilon)' if opt == 'Canéfora' else opt }}</span></label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
                 </div>
-            </form>
+                <div class="vr-row2">
+                    <fieldset>
+                        <legend class="vr-label">Ciclo de maturação</legend>
+                        <div class="vr-seg">
+                            {% set cur_cycle = edit_item.cycle_label if edit_item else 'Médio' %}
+                            {% set cur_key = edit_item.cycle_key if edit_item else 'med' %}
+                            {% for opt in variety_cycles %}
+                            {% set key = ['pre', 'med', 'mtar', 'tar'][loop.index0] %}
+                            <label><input type="radio" name="maturation_cycle" value="{{ opt }}" data-vr-cycle="{{ key }}" {% if key == cur_key %}checked{% endif %}><span>{{ opt }}</span></label>
+                            {% endfor %}
+                        </div>
+                        <div class="vr-window vr-window-sm" data-vr-window>
+                            {% for m in overview.months %}<span><span class="vr-window-bar"></span><small>{{ m }}</small></span>{% endfor %}
+                        </div>
+                        <p class="vr-help">Colheita prevista: <span data-vr-window-label></span>. Usada no calendário de colheita.</p>
+                    </fieldset>
+                    <div class="vr-col">
+                        <fieldset>
+                            <legend class="vr-label">Porte</legend>
+                            <div class="vr-seg">
+                                {% for opt in variety_heights %}<label><input type="radio" name="plant_height" value="{{ opt }}" {% if ev and ev.plant_height == opt %}checked{% endif %}><span>{{ opt }}</span></label>{% endfor %}
+                            </div>
+                        </fieldset>
+                        <fieldset>
+                            <legend class="vr-label">Resistência à ferrugem</legend>
+                            <div class="vr-seg">
+                                {% for opt in variety_rusts %}<label><input type="radio" name="rust_resistance" value="{{ opt }}" {% if ev and ev.rust_resistance == opt %}checked{% endif %}><span>{{ opt }}</span></label>{% endfor %}
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+                <fieldset>
+                    <legend class="vr-label">Cor no mapa</legend>
+                    {% set cur_color = edit_item.color if edit_item else (color_options|rejectattr('taken_by')|map(attribute='value')|first or color_options[0].value) %}
+                    <div class="vr-colors">
+                        {% for c in color_options %}
+                        <label class="vr-color{% if c.taken_by %} is-taken{% endif %}" title="{{ c.label }}{% if c.taken_by %} (usada por {{ c.taken_by }}){% endif %}">
+                            <input type="radio" name="map_color" value="{{ c.value }}" {% if c.value == cur_color %}checked{% endif %} aria-label="{{ c.label }}{% if c.taken_by %}, usada por {{ c.taken_by }}{% endif %}">
+                            <span style="background: {{ c.value }}"></span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <p class="vr-help">Usada nos gráficos e no calendário desta página. Cores esmaecidas já são de outra variedade.</p>
+                </fieldset>
+                <fieldset>
+                    <legend class="vr-label">Perfil na xícara</legend>
+                    {% set cur_tags = edit_item.tags if edit_item else [] %}
+                    <div class="vr-chips">
+                        {% for t in flavor_tags %}
+                        <label class="vr-tag"><input type="checkbox" value="{{ t }}" data-vr-tag {% if t|lower in cur_tags|map('lower')|list %}checked{% endif %}><span>{{ t }}</span></label>
+                        {% endfor %}
+                    </div>
+                    {% set std = flavor_tags|map('lower')|list %}
+                    <input class="vr-input vr-mt" maxlength="120" placeholder="Outras notas (opcional), ex.: mel, acidez brilhante" aria-label="Outras notas de sabor" data-vr-tag-extra value="{{ cur_tags|reject('in', flavor_tags)|join(', ') if cur_tags else '' }}">
+                </fieldset>
+                <div>
+                    <label class="vr-label" for="vr-notes">Observações <span class="vr-opt">(opcional)</span></label>
+                    <textarea id="vr-notes" name="notes" rows="3" class="vr-input vr-textarea" placeholder="Ex.: mudas do viveiro São José; responde bem à adubação em outubro">{{ ev.notes if ev and ev.notes else '' }}</textarea>
+                </div>
+            </div>
+
+            <div data-vr-step="2" class="vr-step" hidden>
+                <div>
+                    <h3 class="vr-step-title">Onde ela está plantada?</h3>
+                    <p class="vr-muted">Ligue os setores com <span data-vr-name-echo>esta variedade</span>. Pode pular e escolher depois, ao editar o setor.</p>
+                </div>
+                {% if assign_plots %}
+                <ul class="vr-switch-list">
+                    {% for p in assign_plots %}
+                    {% set mine = ev and p.current_id == ev.id %}
+                    <li>
+                        <label class="vr-switch-row{% if mine %} is-locked{% endif %}">
+                            <span class="min-w-0 flex-1">
+                                <strong>{{ p.name }}</strong>
+                                <small>{{ p.area }} ha{% if p.year %} · plantado em {{ p.year }}{% endif %} · hoje: {% if p.color %}<i class="vr-dot" style="background: {{ p.color }}"></i>{% endif %}{{ p.current or 'sem variedade' }}</small>
+                            </span>
+                            <span class="vr-swap-tag" data-vr-swap-tag hidden>Vai trocar</span>
+                            <input type="checkbox" role="switch" class="vr-switch-input" name="plot_ids" value="{{ p.id }}" data-vr-plot data-name="{{ p.name }}" data-area="{{ p.area }}" data-current="{{ p.current or '' }}" {% if mine %}checked disabled{% endif %} aria-label="Usar no {{ p.name }}">
+                            <span class="vr-switch" aria-hidden="true"></span>
+                        </label>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% if ev %}<p class="vr-help">Setores que já são desta variedade ficam ligados. Para tirar um setor, troque a variedade dele em Setores.</p>{% endif %}
+                <div class="vr-note-warn" data-vr-swap-note hidden>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3 2 20h20Z"/><path d="M12 10v4M12 17h.01"/></svg>
+                    <span>Os setores ligados que já têm outra variedade vão mudar. Colheitas e safras já lançadas continuam como estão.</span>
+                </div>
+                {% else %}
+                <div class="sf-empty"><p>Nenhum setor nesta fazenda ainda.</p></div>
+                {% endif %}
+                <a href="/setores?novo=1" class="vr-link">+ Cadastrar um setor novo</a>
+            </div>
+
+            <div data-vr-step="3" class="vr-step" hidden>
+                <div class="vr-review">
+                    <span class="vr-swatch vr-swatch-lg" data-vr-review-color></span>
+                    <div class="min-w-0 flex-1">
+                        <strong data-vr-review-name></strong>
+                        <small data-vr-review-meta></small>
+                        <small data-vr-review-tags></small>
+                    </div>
+                    <button type="button" class="sf-btn sf-btn-secondary" data-vr-goto="1">Alterar</button>
+                </div>
+                <div>
+                    <h3 class="vr-step-title">O que muda ao confirmar</h3>
+                    <ul class="vr-changes" data-vr-changes></ul>
+                </div>
+            </div>
         </div>
-    </div>
+
+        <div class="vr-form-foot">
+            <button type="button" class="sf-btn sf-btn-secondary" data-vr-back>Cancelar</button>
+            <div class="vr-foot-right">
+                <button type="button" class="vr-skip" data-vr-skip hidden>Pular</button>
+                <button type="button" class="sf-btn sf-btn-primary" data-vr-next>Continuar</button>
+                <button type="submit" class="sf-btn sf-btn-primary" data-vr-submit hidden>{% if ev %}Confirmar alterações{% else %}Confirmar e salvar{% endif %}</button>
+            </div>
+        </div>
+    </form>
 </dialog>
-
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const modal = document.getElementById('variety-modal');
-    const isEditing = {{ 'true' if edit_variety else 'false' }};
-    const closeModal = () => { if (isEditing) { window.location.href = '/variedades'; return; } modal?.close(); };
-    document.querySelectorAll('[data-variety-modal-open]').forEach((b) => b.addEventListener('click', () => modal?.showModal()));
-    document.querySelectorAll('[data-variety-modal-close]').forEach((b) => b.addEventListener('click', closeModal));
-    modal?.addEventListener('cancel', (event) => { event.preventDefault(); closeModal(); });
-    if (isEditing) modal?.showModal();
-
-    const searchInput = document.querySelector('[data-varieties-search]');
-    const rows = Array.from(document.querySelectorAll('[data-variety-row]'));
-    const emptyState = document.querySelector('[data-varieties-empty]');
-    const normalize = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-
-    if (!(searchInput instanceof HTMLInputElement) || !rows.length) return;
-
-    searchInput.addEventListener('input', () => {
-        const needle = normalize(searchInput.value);
-        let visible = 0;
-        rows.forEach((row) => {
-            const haystack = normalize(row.getAttribute('data-variety-search'));
-            const match = !needle || haystack.includes(needle);
-            row.classList.toggle('hidden', !match);
-            if (match) visible += 1;
-        });
-        if (emptyState) emptyState.classList.toggle('hidden', visible > 0);
-    });
-});
-</script>
+<script src="{{ url_for('static', path='js/varieties.js') }}?v=20261121vr1" defer></script>
 {% endblock %}

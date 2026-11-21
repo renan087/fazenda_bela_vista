@@ -15,6 +15,9 @@ class CoffeeVariety(Base):
     maturation_cycle: Mapped[str] = mapped_column(String(80), nullable=False, default="Media")
     flavor_profile: Mapped[str] = mapped_column(String(180), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+    plant_height: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    rust_resistance: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    map_color: Mapped[str | None] = mapped_column(String(9), nullable=True)
 
     organization = relationship("Organization")
     plots = relationship("Plot", back_populates="variety")
