@@ -354,12 +354,18 @@ from app.services.forms import (
     conclude_fertilization_schedule,
     delete_fertilization,
     delete_fertilization_schedule,
+    duplicate_fertilization_schedule,
     fertilization_application_method_label,
     delete_manual_stock_output,
     validate_schedule_stock,
     update_manual_stock_output,
     commercialization_quantity_to_sacks,
     _normalize_input_name,
+)
+from app.services.fertilization_views import (
+    build_fertilization_page_context,
+    build_schedules_page_context,
+    build_wizard_payload,
 )
 from app.services.openai_service import gerar_recomendacao_adubacao, read_soil_recommendation
 from app.services.soil_measurements import FIELDS as SOIL_FIELDS, EXTRA_FIELDS as SOIL_EXTRA_FIELDS, METHODS as SOIL_METHODS, canonical_value, parse_metadata, validate_metadata, validate_measurements
@@ -19868,6 +19874,147 @@ def export_rainfall_pdf(
     )
 
 
+def _compute_items_for_plot_from_wizard(raw_items: list[dict], plot: Plot, dose_mode: str, catalog_by_id: dict[int, InputCatalog]) -> list[dict]:
+    """Converte doses do Wizard (por hectare, por planta ou fixa) em quantidades totais para um talhão."""
+    area = float(plot.area_hectares or 0) if plot else 0.0
+    plants = int(plot.plant_count or 0) if plot else 0
+    mode = (dose_mode or "per_ha").strip().lower()
+    computed: list[dict] = []
+    for raw in raw_items or []:
+        input_id = _int_or_none(raw.get("inputId") or raw.get("input_id"))
+        if not input_id or input_id not in catalog_by_id:
+            continue
+        val = _float_or_none(raw.get("value") if "value" in raw else raw.get("quantity")) or 0.0
+        if val <= 0:
+            continue
+        cat = catalog_by_id[input_id]
+        unit = (str(raw.get("unit") or "").strip() or cat.default_unit or "kg")
+        if mode == "per_ha":
+            total_qty = round(val * area, 2) if area > 0 else round(val, 2)
+        elif mode == "per_plant":
+            total_qty = round((val * plants) / 1000.0, 2) if plants > 0 else round(val, 2)
+        else:
+            total_qty = round(val, 2)
+        if total_qty <= 0:
+            continue
+        computed.append(
+            {
+                "input_id": cat.id,
+                "purchased_input_id": None,
+                "name": cat.name,
+                "unit": unit,
+                "quantity": total_qty,
+            }
+        )
+    return computed
+
+
+def _parse_wizard_json_payload(form) -> dict | None:
+    raw = str(form.get("wizard_payload_json") or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        return None
+
+
+def _render_fertilization_wizard(
+    request: Request,
+    db: Session,
+    user: User,
+    csrf_token: str,
+    *,
+    mode: str,
+    edit_schedule: FertilizationSchedule | None = None,
+    edit_fertilization: FertilizationRecord | None = None,
+    preselect_plot_id: int | None = None,
+    preselect_date: str | None = None,
+    copy_from_fertilization: FertilizationRecord | None = None,
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    launch_plots = _season_launch_plots(plots, scope)
+    if edit_schedule and edit_schedule.plot and edit_schedule.plot not in launch_plots:
+        launch_plots = [*launch_plots, edit_schedule.plot]
+    if edit_fertilization and edit_fertilization.plot and edit_fertilization.plot not in launch_plots:
+        launch_plots = [*launch_plots, edit_fertilization.plot]
+
+    farm_id = scope["active_farm_id"] if scope["active_farm_id"] else None
+    stock_context = _build_stock_context(repo, farm_id=farm_id, item_type="insumo_agricola")
+    consolidated_inputs = stock_context["consumption_catalog_inputs"]
+    purchased_inputs = stock_context["purchase_entries"]
+
+    plot_ids = {p.id for p in launch_plots}
+    all_ferts = [f for f in repo.list_fertilizations() if not plot_ids or f.plot_id in plot_ids]
+    all_scheds = repo.list_fertilization_schedules_for_scope(plot_ids)
+    recs = repo.list_input_recommendations(farm_id=farm_id)
+    recommendations = [
+        r for r in recs if (not plot_ids or r.plot_id is None or r.plot_id in plot_ids)
+    ]
+
+    wizard_data = build_wizard_payload(
+        mode=mode,
+        launch_plots=launch_plots,
+        inputs_catalog=consolidated_inputs,
+        purchased_inputs=purchased_inputs,
+        recommendations=recommendations,
+        fertilizations=all_ferts,
+        schedules=all_scheds,
+        active_farm=scope.get("active_farm"),
+        today=today_in_app_timezone(),
+        farm_id=farm_id,
+        edit_schedule=edit_schedule,
+        edit_fertilization=edit_fertilization,
+        preselect_plot_id=preselect_plot_id,
+        preselect_date=preselect_date,
+        copy_from_fertilization=copy_from_fertilization,
+    )
+
+    is_sched = "schedule" in mode
+    if mode == "new_schedule":
+        form_action = "/fertilizacao/agendamentos"
+        back_url = "/fertilizacao/agendamentos"
+        page_title = "Novo agendamento"
+        page_code = "fertilization_schedules"
+    elif mode == "edit_schedule" and edit_schedule:
+        form_action = f"/fertilizacao/agendamentos/{edit_schedule.id}/editar"
+        back_url = "/fertilizacao/agendamentos"
+        page_title = "Editar agendamento"
+        page_code = "fertilization_schedules"
+    elif mode == "edit_fertilization" and edit_fertilization:
+        form_action = f"/fertilizacao/{edit_fertilization.id}/editar"
+        back_url = "/fertilizacao"
+        page_title = "Editar aplicação"
+        page_code = "fertilization"
+    else:
+        form_action = "/fertilizacao"
+        back_url = "/fertilizacao"
+        page_title = "Registrar aplicação"
+        page_code = "fertilization"
+
+    return templates.TemplateResponse(
+        "fertilization_wizard.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            page_code,
+            _repo=repo,
+            title=page_title,
+            ft_wizard_mode=mode,
+            ft_wizard_is_schedule=is_sched,
+            ft_wizard_title=page_title,
+            ft_wizard_action=form_action,
+            ft_wizard_back_url=back_url,
+            ft_wizard_data=wizard_data,
+        ),
+    )
+
+
 @router.get("/fertilizacao")
 def fertilization_page(
     request: Request,
@@ -19876,73 +20023,30 @@ def fertilization_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
+    if edit_id:
+        return _redirect(f"/fertilizacao/{edit_id}/editar")
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
     start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
         request, scope["active_season"], flash_invalid=True
     )
-    selected_fertilization_range = (
-        _fertilization_filter_range_preset(
-            request.query_params.get("schedule_range"),
-            filter_start_str,
-            filter_end_str,
-        )
-        if _period_filter_explicit_in_query(request)
-        else ""
-    )
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     linked_plots = _season_launch_plots(plots, scope)
     plots = list({plot.id: plot for plot in [*plots, *linked_plots]}.values())
     plot_ids = {plot.id for plot in plots}
-    edit_fertilization = repo.get_fertilization(edit_id) if edit_id else None
-    launch_plots = _season_launch_plots(plots, scope)
-    if edit_fertilization and edit_fertilization.plot and edit_fertilization.plot in plots and edit_fertilization.plot not in launch_plots:
-        launch_plots = [*launch_plots, edit_fertilization.plot]
-    recommendation_groups: dict[str, list[dict]] = {}
-    consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
-    purchased_inputs = repo.list_purchased_inputs(include_stock_adjustments=True)
-    avail_by_catalog = defaultdict(float)
-    for entry in purchased_inputs:
-        avail_by_catalog[entry.input_id] += float(entry.available_quantity or 0)
-    input_stock = {
-        item.id: {
-            "available": round(avail_by_catalog.get(item.id, 0), 2),
-            "unit": item.default_unit,
-        }
-        for item in consolidated_inputs
-    }
-    fertilization_filter_clear_url = _url_with_query(
-        request,
-        start_date=None,
-        end_date=None,
-        schedule_range=None,
-        fertilizations_page=None,
-    )
     search_q = (request.query_params.get("search") or "").strip() or None
     fertilizations = _filter_fertilization_records(repo, plot_ids, start_date, end_date, search=search_q)
-    fertilizations_pagination = _paginate_collection(request, fertilizations, "fertilizations_page")
-    schedules = repo.list_fertilization_schedules_for_scope(plot_ids, start_date, end_date)
-    recs = repo.list_input_recommendations(
-        farm_id=scope["active_farm_id"] if scope["active_farm_id"] else None
+    schedules = repo.list_fertilization_schedules_for_scope(plot_ids)
+
+    ft_ctx = build_fertilization_page_context(
+        repo=repo,
+        plots=plots,
+        fertilizations=fertilizations,
+        schedules=schedules,
+        today=today_in_app_timezone(),
     )
-    recommendations = [
-        recommendation
-        for recommendation in recs
-        if (not plot_ids or recommendation.plot_id is None or recommendation.plot_id in plot_ids)
-    ]
-    for recommendation in recommendations:
-        bucket = recommendation_groups.setdefault(recommendation.application_name, [])
-        for item in recommendation.items:
-            bucket.append(
-                {
-                    "input_id": item.input_id,
-                    "name": item.input_catalog.name if item.input_catalog else (item.purchased_input.name if item.purchased_input else "Insumo removido"),
-                    "unit": item.unit,
-                    "quantity": float(item.quantity or 0),
-                    "available": input_stock.get(item.input_id or 0, {}).get("available", 0),
-                }
-            )
+    active_sched_count = sum(1 for s in schedules if (s.status or "").lower() != "completed")
     return templates.TemplateResponse(
         "fertilization.html",
         _base_context(
@@ -19951,24 +20055,56 @@ def fertilization_page(
             csrf_token,
             "fertilization",
             _repo=repo,
+            title="Fertilização",
             plots=plots,
-            launch_plots=launch_plots,
-            inputs_catalog=consolidated_inputs,
-            input_stock=input_stock,
-            fertilizations=fertilizations_pagination["items"],
-            fertilizations_pagination=fertilizations_pagination,
+            ft_ctx=ft_ctx,
+            ft_active_schedules_count=active_sched_count,
+            ft_fert_count=len(fertilizations),
             fertilization_filter_start_date=filter_start_str or None,
             fertilization_filter_end_date=filter_end_str or None,
-            fertilization_filter_clear_url=fertilization_filter_clear_url,
-            selected_fertilization_range=selected_fertilization_range,
-            schedules=schedules,
-            recommendation_groups=recommendation_groups,
-            edit_fertilization=edit_fertilization,
-            edit_fertilization_items=_legacy_fertilization_items(
-                edit_fertilization,
-                float(edit_fertilization.plot.area_hectares) if edit_fertilization and edit_fertilization.plot else None,
-            ),
         ),
+    )
+
+
+@router.get("/fertilizacao/nova")
+def new_fertilization_wizard_page(
+    request: Request,
+    plot_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    return _render_fertilization_wizard(
+        request,
+        db,
+        user,
+        csrf_token,
+        mode="new_fertilization",
+        preselect_plot_id=plot_id,
+    )
+
+
+@router.get("/fertilizacao/{record_id}/editar")
+def edit_fertilization_wizard_page(
+    record_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    record = repo.get_fertilization(record_id)
+    if not record or not _plot_matches_scope(record.plot, scope):
+        _flash(request, "error", "Registro de fertilização não encontrado no contexto ativo.")
+        return _redirect("/fertilizacao")
+    return _render_fertilization_wizard(
+        request,
+        db,
+        user,
+        csrf_token,
+        mode="edit_fertilization",
+        edit_fertilization=record,
     )
 
 
@@ -19986,50 +20122,86 @@ async def create_fertilization_action(
     scope, denied = _launch_scope_or_redirect(request, repo, "/fertilizacao")
     if denied:
         return denied
-    selected_plot_ids: list[int] = []
-    for raw_plot_id in form.getlist("plot_id"):
-        parsed_plot_id = _int_or_none(raw_plot_id)
-        if parsed_plot_id and parsed_plot_id not in selected_plot_ids:
-            selected_plot_ids.append(parsed_plot_id)
+
+    wiz_payload = _parse_wizard_json_payload(form)
+    if wiz_payload is not None:
+        raw_plot_ids = wiz_payload.get("plotIds") or []
+        selected_plot_ids = [pid for pid in (_int_or_none(x) for x in raw_plot_ids) if pid]
+        application_date = str(wiz_payload.get("date") or "").strip()
+        application_method = wiz_payload.get("method")
+        duration_minutes = wiz_payload.get("durationMinutes")
+        responsible_name = str(wiz_payload.get("responsible") or "").strip() or None
+        recipe_name = str(wiz_payload.get("recipeName") or "").strip() or None
+        notes = str(wiz_payload.get("notes") or "").strip() or None
+        dose_mode = str(wiz_payload.get("doseMode") or "per_ha")
+        raw_wiz_items = wiz_payload.get("items") or []
+    else:
+        selected_plot_ids = []
+        for raw_plot_id in form.getlist("plot_id"):
+            parsed_plot_id = _int_or_none(raw_plot_id)
+            if parsed_plot_id and parsed_plot_id not in selected_plot_ids:
+                selected_plot_ids.append(parsed_plot_id)
+        application_date = str(form.get("application_date") or "").strip()
+        application_method = form.get("application_method")
+        duration_minutes = form.get("duration_minutes")
+        responsible_name = str(form.get("responsible_name") or "").strip() or None
+        recipe_name = str(form.get("recipe_name") or "").strip() or None
+        notes = str(form.get("notes") or "").strip() or None
+        dose_mode = "fixed_plot"
+        raw_wiz_items = None
+
     if not selected_plot_ids:
-        _flash(request, "error", "Selecione ao menos um setor.")
-        return _redirect("/fertilizacao")
+        _flash(request, "error", "Selecione ao menos um talhão.")
+        return _redirect("/fertilizacao/nova" if wiz_payload is not None else "/fertilizacao")
+
     selected_plots = []
     for plot_id in selected_plot_ids:
         plot, _, denied = _resolve_plot_in_scope(request, repo, plot_id, "/fertilizacao")
         if denied:
             return denied
         if not _plot_allowed_for_season_launch(plot, scope):
-            _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
+            _flash(request, "error", "O talhão selecionado não está vinculado à safra ativa.")
             return _redirect("/fertilizacao")
         selected_plots.append(plot)
-    items = _parse_fertilization_items(form)
-    if not items:
+
+    catalog_by_id = {c.id: c for c in repo.list_input_catalog(item_type="insumo_agricola")}
+    legacy_items = _parse_fertilization_items(form) if wiz_payload is None else None
+    if wiz_payload is None and not legacy_items:
         _flash(request, "error", "Adicione ao menos um insumo na atividade.")
         return _redirect("/fertilizacao")
+
     try:
         for plot in selected_plots:
+            plot_items = (
+                _compute_items_for_plot_from_wizard(raw_wiz_items, plot, dose_mode, catalog_by_id)
+                if wiz_payload is not None
+                else legacy_items
+            )
+            if not plot_items:
+                raise ValueError("Adicione ao menos um insumo com dose válida.")
             create_fertilization(
                 repo,
                 {
                     "plot_id": plot.id,
-                    "application_date": str(form.get("application_date") or ""),
+                    "application_date": application_date,
                     "season_id": scope["active_season_id"],
-                    "duration_minutes": form.get("duration_minutes"),
-                    "application_method": form.get("application_method"),
-                    "notes": str(form.get("notes") or "") or None,
-                    "items": items,
+                    "duration_minutes": duration_minutes,
+                    "application_method": application_method,
+                    "responsible_name": responsible_name,
+                    "recipe_name": recipe_name,
+                    "notes": notes,
+                    "items": plot_items,
                 },
             )
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect("/fertilizacao")
+        return _redirect("/fertilizacao/nova" if wiz_payload is not None else "/fertilizacao")
     _flash(
         request,
         "success",
-        "Fertilizacao registrada com sucesso."
+        "Aplicação registrada com baixa automática no estoque."
         if len(selected_plots) == 1
-        else f"Fertilizacao registrada com sucesso para {len(selected_plots)} setores.",
+        else f"{len(selected_plots)} aplicações registradas com baixa automática no estoque.",
     )
     return _redirect("/fertilizacao")
 
@@ -20048,40 +20220,69 @@ async def update_fertilization_action(
     repo = _repository(db)
     fertilization = repo.get_fertilization(record_id)
     if not fertilization:
-        _flash(request, "error", "Registro de fertilizacao nao encontrado.")
+        _flash(request, "error", "Registro de fertilização não encontrado.")
         return _redirect_for_request(request, "/fertilizacao")
-    plot, scope, denied = _resolve_plot_in_scope(request, repo, int(form.get("plot_id") or 0), "/fertilizacao")
+
+    wiz_payload = _parse_wizard_json_payload(form)
+    if wiz_payload is not None:
+        raw_pids = wiz_payload.get("plotIds") or []
+        target_plot_id = _int_or_none(raw_pids[0]) if raw_pids else fertilization.plot_id
+        application_date = str(wiz_payload.get("date") or "").strip()
+        application_method = wiz_payload.get("method")
+        duration_minutes = wiz_payload.get("durationMinutes")
+        responsible_name = str(wiz_payload.get("responsible") or "").strip() or None
+        recipe_name = str(wiz_payload.get("recipeName") or "").strip() or None
+        notes = str(wiz_payload.get("notes") or "").strip() or None
+        dose_mode = str(wiz_payload.get("doseMode") or "per_ha")
+    else:
+        target_plot_id = int(form.get("plot_id") or 0)
+        application_date = str(form.get("application_date") or "").strip()
+        application_method = form.get("application_method")
+        duration_minutes = form.get("duration_minutes")
+        responsible_name = str(form.get("responsible_name") or "").strip() or None
+        recipe_name = str(form.get("recipe_name") or "").strip() or None
+        notes = str(form.get("notes") or "").strip() or None
+        dose_mode = "fixed_plot"
+
+    plot, scope, denied = _resolve_plot_in_scope(request, repo, int(target_plot_id or 0), "/fertilizacao")
     if denied:
         return denied
     if not _plot_matches_scope(fertilization.plot, scope):
-        _flash(request, "error", "Este registro de fertilizacao nao pertence ao contexto ativo.")
+        _flash(request, "error", "Este registro de fertilização não pertence ao contexto ativo.")
         return _redirect_for_request(request, "/fertilizacao")
     if plot.id != fertilization.plot_id and not _plot_allowed_for_season_launch(plot, scope):
-        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
-        return _redirect_for_request(request, "/fertilizacao", edit_id=record_id)
-    items = _parse_fertilization_items(form)
+        _flash(request, "error", "O talhão selecionado não está vinculado à safra ativa.")
+        return _redirect(f"/fertilizacao/{record_id}/editar")
+
+    if wiz_payload is not None:
+        catalog_by_id = {c.id: c for c in repo.list_input_catalog(item_type="insumo_agricola")}
+        items = _compute_items_for_plot_from_wizard(wiz_payload.get("items") or [], plot, dose_mode, catalog_by_id)
+    else:
+        items = _parse_fertilization_items(form)
     if not items:
         _flash(request, "error", "Adicione ao menos um insumo na atividade.")
-        return _redirect_for_request(request, "/fertilizacao", edit_id=record_id)
+        return _redirect(f"/fertilizacao/{record_id}/editar")
     try:
         update_fertilization(
             repo,
             fertilization,
             {
                 "plot_id": plot.id,
-                "application_date": str(form.get("application_date") or ""),
+                "application_date": application_date,
                 "season_id": scope["active_season_id"],
-                "duration_minutes": form.get("duration_minutes"),
-                "application_method": form.get("application_method"),
-                "notes": str(form.get("notes") or "") or None,
+                "duration_minutes": duration_minutes,
+                "application_method": application_method,
+                "responsible_name": responsible_name,
+                "recipe_name": recipe_name,
+                "notes": notes,
                 "items": items,
             },
         )
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect_for_request(request, "/fertilizacao", edit_id=record_id)
-    _flash(request, "success", "Fertilizacao atualizada com sucesso.")
-    return _redirect_for_request(request, "/fertilizacao")
+        return _redirect(f"/fertilizacao/{record_id}/editar")
+    _flash(request, "success", "Aplicação atualizada e saldo de estoque recalculado.")
+    return _redirect("/fertilizacao")
 
 
 @router.post("/fertilizacao/{record_id}/excluir")
@@ -20097,10 +20298,10 @@ def delete_fertilization_action(
     repo = _repository(db)
     fertilization = repo.get_fertilization(record_id)
     if not fertilization:
-        _flash(request, "error", "Registro de fertilizacao nao encontrado.")
+        _flash(request, "error", "Registro de fertilização não encontrado.")
         return _redirect("/fertilizacao")
     delete_fertilization(repo, fertilization)
-    _flash(request, "success", "Fertilizacao excluida com sucesso.")
+    _flash(request, "success", "Aplicação excluída e insumos devolvidos ao estoque.")
     return _redirect("/fertilizacao")
 
 
@@ -20307,121 +20508,36 @@ def fertilization_schedules_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
+    if edit_id:
+        return _redirect(f"/fertilizacao/agendamentos/{edit_id}/editar")
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
-    selected_schedule_tab = str(request.query_params.get("schedule_tab") or "active")
-    if selected_schedule_tab not in {"active", "completed"}:
-        selected_schedule_tab = "active"
     start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
         request, scope["active_season"], flash_invalid=True
-    )
-    selected_schedule_range = (
-        _schedule_tab_filter_range_preset(
-            request.query_params.get("schedule_range"),
-            filter_start_str,
-            filter_end_str,
-            schedule_tab=selected_schedule_tab,
-        )
-        if _period_filter_explicit_in_query(request)
-        else ""
     )
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     linked_plots = _season_launch_plots(plots, scope)
     plots = list({plot.id: plot for plot in [*plots, *linked_plots]}.values())
     plot_ids = {plot.id for plot in plots}
-    edit_schedule = repo.get_fertilization_schedule(edit_id) if edit_id else None
-    launch_plots = _season_launch_plots(plots, scope)
-    if edit_schedule and edit_schedule.plot and edit_schedule.plot in plots and edit_schedule.plot not in launch_plots:
-        launch_plots = [*launch_plots, edit_schedule.plot]
     schedules = repo.list_fertilization_schedules_for_scope(plot_ids, start_date, end_date)
-    schedule_filter_clear_url = _url_with_query(
-        request,
-        start_date=None,
-        end_date=None,
-        schedule_range=None,
-        active_page=None,
-        completed_page=None,
-        schedule_tab=selected_schedule_tab,
-    )
-    active_schedules = sorted(
-        [schedule for schedule in schedules if schedule.status != "completed"],
-        key=lambda schedule: (schedule.scheduled_date or date.max, schedule.id),
-    )
-    completed_schedules = sorted(
-        [schedule for schedule in schedules if schedule.status == "completed"],
-        key=lambda schedule: (schedule.scheduled_date or date.min, schedule.id),
-        reverse=True,
-    )
-    active_schedule_groups, active_schedules_pagination = _paginate_schedule_date_groups(
-        request, active_schedules, "active_page"
-    )
-    completed_schedule_groups, completed_schedules_pagination = _paginate_schedule_date_groups(
-        request, completed_schedules, "completed_page"
-    )
-    schedule_edit_urls = {
-        schedule.id: _url_with_query(request, edit_id=schedule.id)
-        for schedule in [*active_schedules_pagination["items"], *completed_schedules_pagination["items"]]
-    }
-    schedule_after_edit_close_url = _url_with_query(request, edit_id=None)
-    stock_context = _build_stock_context(
-        repo,
-        farm_id=scope["active_farm_id"] if scope["active_farm_id"] else None,
-        item_type="insumo_agricola",
-    )
-    purchased_inputs = stock_context["purchase_entries"]
-    schedule_validations = {}
-    for sch in active_schedules_pagination["items"]:
-        schedule_validations[sch.id] = validate_schedule_stock(
-            repo, sch, purchased_inputs_cache=purchased_inputs
-        )
-    for sch in completed_schedules_pagination["items"]:
-        schedule_validations[sch.id] = {"ok": True, "shortages": []}
-    recs = repo.list_input_recommendations(
-        farm_id=scope["active_farm_id"] if scope["active_farm_id"] else None
-    )
-    recommendations = [
-        recommendation
-        for recommendation in recs
-        if (not plot_ids or recommendation.plot_id is None or recommendation.plot_id in plot_ids)
-    ]
+    active_schedules = [s for s in schedules if (s.status or "").lower() != "completed"]
+    completed_schedules = [s for s in schedules if (s.status or "").lower() == "completed"]
+    farm_id = scope["active_farm_id"] if scope["active_farm_id"] else None
+    stock_context = _build_stock_context(repo, farm_id=farm_id, item_type="insumo_agricola")
     consolidated_inputs = stock_context["consumption_catalog_inputs"]
-    valid_schedule_input_ids = {item.id for item in consolidated_inputs}
-    input_stock = stock_context["input_stock"]
-    edit_schedule_items = (
-        [
-            {
-                "input_id": item.input_id,
-                "unit": item.unit,
-                "quantity": float(item.quantity or 0),
-            }
-            for item in edit_schedule.items
-        ]
-        if edit_schedule and edit_schedule.items
-        else [{"input_id": "", "unit": "kg", "quantity": ""}]
+    purchased_inputs = stock_context["purchase_entries"]
+    fertilizations = _filter_fertilization_records(repo, plot_ids, start_date, end_date)
+
+    sched_ctx = build_schedules_page_context(
+        active_schedules=active_schedules,
+        completed_schedules=completed_schedules,
+        inputs_catalog=consolidated_inputs,
+        purchased_inputs=purchased_inputs,
+        active_farm=scope.get("active_farm"),
+        today=today_in_app_timezone(),
+        farm_id=farm_id,
     )
-    schedule_recommendations = []
-    for recommendation in recommendations:
-        recommendation_items = [
-            {
-                "input_id": item.input_id,
-                "unit": item.unit,
-                "quantity": float(item.quantity or 0),
-            }
-            for item in recommendation.items
-            if item.input_id and item.input_id in valid_schedule_input_ids
-        ]
-        if not recommendation_items:
-            continue
-        schedule_recommendations.append(
-            {
-                "id": recommendation.id,
-                "application_name": recommendation.application_name,
-                "plot_name": recommendation.plot.name if recommendation.plot else None,
-                "farm_name": recommendation.farm.name if recommendation.farm else None,
-                "items": recommendation_items,
-            }
-        )
     return templates.TemplateResponse(
         "fertilization_schedule.html",
         _base_context(
@@ -20430,34 +20546,74 @@ def fertilization_schedules_page(
             csrf_token,
             "fertilization_schedules",
             _repo=repo,
-            title="Agendamento de Fertilizacao",
+            title="Agendamentos",
             plots=plots,
-            launch_plots=launch_plots,
-            inputs_catalog=consolidated_inputs,
-            input_stock=input_stock,
-            active_schedules=active_schedules_pagination["items"],
-            active_schedule_groups=active_schedule_groups,
-            active_schedules_pagination=active_schedules_pagination,
-            completed_schedules=completed_schedules_pagination["items"],
-            completed_schedule_groups=completed_schedule_groups,
-            completed_schedules_pagination=completed_schedules_pagination,
-            selected_schedule_tab=selected_schedule_tab,
-            schedule_tab_urls={
-                "active": _fertilization_schedule_tab_url(request, "active"),
-                "completed": _fertilization_schedule_tab_url(request, "completed"),
-            },
+            ft_sched_ctx=sched_ctx,
+            ft_active_schedules_count=len(active_schedules),
+            ft_fert_count=len(fertilizations),
             schedule_filter_start_date=filter_start_str or None,
             schedule_filter_end_date=filter_end_str or None,
-            selected_schedule_range=selected_schedule_range,
-            schedule_filter_clear_url=schedule_filter_clear_url,
-            schedule_validations=schedule_validations,
-            schedule_edit_urls=schedule_edit_urls,
-            schedule_after_edit_close_url=schedule_after_edit_close_url,
-            edit_schedule=edit_schedule,
-            edit_schedule_items=edit_schedule_items,
-            schedule_recommendations=schedule_recommendations,
             today=today_in_app_timezone(),
         ),
+    )
+
+
+@router.get("/fertilizacao/agendamentos/novo")
+def new_fertilization_schedule_wizard_page(
+    request: Request,
+    plot_id: int | None = None,
+    copy_fert_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    copy_fert = None
+    if copy_fert_id:
+        cand = repo.get_fertilization(copy_fert_id)
+        if cand and _plot_matches_scope(cand.plot, scope):
+            copy_fert = cand
+    raw_date = (request.query_params.get("date") or "").strip()
+    safe_date = None
+    if raw_date:
+        try:
+            safe_date = date.fromisoformat(raw_date).isoformat()
+        except ValueError:
+            safe_date = None
+    return _render_fertilization_wizard(
+        request,
+        db,
+        user,
+        csrf_token,
+        mode="new_schedule",
+        preselect_plot_id=plot_id,
+        preselect_date=safe_date,
+        copy_from_fertilization=copy_fert,
+    )
+
+
+@router.get("/fertilizacao/agendamentos/{schedule_id}/editar")
+def edit_fertilization_schedule_wizard_page(
+    schedule_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    schedule = repo.get_fertilization_schedule(schedule_id)
+    if not schedule or not _plot_matches_scope(schedule.plot, scope):
+        _flash(request, "error", "Agendamento não encontrado no contexto ativo.")
+        return _redirect("/fertilizacao/agendamentos")
+    return _render_fertilization_wizard(
+        request,
+        db,
+        user,
+        csrf_token,
+        mode="edit_schedule",
+        edit_schedule=schedule,
     )
 
 
@@ -20710,39 +20866,85 @@ async def create_fertilization_schedule_action(
         plot.id: plot
         for plot in _season_launch_plots(repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids), scope)
     }
-    selected_plot_ids = []
-    for raw_plot_id in form.getlist("plot_id"):
-        parsed_plot_id = _int_or_none(raw_plot_id)
-        if parsed_plot_id and parsed_plot_id not in selected_plot_ids:
-            selected_plot_ids.append(parsed_plot_id)
+
+    wiz_payload = _parse_wizard_json_payload(form)
+    if wiz_payload is not None:
+        selected_plot_ids = [pid for pid in (_int_or_none(x) for x in (wiz_payload.get("plotIds") or [])) if pid]
+        raw_dates = [str(d).strip() for d in (wiz_payload.get("dates") or []) if str(d).strip()]
+        if not raw_dates and wiz_payload.get("date"):
+            raw_dates = [str(wiz_payload.get("date")).strip()]
+        try:
+            scheduled_dates = [date.fromisoformat(d) for d in raw_dates]
+        except ValueError:
+            _flash(request, "error", "Informe datas válidas para o agendamento.")
+            return _redirect("/fertilizacao/agendamentos/novo")
+        application_method = wiz_payload.get("method")
+        duration_minutes = wiz_payload.get("durationMinutes")
+        responsible_name = str(wiz_payload.get("responsible") or "").strip() or None
+        recipe_name = str(wiz_payload.get("recipeName") or "").strip() or None
+        notes = str(wiz_payload.get("notes") or "").strip() or None
+        dose_mode = str(wiz_payload.get("doseMode") or "per_ha")
+        raw_wiz_items = wiz_payload.get("items") or []
+        status_value = "scheduled"
+    else:
+        selected_plot_ids = []
+        for raw_plot_id in form.getlist("plot_id"):
+            parsed_plot_id = _int_or_none(raw_plot_id)
+            if parsed_plot_id and parsed_plot_id not in selected_plot_ids:
+                selected_plot_ids.append(parsed_plot_id)
+        try:
+            scheduled_dates = _fertilization_schedule_dates_from_form(form)
+        except ValueError as exc:
+            _flash(request, "error", str(exc))
+            return _redirect("/fertilizacao/agendamentos")
+        application_method = form.get("application_method")
+        duration_minutes = form.get("duration_minutes")
+        responsible_name = str(form.get("responsible_name") or "").strip() or None
+        recipe_name = str(form.get("recipe_name") or "").strip() or None
+        notes = str(form.get("notes") or "").strip() or None
+        dose_mode = "fixed_plot"
+        raw_wiz_items = None
+        status_value = str(form.get("status") or "scheduled")
+
     selected_plots = [allowed_plots[plot_id] for plot_id in selected_plot_ids if plot_id in allowed_plots]
     if len(selected_plots) != len(selected_plot_ids) or any(not _plot_allowed_for_season_launch(plot, scope) for plot in selected_plots):
-        _flash(request, "error", "Selecione apenas setores vinculados à safra ativa.")
-        return _redirect("/fertilizacao/agendamentos")
-    items = _parse_recommendation_items(form)
-    if not selected_plots or not items:
-        _flash(request, "error", "Selecione ao menos um setor e adicione ao menos um insumo.")
-        return _redirect("/fertilizacao/agendamentos")
+        _flash(request, "error", "Selecione apenas talhões vinculados à safra ativa.")
+        return _redirect("/fertilizacao/agendamentos/novo" if wiz_payload is not None else "/fertilizacao/agendamentos")
+
+    catalog_by_id = {c.id: c for c in repo.list_input_catalog(item_type="insumo_agricola")}
+    legacy_items = _parse_recommendation_items(form) if wiz_payload is None else None
+    if not selected_plots or not scheduled_dates or (wiz_payload is None and not legacy_items):
+        _flash(request, "error", "Selecione ao menos um talhão, uma data e um insumo.")
+        return _redirect("/fertilizacao/agendamentos/novo" if wiz_payload is not None else "/fertilizacao/agendamentos")
+
     try:
-        scheduled_dates = _fertilization_schedule_dates_from_form(form)
         for scheduled_date in scheduled_dates:
             for plot in selected_plots:
+                plot_items = (
+                    _compute_items_for_plot_from_wizard(raw_wiz_items, plot, dose_mode, catalog_by_id)
+                    if wiz_payload is not None
+                    else legacy_items
+                )
+                if not plot_items:
+                    raise ValueError("Adicione ao menos um insumo com dose válida.")
                 create_fertilization_schedule(
                     repo,
                     {
                         "plot_id": plot.id,
                         "scheduled_date": scheduled_date.isoformat(),
                         "season_id": scope["active_season_id"],
-                        "status": str(form.get("status") or "scheduled"),
-                        "duration_minutes": form.get("duration_minutes"),
-                        "application_method": form.get("application_method"),
-                        "notes": str(form.get("notes") or "") or None,
-                        "items": items,
+                        "status": status_value,
+                        "duration_minutes": duration_minutes,
+                        "application_method": application_method,
+                        "responsible_name": responsible_name,
+                        "recipe_name": recipe_name,
+                        "notes": notes,
+                        "items": plot_items,
                     },
                 )
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect("/fertilizacao/agendamentos")
+        return _redirect("/fertilizacao/agendamentos/novo" if wiz_payload is not None else "/fertilizacao/agendamentos")
     total_created = len(selected_plots) * len(scheduled_dates)
     if total_created == 1:
         _flash(request, "success", "Agendamento salvo com sucesso.")
@@ -20762,20 +20964,40 @@ async def update_fertilization_schedules_date_batch_action(
     validate_csrf(request, str(form.get("csrf_token") or ""))
     redirect_to = str(form.get("redirect_to") or "")
     target_url = redirect_to if redirect_to.startswith("/") else "/fertilizacao/agendamentos"
+    req_headers = getattr(request, "headers", {}) or {}
+    wants_json = (
+        req_headers.get("x-requested-with") == "fetch"
+        or "application/json" in (req_headers.get("accept") or "")
+    )
+    mode = str(form.get("mode") or "date").strip().lower()
     new_date_raw = str(form.get("scheduled_date") or "").strip()
+    shift_days = _int_or_none(form.get("shift_days")) or 0
+
     selected_ids = []
     for raw_id in form.getlist("schedule_ids"):
-        parsed_id = _int_or_none(raw_id)
-        if parsed_id and parsed_id not in selected_ids:
-            selected_ids.append(parsed_id)
+        for piece in str(raw_id or "").split(","):
+            parsed_id = _int_or_none(piece.strip())
+            if parsed_id and parsed_id not in selected_ids:
+                selected_ids.append(parsed_id)
+
+    def _fail(msg: str):
+        if wants_json:
+            return JSONResponse({"ok": False, "error": msg}, status_code=400)
+        _flash(request, "error", msg)
+        return _redirect(target_url)
+
     if not selected_ids:
-        _flash(request, "error", "Selecione ao menos um agendamento para alterar a data.")
-        return _redirect(target_url)
-    try:
-        new_date = date.fromisoformat(new_date_raw)
-    except ValueError:
-        _flash(request, "error", "Informe uma nova data valida para os agendamentos selecionados.")
-        return _redirect(target_url)
+        return _fail("Selecione ao menos um agendamento para alterar a data.")
+
+    new_date: date | None = None
+    if mode == "shift":
+        if shift_days == 0 or abs(shift_days) > 365:
+            return _fail("Informe um número válido de dias para deslocar o calendário.")
+    else:
+        try:
+            new_date = date.fromisoformat(new_date_raw)
+        except ValueError:
+            return _fail("Informe uma nova data válida para os agendamentos selecionados.")
 
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
@@ -20789,16 +21011,28 @@ async def update_fertilization_schedules_date_batch_action(
         if schedule.status == "completed" or schedule.fertilization_record_id:
             skipped_count += 1
             continue
-        schedule.scheduled_date = new_date
+        if mode == "shift":
+            base_dt = schedule.scheduled_date or today_in_app_timezone()
+            schedule.scheduled_date = base_dt + timedelta(days=shift_days)
+        else:
+            schedule.scheduled_date = new_date
         repo.db.add(schedule)
         updated_count += 1
+
     if updated_count:
         repo.db.commit()
-        _flash(request, "success", f"Data alterada para {updated_count} agendamento(s).")
+        if mode == "shift":
+            sign = "+" if shift_days > 0 else ""
+            msg = f"{updated_count} agendamento(s) deslocado(s) em {sign}{shift_days} dia(s)."
+        else:
+            msg = f"Data alterada para {new_date.strftime('%d/%m/%Y')} em {updated_count} agendamento(s)."
+        if wants_json:
+            return JSONResponse({"ok": True, "updated": updated_count, "message": msg})
+        _flash(request, "success", msg)
     else:
-        _flash(request, "error", "Nenhum agendamento ativo pode ser alterado.")
+        return _fail("Nenhum agendamento ativo pôde ser alterado.")
     if skipped_count:
-        _flash(request, "info", f"{skipped_count} agendamento(s) foram ignorados por ja estarem concluidos ou fora do contexto.")
+        _flash(request, "info", f"{skipped_count} agendamento(s) foram ignorados por já estarem concluídos ou fora do contexto.")
     return _redirect(target_url)
 
 
@@ -20815,85 +21049,166 @@ async def update_fertilization_schedule_action(
     redirect_to = str(form.get("redirect_to") or "")
     target_url = redirect_to if redirect_to.startswith("/") else "/fertilizacao/agendamentos"
     repo = _repository(db)
+    schedule = repo.get_fertilization_schedule(schedule_id)
+    if not schedule:
+        _flash(request, "error", "Agendamento não encontrado.")
+        return _redirect(target_url)
+
+    wiz_payload = _parse_wizard_json_payload(form)
+    if wiz_payload is not None:
+        raw_pids = wiz_payload.get("plotIds") or []
+        target_plot_id = _int_or_none(raw_pids[0]) if raw_pids else schedule.plot_id
+        scheduled_date_str = str(wiz_payload.get("date") or "").strip()
+        application_method = wiz_payload.get("method")
+        duration_minutes = wiz_payload.get("durationMinutes")
+        responsible_name = str(wiz_payload.get("responsible") or "").strip() or None
+        recipe_name = str(wiz_payload.get("recipeName") or "").strip() or None
+        notes = str(wiz_payload.get("notes") or "").strip() or None
+        dose_mode = str(wiz_payload.get("doseMode") or "per_ha")
+        next_status = schedule.status
+    else:
+        target_plot_id = int(form.get("plot_id") or 0)
+        scheduled_date_str = str(form.get("scheduled_date") or "").strip()
+        application_method = form.get("application_method")
+        duration_minutes = form.get("duration_minutes")
+        responsible_name = str(form.get("responsible_name") or "").strip() or None
+        recipe_name = str(form.get("recipe_name") or "").strip() or None
+        notes = str(form.get("notes") or "").strip() or None
+        dose_mode = "fixed_plot"
+        next_status = str(form.get("status") or schedule.status)
+
     plot, scope, denied = _resolve_plot_in_scope(
-        request,
-        repo,
-        int(form.get("plot_id") or 0),
-        "/fertilizacao/agendamentos",
+        request, repo, int(target_plot_id or 0), "/fertilizacao/agendamentos"
     )
     if denied:
         return denied
-    schedule = repo.get_fertilization_schedule(schedule_id)
-    if not schedule:
-        _flash(request, "error", "Agendamento nao encontrado.")
-        return _redirect(target_url)
     if not _plot_matches_scope(schedule.plot, scope):
-        _flash(request, "error", "Este agendamento nao pertence ao contexto ativo.")
+        _flash(request, "error", "Este agendamento não pertence ao contexto ativo.")
         return _redirect(target_url)
     if plot.id != schedule.plot_id and not _plot_allowed_for_season_launch(plot, scope):
-        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
-        return _redirect(target_url)
-    items = _parse_recommendation_items(form)
+        _flash(request, "error", "O talhão selecionado não está vinculado à safra ativa.")
+        return _redirect(f"/fertilizacao/agendamentos/{schedule_id}/editar")
+
+    if wiz_payload is not None:
+        catalog_by_id = {c.id: c for c in repo.list_input_catalog(item_type="insumo_agricola")}
+        items = _compute_items_for_plot_from_wizard(wiz_payload.get("items") or [], plot, dose_mode, catalog_by_id)
+    else:
+        items = _parse_recommendation_items(form)
     if not items:
         _flash(request, "error", "Adicione ao menos um insumo ao agendamento.")
-        separator = "&" if "?" in target_url else "?"
-        return _redirect(f"{target_url}{separator}edit_id={schedule_id}")
+        return _redirect(f"/fertilizacao/agendamentos/{schedule_id}/editar")
+
     try:
         update_fertilization_schedule(
             repo,
             schedule,
             {
                 "plot_id": plot.id,
-                "scheduled_date": str(form.get("scheduled_date") or ""),
+                "scheduled_date": scheduled_date_str,
                 "season_id": scope["active_season_id"],
-                "status": str(form.get("status") or schedule.status),
-                "duration_minutes": form.get("duration_minutes"),
-                "application_method": form.get("application_method"),
-                "notes": str(form.get("notes") or "") or None,
+                "status": next_status,
+                "duration_minutes": duration_minutes,
+                "application_method": application_method,
+                "responsible_name": responsible_name,
+                "recipe_name": recipe_name,
+                "notes": notes,
                 "items": items,
             },
         )
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        separator = "&" if "?" in target_url else "?"
-        return _redirect(f"{target_url}{separator}edit_id={schedule_id}")
+        return _redirect(f"/fertilizacao/agendamentos/{schedule_id}/editar")
     _flash(request, "success", "Agendamento atualizado com sucesso.")
     return _redirect(target_url)
 
 
 @router.post("/fertilizacao/agendamentos/{schedule_id}/concluir")
-def conclude_fertilization_schedule_action(
+async def conclude_fertilization_schedule_action(
+    schedule_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    redirect_to = str(form.get("redirect_to") or "")
+    target_url = redirect_to if isinstance(redirect_to, str) and redirect_to.startswith("/") else "/fertilizacao/agendamentos"
+    application_date = str(form.get("application_date") or "").strip() or None
+    duration_minutes = form.get("duration_minutes")
+    responsible_name = form.get("responsible_name")
+    notes = form.get("notes")
+    actual_items_raw = str(form.get("actual_items_json") or "").strip()
+
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    schedule = repo.get_fertilization_schedule(schedule_id)
+    if not schedule or not _plot_matches_scope(schedule.plot, scope):
+        _flash(request, "error", "Agendamento não encontrado no contexto ativo.")
+        return _redirect(target_url)
+    if schedule.status == "completed" or schedule.fertilization_record_id:
+        _flash(request, "info", "Este agendamento já foi concluído.")
+        return _redirect(target_url)
+
+    items_override = None
+    if actual_items_raw:
+        try:
+            parsed = json.loads(actual_items_raw)
+            if isinstance(parsed, list) and parsed:
+                items_override = parsed
+        except json.JSONDecodeError:
+            _flash(request, "error", "Dados de insumos aplicados inválidos.")
+            return _redirect(target_url)
+
+    if items_override is None:
+        purchased_inputs = repo.list_purchased_inputs(include_stock_adjustments=True)
+        validation = validate_schedule_stock(repo, schedule, purchased_inputs_cache=purchased_inputs)
+        if not validation["ok"]:
+            first = validation["shortages"][0]
+            _flash(request, "error", f"Estoque insuficiente. Necessário comprar {first['missing']} {first['unit']} de {first['name']}.")
+            return _redirect(target_url)
+
+    try:
+        conclude_fertilization_schedule(
+            repo,
+            schedule,
+            application_date,
+            duration_minutes=duration_minutes if duration_minutes not in (None, "") else None,
+            responsible_name=str(responsible_name) if responsible_name is not None else None,
+            notes=str(notes) if notes is not None else None,
+            items_override=items_override,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(target_url)
+    _flash(request, "success", "Agendamento concluído! Aplicação registrada em Fertilização e estoque atualizado.")
+    return _redirect(target_url)
+
+
+@router.post("/fertilizacao/agendamentos/{schedule_id}/duplicar")
+def duplicate_fertilization_schedule_action(
     schedule_id: int,
     request: Request,
     csrf_token: str = Form(...),
-    application_date: str | None = Form(None),
     redirect_to: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
     validate_csrf(request, csrf_token)
-    target_url = redirect_to if redirect_to and redirect_to.startswith("/") else "/fertilizacao/agendamentos"
+    target_url = redirect_to if isinstance(redirect_to, str) and redirect_to.startswith("/") else "/fertilizacao/agendamentos"
     repo = _repository(db)
+    scope = _global_scope_context(request, repo)
     schedule = repo.get_fertilization_schedule(schedule_id)
-    if not schedule:
-        _flash(request, "error", "Agendamento nao encontrado.")
-        return _redirect(target_url)
-    if schedule.status == "completed" or schedule.fertilization_record_id:
-        _flash(request, "info", "Este agendamento ja foi concluido.")
-        return _redirect(target_url)
-    purchased_inputs = repo.list_purchased_inputs(include_stock_adjustments=True)
-    validation = validate_schedule_stock(repo, schedule, purchased_inputs_cache=purchased_inputs)
-    if not validation["ok"]:
-        first = validation["shortages"][0]
-        _flash(request, "error", f"Estoque insuficiente. Necessario comprar {first['missing']} {first['unit']} de {first['name']}.")
+    if not schedule or not _plot_matches_scope(schedule.plot, scope):
+        _flash(request, "error", "Agendamento não encontrado.")
         return _redirect(target_url)
     try:
-        conclude_fertilization_schedule(repo, schedule, application_date)
+        cloned = duplicate_fertilization_schedule(repo, schedule)
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect(target_url)
-    _flash(request, "success", "Agendamento concluido e aplicacao registrada.")
+    _flash(request, "success", f"Agendamento duplicado para {cloned.scheduled_date.strftime('%d/%m/%Y')}.")
     return _redirect(target_url)
 
 
@@ -20908,15 +21223,15 @@ def toggle_fertilization_schedule_status_action(
 ):
     del user
     validate_csrf(request, csrf_token)
-    target_url = redirect_to if redirect_to and redirect_to.startswith("/") else "/fertilizacao/agendamentos"
+    target_url = redirect_to if isinstance(redirect_to, str) and redirect_to.startswith("/") else "/fertilizacao/agendamentos"
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     schedule = repo.get_fertilization_schedule(schedule_id)
     if not schedule:
-        _flash(request, "error", "Agendamento nao encontrado.")
+        _flash(request, "error", "Agendamento não encontrado.")
         return _redirect(target_url)
     if not _plot_matches_scope(schedule.plot, scope):
-        _flash(request, "error", "Este agendamento nao pertence ao contexto ativo.")
+        _flash(request, "error", "Este agendamento não pertence ao contexto ativo.")
         return _redirect(target_url)
 
     if schedule.status == "completed" or schedule.fertilization_record_id:
@@ -20929,21 +21244,21 @@ def toggle_fertilization_schedule_status_action(
             existing_record = repo.get_fertilization(record_id)
             if existing_record:
                 delete_fertilization(repo, existing_record)
-        _flash(request, "success", "Agendamento voltou para programado.")
+        _flash(request, "success", "Agendamento reaberto. Aplicação removida e estoque restaurado.")
         return _redirect(target_url)
 
     purchased_inputs = repo.list_purchased_inputs(include_stock_adjustments=True)
     validation = validate_schedule_stock(repo, schedule, purchased_inputs_cache=purchased_inputs)
     if not validation["ok"]:
         first = validation["shortages"][0]
-        _flash(request, "error", f"Estoque insuficiente. Necessario comprar {first['missing']} {first['unit']} de {first['name']}.")
+        _flash(request, "error", f"Estoque insuficiente. Necessário comprar {first['missing']} {first['unit']} de {first['name']}.")
         return _redirect(target_url)
     try:
         conclude_fertilization_schedule(repo, schedule, None)
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect(target_url)
-    _flash(request, "success", "Agendamento concluido e aplicacao registrada.")
+    _flash(request, "success", "Agendamento concluído e aplicação registrada.")
     return _redirect(target_url)
 
 
@@ -20958,14 +21273,14 @@ def delete_fertilization_schedule_action(
 ):
     del user
     validate_csrf(request, csrf_token)
-    target_url = redirect_to if redirect_to and redirect_to.startswith("/") else "/fertilizacao/agendamentos"
+    target_url = redirect_to if isinstance(redirect_to, str) and redirect_to.startswith("/") else "/fertilizacao/agendamentos"
     repo = _repository(db)
     schedule = repo.get_fertilization_schedule(schedule_id)
     if not schedule:
-        _flash(request, "error", "Agendamento nao encontrado.")
+        _flash(request, "error", "Agendamento não encontrado.")
         return _redirect(target_url)
     delete_fertilization_schedule(repo, schedule)
-    _flash(request, "success", "Agendamento excluido com sucesso.")
+    _flash(request, "success", "Agendamento excluído com sucesso.")
     return _redirect(target_url)
 
 

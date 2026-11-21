@@ -16,6 +16,8 @@ class FertilizationSchedule(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="scheduled")
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=True)
     application_method: Mapped[str] = mapped_column(String(40), nullable=False, default="fertirrigacao")
+    responsible_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    recipe_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
     fertilization_record_id: Mapped[int] = mapped_column(ForeignKey("fertilization_records.id"), nullable=True)
 

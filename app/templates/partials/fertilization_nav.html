@@ -1,0 +1,16 @@
+{# Abas integradas do ciclo nutricional (Agendamentos <-> Fertilização). active: 'schedules' | 'fertilization' #}
+{% macro fertilization_tabs(active, active_schedules_count=None, fert_count=None) %}
+{% set mv = menu_visibility or {} %}
+<nav class="pd-tabs ft-tabs" aria-label="Ciclo de adubação">
+    {% if mv.get('agenda', True) %}
+    <a href="{{ module_href('/fertilizacao/agendamentos') }}" {% if active == 'schedules' %}aria-current="page"{% endif %}>
+        Agendamentos{% if active_schedules_count is not none %} <span class="ft-tab-count">{{ active_schedules_count }}</span>{% endif %}
+    </a>
+    {% endif %}
+    {% if mv.get('operations', True) %}
+    <a href="{{ module_href('/fertilizacao') }}" {% if active == 'fertilization' %}aria-current="page"{% endif %}>
+        Fertilização{% if fert_count is not none %} <span class="ft-tab-count">{{ fert_count }}</span>{% endif %}
+    </a>
+    {% endif %}
+</nav>
+{% endmacro %}

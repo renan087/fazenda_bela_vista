@@ -1,876 +1,233 @@
 {% extends "base.html" %}
+{% from "partials/fertilization_nav.html" import fertilization_tabs %}
 {% block content %}
-{% from "partials/module_history_filter_toolbar.html" import module_history_filter_toolbar with context %}
-{% macro render_fertilization_card(item) %}
-<article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-fertilization-history-row data-fertilization-search-text="{{ (item.plot.name if item.plot else '') ~ ' ' ~ (item.application_date|string) ~ ' ' ~ (item.product or '') ~ ' ' ~ (item.notes or '') }} {% if item.application_method == 'adubacao_solida' %}Adubação sólida{% elif item.application_method == 'fertilizacao_foliar' %}Fertilização Foliar{% else %}Fertirrigação{% endif %} {% for detail in item.items %} {{ detail.name }} {% endfor %}">
-    <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
-        <div class="min-w-0">
-            <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-history-view-trigger data-history-view-kicker="Fertilização" data-history-view-title="{{ item.plot.name if item.plot else 'Setor removido' }}" data-history-view-subtitle="{{ item.application_date }} • {{ item.product }}" data-history-view-source="fertilization-view-{{ item.id }}" data-history-view-edit-url="/fertilizacao?edit_id={{ item.id }}">{{ item.plot.name if item.plot else "Setor removido" }}</button>
-            <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ item.application_date }} • {{ item.product }}</p>
+{% set ctx = ft_ctx %}
+{% set k = ctx.kpi %}
+<div class="sf-page pd-page ft-page" data-ft-fert-page data-can-write="{{ '1' if can_write_page else '0' }}">
+    <header class="pd-head">
+        <div>
+            <h1 class="sf-page-title">Fertilização</h1>
+            <p class="sf-page-subtitle">Acompanhe o que já foi aplicado em cada talhão, os custos reais{% if active_season %} da {{ active_season.name }}{% endif %} e o consumo do estoque.</p>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-            <span class="stock-level-badge {% if item.application_method == 'adubacao_solida' %}bg-slate-100 text-slate-700 ring-1 ring-slate-200{% elif item.application_method == 'fertilizacao_foliar' %}bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100{% else %}bg-sky-50 text-sky-800 ring-1 ring-sky-100{% endif %}">{% if item.application_method == 'adubacao_solida' %}Adubação sólida{% elif item.application_method == 'fertilizacao_foliar' %}Fertilização Foliar{% else %}Fertirrigação{% endif %}</span>
-            <span class="stock-level-badge bg-brand-50 text-brand-700 ring-1 ring-brand-100">R$ {{ item.cost }}</span>
-            <a href="/fertilizacao?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 20h9"/>
-                    <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-                </svg>
-            </a>
+        <div class="pd-head-actions">
             <details class="sf-menu" data-sf-dropdown>
-                <summary class="sf-icon-btn" aria-label="Mais ações" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
+                <summary class="sf-btn sf-btn-secondary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>
+                    Exportar
+                    <svg class="sf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </summary>
                 <div class="sf-menu-panel">
-                    <form method="post" action="/fertilizacao/{{ item.id }}/excluir" class="inline" onsubmit="return confirm('Excluir esta aplicação?');">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="sf-menu-danger">Excluir</button></form>
+                    <a href="/fertilizacao/exportar.pdf" class="sf-menu-link">Relatório em PDF</a>
+                    <a href="/fertilizacao/exportar.xlsx" class="sf-menu-link">Planilha Excel (.xlsx)</a>
                 </div>
             </details>
+            {% if can_write_page %}
+            <a class="sf-btn sf-btn-secondary" href="/fertilizacao/agendamentos/novo">Agendar futura</a>
+            <a class="sf-btn sf-btn-primary" href="/fertilizacao/nova">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Nova aplicação
+            </a>
+            {% endif %}
         </div>
-    </div>
+    </header>
 
-    <div class="mt-4">
-        <div class="hidden max-sm:flex max-sm:items-center max-sm:justify-end">
-            <button type="button" class="stock-summary-toggle sm:hidden" data-fertilization-items-toggle aria-expanded="false">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <path d="M5 12h14"/>
-                    <path d="M12 5v14" data-fertilization-items-toggle-plus></path>
-                </svg>
-                <span data-fertilization-items-toggle-label>Mostrar Insumos</span>
-            </button>
-        </div>
-        <div class="stock-summary-collapse max-sm:mt-3" data-fertilization-items-collapse>
-            <div class="stock-summary-collapse-inner">
-                <div class="flex flex-wrap gap-2">
-                    {% for detail in item.items %}
-                    <div class="rounded-full bg-white px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200/80">
-                        <span class="font-medium">{{ detail.name }}</span>
-                        <span class="text-slate-500"> • {{ detail.total_quantity }} {{ detail.unit }}</span>
-                    </div>
+    {{ fertilization_tabs('fertilization', ft_active_schedules_count, ft_fert_count) }}
+
+    <!-- KPIs da safra -->
+    <section class="ft-kpis" aria-label="Indicadores de fertilização">
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Investido na safra</span>
+            <div class="ft-kpi-val"><strong>R$ {{ k.total_cost|decimal_br(2) }}</strong></div>
+            <p class="ft-kpi-sub">
+                {% if k.cost_per_ha > 0 %}Média de <strong>R$ {{ k.cost_per_ha|decimal_br(2) }}/ha</strong> (custo FIFO){% else %}Sem aplicações registradas{% endif %}
+            </p>
+        </article>
+
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Aplicações registradas</span>
+            <div class="ft-kpi-val"><strong>{{ k.total_count }}</strong><span>na safra ativa</span></div>
+            <p class="ft-kpi-sub">{{ k.from_schedule_count }} da Agenda · {{ k.manual_count }} avulsa{{ 's' if k.manual_count != 1 }}</p>
+        </article>
+
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Cobertura dos talhões</span>
+            <div class="ft-kpi-val"><strong>{{ k.covered_plots }} <small>de {{ k.total_plots }}</small></strong></div>
+            <div class="ft-meter"><i class="is-brand" style="width: {{ k.coverage_pct }}%"></i></div>
+        </article>
+
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Água via fertirrigação</span>
+            <div class="ft-kpi-val"><strong class="is-info">{{ k.irrigation_liters|decimal_br(0) }}</strong><span>L</span></div>
+            <p class="ft-kpi-sub">Lançado automaticamente em Irrigação</p>
+        </article>
+    </section>
+
+    <!-- Situação nutricional por talhão + Integrações & Pendências -->
+    <section class="ft-overview-grid" aria-label="Cobertura nutricional e pendências">
+        <article class="pd-card ft-plots-card">
+            <div class="ft-card-head">
+                <div>
+                    <h2>Situação nutricional por talhão</h2>
+                    <p>Clique em um talhão para filtrar o histórico abaixo.</p>
+                </div>
+                <button type="button" class="ft-link-btn is-brand" data-ft-plot-clear hidden>Mostrar todos os talhões</button>
+            </div>
+            {% if ctx.plot_health %}
+            <div class="ft-plot-list">
+                {% for row in ctx.plot_health %}
+                <div class="ft-plot-row" data-ft-plot-card="{{ row.plot_id }}">
+                    <button type="button" class="ft-plot-main" data-ft-plot-select="{{ row.plot_id }}">
+                        <div class="ft-plot-top">
+                            <strong>{{ row.name }}</strong>
+                            <span>{{ row.area|decimal_br(1) }} ha · {{ row.irrigation_label }}</span>
+                            {% if row.never_done %}<span class="pd-chip is-warn">Sem adubação na safra</span>{% endif %}
+                        </div>
+                        <div class="ft-plot-meta">
+                            <span>{% if row.count %}Última há {{ row.days_since }}d ({{ row.last_date_br }}){% else %}Nenhuma aplicação registrada{% endif %}</span>
+                            <span>Custo: <strong>R$ {{ row.cost|decimal_br(2) }}</strong> (R$ {{ row.cost_per_ha|decimal_br(2) }}/ha)</span>
+                            {% if row.next_schedule_br %}
+                            <span class="is-brand">Próx. agenda: {{ row.next_schedule_br }}</span>
+                            {% else %}
+                            <span class="is-muted">Sem agendamento futuro</span>
+                            {% endif %}
+                        </div>
+                    </button>
+                    {% if can_write_page %}
+                    <a class="sf-btn sf-btn-secondary sf-btn-sm" href="/fertilizacao/nova?plot_id={{ row.plot_id }}">Aplicar</a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="pd-empty">
+                <strong>Nenhum talhão vinculado à safra ativa.</strong>
+                <span>Vincule talhões em Safras para acompanhar a nutrição da lavoura.</span>
+            </div>
+            {% endif %}
+        </article>
+
+        <aside class="pd-card ft-side-card">
+            <div>
+                <h2>Integrações &amp; Pendências</h2>
+                <div class="ft-att-list">
+                    {% if ctx.pending_schedules_count %}
+                    <a class="ft-att is-warn" href="/fertilizacao/agendamentos">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                        <span>
+                            <strong>{{ ctx.pending_schedules_count }} agendamento{{ 's' if ctx.pending_schedules_count != 1 }} aguardando execução</strong>
+                            <small>Execute pela Agenda para dar baixa sem lançar duas vezes →</small>
+                        </span>
+                    </a>
                     {% else %}
-                    <div class="rounded-full bg-white px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200/80">
-                        <span class="font-medium">Dose</span>
-                        <span class="text-slate-500"> • {{ item.dose }}</span>
+                    <div class="ft-att is-ok">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                        <span>
+                            <strong>Agenda em dia</strong>
+                            <small>Nenhum agendamento atrasado ou pendente para hoje.</small>
+                        </span>
+                    </div>
+                    {% endif %}
+
+                    {% if ctx.unfertilized_plots and can_write_page %}
+                    {% set first_unf = ctx.unfertilized_plots[0] %}
+                    <a class="ft-att is-neutral" href="/fertilizacao/agendamentos/novo?plot_id={{ first_unf.plot_id }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 19c0-8 5-14 15-15-1 10-7 15-15 15z"/><path d="M5 19 13 11"/></svg>
+                        <span>
+                            <strong>{{ first_unf.name }} ainda sem adubação</strong>
+                            <small>Planejar aplicação na Agenda para este talhão →</small>
+                        </span>
+                    </a>
+                    {% endif %}
+
+                    <div class="ft-att is-info">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+                        <span>
+                            <strong>Sincronia automática ativa</strong>
+                            <small>Baixa de estoque FIFO, Custos por Setor e Irrigação por gotejo atualizam juntos a cada aplicação.</small>
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ft-method-box">
+                <span class="pd-eyebrow">Custo por método de aplicação</span>
+                <div class="ft-method-bars">
+                    {% for m in ctx.method_breakdown %}
+                    <div class="ft-method-row">
+                        <div class="ft-method-lbl">
+                            <span>{{ m.label }}</span>
+                            <span><strong>R$ {{ m.cost|decimal_br(2) }}</strong> ({{ m.pct }}%)</span>
+                        </div>
+                        <div class="ft-meter"><i style="width: {{ m.pct }}%; background: {{ m.dot }}"></i></div>
                     </div>
                     {% endfor %}
                 </div>
             </div>
-        </div>
-    </div>
-
-    <p class="mt-3 text-sm text-slate-500">{{ item.notes or "Sem observações." }}</p>
-    <template id="fertilization-view-{{ item.id }}">
-        <div class="grid gap-3 sm:grid-cols-2">
-            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "Setor removido" }}</p></div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.application_date }}</p></div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Produto</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.product }}</p></div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ item.cost }}</p></div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Modo</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.application_method == 'adubacao_solida' %}Adubação sólida{% elif item.application_method == 'fertilizacao_foliar' %}Fertilização Foliar{% else %}Fertirrigação{% endif %}</p></div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.application_method != 'fertirrigacao' %}-{% elif item.duration_minutes %}{{ item.duration_minutes }} min{% else %}-{% endif %}</p></div>
-        </div>
-        <div class="rounded-2xl bg-slate-50 px-4 py-4">
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Insumos aplicados</p>
-            <div class="mt-3 space-y-2">
-                {% for detail in item.items %}
-                <div class="rounded-xl bg-white px-3 py-3 text-sm text-slate-700">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <span class="font-medium text-slate-800">{{ detail.name }}</span>
-                        <span>{{ detail.total_quantity }} {{ detail.unit }}</span>
-                    </div>
-                    <p class="mt-1 text-xs text-slate-500">Custo histórico: R$ {{ detail.total_cost or 0 }}</p>
-                </div>
-                {% else %}
-                <p class="text-sm text-slate-600">Dose: {{ item.dose }}</p>
-                {% endfor %}
-            </div>
-        </div>
-        <div class="rounded-2xl bg-slate-50 px-4 py-4">
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
-            <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observações." }}</p>
-        </div>
-    </template>
-</article>
-{% endmacro %}
-
-<div class="stock-page-shell sf-page" data-modal-single-pane>
-    <section class="stock-page-header">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-                <div class="stock-page-header-intro-inner">
-                    <h2 class="stock-page-card-title">Fertilização</h2>
-                    <p class="stock-page-card-subtitle">Registre aplicações em campo, acompanhe custos e consulte o histórico da safra ativa.</p>
-                </div>
-            </div>
-            <div class="stock-header-actions stock-header-actions-top">
-                <details class="sf-menu" data-sf-dropdown>
-                    <summary class="sf-btn sf-btn-secondary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>Exportar<svg class="sf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
-                    <div class="sf-menu-panel">
-                        <a href="/fertilizacao/exportar.pdf" class="stock-action-button stock-export-button stock-export-button-pdf" data-fertilization-export-link data-base-href="/fertilizacao/exportar.pdf">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                        <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
-                        <path d="M14 3v6h6"/>
-                        <path d="M10 13h4"/>
-                        <path d="M10 17h4"/>
-                    </svg>
-                    <span class="stock-action-button-label">Exportar PDF</span>
-                </a>
-                        <a href="/fertilizacao/exportar.xlsx" class="stock-action-button stock-export-button stock-export-button-xlsx" data-fertilization-export-link data-base-href="/fertilizacao/exportar.xlsx">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                        <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
-                        <path d="M14 3v6h6"/>
-                        <path d="m10 12 4 6"/>
-                        <path d="m14 12-4 6"/>
-                    </svg>
-                    <span class="stock-action-button-label">Exportar Excel</span>
-                </a>
-                    </div>
-                </details>
-                <button type="button" class="stock-action-button stock-action-button-primary" data-fertilization-launch-open>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M12 5v14"/>
-                        <path d="M5 12h14"/>
-                    </svg>
-                    <span class="stock-action-button-label"><span class="sm:hidden">Nova</span><span class="hidden sm:inline">Nova aplicação</span></span>
-                </button>
-            </div>
-        </div>
+        </aside>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel data-fertilization-history-shell>
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico</p>
-                <h3 class="mt-2 text-2xl font-semibold">Aplicações registradas</h3>
+    <!-- Histórico de aplicações -->
+    <section class="pd-card ft-stage" aria-label="Histórico de aplicações">
+        <div class="ft-stage-top">
+            <div>
+                <h2>Histórico de aplicações</h2>
+                <p class="ft-stage-sub">Clique em qualquer registro para ver alocação FIFO de estoque, irrigação vinculada e custo por hectare.</p>
+            </div>
+            <label class="sl-search ft-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <span class="sr-only">Buscar aplicações</span>
+                <input type="search" placeholder="Buscar talhão, insumo ou responsável..." data-ft-fert-search>
+            </label>
+        </div>
+
+        <div class="ft-filters-row">
+            <div class="sl-chips" role="group" aria-label="Filtrar aplicações">
+                <button type="button" class="sl-chip" aria-pressed="true" data-ft-fert-filter="all">Todas <span>{{ k.total_count }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-ft-fert-filter="fertirrigacao">Fertirrigação <span>{{ k.method_counts.fertirrigacao }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-ft-fert-filter="adubacao_solida">Sólida <span>{{ k.method_counts.adubacao_solida }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-ft-fert-filter="fertilizacao_foliar">Foliar <span>{{ k.method_counts.fertilizacao_foliar }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-ft-fert-filter="from_schedule">Da Agenda <span>{{ k.from_schedule_count }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-ft-fert-filter="manual">Avulsas <span>{{ k.manual_count }}</span></button>
             </div>
         </div>
-        <div class="mt-6">
-            {{ module_history_filter_toolbar(
-                '/fertilizacao',
-                'Buscar setor, data, produto ou observação',
-                selected_fertilization_range,
-                fertilization_filter_start_date or '',
-                fertilization_filter_end_date or '',
-                fertilization_filter_clear_url,
-                ([{'name': 'edit_id', 'value': edit_fertilization.id|string}] if edit_fertilization else []),
-                request.query_params.get('search', ''),
-                preset_variant='past',
-                period_placeholder='Filtre por período',
-                mobile_icon_clear=True
-            ) }}
-        </div>
-        <div class="mt-4 space-y-4" data-fertilization-history-list>
-            {% for group in fertilizations|groupby('application_date')|reverse %}
-            <section class="rounded-[1.75rem] border border-slate-200 bg-slate-50/70 p-4 shadow-sm" data-fertilization-group>
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div class="min-w-0">
-                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Data da aplicação</p>
-                        <div class="mt-2 flex flex-wrap items-center gap-2">
-                            <h3 class="text-lg font-semibold text-slate-900">{{ group.grouper.strftime('%d/%m/%Y') if group.grouper else '-' }}</h3>
-                            <span class="stock-level-badge bg-white text-slate-600 ring-1 ring-slate-200/80">{{ group.list|length }} registro(s)</span>
-                        </div>
-                    </div>
-                    <button type="button" class="stock-summary-toggle" data-fertilization-group-toggle aria-expanded="false">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <path d="M5 12h14"/>
-                            <path d="M12 5v14" data-fertilization-group-toggle-plus></path>
-                        </svg>
-                        <span data-fertilization-group-toggle-label>Mostrar Aplicações</span>
-                    </button>
-                </div>
-                <div class="stock-summary-collapse mt-4" data-fertilization-group-collapse>
-                    <div class="stock-summary-collapse-inner">
-                        <div class="space-y-4">
-                            {% for item in group.list %}
-                            {{ render_fertilization_card(item) }}
-                            {% endfor %}
-                        </div>
-                    </div>
-                </div>
-            </section>
-            {% else %}
-            <p class="text-sm text-slate-500">Sem registros.</p>
-            {% endfor %}
-            <p class="hidden text-sm text-slate-500" data-fertilization-search-empty>Nenhuma aplicação corresponde à busca.</p>
-            {% with pagination=fertilizations_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+
+        <div class="ft-fert-list" data-ft-fert-list>
+            {% if not ctx.history_rows %}
+            <div class="pd-empty">
+                <strong>Nenhuma aplicação registrada nesta safra.</strong>
+                <span>Registre diretamente por aqui ou conclua um agendamento planejado na aba Agendamentos.</span>
+                {% if can_write_page %}<a class="sf-btn sf-btn-primary" href="/fertilizacao/nova">Registrar primeira aplicação</a>{% endif %}
+            </div>
+            {% endif %}
         </div>
     </section>
 </div>
-{% include "partials/history_view_modal.html" %}
 
-<dialog id="fertilization-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_fertilization %}Editar aplicação{% else %}Nova aplicação{% endif %}</p>
-                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_fertilization %}Editar fertilização aplicada{% else %}Nova fertilização aplicada{% endif %}</h3>
-                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Registre aplicações em campo, acompanhe custos e atualize o histórico sem sair da listagem principal.</p>
-            </div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-fertilization-launch-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
-            </button>
-        </div>
-
-        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
-            <form id="fertilization-form" method="post" action="{% if edit_fertilization %}/fertilizacao/{{ edit_fertilization.id }}/editar{% else %}/fertilizacao{% endif %}" class="grid gap-4" data-fertilization-form>
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
-                        <div class="min-w-0">
-                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
-                            <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
-                        </div>
-                        <button type="button" class="stock-summary-toggle" data-fertilization-context-toggle aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                <path d="M5 12h14"/>
-                                <path d="M12 5v14" data-fertilization-context-toggle-plus></path>
-                            </svg>
-                            <span data-fertilization-context-toggle-label>Expandir</span>
-                        </button>
-                    </div>
-                    <div class="stock-summary-collapse" data-fertilization-context-collapse>
-                        <div class="stock-summary-collapse-inner">
-                            <div class="mt-4">
-                                {% include "partials/launch_context.html" %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
-                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
-                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-fertilization-launch-close data-fertilization-close-button>Cancelar</button>
-                        <button form="fertilization-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_fertilization %}Salvar{% else %}Salvar aplicação{% endif %}</button>
-                    </div>
-                </div>
-                <div class="grid gap-4 sm:grid-cols-2">
-                    {% if edit_fertilization %}
-                    <label>
-                        <span class="mb-2 block text-sm font-medium text-slate-700">Setor</span>
-                        <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
-                            {% for plot in launch_plots %}
-                            <option value="{{ plot.id }}" {% if edit_fertilization.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    {% else %}
-                    <div class="sm:col-span-2">
-                        <span class="mb-2 block text-sm font-medium text-slate-700">Setores</span>
-                        <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" data-fertilization-plot-select>
-                            <option value="">Selecione um setor</option>
-                            {% for plot in launch_plots %}
-                            <option value="{{ plot.id }}" data-plot-name="{{ plot.name }}" data-plot-farm="{{ plot.farm.name if plot.farm else 'Sem fazenda vinculada' }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
-                            {% endfor %}
-                        </select>
-                        <div class="schedule-plot-selected mt-3" data-fertilization-plot-selected>
-                            <p class="schedule-plot-selected-empty text-sm text-slate-500" data-fertilization-plot-empty>Nenhum setor selecionado.</p>
-                        </div>
-                        <div data-fertilization-plot-hidden-inputs></div>
-                        <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
-                            <span class="block text-xs text-slate-500">Selecione um ou mais setores para repetir a mesma aplicação.</span>
-                            <span class="schedule-plot-picker-count text-xs font-medium text-slate-500" data-fertilization-plot-selection-count>Nenhum setor selecionado</span>
-                        </div>
-                    </div>
-                    {% endif %}
-                    <label>
-                        <span class="mb-2 block text-sm font-medium text-slate-700">Data</span>
-                        <input type="date" name="application_date" value="{{ edit_fertilization.application_date.isoformat() if edit_fertilization else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
-                    </label>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium text-slate-700">Modo de aplicação</span>
-                        <select name="application_method" data-fertilization-application-method class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
-                            <option value="fertirrigacao" {% if not edit_fertilization or edit_fertilization.application_method not in ['adubacao_solida', 'fertilizacao_foliar'] %}selected{% endif %}>Fertirrigação</option>
-                            <option value="adubacao_solida" {% if edit_fertilization and edit_fertilization.application_method == 'adubacao_solida' %}selected{% endif %}>Adubação sólida</option>
-                            <option value="fertilizacao_foliar" {% if edit_fertilization and edit_fertilization.application_method == 'fertilizacao_foliar' %}selected{% endif %}>Fertilização Foliar</option>
-                        </select>
-                    </label>
-                    <div class="{% if edit_fertilization and edit_fertilization.application_method in ['adubacao_solida', 'fertilizacao_foliar'] %}hidden{% endif %}" data-fertilization-duration-block>
-                        <label>
-                            <span class="mb-2 block text-sm font-medium text-slate-700">Duração da fertilização (minutos)</span>
-                            <input type="number" name="duration_minutes" data-fertilization-duration-minutes value="{{ edit_fertilization.duration_minutes if edit_fertilization and edit_fertilization.duration_minutes is not none else '' }}" min="1" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" {% if not edit_fertilization or edit_fertilization.application_method not in ['adubacao_solida', 'fertilizacao_foliar'] %}required{% endif %}>
-                            <span class="mt-2 block text-xs text-slate-500">Obrigatório em <strong>Fertirrigação</strong>. Com setor de gotejo configurado, o sistema calcula e registra a irrigação automaticamente.</span>
-                        </label>
-                    </div>
-                </div>
-
-                <label>
-                    <span class="mb-2 block text-sm font-medium text-slate-700">Recomendação pronta</span>
-                    <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" data-recommendation-select>
-                        <option value="">Montar aplicação manualmente</option>
-                        {% for application_name in recommendation_groups.keys()|sort %}
-                        <option value="{{ application_name }}">{{ application_name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-
-                <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 lg:p-5">
-                    <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-                        <div class="min-w-0">
-                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Insumos da aplicação</p>
-                            <p class="mt-1 text-sm text-slate-600">A baixa de estoque e o custo médio são calculados automaticamente ao salvar.</p>
-                        </div>
-                        <button type="button" class="shrink-0 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700" data-add-item>Adicionar insumo</button>
-                    </div>
-                    <div class="mt-4 space-y-4" data-items-wrapper>
-                        {% for item in edit_fertilization_items %}
-                        <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-[1.3fr_0.7fr_0.7fr_0.8fr_auto]" data-item-row>
-                            <label class="sm:col-span-2 lg:col-span-1">
-                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-                                <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 px-3" data-input-select required>
-                                    <option value="">Selecione</option>
-                                    {% for input_item in inputs_catalog %}
-                                    {% set stock = input_stock.get(input_item.id, {}) %}
-                                    <option value="{{ input_item.id }}" {% if item.input_id == input_item.id %}selected{% endif %}>{{ input_item.name }} • {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}</option>
-                                    {% endfor %}
-                                </select>
-                                <input type="hidden" name="item_name" value="{{ item.name }}" data-item-name>
-                            </label>
-                            <label>
-                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-                                <select name="item_unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 px-3" data-item-unit>
-                                    {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                                    <option value="{{ unit }}" {% if item.unit == unit %}selected{% endif %}>{{ unit }}</option>
-                                    {% endfor %}
-                                </select>
-                            </label>
-                            <label>
-                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
-                                <input type="number" step="0.01" min="0" name="item_quantity" value="{{ item.quantity }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 px-3" required>
-                            </label>
-                            <label>
-                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Disponível</span>
-                                <input type="text" value="{{ item.available }} {{ item.unit if item.available != '' else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-200 px-3 text-slate-500" readonly data-item-available>
-                            </label>
-                            <div class="flex items-end sm:col-span-2 lg:col-span-1 lg:justify-end">
-                                <button type="button" class="w-full rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700 sm:w-auto" data-remove-item>Remover</button>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-
-                <label>
-                    <span class="mb-2 block text-sm font-medium text-slate-700">Observações</span>
-                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-3">{{ edit_fertilization.notes if edit_fertilization else '' }}</textarea>
-                </label>
-            </form>
-        </div>
-    </div>
+<!-- Gaveta lateral: Ficha completa da aplicação (FIFO + Irrigação) -->
+<dialog id="ft-fert-detail-dialog" class="ft-drawer">
+    <div class="ft-drawer-shell" data-ft-fert-detail-shell></div>
 </dialog>
 
-<template id="fertilization-item-template">
-    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-[1.3fr_0.7fr_0.7fr_0.8fr_auto]" data-item-row>
-        <label class="sm:col-span-2 lg:col-span-1">
-            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-            <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 px-3" data-input-select required>
-                <option value="">Selecione</option>
-                {% for input_item in inputs_catalog %}
-                {% set stock = input_stock.get(input_item.id, {}) %}
-                <option value="{{ input_item.id }}">{{ input_item.name }} • {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}</option>
-                {% endfor %}
-            </select>
-            <input type="hidden" name="item_name" value="" data-item-name>
-        </label>
-        <label>
-            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-            <select name="item_unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 px-3" data-item-unit>
-                {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                <option value="{{ unit }}">{{ unit }}</option>
-                {% endfor %}
-            </select>
-        </label>
-        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span><input type="number" step="0.01" min="0" name="item_quantity" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 px-3" required></label>
-        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Disponível</span><input type="text" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-200 px-3 text-slate-500" readonly data-item-available></label>
-        <div class="flex items-end sm:col-span-2 lg:col-span-1 lg:justify-end"><button type="button" class="w-full rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700 sm:w-auto" data-remove-item>Remover</button></div>
-    </div>
-</template>
+<!-- Modal: Confirmação destrutiva de exclusão com estorno -->
+<dialog id="ft-fert-delete-dialog" class="ft-dialog is-sm">
+    <form method="post" action="" class="ft-dialog-shell" data-ft-fert-delete-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ft-dialog-body ft-confirm-body" role="alert">
+            <span class="pd-chip is-err">Ação destrutiva</span>
+            <h2>Excluir esta aplicação?</h2>
+            <p data-ft-fert-delete-text>Os insumos consumidos serão devolvidos automaticamente ao estoque.</p>
+        </div>
+        <div class="ft-dialog-foot">
+            <button type="button" class="sf-btn sf-btn-secondary" data-ft-close-dialog>Cancelar</button>
+            <button type="submit" class="sf-btn sf-btn-danger">Excluir e estornar</button>
+        </div>
+    </form>
+</dialog>
 
-<script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=8"></script>
-<script>
-    (() => {
-        const launchModal = document.getElementById('fertilization-launch-modal');
-        const openLaunchButton = document.querySelector('[data-fertilization-launch-open]');
-        const closeLaunchButtons = Array.from(document.querySelectorAll('[data-fertilization-launch-close]'));
-        const contextToggle = document.querySelector('[data-fertilization-context-toggle]');
-        const contextCollapse = document.querySelector('[data-fertilization-context-collapse]');
-        const contextToggleLabel = document.querySelector('[data-fertilization-context-toggle-label]');
-        const contextTogglePlus = document.querySelector('[data-fertilization-context-toggle-plus]');
-        const exportLinks = Array.from(document.querySelectorAll('[data-fertilization-export-link]'));
-        const plotSelect = document.querySelector('[data-fertilization-plot-select]');
-        const plotSelected = document.querySelector('[data-fertilization-plot-selected]');
-        const plotHiddenInputs = document.querySelector('[data-fertilization-plot-hidden-inputs]');
-        const plotEmptyState = document.querySelector('[data-fertilization-plot-empty]');
-        const plotSelectionCount = document.querySelector('[data-fertilization-plot-selection-count]');
-        const initialPlotOptionsHtml = plotSelect?.innerHTML || '';
-        const fertilizationRenderedInEditMode = {% if edit_fertilization %}true{% else %}false{% endif %};
-        const syncFertilizationDurationField = () => {
-            const formEl = document.querySelector('[data-fertilization-form]');
-            if (!formEl) return;
-            const am = formEl.querySelector('[data-fertilization-application-method]');
-            const block = formEl.querySelector('[data-fertilization-duration-block]');
-            const input = formEl.querySelector('[data-fertilization-duration-minutes]');
-            if (!am || !block || !input) return;
-            const isFert = am.value === 'fertirrigacao';
-            block.classList.toggle('hidden', !isFert);
-            input.toggleAttribute('required', isFert);
-            input.disabled = !isFert;
-            if (!isFert) input.value = '';
-        };
-        const getFertilizationCleanUrl = () => {
-            const url = new URL(window.location.href);
-            url.searchParams.delete('edit_id');
-            return `${url.pathname}${url.search}${url.hash}`;
-        };
-        const clearFertilizationEditState = () => {
-            const nextUrl = getFertilizationCleanUrl();
-            if (fertilizationRenderedInEditMode) {
-                window.location.href = nextUrl;
-                return false;
-            }
-            window.history.replaceState({}, '', nextUrl);
-            return true;
-        };
-
-        if (launchModal) {
-            openLaunchButton?.addEventListener('click', () => {
-                clearFertilizationEditState();
-                if (fertilizationRenderedInEditMode) return;
-                launchModal.showModal();
-            });
-            closeLaunchButtons.forEach((button) => {
-                button.addEventListener('click', (event) => {
-                    if (!(event.currentTarget instanceof HTMLElement)) return;
-                    if (!event.currentTarget.hasAttribute('data-fertilization-close-button') && !event.currentTarget.classList.contains('modal-close-button')) return;
-                    if (!clearFertilizationEditState()) return;
-                    launchModal.close();
-                });
-            });
-            launchModal.addEventListener('cancel', (event) => {
-                event.preventDefault();
-                clearFertilizationEditState();
-            });
-            {% if edit_fertilization %}
-            launchModal.showModal();
-            {% endif %}
-        }
-
-        if (contextToggle && contextCollapse && contextToggleLabel) {
-            const setFertilizationContextExpanded = (expanded) => {
-                contextCollapse.classList.toggle('is-expanded', expanded);
-                contextToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                contextToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
-                contextTogglePlus?.classList.toggle('hidden', expanded);
-            };
-
-            setFertilizationContextExpanded(false);
-            contextToggle.addEventListener('click', () => {
-                const expanded = contextToggle.getAttribute('aria-expanded') === 'true';
-                setFertilizationContextExpanded(!expanded);
-            });
-        }
-
-        const syncFertilizationPlotSelectionState = () => {
-            if (!plotHiddenInputs) return;
-            const selectedCount = plotHiddenInputs.querySelectorAll('input[name="plot_id"]').length;
-            if (plotSelect) {
-                plotSelect.setCustomValidity(selectedCount ? '' : 'Selecione ao menos um setor.');
-            }
-            if (plotEmptyState) {
-                plotEmptyState.classList.toggle('hidden', selectedCount > 0);
-            }
-            if (plotSelectionCount) {
-                plotSelectionCount.textContent = selectedCount
-                    ? `${selectedCount} setor${selectedCount > 1 ? 'es' : ''} selecionado${selectedCount > 1 ? 's' : ''}`
-                    : 'Nenhum setor selecionado';
-            }
-        };
-
-        const restoreFertilizationPlotOption = (plotId, plotName, plotFarm) => {
-            if (!plotSelect || !plotId) return;
-            const option = document.createElement('option');
-            option.value = plotId;
-            option.dataset.plotName = plotName || '';
-            option.dataset.plotFarm = plotFarm || '';
-            option.textContent = plotFarm ? `${plotName} • ${plotFarm}` : plotName;
-            plotSelect.appendChild(option);
-        };
-
-        const bindFertilizationPlotTagRemove = (chip) => {
-            chip.querySelector('[data-fertilization-plot-remove]')?.addEventListener('click', () => {
-                const plotId = chip.dataset.plotId || '';
-                const plotName = chip.dataset.plotName || '';
-                const plotFarm = chip.dataset.plotFarm || '';
-                plotHiddenInputs?.querySelector(`input[name="plot_id"][value="${CSS.escape(plotId)}"]`)?.remove();
-                restoreFertilizationPlotOption(plotId, plotName, plotFarm);
-                chip.remove();
-                syncFertilizationPlotSelectionState();
-            });
-        };
-
-        const resetFertilizationCreateState = () => {
-            if (fertilizationRenderedInEditMode || !form) return;
-            form.reset();
-            if (plotSelect) {
-                plotSelect.innerHTML = initialPlotOptionsHtml;
-                plotSelect.value = '';
-                plotSelect.setCustomValidity('');
-            }
-            if (plotSelected) {
-                plotSelected.querySelectorAll('.schedule-plot-chip').forEach((chip) => chip.remove());
-            }
-            plotHiddenInputs?.replaceChildren();
-            syncFertilizationPlotSelectionState();
-            syncFertilizationDurationField();
-        };
-
-        const fertilizationItemsMobileQuery = window.matchMedia('(max-width: 639px)');
-        const bindFertilizationGroupToggles = (root = document) => {
-            root.querySelectorAll('[data-fertilization-group-toggle]').forEach((toggle) => {
-                if (toggle.dataset.fertilizationGroupBound === 'true') return;
-                const group = toggle.closest('[data-fertilization-group]');
-                const collapse = group?.querySelector('[data-fertilization-group-collapse]');
-                const label = toggle.querySelector('[data-fertilization-group-toggle-label]');
-                const plus = toggle.querySelector('[data-fertilization-group-toggle-plus]');
-                if (!collapse || !label) return;
-
-                const setExpanded = (expanded) => {
-                    collapse.classList.toggle('is-expanded', expanded);
-                    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                    label.textContent = expanded ? 'Esconder Aplicações' : 'Mostrar Aplicações';
-                    plus?.classList.toggle('hidden', expanded);
-                };
-
-                toggle._fertilizationGroupSync = setExpanded;
-                setExpanded(false);
-                toggle.addEventListener('click', () => {
-                    const expanded = toggle.getAttribute('aria-expanded') === 'true';
-                    setExpanded(!expanded);
-                });
-                toggle.dataset.fertilizationGroupBound = 'true';
-            });
-        };
-
-        const syncFertilizationItemsForViewport = (expandedOnDesktop = true) => {
-            document.querySelectorAll('[data-fertilization-items-toggle]').forEach((toggle) => {
-                const sync = toggle._fertilizationItemsSync;
-                if (typeof sync === 'function') {
-                    sync(fertilizationItemsMobileQuery.matches ? false : expandedOnDesktop);
-                }
-            });
-        };
-
-        const bindFertilizationItemsToggles = (root = document) => {
-            root.querySelectorAll('[data-fertilization-items-toggle]').forEach((toggle) => {
-                if (toggle.dataset.fertilizationItemsBound === 'true') return;
-                const collapse = toggle.closest('.mt-4')?.querySelector('[data-fertilization-items-collapse]');
-                const label = toggle.querySelector('[data-fertilization-items-toggle-label]');
-                const plus = toggle.querySelector('[data-fertilization-items-toggle-plus]');
-                if (!collapse || !label) return;
-
-                const setExpanded = (expanded) => {
-                    collapse.classList.toggle('is-expanded', expanded);
-                    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                    label.textContent = expanded ? 'Esconder Insumos' : 'Mostrar Insumos';
-                    plus?.classList.toggle('hidden', expanded);
-                };
-
-                toggle._fertilizationItemsSync = setExpanded;
-                setExpanded(!fertilizationItemsMobileQuery.matches);
-                toggle.addEventListener('click', () => {
-                    const expanded = toggle.getAttribute('aria-expanded') === 'true';
-                    setExpanded(!expanded);
-                });
-                toggle.dataset.fertilizationItemsBound = 'true';
-            });
-        };
-
-        if (typeof fertilizationItemsMobileQuery.addEventListener === 'function') {
-            fertilizationItemsMobileQuery.addEventListener('change', () => syncFertilizationItemsForViewport(true));
-        } else if (typeof fertilizationItemsMobileQuery.addListener === 'function') {
-            fertilizationItemsMobileQuery.addListener(() => syncFertilizationItemsForViewport(true));
-        }
-
-        const form = document.querySelector('[data-fertilization-form]');
-        if (!form) return;
-        form.querySelector('[data-fertilization-application-method]')?.addEventListener('change', syncFertilizationDurationField);
-        syncFertilizationDurationField();
-        const wrapper = form.querySelector('[data-items-wrapper]');
-        const template = document.getElementById('fertilization-item-template');
-        const addButton = form.querySelector('[data-add-item]');
-        const recommendationSelect = form.querySelector('[data-recommendation-select]');
-        const recommendationGroups = {{ recommendation_groups|tojson }};
-        const inputLookup = {
-            {% for input_item in inputs_catalog %}
-            "{{ input_item.id }}": {
-                name: {{ input_item.name|tojson }},
-                unit: {{ input_stock.get(input_item.id, {}).get('unit', input_item.default_unit)|tojson }},
-                available: "{{ input_stock.get(input_item.id, {}).get('available', 0) }} {{ input_stock.get(input_item.id, {}).get('unit', input_item.default_unit) }}"
-            },
-            {% endfor %}
-        };
-
-        const syncRow = (row) => {
-            const select = row.querySelector('[data-input-select]');
-            const hiddenName = row.querySelector('[data-item-name]');
-            const unitField = row.querySelector('[data-item-unit]');
-            const availableField = row.querySelector('[data-item-available]');
-            const selected = inputLookup[select.value];
-            hiddenName.value = selected?.name || '';
-            if (selected) {
-                unitField.value = selected.unit || 'kg';
-                availableField.value = selected.available || '';
-            } else {
-                availableField.value = '';
-            }
-        };
-
-        const bindRow = (row) => {
-            row.querySelector('[data-input-select]')?.addEventListener('change', () => syncRow(row));
-            row.querySelector('[data-remove-item]')?.addEventListener('click', () => {
-                if (wrapper.querySelectorAll('[data-item-row]').length === 1) {
-                    row.querySelectorAll('input').forEach((input) => { if (input.type !== 'hidden') input.value = ''; });
-                    row.querySelector('[data-input-select]').selectedIndex = 0;
-                    row.querySelector('[data-item-unit]').value = 'kg';
-                    row.querySelector('[data-item-name]').value = '';
-                    return;
-                }
-                row.remove();
-            });
-            syncRow(row);
-        };
-
-        plotSelect?.addEventListener('change', (event) => {
-            const select = event.currentTarget;
-            if (!(select instanceof HTMLSelectElement)) return;
-            const option = select.selectedOptions[0];
-            const plotId = option?.value || '';
-            if (!plotId || !plotSelected || !plotHiddenInputs) return;
-            const plotName = option.dataset.plotName || option.textContent.split(' • ')[0] || '';
-            const plotFarm = option.dataset.plotFarm || '';
-
-            const hiddenInput = document.createElement('input');
-            hiddenInput.type = 'hidden';
-            hiddenInput.name = 'plot_id';
-            hiddenInput.value = plotId;
-            plotHiddenInputs.appendChild(hiddenInput);
-
-            const chip = document.createElement('div');
-            chip.className = 'schedule-plot-chip';
-            chip.dataset.plotId = plotId;
-            chip.dataset.plotName = plotName;
-            chip.dataset.plotFarm = plotFarm;
-            chip.innerHTML = `
-                <div class="schedule-plot-chip-body">
-                    <span class="schedule-plot-chip-title">${plotName}</span>
-                    <span class="schedule-plot-chip-meta">${plotFarm || 'Sem fazenda vinculada'}</span>
-                </div>
-                <button type="button" class="schedule-plot-chip-remove" data-fertilization-plot-remove aria-label="Remover setor">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                        <path d="M18 6 6 18"/>
-                        <path d="m6 6 12 12"/>
-                    </svg>
-                </button>
-            `;
-            plotSelected.appendChild(chip);
-            bindFertilizationPlotTagRemove(chip);
-            option.remove();
-            select.value = '';
-            syncFertilizationPlotSelectionState();
-        });
-
-        syncFertilizationPlotSelectionState();
-
-        wrapper.querySelectorAll('[data-item-row]').forEach(bindRow);
-        addButton?.addEventListener('click', () => {
-            wrapper.appendChild(template.content.cloneNode(true));
-            bindRow(wrapper.lastElementChild);
-        });
-        recommendationSelect?.addEventListener('change', () => {
-            const selected = recommendationSelect.value;
-            if (!selected || !recommendationGroups[selected]?.length) return;
-            wrapper.innerHTML = '';
-            recommendationGroups[selected].forEach((item) => {
-                wrapper.appendChild(template.content.cloneNode(true));
-                const row = wrapper.lastElementChild;
-                row.querySelector('[data-input-select]').value = String(item.input_id || '');
-                row.querySelector('[data-item-unit]').value = item.unit || 'kg';
-                row.querySelector('[name="item_quantity"]').value = item.quantity || '';
-                bindRow(row);
-            });
-        });
-
-        const historyShell = document.querySelector('[data-fertilization-history-shell]');
-        const historyList = historyShell?.querySelector('[data-fertilization-history-list]');
-        const emptySearch = historyShell?.querySelector('[data-fertilization-search-empty]');
-        let historySearch = historyShell?.querySelector('[data-module-history-search]');
-
-        const normalizeSearchText = (value) => (
-            (value || '')
-                .toString()
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .toLowerCase()
-        );
-
-        const syncFertilizationExportLinks = () => {
-            historySearch = historyShell?.querySelector('[data-module-history-search]');
-            const filterStartInput = historyShell?.querySelector('[data-module-filter-start]');
-            const filterEndInput = historyShell?.querySelector('[data-module-filter-end]');
-            const rangeInput = historyShell?.querySelector('[data-module-range-input]');
-            exportLinks.forEach((link) => {
-                const baseHref = link.dataset.baseHref;
-                if (!baseHref) return;
-                const params = new URLSearchParams();
-                const query = (historySearch?.value || '').trim();
-                if (query) params.set('search', query);
-                const startDate = (filterStartInput?.value || '').trim();
-                if (startDate) params.set('start_date', startDate);
-                const endDate = (filterEndInput?.value || '').trim();
-                if (endDate) params.set('end_date', endDate);
-                const rangeValue = (rangeInput?.value || '').trim();
-                if (rangeValue) params.set('schedule_range', rangeValue);
-                link.href = params.toString() ? `${baseHref}?${params.toString()}` : baseHref;
-            });
-        };
-
-        const applyFertilizationHistorySearch = () => {
-            if (!historyList) return;
-            const query = normalizeSearchText((historySearch?.value || '').trim());
-            syncFertilizationExportLinks();
-            const rows = Array.from(historyList.querySelectorAll('[data-fertilization-history-row]'));
-            const groups = Array.from(historyList.querySelectorAll('[data-fertilization-group]'));
-            let visible = 0;
-            rows.forEach((row) => {
-                const hay = normalizeSearchText(row.dataset.fertilizationSearchText || '');
-                const match = !query || hay.includes(query);
-                row.classList.toggle('hidden', !match);
-                if (match) visible += 1;
-            });
-            groups.forEach((group) => {
-                const groupRows = Array.from(group.querySelectorAll('[data-fertilization-history-row]'));
-                const matchingRows = groupRows.filter((row) => !row.classList.contains('hidden'));
-                group.classList.toggle('hidden', matchingRows.length === 0);
-                const sync = group.querySelector('[data-fertilization-group-toggle]')?._fertilizationGroupSync;
-                if (typeof sync === 'function') {
-                    if (!query) {
-                        group.classList.remove('hidden');
-                        sync(false);
-                    } else {
-                        sync(matchingRows.length > 0);
-                    }
-                }
-            });
-            if (emptySearch) {
-                const hasAnyRows = rows.length > 0;
-                emptySearch.classList.toggle('hidden', !hasAnyRows || visible !== 0 || !query);
-            }
-        };
-
-        bindFertilizationGroupToggles(historyList || document);
-        bindFertilizationItemsToggles(historyList || document);
-        historyShell?.querySelectorAll('form[data-module-period-filter-root]').forEach((form) => {
-            window.ModulePeriodFilters?.bind(form, {
-                onSync: () => syncFertilizationExportLinks(),
-            });
-        });
-        historySearch = historyShell?.querySelector('[data-module-history-search]');
-        historySearch?.addEventListener('input', applyFertilizationHistorySearch);
-        applyFertilizationHistorySearch();
-
-        if (launchModal) {
-            openLaunchButton?.addEventListener('click', () => {
-                resetFertilizationCreateState();
-            });
-            closeLaunchButtons.forEach((button) => {
-                button.addEventListener('click', () => {
-                    resetFertilizationCreateState();
-                });
-            });
-        }
-
-        const stickyHeader = document.querySelector('.stock-page-header');
-        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
-        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
-        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
-        const parseStickyTopPx = (el) => {
-            const raw = getComputedStyle(el).top;
-            if (!raw || raw === 'auto') return 0;
-            const pxMatch = /^([\d.]+)px$/.exec(raw);
-            if (pxMatch) return parseFloat(pxMatch[1]);
-            const remMatch = /^([\d.]+)rem$/.exec(raw);
-            if (remMatch) {
-                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-                return parseFloat(remMatch[1]) * rootPx;
-            }
-            return 0;
-        };
-
-        let compactRaf = null;
-        const syncHeaderCompact = () => {
-            compactRaf = null;
-            if (!stickyHeader) return;
-            if (!mobileCompactMq.matches) {
-                stickyHeader.classList.remove('is-compact');
-                headerIntro?.removeAttribute('aria-hidden');
-                return;
-            }
-            const topPx = parseStickyTopPx(stickyHeader);
-            const rect = stickyHeader.getBoundingClientRect();
-            const isCompact = stickyHeader.classList.contains('is-compact');
-            let nextCompact = isCompact;
-            if (rect.top <= topPx + 2) nextCompact = true;
-            else if (rect.top > topPx + 8) nextCompact = false;
-            stickyHeader.classList.toggle('is-compact', nextCompact);
-            headerIntro?.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
-        };
-
-        const scheduleHeaderCompact = () => {
-            if (compactRaf !== null) return;
-            compactRaf = window.requestAnimationFrame(syncHeaderCompact);
-        };
-
-        if (stickyHeader) {
-            window.addEventListener('scroll', scheduleHeaderCompact, { passive: true });
-            window.addEventListener('resize', scheduleHeaderCompact);
-            if (typeof mobileCompactMq.addEventListener === 'function') mobileCompactMq.addEventListener('change', scheduleHeaderCompact);
-            else if (typeof mobileCompactMq.addListener === 'function') mobileCompactMq.addListener(scheduleHeaderCompact);
-            scheduleHeaderCompact();
-        }
-
-        let fadeRafId = null;
-        const updateFadingPanels = () => {
-            fadeRafId = null;
-            const stickyRect = stickyHeader?.getBoundingClientRect();
-            if (!stickyRect) return;
-            const stickyBottom = stickyRect.bottom;
-
-            fadingPanels.forEach((panel) => {
-                const panelRect = panel.getBoundingClientRect();
-                const panelTop = panelRect.top;
-                const panelHeight = panelRect.height;
-                if (panelTop >= stickyBottom || panelHeight <= 1) {
-                    panel.style.setProperty('--stock-fade-cutoff', '0px');
-                    panel.style.setProperty('--stock-fade-feather-end', '0px');
-                    return;
-                }
-
-                const overlap = Math.min(Math.max(stickyBottom - panelTop, 0), panelHeight);
-                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
-                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
-                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
-            });
-        };
-
-        const scheduleFadeUpdate = () => {
-            if (fadeRafId !== null) return;
-            fadeRafId = window.requestAnimationFrame(updateFadingPanels);
-        };
-
-        if (stickyHeader && fadingPanels.length) {
-            window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
-            window.addEventListener('resize', scheduleFadeUpdate);
-            scheduleFadeUpdate();
-        }
-    })();
-</script>
+<script type="application/json" id="ft-fert-data">{{ {
+    "csrf": csrf_token,
+    "canWrite": can_write_page,
+    "rows": ctx.history_rows
+}|tojson }}</script>
+<script src="{{ url_for('static', path='js/fertilization_page.js') }}?v=20261121ft1" defer></script>
 {% endblock %}

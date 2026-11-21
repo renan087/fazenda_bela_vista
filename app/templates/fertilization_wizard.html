@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="sf-page pd-page vw-page ft-wiz-page" data-ft-wizard-page>
+    <nav class="pd-crumbs" aria-label="Caminho">
+        <a href="{{ ft_wizard_back_url }}">{{ 'Agendamentos' if ft_wizard_is_schedule else 'Fertilização' }}</a>
+        <span aria-hidden="true">›</span>
+        <span>{{ ft_wizard_title }}</span>
+    </nav>
+
+    <header class="pd-head">
+        <div>
+            <h1 class="sf-page-title">{{ ft_wizard_title }}</h1>
+            <p class="sf-page-subtitle">
+                {% if ft_wizard_is_schedule %}
+                Planeje uma ou mais datas em múltiplos talhões com cálculo automático por hectare e checagem de estoque.
+                {% else %}
+                Registre a aplicação feita em campo com baixa automática FIFO no estoque e irrigação sincronizada.
+                {% endif %}
+            </p>
+        </div>
+        <ol class="vw-steps ft-wiz-steps" aria-label="Etapas">
+            <li><button type="button" class="ft-step-btn is-current" data-ftw-go="1"><span>1</span>{{ 'Talhões e datas' if ft_wizard_is_schedule else 'Talhões e método' }}</button></li>
+            <li><button type="button" class="ft-step-btn" data-ftw-go="2"><span>2</span>Receita e insumos</button></li>
+            <li><button type="button" class="ft-step-btn" data-ftw-go="3"><span>3</span>Conferir e salvar</button></li>
+        </ol>
+    </header>
+
+    {% if not ft_wizard_data.plots %}
+    <div class="pd-card pd-empty">
+        <strong>Nenhum talhão vinculado à safra ativa.</strong>
+        <span>Vincule os talhões à safra em Safras antes de planejar ou registrar adubações.</span>
+        <a class="sf-btn sf-btn-primary" href="{{ module_href('/safras') }}">Ir para Safras</a>
+    </div>
+    {% elif not ft_wizard_data.inputs %}
+    <div class="pd-card pd-empty">
+        <strong>Nenhum insumo agrícola cadastrado no catálogo.</strong>
+        <span>Cadastre ou lance uma compra de insumos em Compras para montar sua adubação.</span>
+        <a class="sf-btn sf-btn-primary" href="{{ module_href('/insumos/comprados') }}">Ir para Compras</a>
+    </div>
+    {% else %}
+    <form method="post" action="{{ ft_wizard_action }}" id="ft-wizard-form" class="ft-wiz-grid" data-ftw-form novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="wizard_payload_json" value="" data-ftw-payload-input>
+
+        <section class="pd-card ft-wiz-main">
+            <div data-ftw-step-stage></div>
+            <div class="pd-alert is-error" data-ftw-error role="alert" hidden></div>
+            <footer class="ft-wiz-foot">
+                <a class="sf-btn sf-btn-secondary" href="{{ ft_wizard_back_url }}">Cancelar</a>
+                <div class="ft-wiz-foot-right">
+                    <button type="button" class="sf-btn sf-btn-secondary" data-ftw-back hidden>Voltar</button>
+                    <button type="button" class="sf-btn sf-btn-primary" data-ftw-next>Continuar →</button>
+                    <button type="submit" class="sf-btn sf-btn-primary" data-ftw-submit hidden>Confirmar e salvar</button>
+                </div>
+            </footer>
+        </section>
+
+        <aside class="pd-card ft-wiz-side" aria-label="Resumo da operação" data-ftw-summary></aside>
+    </form>
+    {% endif %}
+</div>
+
+<!-- Modal dedicado: Explorar catálogo completo de insumos (escalável para 200+ itens) -->
+<dialog id="ftw-catalog-dialog" class="ft-dialog is-lg">
+    <div class="ft-dialog-shell" data-ftw-catalog-shell></div>
+</dialog>
+
+<script type="application/json" id="ft-wizard-data">{{ ft_wizard_data|tojson }}</script>
+<script src="{{ url_for('static', path='js/fertilization_wizard.js') }}?v=20261121ft1" defer></script>
+{% endblock %}

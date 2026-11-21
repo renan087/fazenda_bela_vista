@@ -2,7 +2,7 @@ import json
 import math
 import unicodedata
 import xml.etree.ElementTree as ET
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import update
@@ -1878,6 +1878,8 @@ def create_fertilization_schedule(repository: FarmRepository, form: dict) -> Fer
         status=form.get("status") or "scheduled",
         duration_minutes=duration_minutes,
         application_method=application_method,
+        responsible_name=(str(form.get("responsible_name") or "").strip() or None),
+        recipe_name=(str(form.get("recipe_name") or "").strip() or None),
         notes=form.get("notes"),
     )
     repository.db.add(schedule)
@@ -1920,6 +1922,10 @@ def update_fertilization_schedule(repository: FarmRepository, schedule: Fertiliz
     application_method = _normalize_fertilization_application_method(form.get("application_method"))
     schedule.application_method = application_method
     schedule.duration_minutes = _resolve_fertilization_duration_minutes(application_method, form.get("duration_minutes"))
+    if "responsible_name" in form:
+        schedule.responsible_name = str(form.get("responsible_name") or "").strip() or None
+    if "recipe_name" in form:
+        schedule.recipe_name = str(form.get("recipe_name") or "").strip() or None
     schedule.notes = form.get("notes")
     schedule.items.clear()
     repository.db.flush()
@@ -1953,6 +1959,8 @@ def update_fertilization_schedule(repository: FarmRepository, schedule: Fertiliz
                     "notes": schedule.notes,
                     "duration_minutes": schedule.duration_minutes,
                     "application_method": schedule.application_method,
+                    "responsible_name": schedule.responsible_name,
+                    "recipe_name": schedule.recipe_name,
                     "items": [
                         {
                             "input_id": item.input_id,
@@ -1998,7 +2006,16 @@ def validate_schedule_stock(
     return {"ok": not shortages, "shortages": shortages}
 
 
-def conclude_fertilization_schedule(repository: FarmRepository, schedule: FertilizationSchedule, application_date: str | None = None) -> FertilizationRecord:
+def conclude_fertilization_schedule(
+    repository: FarmRepository,
+    schedule: FertilizationSchedule,
+    application_date: str | None = None,
+    *,
+    duration_minutes: int | str | None = None,
+    responsible_name: str | None = None,
+    notes: str | None = None,
+    items_override: list[dict] | None = None,
+) -> FertilizationRecord:
     locked_schedule = repository.lock_fertilization_schedule(schedule.id)
     if not locked_schedule:
         raise ValueError("Agendamento nao encontrado.")
@@ -2008,27 +2025,57 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
         existing = repository.get_fertilization(schedule.fertilization_record_id)
         if existing:
             return existing
-    if not schedule.items:
-        raise ValueError("Adicione ao menos um insumo no agendamento.")
-    schedule_items = [
-        {
-            "input_id": item.input_id,
-            "purchased_input_id": item.purchased_input_id,
-            "name": item.name or (item.input_catalog.name if item.input_catalog else ""),
-            "unit": item.unit or (item.input_catalog.default_unit if item.input_catalog else ""),
-            "quantity": float(item.quantity or 0),
-        }
-        for item in schedule.items
-        if (item.name or (item.input_catalog.name if item.input_catalog else "")).strip()
-        and (item.unit or (item.input_catalog.default_unit if item.input_catalog else "")).strip()
-        and float(item.quantity or 0) > 0
-    ]
+    if items_override is not None:
+        schedule_items = []
+        for raw_item in items_override:
+            input_id = _int_or_none(raw_item.get("input_id"))
+            input_catalog = repository.get_input_catalog(input_id) if input_id else None
+            name = (str(raw_item.get("name") or "").strip() or (input_catalog.name if input_catalog else ""))
+            unit = (str(raw_item.get("unit") or "").strip() or (input_catalog.default_unit if input_catalog else ""))
+            qty = float(raw_item.get("quantity") or 0)
+            if name and unit and qty > 0:
+                schedule_items.append(
+                    {
+                        "input_id": input_id,
+                        "purchased_input_id": _int_or_none(raw_item.get("purchased_input_id")),
+                        "name": name,
+                        "unit": unit,
+                        "quantity": round(qty, 2),
+                    }
+                )
+    else:
+        if not schedule.items:
+            raise ValueError("Adicione ao menos um insumo no agendamento.")
+        schedule_items = [
+            {
+                "input_id": item.input_id,
+                "purchased_input_id": item.purchased_input_id,
+                "name": item.name or (item.input_catalog.name if item.input_catalog else ""),
+                "unit": item.unit or (item.input_catalog.default_unit if item.input_catalog else ""),
+                "quantity": float(item.quantity or 0),
+            }
+            for item in schedule.items
+            if (item.name or (item.input_catalog.name if item.input_catalog else "")).strip()
+            and (item.unit or (item.input_catalog.default_unit if item.input_catalog else "")).strip()
+            and float(item.quantity or 0) > 0
+        ]
     if not schedule_items:
         raise ValueError("Adicione ao menos um insumo valido no agendamento antes de concluir.")
     app_method = _normalize_fertilization_application_method(schedule.application_method)
+    effective_duration = duration_minutes if duration_minutes not in (None, "") else schedule.duration_minutes
     if app_method == FERTILIZATION_METHOD_FERTIRRIGACAO:
-        if not schedule.duration_minutes or int(schedule.duration_minutes) < 1:
+        parsed_duration = _int_or_none(effective_duration)
+        if not parsed_duration or parsed_duration < 1:
             raise ValueError("Informe a duracao do agendamento (modo Fertirrigacao) antes de concluir.")
+        effective_duration = parsed_duration
+    else:
+        effective_duration = None
+    effective_responsible = (
+        str(responsible_name).strip() or None
+        if responsible_name is not None
+        else schedule.responsible_name
+    )
+    effective_notes = notes if notes is not None else schedule.notes
     record = _save_fertilization(
         repository,
         None,
@@ -2036,15 +2083,19 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
             "plot_id": schedule.plot_id,
             "application_date": application_date or schedule.scheduled_date.isoformat(),
             "season_id": schedule.season_id,
-            "notes": schedule.notes,
-            "duration_minutes": schedule.duration_minutes,
+            "notes": effective_notes,
+            "duration_minutes": effective_duration,
             "application_method": schedule.application_method,
+            "responsible_name": effective_responsible,
+            "recipe_name": schedule.recipe_name,
             "items": schedule_items,
         },
         commit=False,
     )
     schedule.status = "completed"
     schedule.fertilization_record_id = record.id
+    if effective_responsible is not None:
+        schedule.responsible_name = effective_responsible
     repository.db.add(schedule)
     repository.db.commit()
     repository.db.refresh(schedule)
@@ -2052,7 +2103,47 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
     return record
 
 
+def duplicate_fertilization_schedule(
+    repository: FarmRepository,
+    schedule: FertilizationSchedule,
+    target_date: date | None = None,
+) -> FertilizationSchedule:
+    next_date = target_date or (schedule.scheduled_date + timedelta(days=7))
+    return create_fertilization_schedule(
+        repository,
+        {
+            "plot_id": schedule.plot_id,
+            "scheduled_date": next_date.isoformat(),
+            "season_id": schedule.season_id,
+            "status": "scheduled",
+            "duration_minutes": schedule.duration_minutes,
+            "application_method": schedule.application_method,
+            "responsible_name": schedule.responsible_name,
+            "recipe_name": schedule.recipe_name,
+            "notes": schedule.notes,
+            "items": [
+                {
+                    "input_id": item.input_id,
+                    "unit": item.unit,
+                    "quantity": float(item.quantity or 0),
+                }
+                for item in schedule.items
+                if item.input_id and float(item.quantity or 0) > 0
+            ],
+        },
+    )
+
+
 def delete_fertilization(repository: FarmRepository, fertilization: FertilizationRecord) -> None:
+    linked_schedules = (
+        repository.db.query(FertilizationSchedule)
+        .filter(FertilizationSchedule.fertilization_record_id == fertilization.id)
+        .all()
+    )
+    for linked in linked_schedules:
+        linked.status = "scheduled"
+        linked.fertilization_record_id = None
+        repository.db.add(linked)
     repository.db.query(IrrigationRecord).filter(
         IrrigationRecord.reference_type == "fertilization_record",
         IrrigationRecord.reference_id == fertilization.id,
@@ -2483,6 +2574,8 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
         cost=0,
         duration_minutes=duration_minutes,
         application_method=application_method,
+        responsible_name=(str(form.get("responsible_name") or "").strip() or None),
+        recipe_name=(str(form.get("recipe_name") or "").strip() or None),
         notes=form.get("notes"),
     )
     record.plot_id = form["plot_id"]
@@ -2492,6 +2585,10 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
     record.dose = dose
     record.duration_minutes = duration_minutes
     record.application_method = application_method
+    if "responsible_name" in form:
+        record.responsible_name = str(form.get("responsible_name") or "").strip() or None
+    if "recipe_name" in form:
+        record.recipe_name = str(form.get("recipe_name") or "").strip() or None
     record.notes = form.get("notes")
     if fertilization:
         record.items.clear()

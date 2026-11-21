@@ -18,6 +18,8 @@ class FertilizationRecord(Base):
     cost: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=True)
     application_method: Mapped[str] = mapped_column(String(40), nullable=False, default="fertirrigacao")
+    responsible_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    recipe_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     plot = relationship("Plot", back_populates="fertilizations")
