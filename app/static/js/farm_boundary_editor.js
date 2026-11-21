@@ -60,6 +60,51 @@
 
     let googleMapsLoadPromise = null;
 
+    /* Limite do setor: ponto fora do perímetro de referência (fazenda) vai para a divisa mais próxima. */
+    function pointInRing(pt, ring) {
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            const a = ring[i];
+            const b = ring[j];
+            if ((a.lat > pt.lat) !== (b.lat > pt.lat)
+                && pt.lng < ((b.lng - a.lng) * (pt.lat - a.lat)) / ((b.lat - a.lat) || 1e-12) + a.lng) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
+    function nearestOnRing(pt, ring) {
+        let best = null;
+        let bestDist = Infinity;
+        for (let i = 0; i < ring.length; i += 1) {
+            const a = ring[i];
+            const b = ring[(i + 1) % ring.length];
+            const dx = b.lng - a.lng;
+            const dy = b.lat - a.lat;
+            const len = dx * dx + dy * dy;
+            let t = len ? ((pt.lng - a.lng) * dx + (pt.lat - a.lat) * dy) / len : 0;
+            t = Math.max(0, Math.min(1, t));
+            const q = { lat: a.lat + t * dy, lng: a.lng + t * dx };
+            const dist = (q.lat - pt.lat) ** 2 + (q.lng - pt.lng) ** 2;
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = q;
+            }
+        }
+        return best;
+    }
+
+    function makeClamp(refPts, options) {
+        if (!options || !options.clipToReference || !refPts || refPts.length < 3) return (pt) => pt;
+        return (pt) => {
+            if (pointInRing(pt, refPts)) return pt;
+            const q = nearestOnRing(pt, refPts) || pt;
+            if (typeof options.onClamp === 'function') options.onClamp(q);
+            return q;
+        };
+    }
+
     function loadGoogleMapsScript(apiKey) {
         if (typeof window === 'undefined') return Promise.reject(new Error('no window'));
         if (window.google && window.google.maps && window.google.maps.Map) {
@@ -154,6 +199,7 @@
         }
 
         const refPoints = extractPoints(referenceBoundaryGeometry);
+        const clamp = makeClamp(refPoints, options);
         const lat0 =
             initialCenter && typeof initialCenter.lat === 'number'
                 ? initialCenter.lat
@@ -291,6 +337,7 @@
                 });
                 marker.on('dragend', () => {
                     dragStarted = false;
+                    points[index] = clamp(points[index]);
                     renderEditor();
                 });
             });
@@ -299,7 +346,7 @@
 
         map.on('click', (event) => {
             pushHistory();
-            points.push({ lat: event.latlng.lat, lng: event.latlng.lng });
+            points.push(clamp({ lat: event.latlng.lat, lng: event.latlng.lng }));
             selectedIndex = points.length - 1;
             renderEditor();
         });
@@ -357,6 +404,18 @@
         return {
             map,
             syncToHidden,
+            pointCount: () => points.length,
+            fit() {
+                map.invalidateSize();
+                fitInitialBounds();
+            },
+            addPointAtCenter() {
+                const c = map.getCenter();
+                pushHistory();
+                points.push(clamp({ lat: c.lat, lng: c.lng }));
+                selectedIndex = points.length - 1;
+                renderEditor();
+            },
             undo,
             clearPoints,
             resetToInitial,
@@ -406,6 +465,7 @@
         await loadGoogleMapsScript(apiKey);
 
         const refPts = extractPoints(referenceBoundaryGeometry);
+        const clamp = makeClamp(refPts, options);
         const lat0 =
             initialCenter && typeof initialCenter.lat === 'number'
                 ? initialCenter.lat
@@ -619,7 +679,10 @@
                         if (polygon) polygon.setPath(points);
                     }),
                 );
-                markerListeners.push(google.maps.event.addListener(marker, 'dragend', () => renderAll()));
+                markerListeners.push(google.maps.event.addListener(marker, 'dragend', () => {
+                    points[index] = clamp(points[index]);
+                    renderAll();
+                }));
                 markers.push(marker);
             });
         };
@@ -634,7 +697,7 @@
             google.maps.event.addListener(map, 'click', (e) => {
                 if (skipNextMapClick) return;
                 pushHistory();
-                points.push({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+                points.push(clamp({ lat: e.latLng.lat(), lng: e.latLng.lng() }));
                 selectedIndex = points.length - 1;
                 renderAll();
             }),
@@ -694,6 +757,18 @@
         return {
             map,
             syncToHidden,
+            pointCount: () => points.length,
+            fit() {
+                google.maps.event.trigger(map, 'resize');
+                fitInitialGoogleBounds();
+            },
+            addPointAtCenter() {
+                const c = map.getCenter();
+                pushHistory();
+                points.push(clamp({ lat: c.lat(), lng: c.lng() }));
+                selectedIndex = points.length - 1;
+                renderAll();
+            },
             undo,
             clearPoints,
             resetToInitial,

@@ -190,7 +190,7 @@
             <div class="min-w-0">
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_plot %}Editar setor{% else %}Novo setor{% endif %}</p>
                 <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_plot %}Editar setor{% else %}Cadastrar novo setor{% endif %}</h3>
-                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Organize área, plantio, variedade, irrigação e dados geográficos em um único formulário.</p>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Em 5 passos: identificação, mapa, plantio, manejo e conferência. Nada é gravado antes de confirmar.</p>
             </div>
             <button type="button" class="modal-close-button" aria-label="Fechar" data-plots-launch-close>
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -203,16 +203,19 @@
         <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
             {% set edit_plot_preview_only_src = (url_for('static', path='generated/plot_previews/' ~ edit_plot.id ~ '.png') ~ '?v=' ~ plot_preview_fingerprint.get(edit_plot.id, '')) if edit_plot and edit_plot.boundary_geojson and plot_preview_ready.get(edit_plot.id) else none %}
             {% set edit_farm_bg_src = (url_for('static', path='generated/farm_previews/' ~ edit_plot.farm_id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(edit_plot.farm_id, '')) if edit_plot and edit_plot.farm_id and farm_preview_ready.get(edit_plot.farm_id) else none %}
-            <form method="post" enctype="multipart/form-data" action="{% if edit_plot %}/setores/{{ edit_plot.id }}/editar{% else %}/setores{% endif %}" class="grid gap-4" id="plots-form" data-plots-boundary-form{% if edit_plot %} data-plots-edit-mode="1"{% endif %}>
+            <form method="post" enctype="multipart/form-data" action="{% if edit_plot %}/setores/{{ edit_plot.id }}/editar{% else %}/setores{% endif %}" class="szw stw" id="plots-form" novalidate data-plot-wizard data-plots-boundary-form{% if edit_plot %} data-plots-edit-mode="1"{% endif %}>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
-                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
-                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-plots-launch-close>Cancelar</button>
-                        <button form="plots-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_plot %}Salvar alterações{% else %}Salvar setor{% endif %}</button>
-                    </div>
-                </div>
-
+                <ol class="szw-steps" aria-label="Passos" data-stw-steps>
+                    <li class="szw-step"><button type="button" data-stw-go="0"><span class="szw-step-num" aria-hidden="true">1</span><span class="szw-step-txt"><span class="szw-step-label">Identificação</span><span class="szw-step-hint">Nome e área</span></span></button></li>
+                    <li class="szw-step"><button type="button" data-stw-go="1"><span class="szw-step-num" aria-hidden="true">2</span><span class="szw-step-txt"><span class="szw-step-label">Mapa</span><span class="szw-step-hint">Onde fica</span></span></button></li>
+                    <li class="szw-step"><button type="button" data-stw-go="2"><span class="szw-step-num" aria-hidden="true">3</span><span class="szw-step-txt"><span class="szw-step-label">Plantio</span><span class="szw-step-hint">Variedade e plantas</span></span></button></li>
+                    <li class="szw-step"><button type="button" data-stw-go="3"><span class="szw-step-num" aria-hidden="true">4</span><span class="szw-step-txt"><span class="szw-step-label">Manejo</span><span class="szw-step-hint">Irrigação e solo</span></span></button></li>
+                    <li class="szw-step"><button type="button" data-stw-go="4"><span class="szw-step-num" aria-hidden="true">5</span><span class="szw-step-txt"><span class="szw-step-label">Conferir</span><span class="szw-step-hint">Revise e confirme</span></span></button></li>
+                </ol>
+                <div class="szw-body"><div class="szw-main">
+                    <section class="szw-panel stw-panel" data-stw-panel="0" aria-labelledby="stw-t0">
+                        <div class="szw-head"><h4 id="stw-t0">Como vocês chamam este setor?</h4><p>Use o nome que a equipe fala no dia a dia. Ele aparece em aplicações, colheitas e relatórios.</p></div>
                 <label><span class="mb-2 block text-sm font-medium">Nome do setor</span><input name="name" value="{{ edit_plot.name if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
 
                 <div class="grid gap-4 md:grid-cols-2">
@@ -235,42 +238,44 @@
                     </label>
                 </div>
 
-                <fieldset class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/40 p-4">
-                    <legend class="px-1 text-sm font-semibold text-slate-800">Plantio atual</legend>
-                    {% if edit_plot %}<div class="-mt-1 mb-3 flex justify-end"><button type="button" data-renew-open class="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5"/></svg>Renovar plantio</button></div>{% endif %}
-                    <p class="mb-4 text-xs text-slate-500">{% if edit_plot and edit_plot.active_planting %}Lavoura de {{ edit_plot.active_planting.culture }}{% if edit_plot.active_planting.planting_date %} plantada em {{ edit_plot.active_planting.planting_date.strftime('%d/%m/%Y') }}{% endif %}. Corrija aqui os dados deste plantio; os plantios anteriores ficam guardados no histórico.{% else %}Dados da lavoura plantada hoje neste setor. Ao trocar a lavoura no futuro, estes dados ficam guardados no histórico.{% endif %}</p>
-                    <div class="grid gap-4 md:grid-cols-2">
-                        <label><span class="mb-2 block text-sm font-medium">Data de plantio</span><input type="date" name="planting_date" value="{{ edit_plot.planting_date.isoformat() if edit_plot and edit_plot.planting_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                        <label><span class="mb-2 block text-sm font-medium">Número de plantas</span><input type="number" name="plant_count" value="{{ edit_plot.plant_count if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-                        <label><span class="mb-2 block text-sm font-medium">Espaçamento entre linhas (m)</span><input type="number" step="0.01" name="spacing_row_meters" value="{{ edit_plot.spacing_row_meters if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                        <label><span class="mb-2 block text-sm font-medium">Espaçamento entre plantas (cm)</span><input type="number" step="0.01" name="spacing_plant_centimeters" value="{{ ((edit_plot.spacing_plant_meters * 100) if edit_plot and edit_plot.spacing_plant_meters is not none else '') }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                        <label><span class="mb-2 block text-sm font-medium">Produção estimada (sacas)</span><input type="number" step="0.01" name="estimated_yield_sacks" value="{{ edit_plot.estimated_yield_sacks if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                        <label><span class="mb-2 block text-sm font-medium">Variedade</span>
-                            <select name="variety_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                                <option value="">Selecione</option>
-                                {% for variety in form_varieties %}
-                                <option value="{{ variety.id }}" {% if edit_plot and edit_plot.variety_id == variety.id %}selected{% endif %}>{{ variety.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
+                <div class="szw-grid2 stw-idrow">
+                    <div class="szw-field">
+                        <span>Cor no mapa</span>
+                        <input type="hidden" name="color_mode" value="{{ 'manual' if edit_plot and edit_plot.map_color else 'auto' }}" data-stw-color-mode>
+                        <input type="hidden" name="map_color" value="{{ edit_plot.map_color if edit_plot and edit_plot.map_color else '' }}" data-stw-color>
+                        <div class="stw-seg" role="radiogroup" aria-label="Como escolher a cor">
+                            <button type="button" role="radio" data-stw-mode="auto">Automática</button>
+                            <button type="button" role="radio" data-stw-mode="manual">Escolher cor</button>
+                        </div>
+                        <p class="stw-note" data-stw-auto-note>Escolhemos uma cor diferente dos setores vizinhos. Com muitos setores, as cores só se repetem longe uma da outra.</p>
+                        <div class="stw-swatches" role="radiogroup" aria-label="Cor no mapa" data-stw-swatches hidden>
+                            {% for color_name, color_stroke, color_fill in plot_colors %}<button type="button" role="radio" class="stw-swatch" aria-label="{{ color_name }}" data-stw-swatch="{{ color_fill }}" style="--sw: {{ color_fill }}; --sw-b: {{ color_stroke }}"></button>{% endfor %}
+                            <label class="stw-swatch stw-swatch-more" title="Outra cor"><span aria-hidden="true">+</span><input type="color" aria-label="Escolher outra cor" data-stw-custom></label>
+                        </div>
                     </div>
-                </fieldset>
-                {% if edit_plot and edit_plot.past_plantings %}
-                <section class="rounded-[1.5rem] border border-slate-200 p-4">
-                    <h4 class="text-sm font-semibold text-slate-800">Histórico de plantios</h4>
-                    <ol class="mt-3 space-y-2">
-                        {% for planting in edit_plot.past_plantings %}
-                        <li class="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                            <span class="font-semibold text-slate-800">{{ planting.culture }}{% if planting.variety %} · {{ planting.variety.name }}{% endif %}</span>
-                            · {{ planting.planting_date.strftime('%m/%Y') if planting.planting_date else '—' }} a {{ planting.ended_on.strftime('%m/%Y') }}
-                            {% if planting.end_reason %}<span class="ml-1 rounded-full bg-white px-2 py-0.5 text-xs text-slate-500 ring-1 ring-slate-200">{{ {'renovacao': 'Renovação', 'erradicacao': 'Erradicação', 'troca_cultura': 'Troca de cultura', 'perda': 'Perda da lavoura', 'outro': 'Outro'}.get(planting.end_reason, planting.end_reason) }}</span>{% endif %}
-                            <span class="block text-xs text-slate-500">{{ planting.plant_count or '—' }} plantas{% if planting.spacing_row_meters %} · {{ planting.spacing_row_meters|decimal_br }} m entre linhas{% endif %}</span>
-                        </li>
-                        {% endfor %}
-                    </ol>
-                </section>
+                    <label class="szw-field">
+                        <span>Grupo <em class="szw-opt">(opcional)</em></span>
+                        <input name="group_name" class="szw-input" list="stw-groups" maxlength="80" value="{{ edit_plot.group_name if edit_plot and edit_plot.group_name else '' }}" placeholder="Ex.: Gleba Sul">
+                        <datalist id="stw-groups">{% for group in plot_groups %}<option value="{{ group }}"></option>{% endfor %}</datalist>
+                        <small>Junta setores para filtrar, colorir no mapa e lançar aplicações de uma vez. Útil quando a fazenda tem muitos setores.</small>
+                    </label>
+                </div>
+                    </section>
+                    <section class="szw-panel stw-panel" data-stw-panel="1" aria-labelledby="stw-t1" hidden>
+                        <div class="szw-head"><h4 id="stw-t1">Onde fica o setor?</h4><p>Desenhe o contorno por dentro do perímetro da fazenda ou importe o arquivo. A área é calculada pelo desenho.</p></div>
+                {% if not edit_plot %}
+                <button type="button" class="szw-btn szw-btn-primary stw-fullmap-open" data-stw-fullmap-open>Iniciar desenho no mapa</button>
+                <div class="stw-fullbar" data-stw-fullbar hidden>
+                    <div class="stw-fulltop"><strong>Contorno do setor</strong><span data-stw-full-count>0 pontos</span></div>
+                    <svg class="stw-reticle" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="22" fill="none" stroke="#fff" stroke-width="3"/><path d="M32 2v14M32 48v14M2 32h14M48 32h14" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#446a36" stroke="#fff" stroke-width="1.5"/></svg>
+                    <p class="stw-fullmsg" role="status" data-stw-full-msg hidden></p>
+                    <div class="stw-fullsheet">
+                        <p>Arraste o mapa até a mira ficar no canto do setor e toque em marcar. Os pontos ficam dentro do contorno da fazenda.</p>
+                        <button type="button" class="szw-btn szw-btn-primary" data-stw-full-add>Marcar ponto aqui</button>
+                        <div class="stw-fullrow"><button type="button" class="szw-btn" data-stw-full-undo>Desfazer</button><button type="button" class="szw-btn" data-stw-full-done>Concluir</button></div>
+                    </div>
+                </div>
                 {% endif %}
-
                 <div class="grid gap-4 md:grid-cols-2">
                     <label><span class="mb-2 block text-sm font-medium">Latitude</span><input type="number" step="0.000001" name="centroid_lat" value="{{ edit_plot.centroid_lat if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional"></label>
                     <label><span class="mb-2 block text-sm font-medium">Longitude</span><input type="number" step="0.000001" name="centroid_lng" value="{{ edit_plot.centroid_lng if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional"></label>
@@ -424,6 +429,65 @@
                     {% endif %}
                 </div>
 
+                    </section>
+                    <section class="szw-panel stw-panel" data-stw-panel="2" aria-labelledby="stw-t2" hidden>
+                        <div class="szw-head"><h4 id="stw-t2">O que está plantado?</h4><p>Com a data e o espaçamento dá para acompanhar plantas, idade e produção do setor.</p></div>
+                {% if not edit_plot %}
+                <div class="stw-seg" role="radiogroup" aria-label="Cadastrar plantio agora?">
+                    <button type="button" role="radio" aria-checked="true" data-stw-skip="plant" data-value="now">Cadastrar plantio agora</button>
+                    <button type="button" role="radio" aria-checked="false" data-stw-skip="plant" data-value="later">Deixar para depois</button>
+                </div>
+                <p class="stw-later" data-stw-later="plant" hidden>Tudo bem. O setor fica como “Sem plantio informado” e não entra nas metas de sacas. Complete depois editando o setor.</p>
+                {% endif %}
+                <div data-stw-group="plant">
+                <fieldset class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/40 p-4">
+                    <legend class="px-1 text-sm font-semibold text-slate-800">Plantio atual</legend>
+                    {% if edit_plot %}<div class="-mt-1 mb-3 flex justify-end"><button type="button" data-renew-open class="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5"/></svg>Renovar plantio</button></div>{% endif %}
+                    <p class="mb-4 text-xs text-slate-500">{% if edit_plot and edit_plot.active_planting %}Lavoura de {{ edit_plot.active_planting.culture }}{% if edit_plot.active_planting.planting_date %} plantada em {{ edit_plot.active_planting.planting_date.strftime('%d/%m/%Y') }}{% endif %}. Corrija aqui os dados deste plantio; os plantios anteriores ficam guardados no histórico.{% else %}Dados da lavoura plantada hoje neste setor. Ao trocar a lavoura no futuro, estes dados ficam guardados no histórico.{% endif %}</p>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label><span class="mb-2 block text-sm font-medium">Data de plantio</span><input type="date" name="planting_date" value="{{ edit_plot.planting_date.isoformat() if edit_plot and edit_plot.planting_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Número de plantas</span><input type="number" name="plant_count" value="{{ edit_plot.plant_count if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                        <label><span class="mb-2 block text-sm font-medium">Espaçamento entre linhas (m)</span><input type="number" step="0.01" name="spacing_row_meters" value="{{ edit_plot.spacing_row_meters if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Espaçamento entre plantas (cm)</span><input type="number" step="0.01" name="spacing_plant_centimeters" value="{{ ((edit_plot.spacing_plant_meters * 100) if edit_plot and edit_plot.spacing_plant_meters is not none else '') }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Produção estimada (sacas)</span><input type="number" step="0.01" name="estimated_yield_sacks" value="{{ edit_plot.estimated_yield_sacks if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Variedade</span>
+                            <select name="variety_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                                <option value="">Selecione</option>
+                                {% for variety in form_varieties %}
+                                <option value="{{ variety.id }}" {% if edit_plot and edit_plot.variety_id == variety.id %}selected{% endif %}>{{ variety.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                    </div>
+                </fieldset>
+                {% if edit_plot and edit_plot.past_plantings %}
+                <section class="rounded-[1.5rem] border border-slate-200 p-4">
+                    <h4 class="text-sm font-semibold text-slate-800">Histórico de plantios</h4>
+                    <ol class="mt-3 space-y-2">
+                        {% for planting in edit_plot.past_plantings %}
+                        <li class="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                            <span class="font-semibold text-slate-800">{{ planting.culture }}{% if planting.variety %} · {{ planting.variety.name }}{% endif %}</span>
+                            · {{ planting.planting_date.strftime('%m/%Y') if planting.planting_date else '—' }} a {{ planting.ended_on.strftime('%m/%Y') }}
+                            {% if planting.end_reason %}<span class="ml-1 rounded-full bg-white px-2 py-0.5 text-xs text-slate-500 ring-1 ring-slate-200">{{ {'renovacao': 'Renovação', 'erradicacao': 'Erradicação', 'troca_cultura': 'Troca de cultura', 'perda': 'Perda da lavoura', 'outro': 'Outro'}.get(planting.end_reason, planting.end_reason) }}</span>{% endif %}
+                            <span class="block text-xs text-slate-500">{{ planting.plant_count or '—' }} plantas{% if planting.spacing_row_meters %} · {{ planting.spacing_row_meters|decimal_br }} m entre linhas{% endif %}</span>
+                        </li>
+                        {% endfor %}
+                    </ol>
+                </section>
+                {% endif %}
+
+                </div>
+                    </section>
+                    <section class="szw-panel stw-panel" data-stw-panel="3" aria-labelledby="stw-t3" hidden>
+                        <div class="szw-head"><h4 id="stw-t3">Irrigação e solo</h4><p>Usado no controle de água, na irrigação e na recomendação de adubação.</p></div>
+                {% if not edit_plot %}
+                <div class="stw-seg" role="radiogroup" aria-label="Informar irrigação e solo agora?">
+                    <button type="button" role="radio" aria-checked="true" data-stw-skip="man" data-value="now">Informar agora</button>
+                    <button type="button" role="radio" aria-checked="false" data-stw-skip="man" data-value="later">Deixar para depois</button>
+                </div>
+                <p class="stw-later" data-stw-later="man" hidden>Sem problema. Irrigação e solo ficam como “Não informado”. Complete depois editando o setor.</p>
+                {% endif %}
+                <div data-stw-group="man" class="stw-group">
                 <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                     <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Configuração de irrigação</p>
                     <div class="mt-4 grid gap-4 md:grid-cols-2">
@@ -448,7 +512,35 @@
                     <p class="mt-4 text-sm text-slate-500">Quando os dados de irrigação estiverem preenchidos, o sistema calcula automaticamente o volume em litros no lançamento da irrigação.</p>
                 </div>
 
+                    <div class="szw-field">
+                        <span>Tipo de solo</span>
+                        <div class="stw-pills" role="radiogroup" aria-label="Tipo de solo">
+                            {% for soil_key, soil_label in soil_textures.items() %}<label class="stw-pill"><input type="radio" name="soil_texture" value="{{ soil_key }}" {% if edit_plot and edit_plot.soil_texture == soil_key %}checked{% endif %}><span>{{ soil_label }}</span></label>{% endfor %}
+                        </div>
+                        <small>Ajuda na recomendação de adubação. A análise de solo continua em Solo &amp; adubação.</small>
+                    </div>
+                </div>
                 <label><span class="mb-2 block text-sm font-medium">Observações</span><textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_plot.notes if edit_plot else '' }}</textarea></label>
+                    </section>
+                    <section class="szw-panel stw-panel" data-stw-panel="4" aria-labelledby="stw-t4" hidden>
+                        <div class="szw-head"><h4 id="stw-t4">{% if edit_plot %}Confira antes de salvar{% else %}Confira antes de criar{% endif %}</h4><p>Toque em “Alterar” para voltar a qualquer passo. Nada foi gravado ainda.</p></div>
+                        <div class="szw-review" data-stw-review></div>
+                        {% if plot_wizard_season %}
+                        <label class="szw-integ is-on">
+                            <span class="szw-grow"><strong>Incluir na {{ plot_wizard_season.name }} <em class="szw-tag">Safra ativa</em></strong><small>O setor entra nos custos e, com plantio em produção, nas metas desta safra.</small></span>
+                            <input type="checkbox" name="include_in_season" value="1" class="szw-check" data-stw-season {% if not edit_plot or (edit_plot and edit_plot in plot_wizard_season.plots) %}checked{% endif %} {% if edit_plot and edit_plot in plot_wizard_season.plots %}disabled{% endif %}>
+                            <span class="szw-toggle" aria-hidden="true"><span></span></span>
+                        </label>
+                        {% endif %}
+                        <div class="szw-impact"><h5>Ao confirmar, o SiSFarm vai:</h5><ul data-stw-impact></ul></div>
+                    </section>
+                </div></div>
+                <footer class="szw-foot">
+                    <button type="button" class="szw-btn" data-stw-back><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Voltar</button>
+                    <span class="szw-foot-txt" data-stw-steptxt aria-live="polite"></span>
+                    <button type="button" class="szw-btn szw-btn-primary" data-stw-next>Continuar<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+                    <button type="submit" class="szw-btn szw-btn-primary" data-stw-submit hidden>{% if edit_plot %}Salvar setor{% else %}Criar setor{% endif %}</button>
+                </footer>
             </form>
             {% if edit_plot %}
             {% set attachment_owner = edit_plot %}
@@ -617,7 +709,8 @@
 <script type="application/json" id="plot-farm-boundaries-data">{{ plot_farm_boundaries_json|safe }}</script>
 <script type="application/json" id="plots-context-boundaries-data">{{ plots_context_boundaries_json|safe }}</script>
 {% include "partials/attachment_manager_script.html" %}
-<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=7"></script>
+<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=8"></script>
+<script src="{{ url_for('static', path='js/plot_wizard.js') }}?v=2" defer></script>
 <script>
     (() => {
         window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};
@@ -929,6 +1022,8 @@
             }
             try {
                 plotsBoundaryEditor = await window.initFarmBoundaryEditor({
+                    clipToReference: true,
+                    onClamp: () => window.dispatchEvent(new CustomEvent('plot-boundary-clamped')),
                     containerId: 'plots-form-boundary-map',
                     hiddenInput: plotBoundaryHidden,
                     initialGeometry,
@@ -940,6 +1035,7 @@
                 console.error(err);
                 return;
             }
+            window.__stwEditor = plotsBoundaryEditor;
             window.setTimeout(() => plotsBoundaryEditor?.invalidate(), 200);
             window.setTimeout(() => plotsBoundaryEditor?.invalidate(), 550);
         };
@@ -1187,6 +1283,8 @@
             }
             try {
                 plotsMapModalEditor = await window.initFarmBoundaryEditor({
+                    clipToReference: true,
+                    onClamp: () => window.dispatchEvent(new CustomEvent('plot-boundary-clamped')),
                     containerId: 'plots-preview-boundary-map',
                     hiddenInput: plotBoundaryHidden,
                     initialGeometry,

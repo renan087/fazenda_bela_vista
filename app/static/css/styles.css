@@ -8771,3 +8771,44 @@ body.erp-sidebar-collapsed .sf-toggle .sf-ic { transform: rotate(0); }
     .szw-row-total { width: auto; }
 }
 @media (prefers-reduced-motion: reduce) { .szw-toggle, .szw-toggle span { transition: none; } }
+
+/* ===== Assistente de setor (stw-), usa a base .szw ===== */
+.stw .szw-body { padding: 1rem 0; }
+.stw-seg { display: flex; gap: .375rem; padding: .25rem; background: #f3f5f2; border-radius: 12px; flex-wrap: wrap; }
+.stw-seg button { flex: 1 1 10rem; min-height: 2.75rem; border: 0; border-radius: 9px; background: transparent; color: var(--szw-muted); font-weight: 600; font-size: .875rem; }
+.stw-seg button[aria-checked="true"] { background: #fff; color: var(--szw-ink); box-shadow: 0 1px 3px rgba(15, 21, 19, .15); }
+.stw-note, .stw-later { padding: .75rem .875rem; border-radius: 12px; background: var(--szw-soft); border: 1px solid var(--szw-line2); font-size: .84rem; color: var(--szw-muted); line-height: 1.5; margin: 0; }
+.stw-note[hidden], .stw-later[hidden], .stw-swatches[hidden], [data-stw-group][hidden] { display: none; }
+.stw-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr)); gap: .5rem; }
+.stw-swatch { height: 2.75rem; border-radius: 12px; border: 2px solid var(--szw-line); background: #fff; display: grid; place-items: center; position: relative; cursor: pointer; }
+.stw-swatch::before { content: ""; width: 1.625rem; height: 1.625rem; border-radius: 8px; background: var(--sw); border: 2px solid var(--sw-b); }
+.stw-swatch[aria-checked="true"] { border-color: var(--szw-ink); }
+.stw-swatch-more { border-style: dashed; color: var(--szw-brand); font-weight: 700; }
+.stw-swatch-more::before { display: none; }
+.stw-swatch-more input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.stw-pills { display: flex; flex-wrap: wrap; gap: .5rem; }
+.stw-pill { position: relative; }
+.stw-pill input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.stw-pill span { display: inline-flex; align-items: center; min-height: 2.75rem; padding: 0 .875rem; border-radius: 999px; border: 1px solid var(--szw-line); background: #fff; font-size: .875rem; font-weight: 600; cursor: pointer; }
+.stw-pill input:checked + span { background: var(--szw-brand); border-color: var(--szw-brand); color: #fff; }
+.stw-pill input:focus-visible + span { outline: 3px solid #9bcb6b; outline-offset: 2px; }
+.stw-group { display: flex; flex-direction: column; gap: 1rem; }
+.stw-fullmap-open { display: none; width: 100%; min-height: 3.25rem; font-size: .9375rem; }
+.stw-fullbar[hidden] { display: none; }
+.stw-reticle { position: fixed; left: 50%; top: 50%; width: 64px; height: 64px; transform: translate(-50%, -50%); z-index: 72; pointer-events: none; }
+.stw-fulltop { position: fixed; top: .75rem; left: .75rem; right: .75rem; z-index: 72; display: flex; justify-content: space-between; align-items: center; padding: .75rem 1rem; border-radius: 14px; background: #fff; box-shadow: 0 6px 18px rgba(15, 21, 19, .2); font-size: .875rem; }
+.stw-fullmsg { position: fixed; top: 4.75rem; left: .75rem; right: .75rem; z-index: 72; margin: 0; padding: .625rem .75rem; border-radius: 12px; background: #fff6e5; color: #6b4600; font-size: .8125rem; box-shadow: 0 4px 12px rgba(15, 21, 19, .2); }
+.stw-fullmsg[hidden] { display: none; }
+.stw-fullsheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 72; display: flex; flex-direction: column; gap: .625rem; padding: 1rem 1rem 1.375rem; background: #fff; border-radius: 20px 20px 0 0; box-shadow: 0 -8px 24px rgba(15, 21, 19, .18); }
+.stw-fullsheet p { font-size: .8125rem; color: var(--szw-muted); line-height: 1.45; }
+.stw-fullsheet .szw-btn-primary { min-height: 3.25rem; font-size: 1rem; }
+.stw-fullrow { display: flex; gap: .5rem; }
+.stw-fullrow .szw-btn { flex: 1; }
+html.stw-lock, html.stw-lock body { overflow: hidden; }
+@media (max-width: 639px) {
+    .stw-fullmap-open { display: inline-flex; }
+    .stw:not(.stw-full) #plots-form-boundary-map, .stw:not(.stw-full) [data-plots-map-toolbar] { display: none !important; }
+    .stw.stw-full .szw-foot { display: none; }
+    .stw.stw-full #plots-form-boundary-map .leaflet-top { top: 4.25rem; }
+    .stw.stw-full #plots-form-boundary-map { display: block !important; position: fixed !important; inset: 0; z-index: 71; width: 100vw; height: 100dvh !important; max-height: none; margin: 0; border: 0; border-radius: 0; }
+}

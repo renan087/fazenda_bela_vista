@@ -95,6 +95,15 @@ from app.models.system_maintenance import SystemMaintenance
 from app.services.audit_log_service import append_audit_event
 from app.services.maintenance import MODES as MAINTENANCE_MODES, MaintenanceError, compute_state as compute_maintenance_state, current_state as current_maintenance_state, save_state as save_maintenance_state
 from app.core.user_context import persist_user_context, sync_user_context_from_preferences
+from app.services.plot_wizard import (
+    PLOT_COLORS,
+    SOIL_TEXTURES,
+    geometry_outside_farm,
+    normalize_color,
+    normalize_group,
+    normalize_soil,
+    pick_auto_color,
+)
 from app.services.season_goals import (
     BUDGET_CATEGORIES,
     coffee_year_options,
@@ -277,6 +286,7 @@ from app.services.forms import (
     calculate_soil_recommendations,
     create_agronomic_profile,
     create_crop_season,
+    link_season_plantings,
     create_coffee_commercialization,
     create_equipment_asset,
     create_farm,
@@ -8775,6 +8785,8 @@ def plots_page(
     plots_field_q_filtered = bool((q or "").strip())
     plots_field_sort_filtered = sort != "name"
     plots_field_variety_filtered = _plots_variety_query_is_user_filter(request, _plots_active_season_variety_id)
+    plot_wizard_groups = sorted({plot.group_name for plot in repo.list_plots(farm_ids=context_farm_ids or None) if plot.group_name}, key=str.lower) if context_farm_ids else []
+    plot_wizard_season = scope.get("active_season")
     return templates.TemplateResponse(
         "plots.html",
         _base_context(
@@ -8795,6 +8807,10 @@ def plots_page(
             plots_field_variety_filtered=plots_field_variety_filtered,
             plots_field_sort_filtered=plots_field_sort_filtered,
             edit_plot=edit_plot,
+            plot_colors=PLOT_COLORS,
+            plot_groups=plot_wizard_groups,
+            soil_textures=SOIL_TEXTURES,
+            plot_wizard_season=plot_wizard_season if plot_wizard_season and plot_wizard_season.status != "encerrada" else None,
             planting_end_reasons=PLANTING_END_REASONS,
             open_plot_map_modal=open_plot_map_modal,
             selected_farm_id=selected_farm_id or scope["active_farm_id"],
@@ -8817,6 +8833,33 @@ def plots_page(
     )
 
 
+def _apply_plot_wizard_fields(repo: FarmRepository, plot, farm, geometry, map_color, color_mode, group_name, soil_texture, *, is_new: bool) -> None:
+    """Cor no mapa (automática ou escolhida), grupo e tipo de solo vindos do assistente de setor."""
+    if color_mode is None and map_color is None and group_name is None and soil_texture is None:
+        return  # formulário antigo: não mexe
+    color = normalize_color(map_color) if color_mode == "manual" else None
+    if not color and (is_new or color_mode == "auto" or not plot.map_color):
+        others = [other for other in repo.list_plots(farm_ids=[farm.id]) if other.id != plot.id]
+        color = pick_auto_color(others, geometry)
+    repo.update(plot, {
+        "map_color": color or plot.map_color,
+        "group_name": normalize_group(group_name),
+        "soil_texture": normalize_soil(soil_texture),
+    })
+
+
+def _include_plot_in_active_season(repo: FarmRepository, scope: dict, plot):
+    """Coloca o setor na safra ativa do topo (mesma fazenda). Devolve a safra ou None."""
+    season = repo.get_crop_season(scope.get("active_season_id")) if scope.get("active_season_id") else None
+    if not season or season.farm_id != plot.farm_id or season.status == "encerrada":
+        return None
+    if plot not in season.plots:
+        season.plots.append(plot)
+        repo.db.commit()
+        link_season_plantings(repo, season)
+    return season
+
+
 @router.post("/talhoes", include_in_schema=False)
 @router.post("/setores")
 def create_plot_action(
@@ -8826,7 +8869,7 @@ def create_plot_action(
     area_hectares: float = Form(...),
     farm_id: str | None = Form(None),
     planting_date: str | None = Form(None),
-    plant_count: int = Form(...),
+    plant_count: str | None = Form(None),
     spacing_row_meters: str | None = Form(None),
     spacing_plant_centimeters: str | None = Form(None),
     estimated_yield_sacks: str | None = Form(None),
@@ -8843,6 +8886,11 @@ def create_plot_action(
     sprinkler_count: str | None = Form(None),
     sprinkler_liters_per_hour: str | None = Form(None),
     notes: str | None = Form(None),
+    map_color: str | None = Form(None),
+    color_mode: str | None = Form(None),
+    group_name: str | None = Form(None),
+    soil_texture: str | None = Form(None),
+    include_in_season: str | None = Form(None),
     return_to: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -8871,6 +8919,9 @@ def create_plot_action(
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON do setor nao e valido.")
         return _redirect_with_query("/setores", selected_farm_id=selected_farm_id)
+    if geometry and farm.boundary_geojson and geometry_outside_farm(geometry, farm.boundary_geojson):
+        _flash(request, "error", f"O desenho do setor passa do perímetro da fazenda {farm.name}. Ajuste os pontos para ficarem dentro da divisa.")
+        return _redirect_with_query("/setores", selected_farm_id=selected_farm_id)
     new_plot = create_plot(
         repo,
         _build_plot_payload(
@@ -8878,7 +8929,7 @@ def create_plot_action(
             name=name,
             area_hectares=area_hectares,
             planting_date=planting_date,
-            plant_count=plant_count,
+            plant_count=_int_or_none(plant_count) or 0,
             spacing_row_meters=spacing_row_meters,
             spacing_plant_centimeters=spacing_plant_centimeters,
             estimated_yield_sacks=estimated_yield_sacks,
@@ -8911,7 +8962,9 @@ def create_plot_action(
         None,
         is_new_plot=True,
     )
-    _flash(request, "success", "Setor salvo com sucesso.")
+    _apply_plot_wizard_fields(repo, new_plot, farm, geometry, map_color, color_mode, group_name, soil_texture, is_new=True)
+    joined_season = _include_plot_in_active_season(repo, scope, new_plot) if include_in_season else None
+    _flash(request, "success", f"Setor {new_plot.name} criado." + (f" Já entrou na {joined_season.name}." if joined_season else ""))
     if return_to == "safra":
         return _redirect(f"/safras?novo=1&setor={new_plot.id}")
     if return_to and return_to.startswith("safra:") and return_to[6:].isdigit():
@@ -8980,7 +9033,7 @@ def update_plot_action(
     area_hectares: float = Form(...),
     farm_id: int = Form(...),
     planting_date: str | None = Form(None),
-    plant_count: int = Form(...),
+    plant_count: str | None = Form(None),
     spacing_row_meters: str | None = Form(None),
     spacing_plant_centimeters: str | None = Form(None),
     estimated_yield_sacks: str | None = Form(None),
@@ -8997,6 +9050,11 @@ def update_plot_action(
     sprinkler_count: str | None = Form(None),
     sprinkler_liters_per_hour: str | None = Form(None),
     notes: str | None = Form(None),
+    map_color: str | None = Form(None),
+    color_mode: str | None = Form(None),
+    group_name: str | None = Form(None),
+    soil_texture: str | None = Form(None),
+    include_in_season: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -9027,6 +9085,9 @@ def update_plot_action(
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON do setor nao e valido.")
         return _redirect_with_query("/setores", edit_id=plot_id)
+    if geometry and farm.boundary_geojson and geometry_outside_farm(geometry, farm.boundary_geojson):
+        _flash(request, "error", f"O desenho do setor passa do perímetro da fazenda {farm.name}. Ajuste os pontos para ficarem dentro da divisa.")
+        return _redirect_with_query("/setores", edit_id=plot_id)
     update_plot(
         repo,
         plot,
@@ -9035,7 +9096,7 @@ def update_plot_action(
             name=name,
             area_hectares=area_hectares,
             planting_date=planting_date,
-            plant_count=plant_count,
+            plant_count=_int_or_none(plant_count) or 0,
             spacing_row_meters=spacing_row_meters,
             spacing_plant_centimeters=spacing_plant_centimeters,
             estimated_yield_sacks=estimated_yield_sacks,
@@ -9069,6 +9130,9 @@ def update_plot_action(
         old_geometry,
         is_new_plot=False,
     )
+    _apply_plot_wizard_fields(repo, plot, farm, geometry, map_color, color_mode, group_name, soil_texture, is_new=False)
+    if include_in_season:
+        _include_plot_in_active_season(repo, scope, plot)
     _flash(request, "success", "Setor atualizado com sucesso.")
     return _redirect("/setores")
 
