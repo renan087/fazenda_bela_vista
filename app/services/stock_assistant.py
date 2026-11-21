@@ -738,15 +738,15 @@ def assistant_provider() -> str:
     return (os.getenv("ASSISTANT_PROVIDER") or "openai").strip().lower()
 
 
-def assistant_available() -> bool:
-    if assistant_provider() == "anthropic":
+def assistant_available(*, provider=None) -> bool:
+    if (provider or assistant_provider()) == "anthropic":
         return bool((os.getenv("ANTHROPIC_API_KEY") or "").strip())
     return bool((os.getenv("OPENAI_API_KEY") or get_settings().openai_api_key or "").strip())
 
 
 def run_farm_assistant(history, assistant: "FarmAssistant", image=None):
     """Executa o agente; erros da IA viram ValueError com mensagem clara."""
-    if assistant_provider() == "anthropic":
+    if "pesquisar_doramas" in assistant.handlers or assistant_provider() == "anthropic":
         return _run_with_anthropic(history, assistant, image)
     api_key = os.getenv("OPENAI_API_KEY") or get_settings().openai_api_key
     if not api_key:
@@ -772,7 +772,7 @@ def _run_with_anthropic(history, assistant: "FarmAssistant", image=None):
 
     api_key = (os.getenv("ANTHROPIC_API_KEY") or "").strip()
     if not api_key:
-        raise ValueError("O assistente de IA ainda não está configurado. Contate o administrador.")
+        raise ValueError("O Claude ainda não está configurado. Contate o administrador.")
     import anthropic
 
     model = (os.getenv("ANTHROPIC_ASSISTANT_MODEL") or DEFAULT_MODEL).strip()

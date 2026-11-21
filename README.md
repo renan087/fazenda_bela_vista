@@ -143,3 +143,5 @@ O projeto permanece preparado para deploy no Render com `render.yaml`.
 ### Encerramento do atendimento pelo WhatsApp
 
 A rotina verifica os prazos aproximadamente a cada minuto enquanto a aplicação está em execução. Os valores são configuráveis por variáveis de ambiente: `WHATSAPP_IDLE_MINUTES` (padrão 30), `WHATSAPP_CLOSING_MINUTES` (10) e `WHATSAPP_SURVEY_MINUTES` (30). A rotina respeita a janela de mensagens do WhatsApp; pesquisas que não puderem ser enviadas ficam registradas como indisponíveis. Em falhas de envio com resultado incerto, não repete automaticamente a mensagem para evitar duplicação. O histórico das conversas é preservado.
+
+A especialização individual em doramas usa a API da Anthropic para a conversa e para pesquisas públicas na web. Configure `ANTHROPIC_API_KEY` no ambiente do servidor; o modelo segue `ANTHROPIC_ASSISTANT_MODEL` ou o padrão do adaptador. O provedor configurado para os demais usuários não é alterado. A pesquisa envia somente os termos fornecidos à ferramenta e depende da disponibilidade e das permissões da busca web na conta Anthropic.

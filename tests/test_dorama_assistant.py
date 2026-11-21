@@ -39,20 +39,45 @@ def test_absent_user_does_not_allow_later_email_claim():
 
 
 def test_search_uses_only_public_query_and_requires_sources(monkeypatch):
-    import openai
-    monkeypatch.setenv('OPENAI_API_KEY', 'test')
+    import anthropic
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'test')
     calls = []
-    class Responses:
+    class Messages:
         def create(self, **kwargs):
             calls.append(kwargs)
             citation = SimpleNamespace(url='https://example.com/show')
-            return SimpleNamespace(output=[SimpleNamespace(content=[SimpleNamespace(annotations=[citation])])], output_text='Resumo')
-    monkeypatch.setattr(openai, 'OpenAI', lambda **kwargs: SimpleNamespace(responses=Responses()))
+            return SimpleNamespace(content=[SimpleNamespace(type='text', text='Resumo', citations=[citation])])
+    monkeypatch.setattr(anthropic, 'Anthropic', lambda **kwargs: SimpleNamespace(messages=Messages()))
     assert 'erro' in service.search_dorama('contato pessoa@example.com')
     result = service.search_dorama('Dorama estreia 2026')
     assert result['fontes'] == ['https://example.com/show']
-    assert calls[0]['store'] is False and calls[0]['input'] == 'Pesquisa sobre doramas: Dorama estreia 2026'
-    assert calls[0]['tools'] == [{'type': 'web_search_preview'}]
+    assert calls[0]['messages'] == [{'role': 'user', 'content': 'Pesquise na internet sobre doramas: Dorama estreia 2026'}]
+    assert calls[0]['tools'] == [{'type': 'web_search_20250305', 'name': 'web_search', 'max_uses': 2}]
+
+
+def test_search_without_citations_or_key_fails_closed(monkeypatch):
+    import anthropic
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    assert 'erro' in service.search_dorama('Dorama estreia')
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'test')
+    monkeypatch.setattr(anthropic, 'Anthropic', lambda **kwargs: SimpleNamespace(messages=SimpleNamespace(
+        create=lambda **params: SimpleNamespace(content=[SimpleNamespace(type='text', text='Sem fontes', citations=[])]))))
+    assert 'erro' in service.search_dorama('Dorama estreia')
+
+
+def test_only_authorized_assistant_routes_to_claude(monkeypatch):
+    from app.services import stock_assistant
+    seen = []
+    monkeypatch.setattr(stock_assistant, '_run_with_anthropic', lambda *args: seen.append('claude') or {})
+    monkeypatch.setattr(stock_assistant, 'assistant_provider', lambda: 'openai')
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    monkeypatch.setattr(stock_assistant, 'get_settings', lambda: SimpleNamespace(openai_api_key=None))
+    stock_assistant.run_farm_assistant([], SimpleNamespace(handlers={'pesquisar_doramas': object()}))
+    assert seen == ['claude']
+    import pytest
+    with pytest.raises(ValueError):
+        stock_assistant.run_farm_assistant([], SimpleNamespace(handlers={}))
+    assert seen == ['claude']
 
 
 def test_assistant_tools_are_scoped_in_web_and_whatsapp(monkeypatch):

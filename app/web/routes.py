@@ -1196,9 +1196,11 @@ def _pezinho_context(request: Request, db, user, context: dict) -> dict | None:
         suggestions.append(("Chuva", "Quanto choveu nos últimos 30 dias?"))
     elif PAGE_DASHBOARD in permissions and entitlements.module_allowed(PAGE_DASHBOARD):
         suggestions.append(("Mercado", "Qual é a cotação mais recente do café?"))
+    from app.services.dorama_assistant import allowed as dorama_allowed
+    provider = "anthropic" if db is not None and dorama_allowed(db, user) else None
     return {
         "ready": bool(farm and season),
-        "available": assistant_available(),
+        "available": assistant_available(provider=provider),
         "pending": pending,
         "name": name,
         "greeting": "Bom dia" if hour < 12 else "Boa tarde" if hour < 18 else "Boa noite",
