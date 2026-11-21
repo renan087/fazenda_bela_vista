@@ -824,4 +824,49 @@
     };
 
     window.extractFarmBoundaryPoints = extractPoints;
+
+    /* Arquivo geodésico (.kml, .geojson, .json) -> Polygon GeoJSON; null quando não há polígono. */
+    function parseKml(xmlText) {
+        const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+        if (doc.querySelector('parsererror')) return null;
+        const byName = (root, name) => [...root.getElementsByTagName('*')].filter((el) => (el.localName || el.tagName.split(':').pop()).toLowerCase() === name);
+        const blobs = [];
+        byName(doc, 'outerboundaryis').forEach((ob) => byName(ob, 'coordinates').forEach((c) => { if (c.textContent.trim()) blobs.push(c.textContent.trim()); }));
+        if (!blobs.length) byName(doc, 'coordinates').forEach((c) => { if (c.textContent.trim()) blobs.push(c.textContent.trim()); });
+        for (const blob of blobs) {
+            const pts = [];
+            blob.split(/\s+/).forEach((tok) => {
+                const [lng, lat] = tok.split(',').map(parseFloat);
+                if (Number.isFinite(lng) && Number.isFinite(lat) && Math.abs(lng) <= 180 && Math.abs(lat) <= 90) pts.push([lng, lat]);
+            });
+            if (pts.length >= 3) {
+                const first = pts[0];
+                const last = pts[pts.length - 1];
+                if (first[0] !== last[0] || first[1] !== last[1]) pts.push([first[0], first[1]]);
+                if (pts.length >= 4) return { type: 'Polygon', coordinates: [pts] };
+            }
+        }
+        return null;
+    }
+    window.parseGeodesicText = function parseGeodesicText(rawText) {
+        const text = String(rawText || '').replace(/^\uFEFF/, '').trim();
+        if (!text) return null;
+        if (text.startsWith('{') || text.startsWith('[')) {
+            try {
+                const pts = extractPoints(JSON.parse(text));
+                if (pts.length >= 3) return buildGeometry(pts);
+            } catch (e) { /* tenta KML */ }
+        }
+        return text.includes('<') ? parseKml(text) : null;
+    };
+    /* Ajusta na divisa os cantos que ficam fora do perímetro de referência (fazenda). */
+    window.clampGeometryToBoundary = function clampGeometryToBoundary(geometry, referenceGeometry) {
+        const ref = extractPoints(referenceGeometry);
+        const pts = extractPoints(geometry);
+        if (ref.length < 3 || pts.length < 3) return { geometry, changed: 0 };
+        let changed = 0;
+        const clamp = makeClamp(ref, { clipToReference: true, onClamp: () => { changed += 1; } });
+        const fixed = pts.map((pt) => clamp(pt));
+        return { geometry: changed ? buildGeometry(fixed) : geometry, changed };
+    };
 })();

@@ -76,17 +76,32 @@ from app.models.plot import Plot  # noqa: E402
 from tests.test_coffee_sales import env  # noqa: E402,F401
 
 
-def test_seasons_page_renders_wizard_with_plots(env, monkeypatch):
+def _scoped(env, monkeypatch):
     from app.models.farm import Farm
-    scope = {**env.scope, "context_farms": env.db.query(Farm).all()}
+    farm = env.db.query(Farm).one()
+    scope = {**env.scope, "context_farms": [farm], "active_farm": farm}
     monkeypatch.setattr(env.routes, "_global_scope_context", lambda *args, **kwargs: scope)
-    resp = env.routes.crop_seasons_page(env.request("/safras"), db=env.db, user=env.user, csrf_token="x")
+    return scope
+
+
+def test_new_season_page_renders_canvas_layout(env, monkeypatch):
+    _scoped(env, monkeypatch)
+    resp = env.routes.season_new_page(env.request("/safras/nova"), db=env.db, user=env.user, csrf_token="x")
     html = resp.body.decode("utf-8")
     assert resp.status_code == 200
-    assert "data-season-wizard" in html
-    assert "season-wizard-data" in html
+    for piece in ("data-season-wizard", "Salvar rascunho", "Dica do Pezinho", "Resumo da safra", "szw-sheet", "szw-mhead",
+                  "Copiar o programa de adubação", "Avisos do Pezinho", "Criar safra"):
+        assert piece in html
+    assert "Em breve" not in html
     assert "Talh\\u00e3o 07" in html or "Talhão 07" in html
-    assert "Criar safra" in html
+
+
+def test_old_query_urls_redirect_to_pages(env, monkeypatch):
+    _scoped(env, monkeypatch)
+    resp = env.routes.crop_seasons_page(env.request("/safras?novo=1&setor=5"), db=env.db, user=env.user, csrf_token="x")
+    assert resp.status_code in (302, 303) and resp.headers["location"].startswith("/safras/nova")
+    resp = env.routes.crop_seasons_page(env.request("/safras?edit_id=3"), edit_id=3, db=env.db, user=env.user, csrf_token="x")
+    assert resp.headers["location"].startswith("/safras/3/editar")
 
 
 def test_create_season_from_wizard_saves_goals_status_and_active_context(env):
@@ -95,10 +110,48 @@ def test_create_season_from_wizard_saves_goals_status_and_active_context(env):
     resp = env.routes.create_crop_season_action(
         env.request("/safras"), csrf_token="x", name="", start_date="2030-07-01", end_date="2031-06-30",
         culture="Café", variety_id=None, plot_ids=[plot.id], cultivated_area=None, area_unit="ha", notes="",
-        status_value=None, goals=goals, make_active="1", db=env.db, user=env.user,
+        status_value=None, goals=goals, make_active="1", integrations=json.dumps({"fin": True, "lemb": True}), db=env.db, user=env.user,
     )
     assert resp.status_code == 303
+    assert "/pronta" in resp.headers["location"]
     season = env.db.query(CropSeason).filter(CropSeason.start_date == date(2030, 7, 1)).one()
     assert season.status == "planejada"
     assert json.loads(season.goals_json)["yields"] == {str(plot.id): 35.0}
     assert env.session["active_season_id"] == season.id
+    assert json.loads(season.goals_json)["integrations"]["fin"] is True
+
+
+def test_copy_fertilization_program_shifts_dates_as_drafts(env):
+    from app.models.fertilization_schedule import FertilizationSchedule
+    from app.services.season_goals import copy_fertilization_program
+    plot = env.db.query(Plot).filter(Plot.name == "Talhão 07").one()
+    old = env.db.query(CropSeason).get(env.scope["active_season_id"])
+    if plot not in old.plots:
+        old.plots.append(plot)
+    env.db.add(FertilizationSchedule(plot_id=plot.id, season_id=old.id, scheduled_date=old.start_date.replace(day=10), status="completed", application_method="fertirrigacao"))
+    new = CropSeason(farm_id=old.farm_id, name="Seguinte", start_date=old.start_date.replace(year=old.start_date.year + 1),
+                     end_date=old.end_date.replace(year=old.end_date.year + 1), culture="Café", cultivated_area=1, status="planejada", plots=[plot])
+    env.db.add(new)
+    env.db.commit()
+    assert copy_fertilization_program(env.repo if hasattr(env, "repo") else env.routes._repository(env.db), old, new) == 1
+    copy = env.db.query(FertilizationSchedule).filter(FertilizationSchedule.season_id == new.id).one()
+    assert copy.status == "scheduled" and copy.scheduled_date.year == old.start_date.year + 1
+    assert "Rascunho copiado" in copy.notes
+
+
+def test_close_and_reopen_season(env, monkeypatch):
+    _scoped(env, monkeypatch)
+    season = env.db.query(CropSeason).get(env.scope["active_season_id"])
+    page = env.routes.season_close_page(season.id, env.request(f"/safras/{season.id}/encerrar"), db=env.db, user=env.user, csrf_token="x")
+    html = page.body.decode("utf-8")
+    assert page.status_code == 200 and "Previsto x realizado" in html and "Pendências antes de fechar" in html
+    assert "colheitas sem classificação" in html  # os 2 lotes do fixture não têm classificação
+    blocked = env.routes.season_close_action(season.id, env.request("/x"), csrf_token="x", closing_notes="geada", keep_unsold="1", confirm=None, db=env.db, user=env.user)
+    assert blocked.status_code == 303 and env.db.query(CropSeason).get(season.id).status != "encerrada"
+    env.routes.season_close_action(season.id, env.request("/x"), csrf_token="x", closing_notes="geada", keep_unsold="1", confirm="1", db=env.db, user=env.user)
+    closed = env.db.query(CropSeason).get(season.id)
+    assert closed.status == "encerrada"
+    assert json.loads(closed.goals_json)["closing"]["snapshot"]["produced"] == 154
+    env.routes.season_reopen_action(season.id, env.request("/x"), csrf_token="x", db=env.db, user=env.user)
+    reopened = env.db.query(CropSeason).get(season.id)
+    assert reopened.status != "encerrada" and "closing" not in json.loads(reopened.goals_json or "{}")

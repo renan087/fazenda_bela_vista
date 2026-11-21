@@ -105,6 +105,15 @@ from app.services.plot_wizard import (
     pick_auto_color,
 )
 from app.services.season_goals import (
+    closing_rows,
+    copy_fertilization_program,
+    harvest_window,
+    integrations_of,
+    parse_integrations,
+    planned_inputs_vs_stock,
+    season_closing_data,
+    season_cost_total,
+    season_finance_expenses,
     BUDGET_CATEGORIES,
     coffee_year_options,
     common_variety_id,
@@ -1517,6 +1526,23 @@ def _build_global_notifications(
                     identity=f"maintenance:{maintenance.id}",
                     severity="warning",
                     meta="Patrimônio",
+                )
+
+    if active_season and can_view_finance and integrations_of(active_season).get("lemb"):
+        budget = (goals_summary(active_season) or {}).get("budget_total") or 0
+        if budget:
+            spent = season_cost_total(repo, active_season)
+            if spent >= budget * 0.8:
+                percent = round(spent * 100 / budget)
+                add_notification(
+                    important,
+                    title="Custo da safra passou de 80% do orçado" if percent < 100 else "Custo da safra passou do orçado",
+                    message=f"{active_season.name}: R$ {spent:,.0f} de R$ {budget:,.0f} ({percent}%).".replace(",", "."),
+                    href=f"/safras?view_id={active_season.id}",
+                    kind="season_budget",
+                    identity=f"season-budget:{active_season.id}:{min(percent // 10, 10)}",
+                    severity="warning" if percent < 100 else "danger",
+                    meta="Pezinho",
                 )
 
     if user and active_season:
@@ -17518,9 +17544,11 @@ def _season_wizard_payload(repo: FarmRepository, db: Session, scope: dict, crop_
         "price_date": quote.quote_date.strftime("%d/%m/%Y") if quote else None,
         "today": today.isoformat(),
         "previous": {
+            "id": previous.id,
             "name": previous.name,
             "plot_ids": [plot.id for plot in previous.plots],
             "goals": load_goals(previous),
+            "schedules": len(previous.fertilization_schedules),
         } if previous else None,
         "edit": {
             "id": edit_season.id,
@@ -17532,7 +17560,9 @@ def _season_wizard_payload(repo: FarmRepository, db: Session, scope: dict, crop_
             "goals": load_goals(edit_season),
             "notes": edit_season.notes or "",
             "status": edit_season.status,
+            "integrations": integrations_of(edit_season),
         } if edit_season else None,
+        "farm_name": scope["active_farm"].name if scope.get("active_farm") else "",
         "is_active": bool(edit_season and scope.get("active_season_id") == edit_season.id),
     }
 
@@ -17546,6 +17576,11 @@ def crop_seasons_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
+    extra = {key: request.query_params.get(key) for key in ("rascunho", "setor") if request.query_params.get(key)}
+    if edit_id:
+        return _redirect_with_query(f"/safras/{edit_id}/editar", **extra)
+    if request.query_params.get("novo") == "1":
+        return _redirect_with_query("/safras/nova", rascunho="1", **({"setor": extra["setor"]} if "setor" in extra else {}))
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     effective_farm_id = scope["active_farm_id"]
@@ -17622,6 +17657,16 @@ def crop_seasons_page(
     }
     season_wizard = _season_wizard_payload(repo, db, scope, crop_seasons, edit_season, effective_farm_id, today)
     season_goal_summaries = {season.id: goals_summary(season) for season in crop_seasons}
+    view_extras = None
+    if view_season:
+        view_integrations = integrations_of(view_season)
+        view_extras = {
+            "integrations": view_integrations,
+            "window": harvest_window(view_season),
+            "spent": season_costs.get(view_season.id, {}).get("operational_total", 0) if view_season.id in season_costs else season_cost_total(repo, view_season),
+            "finance": season_finance_expenses(repo, view_season) if view_integrations.get("fin") else 0,
+            "inputs": planned_inputs_vs_stock(repo, view_season) if view_integrations.get("est") else [],
+        }
     return templates.TemplateResponse(
         "seasons.html",
         _base_context(
@@ -17643,6 +17688,7 @@ def crop_seasons_page(
             view_season=view_season,
             season_wizard=season_wizard,
             season_goal_summaries=season_goal_summaries,
+            view_extras=view_extras,
         ),
     )
 
@@ -18117,12 +18163,154 @@ def _season_area_hectares(season) -> float:
     return float(season.cultivated_area or 0) * SEASON_AREA_UNITS.get(season.area_unit or "ha", SEASON_AREA_UNITS["ha"])[1]
 
 
-def _save_season_goals(repo: FarmRepository, season, raw_goals: str | None) -> None:
+def _save_season_goals(repo: FarmRepository, season, raw_goals: str | None, raw_integrations: str | None = None) -> None:
     """Grava as metas do assistente. Sem campo enviado (formulário antigo), mantém o que já existe."""
-    if raw_goals is None:
+    if raw_goals is None and raw_integrations is None:
         return
-    parsed = parse_goals(raw_goals, {plot.id for plot in season.plots})
-    repo.update(season, {"goals_json": json.dumps(parsed, ensure_ascii=False) if parsed else None})
+    current = load_goals(season)
+    data = parse_goals(raw_goals, {plot.id for plot in season.plots}) if raw_goals is not None else {k: current.get(k) for k in ("yields", "budget", "price") if current.get(k)}
+    data = dict(data or {})
+    if raw_integrations is not None:
+        data["integrations"] = parse_integrations(raw_integrations)
+    elif current.get("integrations"):
+        data["integrations"] = current["integrations"]
+    if current.get("closing"):
+        data["closing"] = current["closing"]
+    repo.update(season, {"goals_json": json.dumps(data, ensure_ascii=False) if data else None})
+
+
+def _season_page_scope(request: Request, repo: FarmRepository):
+    scope = _global_scope_context(request, repo)
+    if not scope.get("active_farm_id"):
+        _flash(request, "error", "Selecione a fazenda no topo antes de cadastrar uma safra.")
+        return scope, _redirect("/safras")
+    return scope, None
+
+
+def _season_for_page(request: Request, repo: FarmRepository, scope: dict, season_id: int):
+    season = repo.get_crop_season(season_id)
+    if not season or not _farm_matches_scope(season.farm_id, scope):
+        _flash(request, "error", "Esta safra nao pertence ao contexto ativo.")
+        return None
+    return season
+
+
+def _render_season_form(request, repo, db, user, csrf_token, scope, edit_season=None, done_season=None, done_info=None):
+    farm_id = scope["active_farm_id"]
+    crop_seasons = repo.list_crop_seasons(farm_id=farm_id)
+    wizard = _season_wizard_payload(repo, db, scope, crop_seasons, edit_season, farm_id, date.today())
+    return templates.TemplateResponse(
+        "season_form.html",
+        _base_context(
+            request, user, csrf_token, "seasons", _repo=repo,
+            title="Editar safra" if edit_season else ("Safra criada" if done_season else "Nova safra"),
+            season_wizard=wizard, edit_season=edit_season, done_season=done_season, done_info=done_info or {},
+        ),
+    )
+
+
+@router.get("/safras/nova")
+def season_new_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+                    csrf_token: str = Depends(get_csrf_token)):
+    repo = _repository(db)
+    scope, denied = _season_page_scope(request, repo)
+    if denied:
+        return denied
+    return _render_season_form(request, repo, db, user, csrf_token, scope)
+
+
+@router.get("/safras/{season_id}/editar")
+def season_edit_page(season_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+                     csrf_token: str = Depends(get_csrf_token)):
+    repo = _repository(db)
+    scope, denied = _season_page_scope(request, repo)
+    if denied:
+        return denied
+    season = _season_for_page(request, repo, scope, season_id)
+    if not season:
+        return _redirect("/safras")
+    return _render_season_form(request, repo, db, user, csrf_token, scope, edit_season=season)
+
+
+@router.get("/safras/{season_id}/pronta")
+def season_done_page(season_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+                     csrf_token: str = Depends(get_csrf_token)):
+    repo = _repository(db)
+    scope, denied = _season_page_scope(request, repo)
+    if denied:
+        return denied
+    season = _season_for_page(request, repo, scope, season_id)
+    if not season:
+        return _redirect("/safras")
+    info = {
+        "active": request.query_params.get("ativa") == "1",
+        "copied": _int_or_none(request.query_params.get("adub")) or 0,
+        "integrations": integrations_of(season),
+        "window": harvest_window(season),
+    }
+    return _render_season_form(request, repo, db, user, csrf_token, scope, done_season=season, done_info=info)
+
+
+@router.get("/safras/{season_id}/encerrar")
+def season_close_page(season_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+                      csrf_token: str = Depends(get_csrf_token)):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    season = _season_for_page(request, repo, scope, season_id)
+    if not season:
+        return _redirect("/safras")
+    closing = load_goals(season).get("closing") or {}
+    return templates.TemplateResponse(
+        "season_close.html",
+        _base_context(
+            request, user, csrf_token, "seasons", _repo=repo, title=f"Encerrar {season.name}",
+            season=season, data=(closing_data := season_closing_data(repo, season)), rows=closing_rows(closing_data), closing=closing,
+            next_season=next((other for other in repo.list_crop_seasons(farm_id=season.farm_id) if other.start_date > season.start_date), None),
+            just_closed=request.query_params.get("ok") == "1",
+        ),
+    )
+
+
+@router.post("/safras/{season_id}/encerrar")
+def season_close_action(season_id: int, request: Request, csrf_token: str = Form(...), closing_notes: str | None = Form(None),
+                        keep_unsold: str | None = Form(None), confirm: str | None = Form(None),
+                        db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    season = _season_for_page(request, repo, scope, season_id)
+    if not season:
+        return _redirect("/safras")
+    if not confirm:
+        _flash(request, "error", "Marque que conferiu os números antes de encerrar a safra.")
+        return _redirect(f"/safras/{season_id}/encerrar")
+    data = season_closing_data(repo, season)
+    goals = load_goals(season)
+    goals["closing"] = {
+        "closed_on": date.today().isoformat(),
+        "notes": (closing_notes or "").strip()[:4000],
+        "keep_unsold": bool(keep_unsold),
+        "snapshot": {key: data[key] for key in ("produced", "real_yield", "cost", "cost_per_ha", "cost_per_sack", "sold_sacks", "sold_value", "unsold")},
+    }
+    repo.update(season, {"status": "encerrada", "goals_json": json.dumps(goals, ensure_ascii=False)})
+    return _redirect(f"/safras/{season_id}/encerrar?ok=1")
+
+
+@router.post("/safras/{season_id}/reabrir")
+def season_reopen_action(season_id: int, request: Request, csrf_token: str = Form(...),
+                         db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    season = _season_for_page(request, repo, scope, season_id)
+    if not season:
+        return _redirect("/safras")
+    goals = load_goals(season)
+    goals.pop("closing", None)
+    status = status_from_dates(season.start_date, season.end_date, date.today())
+    repo.update(season, {"status": "ativa" if status == "encerrada" else status, "goals_json": json.dumps(goals, ensure_ascii=False) if goals else None})
+    _flash(request, "success", f"{season.name} reaberta. Lembre de encerrar de novo depois de corrigir.")
+    return _redirect_with_query("/safras", view_id=season.id)
 
 
 @router.post("/safras")
@@ -18141,6 +18329,7 @@ def create_crop_season_action(
     status_value: str | None = Form(None, alias="status"),
     goals: str | None = Form(None),
     make_active: str | None = Form(None),
+    integrations: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -18199,15 +18388,23 @@ def create_crop_season_action(
                 "status": status_value,
             },
         )
-        _save_season_goals(repo, new_season, goals)
+        _save_season_goals(repo, new_season, goals, integrations)
     except Exception:
         logger.exception("Falha ao criar safra", extra={"farm_id": scope["active_farm_id"], "start_date": start_date, "end_date": end_date})
         _flash(request, "error", "Nao foi possivel salvar a safra agora. Revise os dados e tente novamente.")
         return _redirect("/safras")
+    copied = 0
+    if parse_integrations(integrations).get("adub"):
+        previous = next((season for season in sorted(repo.list_crop_seasons(farm_id=new_season.farm_id), key=lambda season: season.start_date, reverse=True)
+                         if season.id != new_season.id and season.start_date < new_season.start_date), None)
+        try:
+            copied = copy_fertilization_program(repo, previous, new_season)
+        except Exception:
+            logger.exception("Falha ao copiar programa de adubação", extra={"season_id": new_season.id})
+            _flash(request, "error", "A safra foi criada, mas não deu para copiar o programa de adubação. Faça pela página de Adubação.")
     if make_active:
         persist_user_context(request, db, user, new_season.farm_id, new_season.id)
-    _flash(request, "success", f"{new_season.name} criada." + (" Ela já é a safra ativa no topo." if make_active else ""))
-    return _redirect("/safras")
+    return _redirect_with_query(f"/safras/{new_season.id}/pronta", ativa="1" if make_active else "0", adub=str(copied))
 
 
 @router.post("/safras/{season_id}/editar")
@@ -18227,6 +18424,7 @@ def update_crop_season_action(
     status_value: str | None = Form(None, alias="status"),
     goals: str | None = Form(None),
     make_active: str | None = Form(None),
+    integrations: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -18295,7 +18493,7 @@ def update_crop_season_action(
                 "status": status_value,
             },
         )
-        _save_season_goals(repo, crop_season, goals)
+        _save_season_goals(repo, crop_season, goals, integrations)
     except Exception:
         logger.exception("Falha ao atualizar safra", extra={"season_id": season_id, "farm_id": scope["active_farm_id"]})
         _flash(request, "error", "Nao foi possivel atualizar a safra agora. Revise os dados e tente novamente.")
@@ -18303,7 +18501,7 @@ def update_crop_season_action(
     if make_active:
         persist_user_context(request, db, user, crop_season.farm_id, crop_season.id)
     _flash(request, "success", "Safra atualizada com sucesso.")
-    return _redirect("/safras")
+    return _redirect_with_query("/safras", view_id=crop_season.id)
 
 
 @router.post("/safras/{season_id}/excluir")

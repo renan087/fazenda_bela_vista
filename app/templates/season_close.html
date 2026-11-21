@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block content %}
+{% set closed = season.status == 'encerrada' %}
+<div class="szp esc" data-season-close>
+    <header class="szp-head">
+        <div class="szp-title">
+            <nav aria-label="Caminho" class="szp-crumb"><a href="/safras">Safras</a> / <a href="/safras?view_id={{ season.id }}">{{ season.name }}</a></nav>
+            <h1>{% if closed %}{{ season.name }} encerrada{% else %}Encerrar {{ season.name }}{% endif %}</h1>
+            <p>{{ season.start_date.strftime('%d/%m/%Y') }} a {{ season.end_date.strftime('%d/%m/%Y') }} · {{ data.plots_count }} {{ 'setor' if data.plots_count == 1 else 'setores' }} · {{ data.area|decimal_br }} ha. Os números abaixo vêm de Colheita, Financeiro e Comercialização.</p>
+        </div>
+        <span class="szw-chip {% if closed %}is-ok{% else %}is-warn{% endif %}">{% if closed %}Encerrada{% else %}Fim do período: {{ season.end_date.strftime('%d/%m/%Y') }}{% endif %}</span>
+    </header>
+
+    {% if closed %}
+    {% set snap = closing.snapshot or {} %}
+    <section class="szw-card szp-done">
+        <span class="szp-done-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span>
+        <h2>{{ season.name }} encerrada</h2>
+        <p>{{ (snap.produced if snap else data.produced)|decimal_br }} sacas colhidas{% if (snap.cost_per_sack if snap else data.cost_per_sack) %}, custo de {{ (snap.cost_per_sack if snap else data.cost_per_sack)|money_br }} por saca{% endif %}. O resumo está no histórico{% if next_season %} e já aparece como referência na {{ next_season.name }}{% endif %}.</p>
+        {% if closing.notes %}<p class="esc-notes">“{{ closing.notes }}”</p>{% endif %}
+        <div class="szp-actions">
+            <a href="/safras?view_id={{ season.id }}" class="szw-btn szw-btn-primary">Ver relatório da safra</a>
+            <form method="post" action="/safras/{{ season.id }}/reabrir"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="szw-btn">Reabrir safra</button></form>
+        </div>
+    </section>
+    {% else %}
+    <form method="post" action="/safras/{{ season.id }}/encerrar" class="esc-form" data-esc-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <section class="esc-card">
+            <div class="esc-head-row">
+                <div><h2>1. Pendências antes de fechar</h2><p>Resolva ou marque para fechar assim mesmo. Depois de encerrada, a safra fica só para consulta.</p></div>
+                <span class="szw-chip" data-esc-pending-chip></span>
+            </div>
+            {% for item in data.pending %}
+            <div class="esc-pend" data-esc-pend>
+                <span class="esc-dot" aria-hidden="true"></span>
+                <div class="esc-pend-txt"><strong>{{ item.title }}</strong><small>{{ item.module }} · {{ item.desc }}</small></div>
+                <a href="{{ item.href }}" class="szw-btn">Resolver</a>
+                <button type="button" class="szw-btn" aria-pressed="false" data-esc-ignore>Fechar assim</button>
+            </div>
+            {% else %}
+            <p class="esc-empty">Nenhuma pendência encontrada em Colheita, Financeiro e Adubação.</p>
+            {% endfor %}
+        </section>
+
+        <section class="esc-card">
+            <div><h2>2. Previsto x realizado</h2><p>Calculado automaticamente. Fica guardado no histórico e serve de base para a próxima safra.</p></div>
+            <div class="esc-table-wrap">
+                <table class="esc-table">
+                    <thead><tr><th scope="col">Indicador</th><th scope="col" class="is-num">Previsto</th><th scope="col" class="is-num">Realizado</th><th scope="col" class="is-num">Diferença</th><th scope="col">Fonte</th></tr></thead>
+                    <tbody>
+                        {% for row in rows %}
+                        <tr><th scope="row">{{ row.label }}</th><td class="is-num is-muted">{{ row.planned }}</td><td class="is-num is-strong">{{ row.real }}</td><td class="is-num"><span class="esc-diff is-{{ row.tone }}">{{ row.diff }}</span></td><td class="is-muted">{{ row.source }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div class="esc-grid">
+            <section class="esc-card">
+                <div><h2>3. Café que ainda não foi vendido</h2><p>{% if data.unsold %}{{ data.unsold|decimal_br }} sacas continuam no armazém. Escolha como seguem.{% else %}Todo o café colhido já foi vendido.{% endif %}</p></div>
+                {% if data.unsold %}
+                <label class="szw-integ esc-switch">
+                    <span class="szw-grow"><strong>Manter as {{ data.unsold|decimal_br }} sacas na Comercialização</strong><small>Continuam ligadas à {{ season.name }} para calcular o resultado quando forem vendidas.</small></span>
+                    <input type="checkbox" name="keep_unsold" value="1" class="szw-check" checked>
+                    <span class="szw-toggle" aria-hidden="true"><span></span></span>
+                </label>
+                {% endif %}
+            </section>
+            <section class="esc-card">
+                <div><h2>4. O que aprendemos</h2><p>Aparece quando você criar a próxima safra a partir desta.</p></div>
+                <label class="szw-field"><span>Anotações de fechamento <em class="szw-opt">(opcional)</em></span>
+                    <textarea name="closing_notes" rows="4" maxlength="4000" class="szw-input szw-textarea" placeholder="Ex.: Baixada sofreu com geada em julho; antecipar a adubação de cobertura no Talhão Alto."></textarea>
+                </label>
+            </section>
+        </div>
+
+        <section class="esc-card">
+            <h2>Ao encerrar</h2>
+            <ul class="esc-list">
+                <li>A situação muda para “Encerrada” e os números ficam guardados no histórico.</li>
+                <li>Novos lançamentos não devem mais ser ligados a esta safra.</li>
+                <li>Os setores ficam livres para {% if next_season %}a {{ next_season.name }}{% else %}a próxima safra{% endif %}.</li>
+                <li>Você pode reabrir depois, se precisar corrigir algo.</li>
+            </ul>
+            <label class="esc-ack"><input type="checkbox" name="confirm" value="1" data-esc-ack><span class="szw-box" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span>Conferi os números e quero encerrar a safra</label>
+            <div class="esc-foot">
+                <span class="esc-foot-txt" data-esc-foot aria-live="polite"></span>
+                <div class="szp-actions"><a href="/safras?view_id={{ season.id }}" class="szw-btn">Agora não</a><button type="submit" class="szw-btn szw-btn-primary" data-esc-submit disabled>Encerrar safra</button></div>
+            </div>
+        </section>
+    </form>
+    {% endif %}
+</div>
+<script>
+(() => {
+    const form = document.querySelector('[data-esc-form]');
+    if (!form) return;
+    const rows = Array.from(form.querySelectorAll('[data-esc-pend]'));
+    const chip = form.querySelector('[data-esc-pending-chip]');
+    const ack = form.querySelector('[data-esc-ack]');
+    const submit = form.querySelector('[data-esc-submit]');
+    const foot = form.querySelector('[data-esc-foot]');
+    const refresh = () => {
+        const open = rows.filter((row) => !row.classList.contains('is-ignored')).length;
+        chip.textContent = open ? `${open} ${open === 1 ? 'pendente' : 'pendentes'}` : 'Tudo certo';
+        chip.className = `szw-chip ${open ? 'is-warn' : 'is-ok'}`;
+        submit.disabled = open > 0 || !ack.checked;
+        foot.textContent = open > 0 ? `Resolva ou marque ${open === 1 ? 'a pendência' : `as ${open} pendências`} para liberar.` : (ack.checked ? 'Pronto para encerrar.' : 'Marque a confirmação acima.');
+    };
+    rows.forEach((row) => {
+        const btn = row.querySelector('[data-esc-ignore]');
+        btn.addEventListener('click', () => {
+            const ignored = row.classList.toggle('is-ignored');
+            btn.setAttribute('aria-pressed', String(ignored));
+            btn.textContent = ignored ? 'Desfazer' : 'Fechar assim';
+            refresh();
+        });
+    });
+    ack.addEventListener('change', refresh);
+    form.addEventListener('submit', () => window.showPageLoader?.('Encerrando safra', 'Guardando os números no histórico.'));
+    refresh();
+})();
+</script>
+{% endblock %}

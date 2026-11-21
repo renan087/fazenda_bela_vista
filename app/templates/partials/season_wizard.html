@@ -1,31 +1,42 @@
-{# Assistente de safra em 5 passos: Período → Setores → Metas → Integrações → Conferir. Nada é gravado antes de "Criar safra". #}
+{# Assistente de safra fiel ao canvas aprovado (Nova safra — 5 passos). Nada é gravado antes de "Criar safra". #}
 {% set editing = season_wizard.edit is not none %}
-<form method="post" action="{% if editing %}/safras/{{ season_wizard.edit.id }}/editar{% else %}/safras{% endif %}" class="szw" id="season-wizard" data-season-wizard novalidate>
+<form method="post" action="{% if editing %}/safras/{{ season_wizard.edit.id }}/editar{% else %}/safras{% endif %}" class="szw szw-page" id="season-wizard" data-season-wizard novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="start_date" data-szw-start>
     <input type="hidden" name="end_date" data-szw-end>
     <input type="hidden" name="area_unit" value="ha">
     <input type="hidden" name="goals" data-szw-goals>
+    <input type="hidden" name="integrations" data-szw-integrations>
     <div data-szw-plot-inputs hidden></div>
     <script type="application/json" id="season-wizard-data">{{ season_wizard|tojson }}</script>
 
-    <ol class="szw-steps" aria-label="Passos" data-szw-steps>
-        {% for label, hint in [('Período', 'Datas e nome'), ('Setores', 'Onde vai produzir'), ('Metas', 'Produção e orçamento'), ('Integrações', 'O que preparar junto'), ('Conferir', 'Revise e confirme')] %}
-        <li class="szw-step">
-            <button type="button" data-szw-go="{{ loop.index0 }}">
-                <span class="szw-step-num" aria-hidden="true">{{ loop.index }}</span>
-                <span class="szw-step-txt"><span class="szw-step-label">{{ label }}</span><span class="szw-step-hint">{{ hint }}</span></span>
-            </button>
-        </li>
-        {% endfor %}
-    </ol>
+    {# Cabeçalho compacto do celular (canvas "Nova safra — celular") #}
+    <div class="szw-mhead">
+        <div class="szw-mhead-row">
+            <button type="button" class="szw-mback" aria-label="Voltar" data-szw-mback><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+            <div class="szw-grow"><span class="szw-mstep" data-szw-mstep></span><strong class="szw-mtitle" data-szw-mtitle></strong></div>
+            <button type="button" class="szw-msave" data-szw-save-draft>Salvar</button>
+        </div>
+        <div class="szw-bar" aria-hidden="true">{% for _ in range(5) %}<span data-szw-bar></span>{% endfor %}</div>
+    </div>
 
-    <div class="szw-body">
-        <div class="szw-main">
+    <div class="szw-layout">
+        <main class="szw-card">
+            <ol class="szw-steps" aria-label="Passos" data-szw-steps>
+                {% for label, hint in [('Período', 'Datas e nome'), ('Setores', 'Onde vai produzir'), ('Metas', 'Produção e orçamento'), ('Integrações', 'O que preparar junto'), ('Conferir', 'Revise e confirme')] %}
+                <li class="szw-step">
+                    <button type="button" data-szw-go="{{ loop.index0 }}">
+                        <span class="szw-step-num" aria-hidden="true"><span class="szw-step-n">{{ loop.index }}</span><svg class="szw-step-ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span>
+                        <span class="szw-step-txt"><span class="szw-step-label">{{ label }}</span><span class="szw-step-hint">{{ hint }}</span></span>
+                    </button>
+                </li>
+                {% endfor %}
+            </ol>
+
             {# PASSO 1: PERÍODO #}
             <section class="szw-panel" data-szw-panel="0" aria-labelledby="szw-t0">
                 <div class="szw-head">
-                    <h4 id="szw-t0">Qual período esta safra vai cobrir?</h4>
+                    <h2 id="szw-t0">Qual período esta safra vai cobrir?</h2>
                     <p>No café, o ano-safra vai de julho a junho. Escolha uma opção e as datas são preenchidas.</p>
                 </div>
                 {% if season_wizard.previous and not editing %}
@@ -44,53 +55,51 @@
                     <label class="szw-field"><span>Nome da safra</span><input name="name" class="szw-input" maxlength="160" data-szw-name><small>Sugerido pelo período. Pode mudar à vontade.</small></label>
                     <div class="szw-field"><span>Situação</span><div class="szw-status-line"><span class="szw-chip" data-szw-status></span><small data-szw-status-hint></small></div></div>
                 </div>
-                <label class="szw-field szw-field-narrow"><span>Cultura</span>
-                    <input name="culture" class="szw-input" list="szw-cultures" maxlength="80" required data-szw-culture>
+                <div class="szw-info">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+                    <p>Cultura: <strong data-szw-culture-label>Café</strong>. A variedade e a área agora vêm de cada setor no próximo passo — não precisa digitar de novo. <button type="button" class="szw-link szw-link-inline" data-szw-culture-toggle>Outra cultura</button></p>
+                </div>
+                <label class="szw-field szw-field-narrow" data-szw-culture-field hidden><span>Cultura</span>
+                    <input name="culture" class="szw-input" list="szw-cultures" maxlength="80" data-szw-culture>
                     <datalist id="szw-cultures"><option value="Café"></option><option value="Milho"></option><option value="Soja"></option><option value="Feijão"></option><option value="Arroz"></option><option value="Trigo"></option><option value="Cana-de-açúcar"></option><option value="Algodão"></option><option value="Laranja"></option></datalist>
-                    <small>A variedade e a área vêm de cada setor no próximo passo.</small>
                 </label>
             </section>
 
             {# PASSO 2: SETORES #}
             <section class="szw-panel" data-szw-panel="1" aria-labelledby="szw-t1" hidden>
                 <div class="szw-head szw-head-row">
-                    <div><h4 id="szw-t1">Quais setores entram nesta safra?</h4><p>Setores em formação ou sem plantio entram nos custos, mas não na produção.</p></div>
+                    <div><h2 id="szw-t1">Quais setores entram nesta safra?</h2><p>Setores em formação ou recepados entram nos custos, mas não na produção.</p></div>
                     <div class="szw-actions"><button type="button" class="szw-btn" data-szw-select="prod">Só os em produção</button><button type="button" class="szw-btn" data-szw-select="all">Todos</button></div>
                 </div>
                 <div class="szw-strip" data-szw-plot-strip></div>
                 <div class="szw-plots" data-szw-plots></div>
-                <p class="szw-empty" data-szw-plots-empty hidden>Esta fazenda ainda não tem setores. Cadastre o primeiro para continuar.</p>
-                <a class="szw-new-plot" href="/setores?novo=1&amp;voltar={% if editing %}safra:{{ season_wizard.edit.id }}{% else %}safra{% endif %}" data-szw-new-plot>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                    Cadastrar novo setor <small>Volta para cá depois de salvar</small>
-                </a>
             </section>
 
             {# PASSO 3: METAS #}
             <section class="szw-panel" data-szw-panel="2" aria-labelledby="szw-t2" hidden>
                 <div class="szw-head">
-                    <h4 id="szw-t2">Quanto você espera colher e gastar?</h4>
-                    <p>As metas aparecem no painel da safra. Tudo é opcional: deixe em branco o que ainda não souber.</p>
+                    <h2 id="szw-t2">Quanto você espera colher e gastar?</h2>
+                    <p>Estas metas aparecem no painel da safra e no Financeiro, comparadas com o que for acontecendo.</p>
                 </div>
                 <div class="szw-cols">
-                    <div class="szw-card">
-                        <h5>Produção esperada</h5>
-                        <p class="szw-muted">Sacas de 60 kg por hectare, por setor. Quando há histórico, começa pela média das últimas safras.</p>
+                    <div class="szw-box-card">
+                        <h3>Produção esperada</h3>
+                        <p class="szw-muted">Sacas de 60 kg por hectare, por setor. Começa pela média das últimas safras.</p>
                         <div data-szw-prod></div>
                         <p class="szw-note" data-szw-noprod hidden></p>
                         <div class="szw-total"><span>Total previsto</span><strong data-szw-sacks>0 sacas</strong></div>
                     </div>
-                    <div class="szw-card">
-                        <h5>Orçamento por hectare</h5>
+                    <div class="szw-box-card">
+                        <h3>Orçamento por hectare</h3>
                         <p class="szw-muted">Em reais por hectare. O total usa a área de todos os setores (<span data-szw-area-txt>0 ha</span>).</p>
                         <div data-szw-budget></div>
                         <div class="szw-total"><span data-szw-budget-ha>R$ 0/ha</span><strong data-szw-budget-total>R$ 0</strong></div>
                     </div>
                 </div>
-                <div class="szw-card szw-card-soft">
+                <div class="szw-box-card szw-box-soft">
                     <div class="szw-head-row">
-                        <div><h5>Resultado estimado</h5><p class="szw-muted" data-szw-price-note>Informe o preço de referência da saca.</p></div>
-                        <label class="szw-money"><span>Preço da saca</span><span class="szw-money-box"><em>R$</em><input inputmode="numeric" class="szw-input" data-szw-price aria-label="Preço da saca em reais"></span></label>
+                        <div><h3>Resultado estimado</h3><p class="szw-muted" data-szw-price-note>Preço de referência vem da cotação de hoje em Comercialização.</p></div>
+                        <label class="szw-money"><span>Preço da saca</span><span class="szw-money-box szw-money-wide"><em>R$</em><input inputmode="numeric" data-szw-price aria-label="Preço da saca em reais"></span></label>
                     </div>
                     <div class="szw-tiles">
                         <div><span>Receita prevista</span><strong data-szw-revenue>—</strong></div>
@@ -104,26 +113,44 @@
             {# PASSO 4: INTEGRAÇÕES #}
             <section class="szw-panel" data-szw-panel="3" aria-labelledby="szw-t3" hidden>
                 <div class="szw-head">
-                    <h4 id="szw-t3">O que já deixar pronto junto com a safra?</h4>
-                    <p>Nada sai do estoque nem vira despesa sem você confirmar.</p>
+                    <h2 id="szw-t3">O que já deixar pronto junto com a safra?</h2>
+                    <p>Tudo entra como rascunho ou aviso. Nada sai do estoque nem vira despesa sem você confirmar.</p>
                 </div>
-                <label class="szw-integ is-on">
-                    <span class="szw-grow"><strong>Usar como safra ativa no topo <em class="szw-tag">Contexto</em></strong><small>Os próximos lançamentos já caem nesta safra.</small></span>
-                    <input type="checkbox" name="make_active" value="1" class="szw-check" data-szw-active {% if not editing or season_wizard.is_active %}checked{% endif %} {% if editing and season_wizard.is_active %}disabled{% endif %}>
-                    <span class="szw-toggle" aria-hidden="true"><span></span></span>
-                </label>
-                {% for title, desc, mod in [
-                    ('Copiar o programa de adubação da safra anterior', 'As aplicações entram como rascunho, para ajustar datas e doses.', 'Adubação'),
-                    ('Acompanhar o orçamento no Financeiro', 'Despesas destes setores comparadas com o orçado, por categoria.', 'Financeiro'),
-                    ('Prever a janela de colheita', 'Aparece no calendário e ajuda a planejar equipe e terreiro.', 'Colheita'),
-                    ('Mostrar insumos previstos x estoque', 'Lista o que falta comprar. Nada é baixado do estoque.', 'Estoque'),
-                    ('Avisos do Pezinho', 'Alerta quando o custo passar de 80% do orçado ou uma aplicação atrasar.', 'Assistente'),
-                ] %}
-                <div class="szw-integ is-soon" aria-disabled="true">
-                    <span class="szw-grow"><strong>{{ title }} <em class="szw-tag">{{ mod }}</em> <em class="szw-soon">Em breve</em></strong><small>{{ desc }}</small></span>
-                    <span class="szw-toggle" aria-hidden="true"><span></span></span>
+                <div class="szw-integs">
+                    <label class="szw-integ">
+                        <span class="szw-grow"><span class="szw-integ-title"><strong>Usar como safra ativa no topo</strong><em class="szw-tag">Contexto</em></span><small>{% if editing and season_wizard.is_active %}Esta já é a safra ativa no topo.{% else %}Os próximos lançamentos já caem nesta safra.{% endif %}</small></span>
+                        <input type="checkbox" name="make_active" value="1" class="szw-check" data-szw-active {% if not editing or season_wizard.is_active %}checked{% endif %} {% if editing and season_wizard.is_active %}disabled{% endif %}>
+                        <span class="szw-toggle" aria-hidden="true"><span></span></span>
+                    </label>
+                    {% if not editing %}
+                    {% set prev_count = season_wizard.previous.schedules if season_wizard.previous else 0 %}
+                    <label class="szw-integ{% if not prev_count %} is-off{% endif %}">
+                        <span class="szw-grow"><span class="szw-integ-title"><strong>Copiar o programa de adubação da safra anterior</strong><em class="szw-tag">Adubação</em></span><small>{% if prev_count %}{{ prev_count }} {{ 'aplicação entra' if prev_count == 1 else 'aplicações entram' }} como rascunho, para ajustar datas e doses.{% else %}A safra anterior não tem aplicações programadas para copiar.{% endif %}</small></span>
+                        <input type="checkbox" class="szw-check" data-szw-integ="adub" {% if prev_count %}checked{% else %}disabled{% endif %}>
+                        <span class="szw-toggle" aria-hidden="true"><span></span></span>
+                    </label>
+                    {% endif %}
+                    <label class="szw-integ">
+                        <span class="szw-grow"><span class="szw-integ-title"><strong>Acompanhar o orçamento no Financeiro</strong><em class="szw-tag">Financeiro</em></span><small>Despesas destes setores são comparadas com o orçado no painel da safra.</small></span>
+                        <input type="checkbox" class="szw-check" data-szw-integ="fin" checked>
+                        <span class="szw-toggle" aria-hidden="true"><span></span></span>
+                    </label>
+                    <label class="szw-integ">
+                        <span class="szw-grow"><span class="szw-integ-title"><strong data-szw-harvest-title>Prever a colheita de maio a agosto</strong><em class="szw-tag">Colheita</em></span><small>Aparece no painel da safra e ajuda a planejar equipe e terreiro.</small></span>
+                        <input type="checkbox" class="szw-check" data-szw-integ="colh" checked>
+                        <span class="szw-toggle" aria-hidden="true"><span></span></span>
+                    </label>
+                    <label class="szw-integ">
+                        <span class="szw-grow"><span class="szw-integ-title"><strong>Mostrar insumos previstos x estoque</strong><em class="szw-tag">Estoque</em></span><small>Lista o que falta comprar. Nada é baixado do estoque.</small></span>
+                        <input type="checkbox" class="szw-check" data-szw-integ="est">
+                        <span class="szw-toggle" aria-hidden="true"><span></span></span>
+                    </label>
+                    <label class="szw-integ">
+                        <span class="szw-grow"><span class="szw-integ-title"><strong>Avisos do Pezinho</strong><em class="szw-tag">Assistente</em></span><small>Alerta quando o custo passar de 80% do orçado ou uma aplicação atrasar.</small></span>
+                        <input type="checkbox" class="szw-check" data-szw-integ="lemb" checked>
+                        <span class="szw-toggle" aria-hidden="true"><span></span></span>
+                    </label>
                 </div>
-                {% endfor %}
                 <label class="szw-field"><span>Observações <em class="szw-opt">(opcional)</em></span>
                     <textarea name="notes" rows="3" class="szw-input szw-textarea" data-szw-notes placeholder="Ex.: florada boa em setembro; atenção à broca no setor Baixada."></textarea>
                 </label>
@@ -132,31 +159,43 @@
             {# PASSO 5: CONFERIR #}
             <section class="szw-panel" data-szw-panel="4" aria-labelledby="szw-t4" hidden>
                 <div class="szw-head">
-                    <h4 id="szw-t4">Confira antes de {% if editing %}salvar{% else %}criar{% endif %}</h4>
+                    <h2 id="szw-t4">Confira antes de {% if editing %}salvar{% else %}criar{% endif %}</h2>
                     <p>Toque em “Alterar” para voltar a qualquer passo. Nada foi gravado ainda.</p>
                 </div>
                 <div class="szw-review" data-szw-review></div>
                 <div class="szw-impact">
-                    <h5>Ao confirmar, o SiSFarm vai:</h5>
+                    <h3>Ao confirmar, o SiSFarm vai:</h3>
                     <ul data-szw-impact></ul>
                 </div>
             </section>
-        </div>
 
-        <aside class="szw-aside" aria-label="Resumo da safra">
-            <span class="szw-overline">Resumo da safra</span>
-            <strong class="szw-aside-name" data-szw-aside-name></strong>
-            <span><span class="szw-chip" data-szw-aside-status></span></span>
-            <dl data-szw-summary></dl>
+            <footer class="szw-foot">
+                <button type="button" class="szw-btn" data-szw-back>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Voltar
+                </button>
+                <span class="szw-foot-txt" data-szw-steptxt aria-live="polite"></span>
+                <button type="button" class="szw-btn szw-btn-primary" data-szw-next>Continuar<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+                <button type="submit" class="szw-btn szw-btn-primary" data-szw-submit hidden>{% if editing %}Salvar safra{% else %}Criar safra{% endif %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+            </footer>
+        </main>
+
+        <aside class="szw-side" aria-label="Resumo da safra">
+            <div class="szw-aside">
+                <span class="szw-overline">Resumo da safra</span>
+                <strong class="szw-aside-name" data-szw-aside-name></strong>
+                <span><span class="szw-chip" data-szw-aside-status></span></span>
+                <dl data-szw-summary></dl>
+            </div>
+            <div class="szw-tip">
+                <span class="szw-tip-avatar" aria-hidden="true">P</span>
+                <div><strong>Dica do Pezinho</strong><p data-szw-tip></p></div>
+            </div>
         </aside>
     </div>
 
-    <footer class="szw-foot">
-        <button type="button" class="szw-btn" data-szw-back>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Voltar
-        </button>
-        <span class="szw-foot-txt" data-szw-steptxt aria-live="polite"></span>
-        <button type="button" class="szw-btn szw-btn-primary" data-szw-next>Continuar<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
-        <button type="submit" class="szw-btn szw-btn-primary" data-szw-submit hidden>{% if editing %}Salvar safra{% else %}Criar safra{% endif %}</button>
-    </footer>
+    {# Gaveta inferior do celular: total sempre visível + botão principal #}
+    <div class="szw-sheet">
+        <div class="szw-sheet-line"><span data-szw-sheet-label></span><strong data-szw-sheet-value></strong></div>
+        <button type="button" class="szw-sheet-btn" data-szw-sheet-next></button>
+    </div>
 </form>

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="szp" data-szp>
+    {% if done_season %}
+    {# Tela de sucesso (canvas: "Safra criada") #}
+    <header class="szp-head">
+        <div class="szp-title">
+            <nav aria-label="Caminho" class="szp-crumb"><a href="/safras">Safras</a> / {{ done_season.name }}</nav>
+            <h1>Safra criada</h1>
+        </div>
+    </header>
+    <section class="szw-card szp-done">
+        <span class="szp-done-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span>
+        <h2>{{ done_season.name }} criada</h2>
+        <p>{% if done_info.active %}Ela já é a safra ativa no topo. {% endif %}Próximos passos sugeridos:</p>
+        <div class="szp-next">
+            <a href="/fertilizacao/agendamentos" class="szp-next-card"><strong>{% if done_info.copied %}Revisar adubação{% else %}Programar adubação{% endif %}</strong><span>{% if done_info.copied %}{{ done_info.copied }} {{ 'aplicação' if done_info.copied == 1 else 'aplicações' }} em rascunho{% else %}Monte o programa desta safra{% endif %}</span></a>
+            <a href="/safras?view_id={{ done_season.id }}#insumos" class="szp-next-card"><strong>Ver o que comprar</strong><span>Insumos previstos x estoque</span></a>
+            <a href="/safras?view_id={{ done_season.id }}" class="szp-next-card"><strong>Abrir painel da safra</strong><span>Metas, custos{% if done_info.window %} e colheita ({{ done_info.window.label }}){% else %} e colheita{% endif %}</span></a>
+        </div>
+        <a href="/safras" class="szw-btn">Ir para a lista de safras</a>
+    </section>
+    {% else %}
+    <header class="szp-head">
+        <div class="szp-title">
+            <nav aria-label="Caminho" class="szp-crumb"><a href="/safras">Safras</a> / {% if edit_season %}{{ edit_season.name }}{% else %}Nova safra{% endif %}</nav>
+            <h1>{% if edit_season %}Editar safra{% else %}Nova safra{% endif %}</h1>
+            <p>{{ season_wizard.farm_name }} · <span data-szw-draft-status>rascunho salvo automaticamente</span></p>
+        </div>
+        <div class="szp-actions">
+            <a href="/safras" class="szw-btn">Cancelar</a>
+            <button type="button" class="szw-btn" data-szw-save-draft>Salvar rascunho</button>
+        </div>
+    </header>
+    {% include "partials/season_wizard.html" %}
+    {% endif %}
+</div>
+{% if not done_season %}<script src="{{ url_for('static', path='js/season_wizard.js') }}?v=3" defer></script>{% endif %}
+{% endblock %}

@@ -1,34 +1,20 @@
-{# Mesmo padrão visual de partials/attachment_upload_field.html (gestão de compras — Nova entrada): input tracejado + bloco "Arquivo selecionado". #}
-<div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-plots-geojson-card data-plot-geojson-manager>
-    <label class="block">
-        <span class="mb-1.5 block text-sm font-medium">Importar GeoJSON do setor</span>
-        <div data-plot-geojson-picker-slot>
-            <input
-                type="file"
-                accept=".json,.geojson,application/json"
-                class="w-full cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600 file:mr-2 file:cursor-pointer file:rounded-lg file:border file:border-gray-200 file:bg-gray-100 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-gray-700 hover:border-slate-400 hover:file:bg-gray-200"
-                data-plot-geojson-picker
-            >
+{# Importar perímetro do setor (canvas: "Importar perímetro do arquivo" com arrastar e soltar). Aceita .kml, .geojson e .json. #}
+<div class="stw-import" data-plots-geojson-card data-plot-geojson-manager>
+    <div class="stw-drop" data-plot-geojson-dropzone>
+        <span class="stw-drop-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/></svg></span>
+        <div class="stw-drop-copy">
+            <strong>Importar perímetro do arquivo</strong>
+            <small>Arraste e solte aqui ou procure no aparelho · aceita .kml, .geojson e .json</small>
         </div>
-        <span class="mt-2 block text-xs text-slate-500">Arquivos .json ou .geojson — opcional. A prévia é gerada ao escolher o arquivo; o envio definitivo ocorre ao salvar o setor.</span>
-    </label>
-    <input
-        type="file"
-        name="boundary_geojson_file"
-        accept=".json,.geojson,application/json"
-        class="sr-only"
-        tabindex="-1"
-        aria-hidden="true"
-        data-plot-geojson-submit-input
-    >
-    <div class="hidden rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4" data-plot-geojson-pending>
-        <div class="flex flex-wrap items-center justify-between gap-3">
-            <div>
-                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Arquivo selecionado</p>
-                <h4 class="mt-2 text-sm font-semibold text-slate-900">GeoJSON do perímetro</h4>
-            </div>
-            <button type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100" data-plot-geojson-clear>Limpar seleção</button>
-        </div>
-        <div class="mt-4 space-y-3" data-plot-geojson-pending-list></div>
+        <label class="szw-btn stw-drop-btn">
+            Procurar arquivo
+            <input type="file" accept=".kml,.json,.geojson,application/vnd.google-earth.kml+xml,application/json,text/xml" class="sr-only" data-plot-geojson-picker>
+        </label>
+    </div>
+    <p class="stw-drop-status" role="status" aria-live="polite" data-plot-geojson-status hidden></p>
+    <input type="file" name="boundary_geojson_file" accept=".kml,.json,.geojson" class="sr-only" tabindex="-1" aria-hidden="true" data-plot-geojson-submit-input>
+    <div class="stw-file" hidden data-plot-geojson-pending>
+        <div class="stw-file-head"><span class="szw-overline">Arquivo selecionado</span><button type="button" class="szw-link" data-plot-geojson-clear>Limpar seleção</button></div>
+        <div data-plot-geojson-pending-list></div>
     </div>
 </div>

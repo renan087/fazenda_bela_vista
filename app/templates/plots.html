@@ -709,8 +709,8 @@
 <script type="application/json" id="plot-farm-boundaries-data">{{ plot_farm_boundaries_json|safe }}</script>
 <script type="application/json" id="plots-context-boundaries-data">{{ plots_context_boundaries_json|safe }}</script>
 {% include "partials/attachment_manager_script.html" %}
-<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=8"></script>
-<script src="{{ url_for('static', path='js/plot_wizard.js') }}?v=2" defer></script>
+<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=9"></script>
+<script src="{{ url_for('static', path='js/plot_wizard.js') }}?v=3" defer></script>
 <script>
     (() => {
         window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};
@@ -1055,7 +1055,17 @@
 
             let selectedFile = null;
 
+            const statusEl = manager.querySelector('[data-plot-geojson-status]');
+            const dropzone = manager.querySelector('[data-plot-geojson-dropzone]');
+            const showStatus = (text, tone) => {
+                if (!statusEl) return;
+                statusEl.textContent = text || '';
+                statusEl.hidden = !text;
+                statusEl.dataset.tone = tone || 'info';
+            };
+            let sendOriginalFile = true;
             const refreshPendingUi = () => {
+                pendingBox.hidden = !selectedFile;
                 if (!selectedFile) {
                     pendingBox.classList.add('hidden');
                     pendingList.innerHTML = '';
@@ -1071,7 +1081,7 @@
                 title.textContent = selectedFile.name;
                 const meta = document.createElement('p');
                 meta.className = 'mt-1 text-xs text-slate-500';
-                meta.textContent = `${selectedFile.type || 'application/json'} • ${formatKb(selectedFile.size)}`;
+                meta.textContent = `${(selectedFile.name.split('.').pop() || 'arquivo').toUpperCase()} • ${formatKb(selectedFile.size)}`;
                 const removeButton = document.createElement('button');
                 removeButton.type = 'button';
                 removeButton.className =
@@ -1086,11 +1096,14 @@
                 row.appendChild(removeButton);
                 pendingList.appendChild(row);
                 pendingBox.classList.remove('hidden');
+                pendingBox.hidden = false;
             };
 
             const clearSelection = (opts) => {
                 const skipRebuild = opts && opts.skipRebuild === true;
                 selectedFile = null;
+                sendOriginalFile = true;
+                showStatus('');
                 submitInput.value = '';
                 picker.value = '';
                 if (plotBoundaryHidden) plotBoundaryHidden.value = '';
@@ -1119,17 +1132,24 @@
                         window.alert('Não foi possível ler o arquivo.');
                         return;
                     }
-                    const trimmed = text.trim();
-                    if (!trimmed) {
-                        window.alert('O arquivo está vazio.');
+                    const lower = (file.name || '').toLowerCase();
+                    if (!lower.endsWith('.kml') && !lower.endsWith('.geojson') && !lower.endsWith('.json')) {
+                        showStatus('Formato não suportado. Envie um arquivo .kml, .geojson ou .json.', 'error');
                         return;
                     }
-                    try {
-                        JSON.parse(trimmed);
-                    } catch {
-                        window.alert('O arquivo não contém JSON válido.');
+                    let geometry = window.parseGeodesicText ? window.parseGeodesicText(text) : null;
+                    if (!geometry) {
+                        showStatus('Não encontramos um contorno neste arquivo. Confira se ele tem um polígono fechado.', 'error');
                         return;
                     }
+                    const refGeometry = PLOT_FARM_BOUNDARIES[String(farmSelectEl?.value?.trim() || '')] || null;
+                    let clipped = 0;
+                    if (refGeometry && window.clampGeometryToBoundary) {
+                        const result = window.clampGeometryToBoundary(geometry, refGeometry);
+                        geometry = result.geometry;
+                        clipped = result.changed;
+                    }
+                    const trimmed = JSON.stringify(geometry);
                     const ok = await postPlotBoundaryPreview(trimmed);
                     if (!ok) {
                         window.alert(
@@ -1139,10 +1159,18 @@
                     }
                     if (!plotBoundaryHidden) return;
                     plotBoundaryHidden.value = trimmed;
-                    const dt = new DataTransfer();
-                    dt.items.add(file);
-                    submitInput.files = dt.files;
+                    sendOriginalFile = !clipped;
+                    if (sendOriginalFile) {
+                        const dt = new DataTransfer();
+                        dt.items.add(file);
+                        submitInput.files = dt.files;
+                    } else {
+                        submitInput.value = '';
+                    }
                     selectedFile = file;
+                    showStatus(clipped
+                        ? `Arquivo ${file.name} importado. ${clipped === 1 ? 'Um canto ficava' : `${clipped} cantos ficavam`} fora da fazenda e ${clipped === 1 ? 'foi colocado' : 'foram colocados'} na divisa.`
+                        : `Arquivo ${file.name} importado.`, clipped ? 'warn' : 'ok');
                     if (!isEditMode) await rebuildPlotsBoundaryEditor();
                     refreshPendingUi();
                 })();
@@ -1152,8 +1180,26 @@
                 clearSelection();
             });
 
+            if (dropzone) {
+                ['dragenter', 'dragover'].forEach((evt) => dropzone.addEventListener(evt, (event) => {
+                    event.preventDefault();
+                    dropzone.classList.add('is-dragover');
+                }));
+                ['dragleave', 'dragend'].forEach((evt) => dropzone.addEventListener(evt, () => dropzone.classList.remove('is-dragover')));
+                dropzone.addEventListener('drop', (event) => {
+                    event.preventDefault();
+                    dropzone.classList.remove('is-dragover');
+                    const dropped = event.dataTransfer?.files?.[0];
+                    if (!dropped) return;
+                    const dt = new DataTransfer();
+                    dt.items.add(dropped);
+                    picker.files = dt.files;
+                    picker.dispatchEvent(new Event('change'));
+                });
+            }
+
             plotsForm.addEventListener('submit', () => {
-                if (selectedFile) {
+                if (selectedFile && sendOriginalFile) {
                     const dt = new DataTransfer();
                     dt.items.add(selectedFile);
                     submitInput.files = dt.files;
