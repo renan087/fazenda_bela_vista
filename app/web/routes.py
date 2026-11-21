@@ -105,6 +105,7 @@ from app.services.plot_wizard import (
     normalize_soil,
     pick_auto_color,
 )
+from app.services.plots_overview import build_plots_overview_context
 from app.services.season_goals import (
     closing_rows,
     copy_fertilization_program,
@@ -8869,6 +8870,19 @@ def plots_page(
     plot_wizard_groups = sorted({plot.group_name for plot in repo.list_plots(farm_ids=context_farm_ids or None) if plot.group_name}, key=str.lower) if context_farm_ids else []
     plot_wizard_season = scope.get("active_season")
     wizard_plots = repo.list_plots(farm_ids=context_farm_ids or None) if context_farm_ids else []
+    scoped_farms_for_overview = [
+        farm for farm in scope.get("context_farms", [])
+        if not farm_ids or farm.id in farm_ids
+    ]
+    plots_overview = build_plots_overview_context(
+        db,
+        plots=plots_list,
+        scoped_farms=scoped_farms_for_overview,
+        active_season=plot_wizard_season,
+        plot_preview_ready=plot_preview_ready,
+        plot_preview_fingerprint=plot_preview_fingerprint,
+        today=today_in_app_timezone(),
+    )
     plot_wizard_data = {
         "today": date.today().isoformat(),
         "farms": {str(farm.id): farm.name for farm in scope.get("context_farms", [])},
@@ -8897,6 +8911,7 @@ def plots_page(
             plots_field_q_filtered=plots_field_q_filtered,
             plots_field_variety_filtered=plots_field_variety_filtered,
             plots_field_sort_filtered=plots_field_sort_filtered,
+            plots_overview=plots_overview,
             edit_plot=edit_plot,
             plot_colors=PLOT_COLORS,
             plot_wizard_data=plot_wizard_data,

@@ -1,188 +1,455 @@
 {% extends "base.html" %}
 {% block content %}
-{% set plot_stats = namespace(area=0, plants=0, sacks=0, irrigated=0, geo=0) %}
-{% for plot in plots %}{% set plot_stats.area = plot_stats.area + (plot.area_hectares or 0)|float %}{% set plot_stats.plants = plot_stats.plants + (plot.plant_count or 0)|int %}{% set plot_stats.sacks = plot_stats.sacks + (plot.estimated_yield_sacks or 0)|float %}{% if plot.irrigation_type in ['gotejo', 'aspersor'] %}{% set plot_stats.irrigated = plot_stats.irrigated + 1 %}{% endif %}{% if plot.boundary_geojson %}{% set plot_stats.geo = plot_stats.geo + 1 %}{% endif %}{% endfor %}
-<div class="stock-page-shell sf-page" data-modal-single-pane>
-    <header class="sf-page-header">
+{% set ov = plots_overview %}
+{% set s = ov.summary %}
+{% set can_see_finance = 'page.finance' in (permission_codes or []) %}
+<div class="sf-page pd-page pl-page" data-modal-single-pane data-pl-page>
+    <header class="pd-head">
         <div class="min-w-0">
-            <h1 class="sf-page-title">Setores</h1>
-            <p class="sf-page-subtitle">Estrutura produtiva, plantio, irrigação e mapa de cada setor da fazenda.</p>
+            <div class="pl-title-row">
+                <h1 class="sf-page-title">Setores</h1>
+                {% if plots_locked_farm_name or s.active_season_name %}
+                <span class="pl-context-badge">
+                    <i aria-hidden="true"></i>
+                    {% if plots_locked_farm_name %}{{ plots_locked_farm_name }}{% else %}Todas as fazendas{% endif %}{% if s.active_season_name %} · {{ s.active_season_name }}{% endif %}
+                </span>
+                {% endif %}
+            </div>
+            <p class="sf-page-subtitle">Estrutura produtiva, plantio, irrigação e mapa dos talhões cadastrados.</p>
         </div>
-        <button type="button" class="sf-btn sf-btn-primary" data-plots-launch-open>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-            Novo setor
-        </button>
+        <div class="pd-head-actions">
+            <a href="{{ module_href('/mapa') }}" class="sf-btn sf-btn-secondary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z"/><path d="M9 3v15M15 6v15"/></svg>
+                Mapa geral{{ module_lock('/mapa') }}
+            </a>
+            {% if can_see_finance %}
+            <a href="{{ module_href('/custos-por-setor') }}" class="sf-btn sf-btn-secondary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+                Custos por setor{{ module_lock('/custos-por-setor') }}
+            </a>
+            {% endif %}
+            {% if can_write_page %}
+            <button type="button" class="sf-btn sf-btn-primary" data-plots-launch-open>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Novo setor
+            </button>
+            {% endif %}
+        </div>
     </header>
 
-    <section class="sf-kpis" aria-label="Resumo dos setores">
-        <div class="sf-kpi"><span class="sf-kpi-label">Setores</span><span class="sf-kpi-value">{{ plots|length }}</span><span class="sf-kpi-hint">{{ plot_stats.geo }} com desenho no mapa</span></div>
-        <div class="sf-kpi"><span class="sf-kpi-label">Área total</span><span class="sf-kpi-value">{{ plot_stats.area|decimal_br }} ha</span><span class="sf-kpi-hint">soma dos setores listados</span></div>
-        <div class="sf-kpi"><span class="sf-kpi-label">Plantas</span><span class="sf-kpi-value">{{ '{:,}'.format(plot_stats.plants).replace(',', '.') }}</span><span class="sf-kpi-hint">{{ plot_stats.irrigated }} setor(es) irrigado(s)</span></div>
-        <div class="sf-kpi"><span class="sf-kpi-label">Estimativa de produção</span><span class="sf-kpi-value">{{ plot_stats.sacks|decimal_br(0) }} sacas</span><span class="sf-kpi-hint">soma das estimativas</span></div>
+    <section class="pl-kpis" aria-label="Resumo dos setores">
+        <article class="pd-card pl-kpi">
+            <div class="pl-kpi-top">
+                <span class="pd-eyebrow">Setores</span>
+                {% if s.has_active_season %}
+                <span class="pd-chip is-done">{{ s.in_season_count }} na safra</span>
+                {% endif %}
+            </div>
+            <div>
+                <p class="pl-kpi-val">{{ s.count }} <small>{{ 'talhão' if s.count == 1 else 'talhões' }}</small></p>
+                <span class="pl-meter" aria-hidden="true"><i style="width: {{ s.geo_pct }}%"></i></span>
+                <p class="pl-kpi-sub {{ 'is-warn' if s.missing_geo > 0 else 'is-ok' }}">
+                    {% if s.count == 0 %}Nenhum setor cadastrado{% elif s.missing_geo > 0 %}{{ s.geo_count }} de {{ s.count }} com desenho no mapa{% else %}Todos com perímetro no mapa{% endif %}
+                </p>
+            </div>
+        </article>
+
+        <article class="pd-card pl-kpi">
+            <div class="pl-kpi-top">
+                <span class="pd-eyebrow">Área em setores</span>
+                {% if s.occupation_pct is not none %}
+                <span style="font-size:12px;font-weight:700;color:#446A36;font-variant-numeric:tabular-nums;">{{ s.occupation_pct }}%</span>
+                {% endif %}
+            </div>
+            <div>
+                <p class="pl-kpi-val">{{ s.total_area|decimal_br(1) }} <small>ha</small></p>
+                {% if s.occupation_pct is not none %}
+                <span class="pl-meter" aria-hidden="true"><i style="width: {{ s.occupation_pct }}%"></i></span>
+                <p class="pl-kpi-sub">de {{ s.farm_total_area|decimal_br(1) }} ha totais ({{ s.free_area|decimal_br(1) }} ha livres)</p>
+                {% else %}
+                <p class="pl-kpi-sub">soma dos setores listados</p>
+                {% endif %}
+            </div>
+        </article>
+
+        <article class="pd-card pl-kpi">
+            <span class="pd-eyebrow">Lavoura &amp; Irrigação</span>
+            <div>
+                <p class="pl-kpi-val">{{ '{:,}'.format(s.total_plants).replace(',', '.') }} <small>pés</small></p>
+                <p class="pl-kpi-sub">{% if s.density_per_ha %}Média {{ '{:,}'.format(s.density_per_ha).replace(',', '.') }} pés/ha{% else %}Estande não informado{% endif %}</p>
+                <p class="pl-kpi-sub is-info">{{ s.irrigated_count }} {{ 'irrigado' if s.irrigated_count == 1 else 'irrigados' }}{% if s.irrigated_count %} ({{ s.irrigated_area|decimal_br(1) }} ha){% endif %}</p>
+            </div>
+        </article>
+
+        <article class="pd-card pl-kpi">
+            <span class="pd-eyebrow">Estimativa da safra</span>
+            <div>
+                <p class="pl-kpi-val">{{ s.total_sacks|decimal_br(0) }} <small>sacas</small></p>
+                <p class="pl-kpi-sub">{% if s.avg_sc_ha %}Média {{ s.avg_sc_ha|decimal_br(1) }} sc/ha em produção{% else %}Informe a estimativa no setor{% endif %}</p>
+                <p class="pl-kpi-sub">{{ s.prod_count }} em produção{% if s.form_count %} · {{ s.form_count }} em formação{% endif %}</p>
+            </div>
+        </article>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <div class="stock-filter-bar {% if plots_filters_active %}is-mobile-collapsed{% endif %}">
-            <div class="stock-filter-mobile-toggle-wrap md:hidden">
-                <button
-                    type="button"
-                    class="stock-summary-toggle stock-filter-mobile-toggle {% if plots_filters_active %}is-filtered-state{% endif %}"
-                    data-stock-filter-toggle
-                    data-stock-filter-applied="{% if plots_filters_active %}true{% else %}false{% endif %}"
-                    aria-expanded="{% if plots_filters_active %}false{% else %}true{% endif %}"
-                >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M5 12h14"/>
-                        <path d="M12 5v14" data-stock-filter-toggle-plus{% if plots_filters_active %} class="hidden"{% endif %}></path>
-                    </svg>
-                    <span data-stock-filter-toggle-label>{% if plots_filters_active %}Mostrar filtro aplicado{% else %}Recolher filtros{% endif %}</span>
+    {% if ov.attention_items %}
+    <section class="pl-attention" aria-label="Setores que precisam de atenção">
+        <div class="pl-attention-main">
+            <span class="pl-attention-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18.4A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-2.6L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            </span>
+            <div class="min-w-0">
+                <p class="pl-attention-title">{{ ov.attention_items|length }} {{ 'setor precisa' if ov.attention_items|length == 1 else 'setores precisam' }} de atenção</p>
+                <p class="pl-attention-sub">
+                    {% for item in ov.attention_items[:3] %}{{ item.name }} ({{ item.reasons|join(', ') }}){% if not loop.last %} · {% endif %}{% endfor %}{% if ov.attention_items|length > 3 %} · +{{ ov.attention_items|length - 3 }} outro(s){% endif %}
+                </p>
+            </div>
+        </div>
+        <button type="button" class="sf-btn sf-btn-secondary" style="min-height:36px;" data-pl-jump-attention>Ver pendências</button>
+    </section>
+    {% endif %}
+
+    {% if ov.variety_breakdown and s.total_area > 0 %}
+    <section class="pd-card pl-panorama" aria-label="Composição das lavouras por variedade">
+        <div class="pl-panorama-head">
+            <div>
+                <h2>Composição das lavouras por variedade</h2>
+                <p>Clique em uma variedade para filtrar os setores abaixo</p>
+            </div>
+            <div class="pl-panorama-meta">
+                <span>{{ s.total_area|decimal_br(1) }} ha em {{ ov.variety_breakdown|length }} {{ 'variedade' if ov.variety_breakdown|length == 1 else 'variedades' }}</span>
+                <button type="button" class="pl-link-btn" data-pl-clear-variety hidden>Limpar variedade</button>
+            </div>
+        </div>
+        <div class="pl-var-bar" role="img" aria-label="Proporção de área por variedade">
+            {% for v in ov.variety_breakdown %}
+            <button type="button" class="pl-var-seg" data-pl-pick-variety="{{ v.name }}" title="{{ v.name }}: {{ v.area|decimal_br(1) }} ha ({{ v.pct_int }}%)" style="width: {{ v.pct }}%; background: {{ v.color }};"></button>
+            {% endfor %}
+        </div>
+        <div class="pl-var-legend">
+            {% for v in ov.variety_breakdown %}
+            <button type="button" class="pl-var-pill" data-pl-pick-variety="{{ v.name }}" aria-pressed="false">
+                <i style="background: {{ v.color }};" aria-hidden="true"></i>
+                <span>{{ v.name }}</span>
+                <small>{{ v.area|decimal_br(1) }} ha ({{ v.pct_int }}%)</small>
+            </button>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="pd-card pl-toolbar" aria-label="Filtros, busca e modo de visualização">
+        <div class="pl-toolbar-top">
+            <div class="pl-chips-scroll" role="group" aria-label="Filtros rápidos">
+                <button type="button" class="sl-chip" data-pl-quick-filter="all" aria-pressed="true">Todos <span>{{ s.count }}</span></button>
+                {% if s.has_active_season %}
+                <button type="button" class="sl-chip" data-pl-quick-filter="season" aria-pressed="false">Na safra ativa <span>{{ s.in_season_count }}</span></button>
+                {% endif %}
+                <button type="button" class="sl-chip" data-pl-quick-filter="irrigated" aria-pressed="false">Irrigados <span>{{ s.irrigated_count }}</span></button>
+                <button type="button" class="sl-chip" data-pl-quick-filter="no_map" aria-pressed="false">Sem mapa <span>{{ s.missing_geo }}</span></button>
+                <button type="button" class="sl-chip" data-pl-quick-filter="forming" aria-pressed="false">Em formação <span>{{ s.form_count }}</span></button>
+                <button type="button" class="sl-chip" data-pl-quick-filter="attention" aria-pressed="false">Atenção <span>{{ s.attention_count }}</span></button>
+            </div>
+
+            <div class="pl-seg" role="group" aria-label="Modo de exibição">
+                <button type="button" class="pl-seg-btn" data-pl-view-mode="cards" aria-pressed="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                    Cartões
+                </button>
+                <button type="button" class="pl-seg-btn pl-view-table-btn" data-pl-view-mode="table" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+                    Tabela
+                </button>
+                <button type="button" class="pl-seg-btn" data-pl-view-mode="groups" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+                    Por grupo
                 </button>
             </div>
-            <form
-                method="get"
-                action="/setores"
-                class="stock-filter-grid min-w-0"
-                data-plots-filter-form
-                {% if plots_farm_scope_locked %}data-plots-fixed-farm-id="{{ plots_scope_active_farm_id }}"{% endif %}
-            >
-                <div class="stock-summary-collapse {% if not plots_filters_active %}is-expanded{% endif %}" data-stock-filter-collapse>
-                    <div class="stock-summary-collapse-inner">
-                        <div class="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.7fr)_auto]">
-                            <label class="stock-filter-field min-w-0 {% if plots_field_q_filtered %}is-filtered{% endif %}">
-                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Buscar</span>
-                                <input name="q" value="{{ filters.q }}" class="w-full rounded-xl border-slate-200 bg-white px-3 py-3 text-sm" placeholder="Nome do setor">
-                            </label>
-                            {% if plots_farm_scope_locked %}
-                            <input type="hidden" name="farm_id" value="{{ plots_scope_active_farm_id }}">
-                            <label class="stock-filter-field stock-filter-field-farm min-w-0 is-filtered">
-                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
-                                <select
-                                    disabled
-                                    class="w-full cursor-not-allowed rounded-xl border-slate-200 bg-white px-3 py-3 text-sm"
-                                    aria-label="Fazenda do contexto (fixa)"
-                                >
-                                    <option selected>{{ plots_locked_farm_name }}</option>
-                                </select>
-                            </label>
-                            {% else %}
-                            <label class="stock-filter-field stock-filter-field-farm min-w-0 {% if filters.farm_ids %}is-filtered{% endif %}">
-                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
-                                <select name="farm_id" data-filter-farms class="w-full rounded-xl border-slate-200 bg-white px-3 py-3 text-sm">
-                                    <option value="">Todas</option>
-                                    {% for farm in farms %}
-                                    <option value="{{ farm.id }}" {% if filters.farm_ids and filters.farm_ids[0] == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                                    {% endfor %}
-                                </select>
-                            </label>
-                            {% endif %}
-                            <label class="stock-filter-field min-w-0 {% if plots_field_variety_filtered %}is-filtered{% endif %}">
-                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Variedade</span>
-                                <select name="variety_id" data-filter-varieties class="w-full rounded-xl border-slate-200 bg-white px-3 py-3 text-sm">
-                                    <option value="">Todas</option>
-                                    {% for variety in varieties %}
-                                    <option value="{{ variety.id }}" {% if filters.variety_ids and filters.variety_ids[0] == variety.id %}selected{% endif %}>{{ variety.name }}</option>
-                                    {% endfor %}
-                                </select>
-                            </label>
-                            <label class="stock-filter-field min-w-0 {% if plots_field_sort_filtered %}is-filtered{% endif %}">
-                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Ordenar</span>
-                                <select name="sort" class="w-full rounded-xl border-slate-200 bg-white px-3 py-3 text-sm">
-                                    <option value="name" {% if filters.sort == 'name' %}selected{% endif %}>Nome</option>
-                                    <option value="area_desc" {% if filters.sort == 'area_desc' %}selected{% endif %}>Maior área</option>
-                                    <option value="area_asc" {% if filters.sort == 'area_asc' %}selected{% endif %}>Menor área</option>
-                                    <option value="planting_desc" {% if filters.sort == 'planting_desc' %}selected{% endif %}>Plantio recente</option>
-                                    <option value="planting_asc" {% if filters.sort == 'planting_asc' %}selected{% endif %}>Plantio antigo</option>
-                                </select>
-                            </label>
-                            <div class="stock-filter-field-actions stock-actions-row-mobile-adaptive flex flex-wrap items-end gap-3">
-                                <button type="submit" class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
-                                {% if plots_filters_active %}
-                                <a href="/setores" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </form>
         </div>
 
+        <div class="pl-filter-grid">
+            <label class="pl-search-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <span class="sr-only">Buscar setores</span>
+                <input type="search" value="{{ filters.q }}" placeholder="Buscar por setor, variedade, grupo, referência ou observação..." data-pl-search>
+            </label>
+
+            {% if not plots_farm_scope_locked and farms|length > 1 %}
+            <select class="pl-select" aria-label="Filtrar por fazenda" data-pl-filter-farm>
+                <option value="">Todas as fazendas</option>
+                {% for farm in farms %}
+                <option value="{{ farm.id }}" {% if filters.farm_ids and filters.farm_ids|length == 1 and filters.farm_ids[0] == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+
+            <select class="pl-select" aria-label="Filtrar por variedade" data-pl-filter-variety>
+                <option value="">Todas as variedades</option>
+                {% for variety_name in ov.varieties_in_list %}
+                <option value="{{ variety_name }}">{{ variety_name }}</option>
+                {% endfor %}
+            </select>
+
+            {% if ov.groups %}
+            <select class="pl-select" aria-label="Filtrar por grupo" data-pl-filter-group>
+                <option value="">Todos os grupos</option>
+                {% for grp in ov.groups %}
+                <option value="{{ grp }}">Grupo: {{ grp }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+
+            <select class="pl-select" aria-label="Ordenar setores" data-pl-sort>
+                <option value="name" {% if filters.sort == 'name' %}selected{% endif %}>Ordenar: Nome (A–Z)</option>
+                <option value="area_desc" {% if filters.sort == 'area_desc' %}selected{% endif %}>Maior área</option>
+                <option value="area_asc" {% if filters.sort == 'area_asc' %}selected{% endif %}>Menor área</option>
+                <option value="yield_desc" {% if filters.sort == 'yield_desc' %}selected{% endif %}>Maior estimativa (sacas)</option>
+                <option value="planting_desc" {% if filters.sort == 'planting_desc' %}selected{% endif %}>Plantio mais recente</option>
+                <option value="planting_asc" {% if filters.sort == 'planting_asc' %}selected{% endif %}>Plantio mais antigo</option>
+            </select>
+        </div>
+
+        <div class="pl-filter-summary" data-pl-filter-summary hidden>
+            <span data-pl-filter-summary-text></span>
+            <button type="button" class="pl-link-btn" data-pl-reset-filters>Limpar todos os filtros</button>
+        </div>
     </section>
 
-    <section class="sf-toolbar" aria-label="Busca rápida">
-        <label class="sf-search">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-            <span class="sr-only">Buscar na lista</span>
-            <input type="search" placeholder="Buscar setor, fazenda, variedade ou observação" data-plots-search>
-        </label>
-    </section>
+    <section id="pl-list-anchor" aria-label="Setores cadastrados">
+        {% if ov.rows %}
+        <div class="pl-list" data-pl-cards-view>
+            {% for p in ov.rows %}
+            <article class="pl-card" data-pl-card="{{ p.id }}">
+                <span class="pl-card-accent" style="background: {{ p.map_color }};" aria-hidden="true"></span>
+                <div class="pl-card-inner">
+                    <div class="pl-card-left">
+                        {% if p.preview_ready %}
+                        <a href="/setores?edit_id={{ p.id }}&amp;plot_map=1" class="pl-thumb" data-plot-preview-wrap aria-label="Ampliar mapa de {{ p.name }}" title="Ver mapa ampliado — {{ p.name }}">
+                            <img src="{{ p.thumb_url }}" alt="" loading="lazy" decoding="async">
+                            <span class="pl-thumb-tag">Ampliar</span>
+                        </a>
+                        {% elif p.has_map %}
+                        <a href="/mapa?edit_plot_id={{ p.id }}" class="pl-thumb-empty is-saved">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10Z"/><circle cx="12" cy="11" r="2"/></svg>
+                            <span>Mapa salvo</span>
+                        </a>
+                        {% else %}
+                        <a href="/mapa?edit_plot_id={{ p.id }}" class="pl-thumb-empty">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10Z"/><circle cx="12" cy="11" r="2"/></svg>
+                            <span>Desenhar mapa</span>
+                        </a>
+                        {% endif %}
 
-    <section aria-label="Setores cadastrados">
-        <div class="sf-list" data-plots-list>
-            {% for plot in plots %}
-            <article class="sf-card sf-card-pad" data-plots-row data-plots-search-text="{{ plot.name }} {{ plot.farm.name if plot.farm else '' }} {{ plot.variety.name if plot.variety else '' }} {{ plot.notes or '' }} {{ plot.area_hectares }} {{ plot.plant_count }}">
-                <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
-                    <div class="min-w-0 flex-1">
-                        <button type="button" class="sf-card-title text-left hover:text-brand-700" data-plots-launch-open data-plots-edit-link="/setores?edit_id={{ plot.id }}">{{ plot.name }}</button>
-                        <p class="sf-card-sub">{{ plot.farm.name if plot.farm else "Sem fazenda" }} · {{ (plot.area_hectares or 0)|decimal_br }} ha</p>
-                        <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2">
-                            <span class="sf-pill sf-pill-ativa">{{ plot.variety.name if plot.variety else "Sem variedade" }}</span>
-                            <span class="sf-pill">
-                                {% if plot.irrigation_type == 'gotejo' %}Gotejo{% elif plot.irrigation_type == 'aspersor' %}Aspersor{% else %}Sem irrigação{% endif %}
-                            </span>
-                            {% if plot.boundary_geojson %}
-                            {% set plot_list_thumb_src = url_for('static', path='generated/plot_previews/' ~ plot.id ~ '_thumb.jpg') ~ '?v=' ~ plot_preview_fingerprint.get(plot.id, '') %}
-                            {% if plot_preview_ready.get(plot.id) %}
-                            <a href="/setores?edit_id={{ plot.id }}&amp;plot_map=1" data-plot-preview-wrap class="relative ml-0 inline-block aspect-video w-20 shrink-0 overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-100 shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 sm:w-24" title="Ver mapa ampliado do setor — {{ plot.name }}">
-                                <img src="{{ plot_list_thumb_src }}" alt="" width="96" height="54" loading="lazy" decoding="async" class="h-full w-full object-cover">
-                                <div class="pointer-events-none absolute inset-0 z-[1] hidden flex-col items-center justify-center bg-slate-100/90" data-plot-preview-loading aria-hidden="true">
-                                    <span class="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-brand-500" aria-hidden="true"></span>
+                        <div class="pl-card-body">
+                            <div>
+                                <div class="pl-card-head">
+                                    <button type="button" class="pl-card-name" data-pl-open-drawer="{{ p.id }}">{{ p.name }}</button>
+                                    {% if s.has_active_season %}
+                                    <span class="pd-chip {{ 'is-ok' if p.in_active_season else 'is-muted' }}">{{ s.active_season_name if p.in_active_season else 'Fora da safra' }}</span>
+                                    {% endif %}
+                                    {% if p.stage == 'form' %}<span class="pd-chip is-info">Em formação</span>{% endif %}
+                                    {% if p.pending_fert_count > 0 %}<span class="pd-chip is-warn">Adubação pendente</span>{% endif %}
                                 </div>
-                            </a>
-                            {% else %}
-                            <span class="inline-flex max-w-[14rem] items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs text-slate-600 sm:ml-1">
-                                <span class="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-brand-500" aria-hidden="true"></span>
-                                <span>Gerando miniatura do mapa…</span>
-                            </span>
-                            {% endif %}
+                                <p class="pl-card-sub">
+                                    {% if not plots_farm_scope_locked %}<strong style="color:#16201A;">{{ p.farm_name }}</strong> · {% endif %}
+                                    {{ p.variety_name }}
+                                    {% if p.group_name %} · Grupo {{ p.group_name }}{% endif %}
+                                    · {{ p.irrigation_label }}
+                                    {% if p.soil_texture_label %} · Solo {{ p.soil_texture_label|lower }}{% endif %}
+                                </p>
+                            </div>
+
+                            <dl class="pl-metrics">
+                                <div>
+                                    <dt>Área</dt>
+                                    <dd>{{ p.area|decimal_br(1) }} ha</dd>
+                                </div>
+                                <div>
+                                    <dt>Plantio</dt>
+                                    <dd>{{ p.planting_month_year }}{% if p.age_label %} <small>· {{ p.age_label }}</small>{% endif %}</dd>
+                                </div>
+                                <div>
+                                    <dt>Estande</dt>
+                                    <dd>{% if p.plant_count %}{{ '{:,}'.format(p.plant_count).replace(',', '.') }} <small>({{ '{:,}'.format(p.density).replace(',', '.') }}/ha)</small>{% else %}<small>Não informado</small>{% endif %}</dd>
+                                </div>
+                                <div>
+                                    <dt>Estimativa</dt>
+                                    <dd>{% if p.estimated_sacks > 0 %}{{ p.estimated_sacks|decimal_br(0) }} sc{% if p.sc_per_ha %} <small class="is-brand">({{ p.sc_per_ha|decimal_br(1) }}/ha)</small>{% endif %}{% else %}<small>{{ 'Em formação' if p.stage == 'form' else 'Não informada' }}</small>{% endif %}</dd>
+                                </div>
+                            </dl>
+
+                            {% if p.field_reference %}
+                            <p class="pl-card-ref">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10Z"/><circle cx="12" cy="11" r="2"/></svg>
+                                <span>{{ p.field_reference }}</span>
+                            </p>
+                            {% elif p.notes %}
+                            <p class="pl-card-ref"><span>{{ p.notes }}</span></p>
                             {% endif %}
                         </div>
                     </div>
-                    <div class="flex items-center gap-1.5">
-                        <a href="/setores?edit_id={{ plot.id }}" class="sf-icon-btn" aria-label="Editar {{ plot.name }}" title="Editar">
+
+                    <div class="pl-card-actions">
+                        <button type="button" class="sf-btn sf-btn-secondary pl-detail-btn" style="min-height:36px;font-size:13px;" data-pl-open-drawer="{{ p.id }}">Detalhes →</button>
+                        {% if can_write_page %}
+                        <a href="/setores?edit_id={{ p.id }}" class="sf-icon-btn" style="width:36px;height:36px;" aria-label="Editar {{ p.name }}" title="Editar setor">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
                         </a>
+                        {% endif %}
                         <details class="sf-menu" data-sf-dropdown>
-                            <summary class="sf-icon-btn" aria-label="Mais ações para {{ plot.name }}" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
+                            <summary class="sf-icon-btn" style="width:36px;height:36px;" aria-label="Mais ações para {{ p.name }}" title="Mais ações">
+                                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+                            </summary>
                             <div class="sf-menu-panel">
-                                <a href="/mapa?edit_plot_id={{ plot.id }}">Editar no mapa</a>
-                                {% if 'page.finance' in (permission_codes or []) %}<a href="{{ module_href('/custos-por-setor') }}">Ver custos do setor{{ module_lock('/custos-por-setor') }}</a>{% endif %}
-                                <form method="post" action="/setores/{{ plot.id }}/excluir" onsubmit="return confirm('Excluir o setor {{ plot.name }}? Esta ação não pode ser desfeita.');">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                    <button type="submit" class="sf-menu-danger">Excluir setor</button>
-                                </form>
+                                <a href="/mapa?edit_plot_id={{ p.id }}">{{ 'Editar no mapa' if p.has_map else 'Desenhar no mapa' }}</a>
+                                {% if can_see_finance %}<a href="{{ module_href('/custos-por-setor') }}">Ver custos do setor{{ module_lock('/custos-por-setor') }}</a>{% endif %}
+                                {% if can_write_page %}
+                                <a href="/setores?edit_id={{ p.id }}&amp;renovar=1">Renovar plantio</a>
+                                <button type="button" class="sf-menu-danger" data-pl-delete-open="{{ p.id }}">Excluir setor</button>
+                                {% endif %}
                             </div>
                         </details>
                     </div>
                 </div>
-                <dl class="sf-metrics sf-metrics-plots mt-4">
-                    <div><dt>Plantio</dt><dd>{{ plot.planting_date.strftime('%m/%Y') if plot.planting_date else '—' }}</dd></div>
-                    <div><dt>Plantas</dt><dd>{{ '{:,}'.format(plot.plant_count|int).replace(',', '.') if plot.plant_count else '—' }}</dd></div>
-                    <div><dt>Espaçamento</dt><dd>{% if plot.spacing_row_meters %}{{ plot.spacing_row_meters|decimal_br }} m × {{ ((plot.spacing_plant_meters * 100)|decimal_br(0)) if plot.spacing_plant_meters is not none else '—' }} cm{% else %}—{% endif %}</dd></div>
-                    <div><dt>Estimativa</dt><dd>{{ (plot.estimated_yield_sacks|decimal_br(0) ~ ' sacas') if plot.estimated_yield_sacks else '—' }}</dd></div>
-                    <div><dt>Linhas de irrigação</dt><dd>{{ plot.irrigation_line_count or '—' }}</dd></div>
-                    <div><dt>Mapa</dt><dd>{% if plot.boundary_geojson %}Desenhado{% else %}<a href="/mapa?edit_plot_id={{ plot.id }}" class="text-amber-700 underline-offset-2 hover:underline">Desenhar</a>{% endif %}</dd></div>
-                </dl>
-                {% if plot.notes %}
-                <p class="mt-3 text-sm text-slate-500">{{ plot.notes }}</p>
-                {% endif %}
             </article>
-            {% else %}
-            <div class="sf-empty"><p class="font-semibold text-slate-900">Nenhum setor encontrado</p><p>Cadastre um setor ou ajuste os filtros.</p></div>
             {% endfor %}
         </div>
-        <p class="sf-empty mt-3 hidden" data-plots-search-empty>Nenhum setor corresponde à busca digitada.</p>
+
+        <div data-pl-table-view hidden></div>
+        <div class="pl-groups" data-pl-groups-view hidden></div>
+
+        <div class="pd-card pd-empty" data-pl-empty-filter hidden>
+            <strong>Nenhum setor encontrado neste filtro.</strong>
+            <span>Limpe os filtros aplicados ou cadastre um novo setor para esta propriedade.</span>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
+                <button type="button" class="sf-btn sf-btn-secondary" data-pl-reset-filters>Ver todos os setores</button>
+                {% if can_write_page %}
+                <button type="button" class="sf-btn sf-btn-primary" data-plots-launch-open>Novo setor</button>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="pd-card pd-empty">
+            <strong>Nenhum setor cadastrado ainda.</strong>
+            <span>Cadastre o primeiro talhão da fazenda para acompanhar lavoura, irrigação, mapa e produção.</span>
+            {% if can_write_page %}
+            <button type="button" class="sf-btn sf-btn-primary" data-plots-launch-open>Cadastrar primeiro setor</button>
+            {% endif %}
+        </div>
+        {% endif %}
     </section>
 </div>
+
+{# Gaveta Lateral — Ficha Rápida do Setor #}
+<div id="pl-drawer-backdrop" class="pl-drawer-backdrop" aria-hidden="true">
+    <div class="pl-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="pl-drawer-title">
+        <header class="pl-drawer-head">
+            <div class="min-w-0">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span id="pl-drawer-dot" class="pl-dot" aria-hidden="true"></span>
+                    <p id="pl-drawer-eyebrow" class="pd-eyebrow" style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Ficha do setor</p>
+                </div>
+                <h2 id="pl-drawer-title" style="margin:4px 0 0;font-size:20px;font-weight:700;color:#16201A;"></h2>
+                <p id="pl-drawer-sub" style="margin:2px 0 0;font-size:12.5px;color:#5B6660;"></p>
+            </div>
+            <button type="button" class="sf-icon-btn" aria-label="Fechar ficha" data-pl-drawer-close>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </header>
+        <div id="pl-drawer-body" class="pl-drawer-body"></div>
+        <footer id="pl-drawer-foot" class="pl-drawer-foot"></footer>
+    </div>
+</div>
+
+{# Modal de Exclusão Redesenhado (Moderno, Elegante e Seguro) #}
+{% if can_write_page %}
+<dialog id="pl-delete-modal" class="pl-del-dialog" aria-labelledby="pl-del-title" aria-describedby="pl-del-sub">
+    <div class="pl-del-sheet">
+        <div class="pl-del-topstrip" aria-hidden="true"></div>
+        <div class="pl-sheet-handle" aria-hidden="true"></div>
+
+        <header class="pl-del-head">
+            <div class="pl-del-head-left">
+                <div class="pl-del-icon-wrap" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"/>
+                        <path d="M8 6V4.5A1.5 1.5 0 0 1 9.5 3h5A1.5 1.5 0 0 1 16 4.5V6"/>
+                        <path d="M19 6l-.9 13.1A2 2 0 0 1 16.1 21H7.9a2 2 0 0 1-2-1.9L5 6"/>
+                        <path d="M10 11v5M14 11v5"/>
+                    </svg>
+                </div>
+                <div class="min-w-0">
+                    <p class="pl-del-eyebrow">Exclusão permanente</p>
+                    <h3 id="pl-del-title" class="pl-del-title">Excluir este setor?</h3>
+                    <p id="pl-del-sub" class="pl-del-sub">Confira o resumo e o impacto antes de confirmar.</p>
+                </div>
+            </div>
+            <button type="button" class="sf-icon-btn" style="width:36px;height:36px;" aria-label="Fechar" data-pl-delete-close>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </header>
+
+        <div class="pl-del-body">
+            <div id="pl-del-summary" class="pl-del-summary"></div>
+
+            <div role="alert" class="pl-del-impact">
+                <p class="pl-del-impact-title">O que será removido com o setor</p>
+                <ul id="pl-del-impact-list"></ul>
+            </div>
+
+            <div class="pl-del-alt">
+                <div class="pl-del-alt-left">
+                    <span class="pl-del-alt-ico" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M8 16H3v5"/></svg>
+                    </span>
+                    <div class="min-w-0">
+                        <p style="margin:0;font-size:12.5px;font-weight:700;color:#16201A;">Vai apenas trocar a lavoura?</p>
+                        <p style="margin:2px 0 0;font-size:12px;color:#4C5C52;">Use <strong>Renovar plantio</strong> para manter o histórico.</p>
+                    </div>
+                </div>
+                <a id="pl-del-alt-renew" href="#" class="pl-del-alt-btn">Renovar →</a>
+            </div>
+
+            <label id="pl-del-confirm-label" class="pl-del-confirm-box">
+                <input type="checkbox" id="pl-del-confirm-check">
+                <span>Entendo que a exclusão de <strong id="pl-del-confirm-name"></strong> é permanente e não poderá ser desfeita.</span>
+            </label>
+        </div>
+
+        <footer class="pl-del-foot">
+            <button type="button" class="sf-btn sf-btn-secondary" data-pl-delete-close>Cancelar</button>
+            <form id="pl-del-form" method="post" action="">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" id="pl-del-submit" class="sf-btn cl-btn-danger pl-del-submit" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg>
+                    Excluir setor
+                </button>
+            </form>
+        </footer>
+    </div>
+</dialog>
+{% endif %}
+
+<script type="application/json" id="plots-overview-data">{{ {
+    "items": ov.rows,
+    "canWrite": can_write_page,
+    "activeSeasonName": s.active_season_name or "",
+    "farmScopeLocked": plots_farm_scope_locked,
+    "perms": {
+        "finance": can_see_finance
+    },
+    "urls": {
+        "sectorCosts": module_href('/custos-por-setor'),
+        "fertilization": module_href('/fertilizacao'),
+        "soil": module_href('/analise-solo'),
+        "production": module_href('/producao')
+    },
+    "initialFilters": {
+        "q": filters.q,
+        "farmId": (filters.farm_ids[0]|string) if (not plots_farm_scope_locked and filters.farm_ids and filters.farm_ids|length == 1) else "",
+        "variety": "",
+        "sort": filters.sort
+    }
+}|tojson }}</script>
 
 {% set edit_plot_preview_only_src = (url_for('static', path='generated/plot_previews/' ~ edit_plot.id ~ '.png') ~ '?v=' ~ plot_preview_fingerprint.get(edit_plot.id, '')) if edit_plot and edit_plot.boundary_geojson and plot_preview_ready.get(edit_plot.id) else none %}
 {% set edit_farm_bg_src = (url_for('static', path='generated/farm_previews/' ~ edit_plot.farm_id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(edit_plot.farm_id, '')) if edit_plot and edit_plot.farm_id and farm_preview_ready.get(edit_plot.farm_id) else none %}
@@ -237,14 +504,28 @@
     const end = modal.querySelector('[data-renew-end]');
     const start = modal.querySelector('[data-renew-start]');
     const syncMin = () => { start.min = end.value || ''; };
+    const openedDirect = new URLSearchParams(window.location.search).get('renovar') === '1';
+    const closeRenew = () => {
+        modal.close();
+        if (openedDirect) window.location.href = '/setores';
+    };
     end.addEventListener('change', syncMin);
     syncMin();
     document.addEventListener('click', (event) => {
         if (event.target.closest('[data-renew-open]')) { modal.showModal(); return; }
-        if (event.target.closest('[data-renew-close]') || event.target === modal) modal.close();
+        if (event.target.closest('[data-renew-close]') || event.target === modal) closeRenew();
     });
-    modal.addEventListener('cancel', (event) => { event.stopPropagation(); });
+    modal.addEventListener('cancel', (event) => {
+        event.stopPropagation();
+        if (openedDirect) {
+            event.preventDefault();
+            closeRenew();
+        }
+    });
     modal.querySelector('[data-renew-form]').addEventListener('submit', () => window.showPageLoader?.('Renovando plantio', 'Guardando o plantio atual no histórico.'));
+    if (openedDirect) {
+        window.requestAnimationFrame(() => modal.showModal());
+    }
 })();
 </script>
 {% endif %}
@@ -347,6 +628,7 @@
 {% include "partials/attachment_manager_script.html" %}
 <script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=10"></script>
 <script src="{{ url_for('static', path='js/plot_wizard.js') }}?v=4" defer></script>
+<script src="{{ url_for('static', path='js/plots_page.js') }}?v=20261121pl1" defer></script>
 <script>
     (() => {
         window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};
@@ -1128,13 +1410,14 @@
         };
         window.addEventListener('keydown', onPlotsLaunchModalEscapeKeydown, true);
 
+        const openRenewModalOnLoad = plotsQuery.get('renovar') === '1';
         if (isEditing) {
             seedPlotBoundaryHidden();
             if (openPlotMapModalOnLoad) {
                 window.requestAnimationFrame(() => {
                     openPlotsMapModal({ directEdit: false });
                 });
-            } else {
+            } else if (!openRenewModalOnLoad) {
                 launchModal?.showModal();
                 afterPlotsModalOpen();
             }
