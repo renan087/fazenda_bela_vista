@@ -149,3 +149,5 @@ __all__ = [
     "TrustedBrowserToken",
     "User",
 ]
+
+from app.models.assistant_capability import AssistantCapability

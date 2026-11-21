@@ -80,8 +80,10 @@ def _session_value(request: Request, key: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.services.assistant_audio import audio_retention_loop
+    from app.services.dorama_assistant import initialize_access
     create_tables()
     with SessionLocal() as db:
+        initialize_access(db)
         seed_admin(db)
         seed_rbac_for_all_organizations(db)
         seed_demo_data(db)
