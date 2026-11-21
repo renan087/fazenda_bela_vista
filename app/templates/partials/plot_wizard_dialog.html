@@ -59,7 +59,7 @@
                                 </div>
                             </div>
                             <div class="szw-grid2">
-                                <label class="szw-field"><span>Área informada (ha)</span><input name="area_hectares" class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.area_hectares)).replace('.', ',') if ep and ep.area_hectares is not none else '' }}" data-stw-area data-stw-decimal><small>Da escritura, do projeto ou de medição. No próximo passo comparamos com o mapa.</small></label>
+                                <label class="szw-field"><span>Área informada (ha)</span><input name="area_hectares" class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.area_hectares)).replace('.', ',') if ep and ep.area_hectares is not none else '' }}" data-stw-area data-stw-decimal><small data-stw-area-hint>Da escritura, do projeto ou de medição. No próximo passo comparamos com o mapa.</small><small data-stw-area-err class="is-err" hidden></small></label>
                                 <label class="szw-field"><span>Referência no campo <em class="szw-opt">(opcional)</em></span><input name="field_reference" class="szw-input" maxlength="160" value="{{ ep.field_reference if ep and ep.field_reference else '' }}" placeholder="Ex.: descendo a estrada, depois da represa"><small>Ajuda quem ainda não conhece a fazenda.</small></label>
                             </div>
                             <div class="szw-grid2 stw-idrow">
@@ -218,7 +218,7 @@
                                     <div class="stw-calc"><span>Situação</span><span><span class="szw-chip is-muted" data-stw-stage>Sem plantio informado</span></span><small>Produz após 2,5 anos</small></div>
                                 </div>
                                 <div class="szw-grid2">
-                                    <label class="szw-field"><span>Plantas contadas <em class="szw-opt">(opcional)</em></span><input class="szw-input" inputmode="numeric" value="{{ ep.plant_count if ep and ep.plant_count else '' }}" placeholder="Se você contou, vale este número" data-stw-counted><small>Use quando houver falhas ou replantas.</small></label>
+                                    <label class="szw-field"><span>Plantas contadas <em class="szw-opt">(opcional)</em></span><input class="szw-input" inputmode="numeric" autocomplete="off" value="{{ ep.plant_count if ep and ep.plant_count else '' }}" placeholder="Se você contou, vale este número" data-stw-counted data-stw-int><small>Use quando houver falhas ou replantas.</small></label>
                                     <label class="szw-field"><span>Produtividade esperada (sc/ha)</span><input class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.estimated_yield_sacks / ep.area_hectares)).replace('.', ',') if ep and ep.estimated_yield_sacks and ep.area_hectares else '' }}" data-stw-yield data-stw-decimal><small>Vira a meta inicial deste setor ao criar uma safra.</small></label>
                                 </div>
                             </div>
@@ -250,7 +250,7 @@
                                 </div>
                                 <div class="stw-irrig-box" data-stw-irrig-box="gotejo" hidden>
                                     <div class="stw-grid4">
-                                        <label class="szw-field" title="Linhas de mangueira"><span>Linhas</span><input name="irrigation_line_count" class="szw-input" inputmode="numeric" value="{{ ep.irrigation_line_count if ep and ep.irrigation_line_count else '' }}" data-stw-lines></label>
+                                        <label class="szw-field" title="Linhas de mangueira"><span>Linhas</span><input name="irrigation_line_count" class="szw-input" inputmode="numeric" autocomplete="off" value="{{ ep.irrigation_line_count if ep and ep.irrigation_line_count else '' }}" data-stw-lines data-stw-int></label>
                                         <label class="szw-field" title="Comprimento médio (m)"><span>Comp. médio (m)</span><input name="irrigation_line_length_meters" class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.irrigation_line_length_meters)).replace('.', ',') if ep and ep.irrigation_line_length_meters else '' }}" data-stw-line-len data-stw-decimal></label>
                                         <label class="szw-field" title="Espaçamento entre gotejadores (m)"><span>Gotejadores (m)</span><input class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.drip_spacing_meters)).replace('.', ',') if ep and ep.drip_spacing_meters else '' }}" data-stw-drip-m data-stw-decimal></label>
                                         <label class="szw-field" title="Vazão de cada gotejador (L/h)"><span>Vazão (L/h)</span><input name="drip_liters_per_hour" class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.drip_liters_per_hour)).replace('.', ',') if ep and ep.drip_liters_per_hour else '' }}" data-stw-drip-lh data-stw-decimal></label>
@@ -264,7 +264,7 @@
                                 </div>
                                 <div class="stw-irrig-box" data-stw-irrig-box="aspersor" hidden>
                                     <div class="stw-calcs">
-                                        <label class="szw-field"><span>Quantidade de aspersores</span><input name="sprinkler_count" class="szw-input" inputmode="numeric" value="{{ ep.sprinkler_count if ep and ep.sprinkler_count else '' }}" data-stw-spr-count></label>
+                                        <label class="szw-field"><span>Quantidade de aspersores</span><input name="sprinkler_count" class="szw-input" inputmode="numeric" autocomplete="off" value="{{ ep.sprinkler_count if ep and ep.sprinkler_count else '' }}" data-stw-spr-count data-stw-int></label>
                                         <label class="szw-field"><span>Vazão de cada um (L/h)</span><input name="sprinkler_liters_per_hour" class="szw-input" inputmode="numeric" placeholder="0,00" autocomplete="off" value="{{ ('%.2f'|format(ep.sprinkler_liters_per_hour)).replace('.', ',') if ep and ep.sprinkler_liters_per_hour else '' }}" data-stw-spr-lh data-stw-decimal></label>
                                         <div class="stw-calc"><span>Lâmina por hora</span><strong data-stw-spr-lamina>—</strong></div>
                                     </div>

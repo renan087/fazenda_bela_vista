@@ -1687,6 +1687,11 @@ def _float_or_none(value: str | None):
 def _int_or_none(value: str | None):
     if value in (None, ""):
         return None
+    if isinstance(value, str):
+        cleaned = value.strip().replace("\xa0", "").replace(" ", "")
+        if re.fullmatch(r"-?\d{1,3}(\.\d{3})+", cleaned):
+            cleaned = cleaned.replace(".", "")
+        value = cleaned
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -8886,6 +8891,7 @@ def plots_page(
     plot_wizard_data = {
         "today": date.today().isoformat(),
         "farms": {str(farm.id): farm.name for farm in scope.get("context_farms", [])},
+        "farm_areas": {str(farm.id): float(farm.total_area or 0) for farm in scope.get("context_farms", [])},
         "colors": [list(color) for color in PLOT_COLORS],
         "used": wizard_color_context(wizard_plots),
         "varieties": {str(variety.id): variety.name for variety in form_varieties},
@@ -9067,6 +9073,15 @@ def create_plot_action(
     if not farm or not _farm_matches_scope(farm.id, scope):
         _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
         return _redirect("/setores")
+    farm_total_area = float(farm.total_area or 0)
+    if farm_total_area > 0 and parsed_area > farm_total_area + 1e-6:
+        area_fmt = f"{farm_total_area:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        _flash(
+            request,
+            "error",
+            f"A área do setor não pode ser maior que a área da fazenda {farm.name} ({area_fmt} ha).",
+        )
+        return _redirect_with_query("/setores", selected_farm_id=selected_farm_id)
     if _plot_name_taken(db, farm.id, name):
         _flash(request, "error", f"Já existe um setor chamado {name.strip()} nesta fazenda. Use outro nome.")
         return _redirect_with_query("/setores", selected_farm_id=selected_farm_id)
@@ -9237,6 +9252,15 @@ def update_plot_action(
     if not farm or not _farm_matches_scope(farm.id, scope):
         _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
         return _redirect("/setores")
+    farm_total_area = float(farm.total_area or 0)
+    if farm_total_area > 0 and parsed_area > farm_total_area + 1e-6:
+        area_fmt = f"{farm_total_area:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        _flash(
+            request,
+            "error",
+            f"A área do setor não pode ser maior que a área da fazenda {farm.name} ({area_fmt} ha).",
+        )
+        return _redirect_with_query("/setores", edit_id=plot_id)
     if _plot_name_taken(db, farm.id, name, exclude_id=plot.id):
         _flash(request, "error", f"Já existe um setor chamado {name.strip()} nesta fazenda. Use outro nome.")
         return _redirect_with_query("/setores", selected_farm_id=farm.id)

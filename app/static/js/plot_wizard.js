@@ -13,6 +13,12 @@
         const n = parseFloat(text);
         return Number.isFinite(n) ? n : 0;
     };
+    const intNum = (value) => {
+        const digits = String(value ?? '').replace(/\D/g, '');
+        if (!digits) return 0;
+        const n = parseInt(digits, 10);
+        return Number.isFinite(n) ? n : 0;
+    };
     const n1 = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
     const n2 = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const int = (v) => Math.round(Number(v || 0)).toLocaleString('pt-BR');
@@ -44,7 +50,12 @@
     };
     const farmId = () => val('farm_id');
     const farmName = () => (data.farms || {})[farmId()] || '';
+    const farmMaxArea = () => Number((data.farm_areas || {})[farmId()] || 0);
     const declared = () => num(val('area_hectares'));
+    const areaExceedsFarm = () => {
+        const max = farmMaxArea();
+        return max > 0 && declared() > max + 1e-6;
+    };
     const boundaryInput = () => $('[data-plots-boundary-input]');
     const editor = () => window.__stwEditor || null;
     const geometryPoints = () => {
@@ -269,20 +280,22 @@
     };
     areaDialog.querySelector('[data-stw-use-map]').addEventListener('click', () => {
         map.areaChoice = 'map';
-        field('area_hectares').value = n2(map.area).replace(/\./g, '');
+        field('area_hectares').value = formatDecimalInitial(map.area);
         areaDialog.close(); goTo(2);
     });
     areaDialog.querySelector('[data-stw-keep-declared]').addEventListener('click', () => { map.areaChoice = 'declared'; areaDialog.close(); goTo(2); });
     areaDialog.querySelector('[data-stw-adjust]').addEventListener('click', () => areaDialog.close());
 
-    // ---------- máscara decimal fixa (0,00 da direita para a esquerda) ----------
+    // ---------- máscara decimal fixa (0,00 com milhar, da direita para a esquerda) e inteiros com milhar ----------
     const formatDecimalCents = (raw) => {
-        const clean = String(raw ?? '').replace(/\D/g, '').slice(0, 7);
+        const clean = String(raw ?? '').replace(/\D/g, '').slice(0, 10);
         if (!clean) return '';
         const cents = parseInt(clean, 10);
         if (!cents) return '';
         const str = String(cents).padStart(3, '0');
-        return `${str.slice(0, -2)},${str.slice(-2)}`;
+        const intPart = str.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        const decPart = str.slice(-2);
+        return `${intPart},${decPart}`;
     };
     const formatDecimalInitial = (raw) => {
         const txt = String(raw ?? '').trim();
@@ -290,6 +303,13 @@
         const v = num(txt);
         if (!(v > 0)) return '';
         return formatDecimalCents(String(Math.round(v * 100)));
+    };
+    const formatIntThousands = (raw) => {
+        const clean = String(raw ?? '').replace(/\D/g, '').slice(0, 9);
+        if (!clean) return '';
+        const n = parseInt(clean, 10);
+        if (!n) return '';
+        return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     };
     const bindDecimalMask = (input) => {
         if (!input) return;
@@ -308,7 +328,17 @@
             }
         });
     };
+    const bindIntMask = (input) => {
+        if (!input) return;
+        if (input.value) input.value = formatIntThousands(input.value);
+        input.addEventListener('input', () => {
+            const formatted = formatIntThousands(input.value);
+            if (input.value !== formatted) input.value = formatted;
+            try { input.setSelectionRange(formatted.length, formatted.length); } catch (e) { /* ignore */ }
+        });
+    };
     $$('[data-stw-decimal]').forEach(bindDecimalMask);
+    $$('[data-stw-int]').forEach(bindIntMask);
 
     // ---------- plantio ----------
     const newVarInput = $('[data-stw-new-variety-input]');
@@ -366,7 +396,7 @@
         const plant = num($('[data-stw-plant]').value);
         const area = effectiveArea();
         const estimate = row && plant && area ? area * 10000 / (row * plant) : 0;
-        const counted = Math.round(num($('[data-stw-counted]').value));
+        const counted = intNum($('[data-stw-counted]').value);
         const totalMonths = y ? (today.getFullYear() - y) * 12 + (today.getMonth() + 1 - m) : 0;
         const age = y ? totalMonths / 12 : 0;
         const forming = Boolean(y && totalMonths < 30);
@@ -428,12 +458,23 @@
             if (!val('name')) return 'Dê um nome ao setor';
             if (!(declared() > 0)) return 'Informe a área em hectares';
             if (!farmId()) return 'Escolha a fazenda';
+            if (areaExceedsFarm()) return `Área maior que a da fazenda (${n2(farmMaxArea())} ha)`;
         }
         return '';
     };
+    const areaInputEl = $('[data-stw-area]');
+    const areaHintEl = $('[data-stw-area-hint]');
+    const areaErrEl = $('[data-stw-area-err]');
     function refresh() {
         const p = planting();
         const area = effectiveArea();
+        const tooBig = areaExceedsFarm();
+        if (areaInputEl) areaInputEl.setAttribute('aria-invalid', tooBig ? 'true' : 'false');
+        if (areaErrEl) {
+            areaErrEl.textContent = tooBig ? `A área do setor não pode ser maior que a área da fazenda ${farmName() || 'selecionada'} (${n2(farmMaxArea())} ha).` : '';
+            areaErrEl.hidden = !tooBig;
+        }
+        if (areaHintEl) areaHintEl.hidden = tooBig;
         // hidden fields enviados ao servidor
         $('[data-stw-planting-date]').value = p.y ? `${p.y}-${String(p.m).padStart(2, '0')}-01` : '';
         $('[data-stw-plant-cm]').value = p.plant ? String(Math.round(p.plant * 10000) / 100) : '';
@@ -462,13 +503,13 @@
         // irrigação
         const irr = irrigation();
         $$('[data-stw-irrig-box]').forEach((boxEl) => { boxEl.hidden = boxEl.dataset.stwIrrigBox !== irr; });
-        const lines = num($('[data-stw-lines]').value), len = num($('[data-stw-line-len]').value), lh = num($('[data-stw-drip-lh]').value);
+        const lines = intNum($('[data-stw-lines]').value), len = num($('[data-stw-line-len]').value), lh = num($('[data-stw-drip-lh]').value);
         const drippers = dripM ? lines * len / dripM : 0;
         const flow = drippers * lh;
         $('[data-stw-drippers]').textContent = drippers ? int(drippers) : '—';
         $('[data-stw-flow]').textContent = flow ? `${int(flow)} L/h` : '—';
         $('[data-stw-lamina]').textContent = flow && area ? `${n2(flow / (area * 10000))} mm/h` : '—';
-        const spr = num($('[data-stw-spr-count]').value) * num($('[data-stw-spr-lh]').value);
+        const spr = intNum($('[data-stw-spr-count]').value) * num($('[data-stw-spr-lh]').value);
         $('[data-stw-spr-lamina]').textContent = spr && area ? `${n2(spr / (area * 10000))} mm/h` : '—';
         // mapa: selo e áreas
         const chip = $('[data-stw-poly-chip]');
@@ -656,6 +697,9 @@
         });
         $$('[data-stw-decimal]').forEach((el) => {
             if (el.value) el.value = formatDecimalInitial(el.value);
+        });
+        $$('[data-stw-int]').forEach((el) => {
+            if (el.value) el.value = formatIntThousands(el.value);
         });
         Object.assign(later, draft.later || {});
         applySkip('plant'); applySkip('man');

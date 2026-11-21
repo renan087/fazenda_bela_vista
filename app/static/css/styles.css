@@ -9583,6 +9583,10 @@ dialog.pl-del-dialog::backdrop { background: rgba(15, 21, 19, .48); backdrop-fil
     box-shadow: none !important;
 }
 .stw .szw-field small.is-err { color: #B42318; font-weight: 500; }
+.stw .szw-input[aria-invalid="true"] { border-color: #B42318 !important; background: #FFF9F9; }
+.stw .szw-input[aria-invalid="true"]:focus,
+.stw .szw-input[aria-invalid="true"]:focus-visible { border-color: #B42318 !important; box-shadow: 0 0 0 3px rgba(180, 35, 24, .18) !important; }
+.stw[data-plots-edit-mode="1"] .stw-map { height: min(58vh, 430px); min-height: 300px; }
 
 /* Ferramentas do mapa (Desenhar área vs. Marcar localização) e tooltips discretos de ajuda */
 .stw-seg button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
@@ -9717,6 +9721,7 @@ dialog.stw-dialog::-webkit-scrollbar { display: none; }
     .stw-mapshell { flex-shrink: 0; border-radius: 16px; }
     .stw-mapbar { padding: 6px 12px; font-size: 12px; }
     .stw-map { height: clamp(205px, calc(100dvh - 555px), 265px); min-height: 205px; }
+    .stw[data-plots-edit-mode="1"] .stw-map { height: clamp(260px, calc(100dvh - 485px), 335px); min-height: 260px; }
     .stw-tools { padding: 8px 12px; }
     .stw-tools-left { gap: 6px; }
     .stw-tools .szw-btn { height: 32px; min-height: 32px; font-size: 12.5px; padding: 0 11px; border-radius: 9px; border-color: #D6DDD5; }

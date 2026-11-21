@@ -133,3 +133,37 @@ def test_plot_done_page(plot_env):
     env = plot_env.env
     html = env.routes.plot_done_page(plot.id, env.request("/x?safra=Safra 2026/27"), db=env.db, user=env.user, csrf_token="x").body.decode()
     assert "Setor Pronto criado" in html and "Gerar recomendação de adubação" in html
+
+
+def test_plot_area_exceeding_farm_area_is_blocked_and_large_area_with_thousands_is_accepted(plot_env):
+    from app.models.farm import Farm
+
+    env = plot_env.env
+    farm = env.db.get(Farm, env.scope["active_farm_id"])
+    farm.total_area = 100.0
+    env.db.commit()
+
+    blocked = _create(plot_env, name="Excedente", area_hectares="150,00", include_in_season=None)
+    assert blocked.status_code == 303
+    assert env.db.query(Plot).filter(Plot.name == "Excedente").count() == 0
+    assert "não pode ser maior que a área da fazenda" in env.session["flash"]["message"]
+
+    farm.total_area = 25000.0
+    env.db.commit()
+
+    ok = _create(
+        plot_env,
+        name="Fazenda Grande",
+        area_hectares="12.500,50",
+        plant_count="1.500",
+        irrigation_type="gotejo",
+        irrigation_line_count="1.200",
+        irrigation_line_length_meters="1.050,25",
+        include_in_season=None,
+    )
+    assert ok.status_code == 303
+    created = env.db.query(Plot).filter(Plot.name == "Fazenda Grande").one()
+    assert float(created.area_hectares) == 12500.5
+    assert created.plant_count == 1500
+    assert created.irrigation_line_count == 1200
+    assert float(created.irrigation_line_length_meters) == 1050.25
