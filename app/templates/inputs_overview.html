@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io1">
+{% macro when(d) -%}
+{%- if not d -%}—{%- elif d == hub.today -%}hoje{%- elif (hub.today - d).days == 1 -%}ontem{%- else -%}{{ d.strftime('%d/%m') }}{%- endif -%}
+{%- endmacro %}
+<div class="sf-page io-page" data-io-overview>
+    <header class="io-head">
+        <div>
+            <span class="io-crumb">Insumos e máquinas</span>
+            <h1 class="io-title">Visão geral</h1>
+            <p class="io-sub">{% if active_farm %}{{ active_farm.name }}{% endif %}{% if active_season %} · {{ active_season.name }}{% endif %}</p>
+        </div>
+        <div class="io-actions">
+            <a class="io-btn" href="/mobile/assistente">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                Falar com o Pezinho</a>
+            <a class="io-btn is-primary" href="/insumos/comprados">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Lançar compra</a>
+        </div>
+    </header>
+
+    <nav class="io-qa-grid" aria-label="Atalhos">
+        <a class="io-qa" href="/insumos/comprados">
+            <span class="io-ico io-tone-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg></span>
+            <strong>Chegou mercadoria</strong><span>Lançar compra ou nota</span></a>
+        <button type="button" class="io-qa" data-io-open="use">
+            <span class="io-ico io-tone-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21c-4-3-7-6.5-7-10.5A7 7 0 0 1 12 3a7 7 0 0 1 7 7.5c0 4-3 7.5-7 10.5z"/><path d="M12 8v6M9 11h6"/></svg></span>
+            <strong>Usei na lavoura</strong><span>Registrar saída por setor</span></button>
+        <button type="button" class="io-qa" data-io-open="fuel">
+            <span class="io-ico io-tone-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16"/><path d="M3 21h13M7 8h5"/><path d="M15 10h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg></span>
+            <strong>Abasteci uma máquina</strong><span>Combustível e horímetro juntos</span></button>
+        <a class="io-qa" href="/insumos/patrimonio/manutencoes">
+            <span class="io-ico io-tone-muted"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg></span>
+            <strong>Fiz uma manutenção</strong><span>Registrar na máquina</span></a>
+    </nav>
+
+    <div class="io-split">
+        <section class="io-card io-card-pad io-main io-list" style="gap:14px" aria-labelledby="io-alerts-title">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+                <h2 class="io-h2" id="io-alerts-title">Precisa de você</h2>
+                {% if hub.alerts %}<span class="io-pill io-tone-amber">{{ hub.alerts|length }} {{ 'item' if hub.alerts|length == 1 else 'itens' }}</span>{% endif %}
+            </div>
+            {% for alert in hub.alerts[:8] %}
+            <div class="io-alert">
+                <span class="io-dot is-{{ alert.tone }}" aria-hidden="true"></span>
+                <div class="io-alert-body"><strong>{{ alert.title }}</strong><span>{{ alert.detail }}</span></div>
+                <a class="io-btn is-sm" href="{{ alert.href }}">{{ alert.action }}</a>
+            </div>
+            {% else %}
+            <div class="io-empty"><strong>Tudo em dia por aqui</strong><span>Quando um item estiver acabando, um lote perto de vencer ou uma revisão chegando, o aviso aparece aqui.</span></div>
+            {% endfor %}
+            {% if hub.alerts|length > 8 %}<p class="io-sub" style="margin:0">E mais {{ hub.alerts|length - 8 }} avisos no Estoque e em Máquinas.</p>{% endif %}
+        </section>
+
+        <div class="io-side">
+            <section class="io-card io-card-pad io-kpis" aria-label="Números do módulo">
+                {% for k in hub.kpis %}
+                <div class="io-kpi"><span>{{ k.label }}</span><strong>{{ k.value }}</strong><small class="{{ 'is-amber' if k.tone == 'amber' }}">{{ k.hint }}</small></div>
+                {% endfor %}
+            </section>
+            <section class="io-card io-card-pad io-list" style="gap:14px" aria-labelledby="io-sectors-title">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+                    <h2 class="io-h3" id="io-sectors-title">Gasto com insumos por setor</h2>
+                    <span class="io-sub" style="margin:0;font-size:12px">safra atual</span>
+                </div>
+                {% for s in hub.sectors %}
+                <div class="io-list" style="gap:6px">
+                    <div style="display:flex;justify-content:space-between;gap:8px;font-size:14px"><strong style="font-weight:600">{{ s.name }}</strong><span class="io-txt-muted">{{ s.value }}</span></div>
+                    <span class="io-bar"><span style="width: {{ s.pct }}%"></span></span>
+                </div>
+                {% else %}
+                <p class="io-sub" style="margin:0">Quando você registrar o uso de insumos por setor, o gasto de cada um aparece aqui.</p>
+                {% endfor %}
+                <a href="/custos-por-setor" style="font-size:13px;font-weight:600;color:#446A36">Ver custos por setor</a>
+            </section>
+        </div>
+    </div>
+
+    <section class="io-card io-card-pad" aria-labelledby="io-feed-title">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px">
+            <h2 class="io-h2" id="io-feed-title">Últimas movimentações</h2>
+            <a href="/insumos/estoque?stock_tab=extract" style="font-size:13px;font-weight:600;color:#446A36">Ver extrato completo</a>
+        </div>
+        {% for f in hub.feed %}
+        <div class="io-feed-row">
+            <span class="io-pill io-tone-{{ f.tone }}">{{ f.kind }}</span>
+            <span style="min-width:0"><strong>{{ f.item }}</strong> <span class="io-txt-muted">· {{ f.where }}</span></span>
+            <span class="io-feed-when">{{ when(f.date) }}</span>
+        </div>
+        {% else %}
+        <div class="io-empty"><strong>Nada registrado ainda</strong><span>Compras, usos, abastecimentos e manutenções aparecem aqui assim que forem lançados.</span></div>
+        {% endfor %}
+    </section>
+</div>
+{% include "partials/io_drawers.html" %}
+{% endblock %}

@@ -1,0 +1,135 @@
+{#- Painéis "Registrar uso" e "Abastecer máquina" (Insumos e máquinas). Abrem com [data-io-open="use|fuel"].
+    Precisa de `hub.drawer` no contexto. JS: static/js/inputs_hub.js · CSS: static/css/inputs_hub.css (prefixo io-) -#}
+{%- set dw = hub.drawer -%}
+{%- set back_to = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') -%}
+<script type="application/json" data-io-data>{{ dw|tojson }}</script>
+
+<dialog class="io-drawer" data-io-drawer="use" aria-labelledby="io-use-title">
+    <form method="post" action="/insumos/uso" data-io-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="return_to" value="{{ back_to }}">
+        <input type="hidden" name="lines" data-io-lines>
+        <div class="io-dw-head">
+            <div><strong id="io-use-title">Registrar uso</strong><span>Sai do estoque e entra no custo do setor e da safra</span></div>
+            <button type="button" class="io-btn" data-io-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+        <div class="io-dw-tabs" data-io-step="edit">
+            <div class="io-segmented" role="tablist" aria-label="Forma de lançar">
+                <button type="button" class="io-tab is-on" role="tab" aria-selected="true" data-io-mode="one">Um lançamento</button>
+                <button type="button" class="io-tab" role="tab" aria-selected="false" data-io-mode="many">Vários de uma vez</button>
+            </div>
+        </div>
+        <div class="io-dw-body">
+            {% if not dw.can_launch %}
+            <div class="io-note io-tone-amber">Escolha a fazenda e a safra no topo da página para registrar o uso.</div>
+            {% elif not dw['items'] %}
+            <div class="io-empty"><strong>Nenhum item com saldo</strong><span>Lance uma compra primeiro; depois o uso aparece aqui.</span><a class="io-btn is-primary" href="/insumos/comprados">Lançar compra</a></div>
+            {% else %}
+            <div data-io-step="edit" data-io-pane="one" class="io-list" style="gap:16px">
+                <label class="io-fld">Item do estoque<select data-f="input_id" required></select></label>
+                <div class="io-grid2">
+                    <label class="io-fld">Setor<select data-f="plot_id"></select></label>
+                    <label class="io-fld">Data<input type="date" data-f="date"></label>
+                </div>
+                <label class="io-fld"><span>Quantidade <span data-io-unit-hint></span></span><input type="text" inputmode="decimal" data-f="quantity" placeholder="0" autocomplete="off"></label>
+                <label class="io-fld"><span>Para quê? <em>(opcional)</em></span><input type="text" data-f="notes" maxlength="240" placeholder="Ex.: 2ª adubação de cobertura"></label>
+                <div class="io-impact" data-io-impact></div>
+            </div>
+            <div data-io-step="edit" data-io-pane="many" class="io-list io-hidden" style="gap:14px">
+                <p class="io-sub" style="margin:0">Bom para passar a limpo o caderno de campo. O saldo de cada linha já considera as linhas de cima.</p>
+                <div class="io-table-wrap"><div class="io-table">
+                    <div class="io-trow is-use is-head"><span>Data</span><span>Item</span><span>Setor</span><span>Quantidade</span><span>Saldo depois</span><span></span></div>
+                    <div data-io-rows class="io-list" style="gap:8px"></div>
+                </div></div>
+                <button type="button" class="io-btn is-sm" data-io-add style="align-self:flex-start">+ Adicionar linha</button>
+                <div class="io-summary" data-io-summary></div>
+            </div>
+            <div data-io-step="review" class="io-list io-hidden" style="gap:14px">
+                <strong style="font-size:18px">Confira antes de gravar</strong>
+                <div class="io-review" data-io-review></div>
+                <div class="io-summary" data-io-review-summary></div>
+            </div>
+            <p class="io-note io-tone-red io-hidden" role="alert" data-io-error></p>
+            {% endif %}
+        </div>
+        <div class="io-dw-foot">
+            <button type="button" class="io-btn is-ghost" data-io-step="edit" data-io-draft>Salvar rascunho</button>
+            <button type="button" class="io-btn io-hidden" data-io-step="review" data-io-back>Voltar e corrigir</button>
+            <div>
+                <button type="button" class="io-btn" data-io-close>Cancelar</button>
+                <button type="button" class="io-btn is-primary" data-io-step="edit" data-io-check {% if not dw.can_launch or not dw['items'] %}disabled{% endif %}>Conferir</button>
+                <button type="submit" class="io-btn is-primary io-hidden" data-io-step="review" data-io-confirm>Confirmar uso</button>
+            </div>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="io-drawer" data-io-drawer="fuel" aria-labelledby="io-fuel-title">
+    <form method="post" action="/insumos/patrimonio/abastecimentos" data-io-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="return_to" value="{{ back_to }}">
+        <input type="hidden" name="lines" data-io-lines>
+        <div class="io-dw-head">
+            <div><strong id="io-fuel-title">Abastecer máquina</strong><span>O combustível sai do tanque e o horímetro da máquina é atualizado</span></div>
+            <button type="button" class="io-btn" data-io-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+        <div class="io-dw-tabs" data-io-step="edit">
+            <div class="io-segmented" role="tablist" aria-label="Forma de lançar">
+                <button type="button" class="io-tab is-on" role="tab" aria-selected="true" data-io-mode="one">Um abastecimento</button>
+                <button type="button" class="io-tab" role="tab" aria-selected="false" data-io-mode="many">Vários de uma vez</button>
+            </div>
+        </div>
+        <div class="io-dw-body">
+            {% if not dw.can_launch %}
+            <div class="io-note io-tone-amber">Escolha a fazenda e a safra no topo da página para registrar abastecimentos.</div>
+            {% elif not dw.machines %}
+            <div class="io-empty"><strong>Nenhuma máquina cadastrada</strong><span>Cadastre tratores, colhedoras e veículos em Máquinas e bens.</span><a class="io-btn is-primary" href="/insumos/patrimonio">Ir para Máquinas e bens</a></div>
+            {% else %}
+            <div data-io-step="edit" class="io-list" style="gap:16px">
+                <div class="io-grid2">
+                    <label class="io-fld">Saiu de<select data-io-source>
+                        {% for item in dw['items'] if item.fuel %}<option value="{{ item.id }}">{{ item.name }} · tem {{ item.label }}</option>{% endfor %}
+                        <option value="posto">Posto da cidade (pago na hora)</option>
+                    </select></label>
+                    <label class="io-fld io-hidden" data-io-price-wrap>Preço do litro (R$)<input type="text" inputmode="decimal" data-io-price placeholder="Ex.: 6,10"></label>
+                    <label class="io-fld"><span>Quem abasteceu <em>(opcional)</em></span><input type="text" data-io-who maxlength="120" placeholder="Nome"></label>
+                </div>
+            </div>
+            <div data-io-step="edit" data-io-pane="one" class="io-list" style="gap:16px">
+                <label class="io-fld">Máquina<select data-f="asset_id"></select></label>
+                <div class="io-grid2">
+                    <label class="io-fld">Litros<input type="text" inputmode="decimal" data-f="liters" placeholder="0" autocomplete="off"></label>
+                    <label class="io-fld">Data<input type="date" data-f="date"></label>
+                </div>
+                <label class="io-fld"><span data-io-meter-label>Horímetro agora</span><input type="text" inputmode="decimal" data-f="meter" autocomplete="off"><small data-io-meter-hint></small></label>
+                <div class="io-impact" data-io-impact></div>
+            </div>
+            <div data-io-step="edit" data-io-pane="many" class="io-list io-hidden" style="gap:14px">
+                <p class="io-sub" style="margin:0">Passe a limpo a planilha do tanque. O consumo de cada máquina é calculado na hora.</p>
+                <div class="io-table-wrap"><div class="io-table">
+                    <div class="io-trow is-fuel is-head"><span>Data</span><span>Máquina</span><span>Litros</span><span>Horímetro</span><span>Consumo</span><span></span></div>
+                    <div data-io-rows class="io-list" style="gap:8px"></div>
+                </div></div>
+                <button type="button" class="io-btn is-sm" data-io-add style="align-self:flex-start">+ Adicionar linha</button>
+                <div class="io-summary" data-io-summary></div>
+            </div>
+            <div data-io-step="review" class="io-list io-hidden" style="gap:14px">
+                <strong style="font-size:18px">Confira antes de gravar</strong>
+                <div class="io-review" data-io-review></div>
+                <div class="io-summary" data-io-review-summary></div>
+            </div>
+            <p class="io-note io-tone-red io-hidden" role="alert" data-io-error></p>
+            {% endif %}
+        </div>
+        <div class="io-dw-foot">
+            <button type="button" class="io-btn is-ghost" data-io-step="edit" data-io-draft>Salvar rascunho</button>
+            <button type="button" class="io-btn io-hidden" data-io-step="review" data-io-back>Voltar e corrigir</button>
+            <div>
+                <button type="button" class="io-btn" data-io-close>Cancelar</button>
+                <button type="button" class="io-btn is-primary" data-io-step="edit" data-io-check {% if not dw.can_launch or not dw.machines %}disabled{% endif %}>Conferir</button>
+                <button type="submit" class="io-btn is-primary io-hidden" data-io-step="review" data-io-confirm>Confirmar abastecimento</button>
+            </div>
+        </div>
+    </form>
+</dialog>
+<script src="{{ url_for('static', path='js/inputs_hub.js') }}?v=20261121io1" defer></script>

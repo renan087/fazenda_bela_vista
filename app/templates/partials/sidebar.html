@@ -1,5 +1,6 @@
 {#- Menu lateral (desktop) + barra inferior e gavetas (celular). JS: static/js/sidebar.js · CSS: prefixo sf- em styles.css -#}
 {%- set mv = menu_visibility or {} -%}
+{%- set page = {'supplies': 'stock', 'asset_maintenance': 'assets'}.get(page, page) -%}
 {%- set sf_top = [
     {'id': 'inicio', 'label': 'Início', 'short': 'Início', 'raw': '/dashboard', 'plain': True, 'page': 'dashboard', 'icon': 'home', 'show': mv.get('dashboard', True)},
     {'id': 'ajuda', 'label': 'Central de ajuda', 'short': 'Ajuda', 'raw': '/ajuda', 'plain': True, 'page': 'help_center', 'icon': 'info', 'show': True},
@@ -32,11 +33,10 @@
         {'id': 'relatorio', 'label': 'Relatório da safra', 'soon': True, 'show': True},
     ]},
     {'id': 'insumos', 'label': 'Insumos e máquinas', 'short': 'Insumos', 'icon': 'box', 'items': [
-        {'id': 'compras', 'label': 'Compras', 'raw': '/insumos/comprados', 'page': 'purchased_inputs', 'show': mv.get('inputs')},
+        {'id': 'visao', 'label': 'Visão geral', 'raw': '/insumos', 'page': 'inputs_overview', 'show': mv.get('inputs')},
         {'id': 'estoque', 'label': 'Estoque', 'raw': '/insumos/estoque', 'page': 'stock', 'show': mv.get('inputs')},
-        {'id': 'suprimentos', 'label': 'Suprimentos', 'raw': '/insumos/suprimentos', 'page': 'supplies', 'show': mv.get('inputs')},
+        {'id': 'compras', 'label': 'Compras', 'raw': '/insumos/comprados', 'page': 'purchased_inputs', 'show': mv.get('inputs')},
         {'id': 'patrimonio', 'label': 'Máquinas e bens', 'raw': '/insumos/patrimonio', 'page': 'assets', 'show': mv.get('assets')},
-        {'id': 'manutencoes', 'label': 'Manutenções', 'raw': '/insumos/patrimonio/manutencoes', 'page': 'asset_maintenance', 'show': mv.get('assets')},
     ]},
     {'id': 'financeiro', 'label': 'Financeiro', 'short': 'Financeiro', 'icon': 'coin', 'items': [
         {'id': 'extrato', 'label': 'Extrato', 'raw': '/gestao-financeira', 'page': 'finance_management', 'show': mv.get('finance')},

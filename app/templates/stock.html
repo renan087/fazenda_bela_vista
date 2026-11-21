@@ -2,143 +2,113 @@
 {% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline %}
 {% block content %}
 <div class="stock-page-shell sf-page">
-    <section class="stock-page-header">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-                <div class="stock-page-header-intro-inner">
-                    <h2 class="stock-page-card-title">Estoque de Insumos</h2>
-                    <p class="stock-page-card-subtitle">Controle total dos insumos comprados, suas saídas e o extrato consolidado.</p>
-                </div>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io1">
+    {%- set io_items = hub['items'] -%}
+    {%- set io_sel = selected_stock_item if selected_stock_item in io_items|map(attribute='id')|list else (io_items[0].id if io_items else None) -%}
+    <div class="io-page" data-io-filter-root>
+        <header class="io-head">
+            <div>
+                <a class="io-crumb" href="/insumos">Insumos e máquinas ›</a>
+                <h1 class="io-title">Estoque</h1>
+                <p class="io-sub">Insumos, combustível e suprimentos no mesmo lugar</p>
             </div>
-            <div class="stock-header-actions stock-header-actions-top">
-                <details class="stock-action-menu">
-                    <summary class="stock-action-button stock-action-menu-trigger stock-export-button">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M8 13h8"/><path d="M8 17h6"/></svg>
-                        <span class="stock-action-button-label">Exportar</span>
-                        <svg class="stock-action-menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                    </summary>
-                    <div class="stock-action-menu-panel" role="menu">
-                                <a href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-action-menu-item stock-export-button-pdf" role="menuitem"><span>Exportar PDF</span><span class="stock-action-menu-hint">Relatório</span></a>
-                                <a href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-action-menu-item stock-export-button-xlsx" role="menuitem"><span>Exportar Excel</span><span class="stock-action-menu-hint">Planilha</span></a>
+            <div class="io-actions">
+                <details class="io-menu">
+                    <summary class="io-btn">Mais opções</summary>
+                    <div class="io-menu-panel" role="menu">
+                        <button type="button" role="menuitem" data-stock-adjustment-open>Ajustar saldo</button>
+                        <a role="menuitem" href="/insumos/suprimentos">Lançar suprimento ou EPI</a>
+                        <a role="menuitem" href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}">Exportar em PDF</a>
+                        <a role="menuitem" href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}">Exportar em planilha</a>
                     </div>
                 </details>
-                <details class="stock-action-menu">
-                    <summary class="stock-action-button stock-action-menu-trigger stock-stock-management-button">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16"/><path d="M7 3v8"/><path d="M17 3v8"/><path d="M6 11h12v10H6z"/><path d="M9 15h6"/></svg>
-                        <span class="stock-action-button-label">Gerenciar estoque</span>
-                        <svg class="stock-action-menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                    </summary>
-                    <div class="stock-action-menu-panel" role="menu">
-                        <button type="button" class="stock-action-menu-item text-sky-800" role="menuitem" data-stock-inventory-open><span>Fazer inventário</span><span class="stock-action-menu-hint">Conferir saldo</span></button>
-                        <button type="button" class="stock-action-menu-item text-amber-800" role="menuitem" data-stock-adjustment-open><span>Ajustar estoque</span><span class="stock-action-menu-hint">Corrigir saldo</span></button>
-                    </div>
-                </details>
-                <button type="button" class="stock-action-button stock-action-button-primary" data-stock-launch-open>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M12 5v14"/>
-                        <path d="M5 12h14"/>
-                    </svg>
-                    <span class="stock-action-button-label">Registrar consumo</span>
-                </button>
+                <button type="button" class="io-btn" data-stock-inventory-open>Contar estoque</button>
+                <button type="button" class="io-btn" data-io-open="use">Registrar uso</button>
+                <a class="io-btn is-primary" href="/insumos/comprados">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    Lançar compra</a>
             </div>
-        </div>
-    </section>
+        </header>
 
-    <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-summary-panel data-stock-fade-panel>
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Visão consolidada</p>
-                <h3 class="mt-2 text-xl font-semibold">Saldo atual por insumo</h3>
-                <p class="mt-2 max-w-3xl text-sm text-slate-500">Acompanhe rapidamente os insumos com saldo confortável, atenção preventiva e nível crítico sem sair da visão principal.</p>
+        {% if io_items %}
+        <div class="io-toolbar">
+            <div class="io-chips" role="group" aria-label="Filtrar por tipo">
+                {% for c in hub.chips %}
+                <button type="button" class="io-chip{% if loop.first %} is-on{% endif %}" data-io-chip="{{ c.key }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ c.label }} <span>{{ c.count }}</span></button>
+                {% endfor %}
             </div>
-            <button type="button" class="stock-summary-toggle" data-stock-summary-toggle aria-expanded="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <path d="M5 12h14"/>
-                    <path d="M12 5v14" data-stock-summary-toggle-plus></path>
-                </svg>
-                <span data-stock-summary-toggle-label>Recolher</span>
-            </button>
+            <label class="io-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                <span class="sr-only">Buscar item</span>
+                <input type="search" placeholder="Buscar item, lote ou categoria" data-io-search>
+            </label>
         </div>
-        <div class="stock-summary-collapse is-expanded" data-stock-summary-collapse>
-        <div class="stock-summary-collapse-inner">
-        <div class="finance-card-paged-shell" data-stock-catalog-paged-shell>
-        {% if stock_catalog_rows|length > 4 %}
-        <button type="button" class="finance-card-page-nav finance-card-page-nav-prev" data-stock-catalog-page-nav="prev" aria-label="Página anterior da visão consolidada">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="m15 18-6-6 6-6"/>
-            </svg>
-        </button>
-        {% endif %}
-        <div class="stock-catalog-carousel-viewport min-w-0 w-full" data-stock-catalog-viewport>
-        <div class="stock-summary-grid mt-6" data-stock-catalog-grid>
-            {% for item in stock_catalog_rows %}
-            {% set has_threshold = item.low_stock_threshold and item.low_stock_threshold > 0 %}
-            {% set is_critical = has_threshold and item.available_quantity <= (item.low_stock_threshold * 0.4) %}
-            {% set is_low = has_threshold and item.available_quantity <= item.low_stock_threshold %}
-            {% if not has_threshold %}
-                {% set level_width = 100 %}
-            {% elif item.available_quantity >= item.low_stock_threshold %}
-                {% set level_width = 100 %}
-            {% elif item.available_quantity <= 0 %}
-                {% set level_width = 6 %}
-            {% else %}
-                {% set level_width = (item.available_quantity / item.low_stock_threshold * 100) %}
-            {% endif %}
-            <div class="stock-summary-card" data-stock-catalog-card data-stock-level="{% if is_critical %}critical{% elif is_low %}low{% else %}ok{% endif %}">
-                <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0">
-                        <p class="truncate text-lg font-semibold text-slate-900">{{ item.name }}</p>
-                        <p class="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">{{ 'Combustivel' if item.item_type == 'combustivel' else 'Insumo agricola' }}</p>
-                    </div>
-                    {% if is_critical %}
-                    <span class="stock-level-badge stock-level-badge-critical">Crítico</span>
-                    {% elif is_low %}
-                    <span class="stock-level-badge stock-level-badge-low">Baixo</span>
-                    {% else %}
-                    <span class="stock-level-badge stock-level-badge-ok">OK</span>
-                    {% endif %}
-                </div>
-                <div class="mt-5">
-                    <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Saldo disponível</p>
-                    <p class="mt-2 text-2xl font-semibold text-slate-900">{{ item.available_quantity }} <span class="text-base font-medium text-slate-500">{{ item.unit }}</span></p>
-                    <div class="stock-level-meter mt-4">
-                        <span style="width: {{ level_width if level_width <= 100 else 100 }}%"></span>
-                    </div>
-                </div>
-                <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
-                    <p>Total recebido <strong>{{ item.total_quantity }} {{ item.unit }}</strong></p>
-                    <p>Custo médio <strong>R$ {{ item.average_cost }}</strong></p>
-                    <p>Lotes <strong>{{ item.entries_count }}</strong></p>
-                    <p>Saídas <strong>{{ item.outputs_count }}</strong></p>
-                </div>
-                <div class="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
-                    <span class="rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200/80">
-                        Min.: {% if item.low_stock_threshold %}{{ item.low_stock_threshold }} {{ item.unit }}{% else %}não configurado{% endif %}
+
+        <div class="io-split">
+            <section class="io-card io-stock io-main" aria-label="Saldo por item">
+                <div class="io-row io-row-head" aria-hidden="true"><span>Item</span><span class="io-hm">Nível</span><span class="io-hm">Dura cerca de</span><span style="text-align:right">Saldo</span></div>
+                {% for i in io_items %}
+                <button type="button" class="io-row{% if i.id == io_sel %} is-on{% endif %}" data-io-fitem data-group="{{ i.group }}" data-search="{{ i.search }}" data-io-stock-row="{{ i.id }}" aria-pressed="{{ 'true' if i.id == io_sel else 'false' }}">
+                    <span class="io-row-name">
+                        <strong>{{ i.name }}</strong>
+                        <span class="io-row-meta">{{ i.category }}
+                            {% if i.status == 'out' %}<span class="io-pill io-tone-red">Acabou</span>
+                            {% elif i.status == 'low' %}<span class="io-pill io-tone-amber">Abaixo do mínimo</span>
+                            {% elif i.status == 'short' %}<span class="io-pill io-tone-amber">Comprar logo</span>{% endif %}
+                            {% if i.expiring_count %}<span class="io-pill io-tone-amber">Lote vencendo</span>{% endif %}
+                        </span>
                     </span>
-                    {% if item.last_movement_date %}
-                    <span class="rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200/80">Última mov.: {{ item.last_movement_date }}</span>
+                    <span class="io-row-level io-hm">
+                        <span class="io-bar {{ 'is-red' if i.status == 'out' else ('is-amber' if i.status in ['low', 'short'] else '') }}"><span style="width: {{ i.level_pct }}%"></span></span>
+                        <span>{% if i.minimum_label %}mínimo {{ i.minimum_label }}{% else %}sem mínimo definido{% endif %}</span>
+                    </span>
+                    <span class="io-row-days io-hm {{ 'io-txt-amber' if i.days_left is not none and i.days_left <= 10 else '' }}">{{ i.days_label }}</span>
+                    <span class="io-row-qty">{{ i.available_label }}</span>
+                </button>
+                {% endfor %}
+                <div class="io-empty io-hidden" data-io-fempty><strong>Nenhum item encontrado</strong><span>Tente outro nome ou limpe o filtro.</span></div>
+            </section>
+
+            <aside class="io-side" aria-label="Detalhes do item">
+                {% for i in io_items %}
+                <section class="io-card io-panel{% if i.id != io_sel %} io-hidden{% endif %}" data-io-stock-panel="{{ i.id }}" aria-label="{{ i.name }}">
+                    <div><span style="font-size:12px;color:#7A857E;font-weight:600">{{ i.group_label }} · {{ i.category }}</span><h2 class="io-h2" style="font-size:22px;font-weight:800">{{ i.name }}</h2></div>
+                    <div class="io-panel-stats">
+                        <div class="io-stat"><span>Saldo</span><strong>{{ i.available_label }}</strong></div>
+                        <div class="io-stat"><span>Valor parado</span><strong>{{ i.value_label }}</strong></div>
+                    </div>
+                    <p class="io-sub" style="margin:0">{% if i.days_left is not none %}No ritmo dos últimos 30 dias, dura cerca de <strong style="color:#16201A">{{ i.days_left }} dias</strong>.{% else %}Sem uso nos últimos 30 dias.{% endif %}{% if i.minimum_label %} Mínimo: {{ i.minimum_label }}.{% endif %}</p>
+                    {% if i.lots %}
+                    <div class="io-list" style="gap:8px">
+                        <strong style="font-size:14px">{{ 'Lotes · use de cima para baixo' if i.lots|length > 1 else 'Lote' }}</strong>
+                        {% for l in i.lots %}
+                        <div class="io-lot"><span><strong>{{ l.label }}</strong> <span class="io-txt-muted">· {{ l.qty }}</span></span><span class="io-txt-{{ 'red' if l.tone == 'red' else ('amber' if l.tone == 'amber' else 'muted') }}" style="font-weight:600">{% if l.expires %}{{ 'venceu' if l.days_to_expire < 0 else 'vence' }} {{ l.expires }}{% else %}sem validade{% endif %}</span></div>
+                        {% endfor %}
+                    </div>
                     {% endif %}
-                </div>
-            </div>
-            {% else %}
-            <p class="text-sm text-slate-500 md:col-span-2">Nenhum insumo encontrado para os filtros informados.</p>
-            {% endfor %}
+                    {% if i.moves %}
+                    <div>
+                        <strong style="font-size:14px;display:block;margin-bottom:4px">Últimos movimentos</strong>
+                        {% for m in i.moves %}<div class="io-move"><span><small>{{ m.date }}</small>{{ m.label }}</span><strong class="io-txt-{{ m.tone }}">{{ m.qty }}</strong></div>{% endfor %}
+                    </div>
+                    {% endif %}
+                    <div class="io-grid2">
+                        {% if i.available > 0 %}<button type="button" class="io-btn is-primary" data-io-open="use" data-io-item="{{ i.id }}">Registrar uso</button>{% endif %}
+                        <a class="io-btn" href="{{ '/insumos/suprimentos' if i.item_type == 'suprimento' else '/insumos/comprados' }}">Comprar mais</a>
+                    </div>
+                </section>
+                {% endfor %}
+            </aside>
         </div>
-        </div>
-        {% if stock_catalog_rows|length > 4 %}
-        <button type="button" class="finance-card-page-nav finance-card-page-nav-next" data-stock-catalog-page-nav="next" aria-label="Próxima página da visão consolidada">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="m9 6 6 6-6 6"/>
-            </svg>
-        </button>
+        {% else %}
+        <section class="io-card io-empty" style="padding:40px 16px">
+            <strong>O estoque ainda está vazio</strong>
+            <span>Lance a primeira compra de insumo, combustível ou suprimento. O saldo aparece aqui na hora.</span>
+            <div class="io-actions" style="justify-content:center"><a class="io-btn is-primary" href="/insumos/comprados">Lançar compra</a><a class="io-btn" href="/insumos/suprimentos">Lançar suprimento</a></div>
+        </section>
         {% endif %}
-        </div>
-        {% if stock_catalog_rows|length > 4 %}
-        <div class="mt-5" data-stock-catalog-dots></div>
-        {% endif %}
-        </div>
-        </div>
-    </article>
+        <h2 class="io-h2" style="margin-top:8px">Movimentações</h2>
+    </div>
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div class="stock-filter-bar mt-6 {% if stock_filters_active %}is-mobile-collapsed{% endif %}">
@@ -310,10 +280,10 @@
                                     <span class="stock-movement-chip stock-movement-chip-output">{% if output.reference_type == 'stock_adjustment_output' %}Ajuste -{% else %}Saída{% endif %}</span>
                                 </td>
                                 <td class="px-4 py-3 whitespace-nowrap">
-                                    <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else '-' }}" data-history-view-source="stock-output-table-view-{{ output.id }}"{% if output.reference_type != 'stock_adjustment_output' %} data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar"{% endif %}>{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else "-" }}</button>
+                                    <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else '-' }}" data-history-view-source="stock-output-table-view-{{ output.id }}"{% if output.reference_type not in ['stock_adjustment_output', 'equipment_fueling'] %} data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar"{% endif %}>{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else "-" }}</button>
                                 </td>
                                 <td class="px-4 py-3 font-semibold text-slate-900">
-                                    <button type="button" class="text-left font-semibold transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else '-' }}" data-history-view-source="stock-output-table-view-{{ output.id }}"{% if output.reference_type != 'stock_adjustment_output' %} data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar"{% endif %}>{{ output.input_catalog.name if output.input_catalog else "-" }}</button>
+                                    <button type="button" class="text-left font-semibold transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else '-' }}" data-history-view-source="stock-output-table-view-{{ output.id }}"{% if output.reference_type not in ['stock_adjustment_output', 'equipment_fueling'] %} data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar"{% endif %}>{{ output.input_catalog.name if output.input_catalog else "-" }}</button>
                                     <template id="stock-output-table-view-{{ output.id }}">
                                         <div class="grid gap-3 sm:grid-cols-2">
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else "-" }}</p></div>
@@ -335,13 +305,13 @@
                                 <td class="px-4 py-3 text-slate-500"><span class="stock-history-note-clamp" title="{{ output.notes or '-' }}">{{ output.notes or "-" }}</span></td>
                                 <td class="px-4 py-3">
                                     <div class="flex items-center justify-end gap-2">
-                                        {% if output.reference_type != 'stock_adjustment_output' %}<a href="/insumos/estoque/saidas/{{ output.id }}/editar" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                        {% if output.reference_type not in ['stock_adjustment_output', 'equipment_fueling'] %}<a href="/insumos/estoque/saidas/{{ output.id }}/editar" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                 <path d="M12 20h9"/>
                                                 <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
                                             </svg>
                                         </a>{% endif %}
-                                        {% if output.reference_type != 'stock_adjustment_output' %}<form method="post" action="/insumos/estoque/saidas/{{ output.id }}/excluir" onsubmit="return confirm('Confirma a exclusão deste lançamento de saída?');">
+                                        {% if output.reference_type not in ['stock_adjustment_output', 'equipment_fueling'] %}<form method="post" action="/insumos/estoque/saidas/{{ output.id }}/excluir" onsubmit="return confirm('Confirma a exclusão deste lançamento de saída?');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                             <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="{% if output.reference_type == 'manual_stock_output' %}Excluir{% else %}Exclusão bloqueada{% endif %}">
                                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1422,4 +1392,5 @@
 
         })();
     </script>
+{% include "partials/io_drawers.html" %}
 {% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io1">
+{% set card = sheet.card %}
+<div class="sf-page io-page" data-io-sheet>
+    <header class="io-head">
+        <div>
+            <a class="io-crumb" href="/insumos/patrimonio">Insumos e máquinas › Máquinas e bens ›</a>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <h1 class="io-title">{{ asset.name }}</h1>
+                <span class="io-pill io-tone-{{ {'ok': 'green', 'man': 'amber', 'obra': 'blue', 'par': 'muted'}[card.status_key] }}">{{ card.status_label }}</span>
+            </div>
+            <p class="io-sub">{{ card.subtitle }}{% if asset.asset_code %} · código {{ asset.asset_code }}{% endif %}{% if card.meter %} · {{ 'hodômetro' if card.meter_unit == 'km' else 'horímetro' }} <strong style="color:#16201A">{{ card.meter_label }}</strong>{% endif %}</p>
+        </div>
+        <div class="io-actions">
+            <a class="io-btn" href="/insumos/patrimonio?edit_id={{ asset.id }}" aria-label="Editar cadastro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></a>
+            {% if card.is_machine %}<button type="button" class="io-btn" data-io-open="fuel" data-io-machine="{{ asset.id }}">Abastecer</button>{% endif %}
+            <a class="io-btn is-primary" href="/insumos/patrimonio/manutencoes?asset_id={{ asset.id }}&amp;novo=1">Registrar manutenção</a>
+        </div>
+    </header>
+
+    {% if card.next and card.next.overdue %}
+    <div class="io-banner" role="status">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.01"/></svg>
+        <div><strong>{{ card.next.description }}: {{ card.next.when }}</strong><span>Plano {{ card.next.rule }}. Registre quando fizer para o próximo aviso ser calculado.</span></div>
+        <a class="io-btn is-primary" href="/insumos/patrimonio/manutencoes?asset_id={{ asset.id }}&amp;novo=1">Registrar como feita</a>
+    </div>
+    {% endif %}
+
+    <div class="io-kpi-row">
+        {% for k in sheet.kpis %}
+        <div class="io-card io-kpi"><span>{{ k.label }}</span><strong>{{ k.value }}</strong><small>{{ k.hint }}</small></div>
+        {% endfor %}
+    </div>
+
+    <div class="io-split">
+        <section class="io-card io-card-pad io-main" aria-labelledby="io-hist-title" data-io-filter-scope>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+                <h2 class="io-h2" id="io-hist-title">Histórico</h2>
+                <div class="io-segmented" role="group" aria-label="Filtrar histórico">
+                    <button type="button" class="io-tab is-on" data-io-filter="all" aria-pressed="true">Tudo</button>
+                    <button type="button" class="io-tab" data-io-filter="maint" aria-pressed="false">Manutenções</button>
+                    <button type="button" class="io-tab" data-io-filter="fuel" aria-pressed="false">Abastecimentos</button>
+                </div>
+            </div>
+            {% for t in sheet.timeline %}
+            <div class="io-tl" data-io-kind="{{ t.kind }}">
+                {% if t.kind == 'fuel' %}
+                <span class="io-tl-tag io-tone-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16"/><path d="M3 21h13M7 8h5"/></svg></span>
+                {% else %}
+                <span class="io-tl-tag io-tone-muted"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg></span>
+                {% endif %}
+                <div class="io-tl-body"><strong>{{ t.title }}</strong><span>{{ t.detail }}</span></div>
+                <div class="io-tl-val"><strong>{{ t.value }}</strong><small>{{ t.date.strftime('%d/%m/%Y') if t.date else '' }}</small></div>
+            </div>
+            {% else %}
+            <div class="io-empty"><strong>Sem histórico ainda</strong><span>Abastecimentos e manutenções desta máquina aparecem aqui.</span></div>
+            {% endfor %}
+        </section>
+
+        <div class="io-side">
+            <section class="io-card io-card-pad io-list" style="gap:12px" aria-labelledby="io-plans-title">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                    <h2 class="io-h3" id="io-plans-title">Planos preventivos</h2>
+                    <a class="io-btn is-sm" href="/insumos/patrimonio/manutencoes?asset_id={{ asset.id }}">+ Plano</a>
+                </div>
+                {% for p in card.plans %}
+                <div class="io-plan">
+                    <div><strong>{{ p.description }}</strong><span class="io-txt-{{ 'red' if p.tone == 'red' else ('amber' if p.tone == 'amber' else 'green') }}" style="font-size:12px;font-weight:700">{{ p.when }}</span></div>
+                    <small>{{ p.rule|capitalize }}</small>
+                    <span class="io-bar is-thin {{ 'is-red' if p.tone == 'red' else ('is-amber' if p.tone == 'amber' else '') }}"><span style="width: {{ p.pct }}%"></span></span>
+                </div>
+                {% else %}
+                <p class="io-sub" style="margin:0">Sem plano ainda. Crie um para ser avisado da revisão por dias ou por horas trabalhadas.</p>
+                {% endfor %}
+            </section>
+
+            <section class="io-card io-card-pad" aria-labelledby="io-cost-title">
+                <h2 class="io-h3" id="io-cost-title" style="margin-bottom:8px">Custo {{ 'na safra' if sheet.since else 'total' }}</h2>
+                {% for c in sheet.costs %}<div class="io-kv"><span>{{ c.label }}</span><strong>{{ c.value }}</strong></div>{% endfor %}
+                <div class="io-kv" style="font-size:15px"><span style="color:#16201A;font-weight:700">Total</span><strong>{{ card.season_cost_label }}</strong></div>
+            </section>
+
+            <section class="io-card io-card-pad" aria-labelledby="io-doc-title">
+                <h2 class="io-h3" id="io-doc-title" style="margin-bottom:8px">Cadastro e documentos</h2>
+                {% if asset.brand_model or asset.manufacturer %}<div class="io-kv"><span>Modelo</span><strong>{{ [asset.manufacturer, asset.brand_model]|select|join(' · ') }}</strong></div>{% endif %}
+                {% if asset.acquisition_date or asset.acquisition_value %}<div class="io-kv"><span>Comprado em</span><strong>{{ asset.acquisition_date.strftime('%m/%Y') if asset.acquisition_date else '' }}{% if asset.acquisition_value %} · {{ asset.acquisition_value|money_br }}{% endif %}</strong></div>{% endif %}
+                {% if asset.installment_count and asset.installment_count > 1 %}<div class="io-kv"><span>Pagamento</span><strong>{{ asset.installment_count }} parcelas</strong></div>{% endif %}
+                {% if asset.farm %}<div class="io-kv"><span>Fazenda</span><strong>{{ asset.farm.name }}</strong></div>{% endif %}
+                <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:10px">
+                    {% for a in asset.attachments %}<a class="io-pill io-tone-muted" style="border:1px solid #E3E8E2;text-decoration:none" href="/insumos/patrimonio/anexos/{{ a.id }}">{{ a.filename }}</a>{% endfor %}
+                    <a class="io-pill" style="background:#fff;color:#446A36;border:1px dashed #9BCB6B;text-decoration:none" href="/insumos/patrimonio?edit_id={{ asset.id }}">+ Anexar</a>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+{% include "partials/io_drawers.html" %}
+{% endblock %}

@@ -330,6 +330,15 @@
         financeModal.close();
     });
     {% if edit_maintenance %}open();{% endif %}
+    // Vindo da ficha da máquina: já escolhe a máquina e, com novo=1, abre o registro.
+    const params = new URLSearchParams(window.location.search);
+    const presetAsset = params.get('asset_id');
+    if (presetAsset) {
+        document.querySelectorAll('select[name="asset_id"]').forEach((select) => {
+            if ([...select.options].some((o) => o.value === presetAsset)) select.value = presetAsset;
+        });
+    }
+    {% if not edit_maintenance %}if (params.get('novo') === '1') open();{% endif %}
 })();
 </script>
 <script>

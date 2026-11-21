@@ -2842,7 +2842,8 @@ def _build_stock_context(
             "last_movement_date": (
                 max(
                     [entry.purchase_date for entry in related_entries if entry.purchase_date]
-                    + [output.movement_date for output in related_outputs if output.movement_date]
+                    + [output.movement_date for output in related_outputs if output.movement_date],
+                    default=None,
                 )
                 if related_entries or related_outputs
                 else None
@@ -14322,6 +14323,8 @@ def stock_page(
     inventory_items = [
         item for item in stock_context["stock_catalog_rows"] if item["id"] in active_stock_input_ids
     ]
+    hub = _inputs_hub_data(repo, db, scope)
+    selected_stock_item = _int_or_none(request.query_params.get("item"))
     return templates.TemplateResponse(
         "stock.html",
         _base_context(
@@ -14330,6 +14333,8 @@ def stock_page(
             csrf_token,
             "stock",
             _repo=repo,
+            hub=hub,
+            selected_stock_item=selected_stock_item,
             title="Estoque de Insumos",
             farms=scope["context_farms"],
             plots=repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
@@ -15525,6 +15530,7 @@ def equipment_assets_page(
         lambda item: item.id,
     )
     assets_pagination = _paginate_collection(request, assets, "assets_page", per_page=5)
+    hub = _inputs_hub_data(repo, db, scope)
     return templates.TemplateResponse(
         "equipment_assets.html",
         _base_context(
@@ -15533,7 +15539,9 @@ def equipment_assets_page(
             csrf_token,
             "assets",
             _repo=repo,
-            title="Patrimonio e Equipamentos",
+            hub=hub,
+            assets_by_id={a.id: a for a in repo.list_equipment_assets(farm_ids=context_farm_ids)},
+            title="Máquinas e bens",
             farms=scope["context_farms"],
             selected_farm_id=effective_farm_id,
             selected_asset_status=selected_status or "",
@@ -25730,3 +25738,210 @@ def automated_tests_run(
         label = f"implemento «{normalized_suite}»" if normalized_suite else "todos os implementos"
         _flash(request, "success", f"Execução iniciada ({label}). O painel atualiza automaticamente.")
     return _redirect("/qualidade/testes-automatizados")
+
+
+# ---------------------------------------------------------------------------
+# Insumos e máquinas — visão geral, uso, abastecimento e ficha da máquina
+# ---------------------------------------------------------------------------
+from app.services import inputs_hub as _ih  # noqa: E402
+
+
+def _inputs_return_to(value: str | None, default: str = "/insumos") -> str:
+    target = (value or "").strip()
+    if target.startswith("/insumos") and "//" not in target and "\\" not in target:
+        return target
+    return default
+
+
+def _inputs_hub_data(repo: FarmRepository, db: Session, scope: dict) -> dict:
+    farm_id = scope.get("active_farm_id")
+    farm_ids = [farm.id for farm in scope.get("context_farms", [])]
+    today = today_in_app_timezone()
+    overview = _ih.build_overview(repo, db, farm_id=farm_id, farm_ids=farm_ids, season=scope.get("active_season"), today=today)
+    plots = _season_launch_plots(repo.list_plots(farm_ids=[farm_id]), scope) if farm_id else []
+    drawer = {
+        "items": [
+            {"id": i["id"], "name": i["name"], "unit": i["unit"], "available": i["available"], "label": i["available_label"],
+             "min": i["minimum"], "group": i["group"], "fuel": i["item_type"] == "combustivel"}
+            for i in sorted(overview["items"], key=lambda r: r["name"].lower())
+            if i["available"] > 0
+        ],
+        "plots": [{"id": p.id, "name": p.name} for p in sorted(plots, key=lambda p: p.name.lower())],
+        "machines": [
+            {"id": c["id"], "name": c["name"], "meter": c["meter"], "unit": c["meter_unit"],
+             "next": ({"description": c["next"]["description"], "when": c["next"]["when"], "overdue": c["next"]["overdue"]} if c["next"] else None)}
+            for c in overview["machines"] if c["is_machine"] and c["status_key"] != "par"
+        ],
+        "today": today.isoformat(),
+        "can_launch": bool(scope.get("active_farm_id") and scope.get("active_season_id")),
+    }
+    return {**overview, "drawer": drawer, "today": today, "chips": _ih.group_counts(overview["items"])}
+
+
+@router.get("/insumos")
+def inputs_overview_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    hub = _inputs_hub_data(repo, db, scope)
+    return templates.TemplateResponse(
+        "inputs_overview.html",
+        _base_context(request, user, csrf_token, "inputs_overview", _repo=repo, title="Insumos e máquinas", hub=hub),
+    )
+
+
+def _parse_lines(raw: str) -> list[dict]:
+    try:
+        lines = json.loads(raw or "[]")
+    except ValueError:
+        raise ValueError("Não entendi os lançamentos enviados. Recarregue a página e tente de novo.")
+    if not isinstance(lines, list) or not all(isinstance(line, dict) for line in lines):
+        raise ValueError("Não entendi os lançamentos enviados. Recarregue a página e tente de novo.")
+    if len(lines) > 60:
+        raise ValueError("Envie no máximo 60 linhas de cada vez.")
+    return lines
+
+
+@router.post("/insumos/uso")
+def register_inputs_use_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    lines: str = Form(...),
+    return_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    target = _inputs_return_to(return_to)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, target)
+    if denied:
+        return denied
+    try:
+        parsed = _parse_lines(lines)
+        plots = {p.id: p for p in _season_launch_plots(repo.list_plots(farm_ids=[scope["active_farm_id"]]), scope)}
+        outputs = _ih.register_uses(repo, parsed, farm_id=scope["active_farm_id"], season_id=scope["active_season_id"], plots=plots)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(target)
+    count = len(outputs)
+    _flash(request, "success", f"{count} uso{'s' if count > 1 else ''} registrado{'s' if count > 1 else ''}. O estoque e o custo dos setores já foram atualizados.")
+    return _redirect(target)
+
+
+@router.post("/insumos/patrimonio/abastecimentos")
+def register_fuelings_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    lines: str = Form(...),
+    return_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    target = _inputs_return_to(return_to, "/insumos/patrimonio")
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, target)
+    if denied:
+        return denied
+    assets = {a.id: a for a in repo.list_equipment_assets(farm_id=scope["active_farm_id"]) if _ih.is_machine(a)}
+    try:
+        created = _ih.register_fuelings(
+            repo, db, _parse_lines(lines), assets=assets, farm_id=scope["active_farm_id"],
+            season_id=scope["active_season_id"], user_id=getattr(user, "id", None),
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(target)
+    count = len(created)
+    liters = sum(float(f.liters or 0) for f in created)
+    _flash(request, "success", f"{count} abastecimento{'s' if count > 1 else ''} registrado{'s' if count > 1 else ''} ({_ih.br_qty(liters, 'L')}). Horímetro e estoque atualizados.")
+    return _redirect(target)
+
+
+def _asset_sheet(db: Session, repo: FarmRepository, asset, scope: dict, today: date) -> dict:
+    season = scope.get("active_season")
+    since = getattr(season, "start_date", None)
+    maintenances = [m for m in repo.list_equipment_maintenances() if m.asset_id == asset.id]
+    plans = [p for p in repo.list_equipment_maintenance_plans() if p.asset_id == asset.id]
+    card = _ih.build_machines(db, [asset], maintenances, plans, today, since)[0]
+    fuelings = _ih.list_fuelings(db, [asset.id])
+    ordered = sorted(fuelings, key=lambda f: (f.fueling_date, f.id))
+    rates = {}
+    for previous, current in zip(ordered, ordered[1:]):
+        rates[current.id] = _ih.fueling_rate(current, previous)
+    timeline = []
+    for fueling in fuelings:
+        rate = rates.get(fueling.id)
+        parts = []
+        if fueling.meter_reading is not None:
+            parts.append(f"{'Hodômetro' if fueling.meter_unit == 'km' else 'Horímetro'} {_ih.br_number(fueling.meter_reading)} {fueling.meter_unit}")
+        if rate:
+            parts.append(rate["label"])
+        parts.append("do posto" if fueling.source == "posto" else "do tanque da fazenda")
+        if fueling.responsible_name:
+            parts.append(f"por {fueling.responsible_name}")
+        timeline.append({"kind": "fuel", "date": fueling.fueling_date, "title": f"Abasteceu {_ih.br_qty(fueling.liters, 'L')}",
+                         "detail": " · ".join(parts), "value": _ih.br_money(fueling.total_cost) if fueling.total_cost else "—"})
+    type_labels = {"preventiva": "Preventiva", "corretiva": "Corretiva", "inspecao": "Inspeção"}
+    status_labels = {"agendada": "agendada", "em_andamento": "em andamento", "concluida": "", "cancelada": "cancelada"}
+    for maintenance in maintenances:
+        parts = [type_labels.get(maintenance.maintenance_type, "Manutenção")]
+        if status_labels.get(maintenance.status):
+            parts.append(status_labels[maintenance.status])
+        if maintenance.supplier_name:
+            parts.append(maintenance.supplier_name)
+        if maintenance.meter_reading_hours is not None:
+            parts.append(f"{_ih.br_number(maintenance.meter_reading_hours)} {card['meter_unit']}")
+        cost = float(maintenance.service_cost or 0) + float(maintenance.parts_cost or 0)
+        timeline.append({"kind": "maint", "date": maintenance.maintenance_date, "title": maintenance.description,
+                         "detail": " · ".join(parts), "value": _ih.br_money(cost) if cost else "—", "id": maintenance.id})
+    timeline.sort(key=lambda t: t["date"] or date.min, reverse=True)
+    in_season = [f for f in fuelings if since is None or f.fueling_date >= since]
+    readings = [float(f.meter_reading) for f in in_season if f.meter_reading is not None]
+    readings += [float(m.meter_reading_hours) for m in maintenances if m.meter_reading_hours is not None and (since is None or m.maintenance_date >= since)]
+    worked = (max(readings) - min(readings)) if len(readings) > 1 else 0
+    fuel_rates = [r["value"] for fid, r in rates.items() if r and any(f.id == fid for f in in_season)]
+    parts_cost = sum(float(m.parts_cost or 0) for m in maintenances if m.status != "cancelada" and (since is None or m.maintenance_date >= since))
+    service_cost = sum(float(m.service_cost or 0) for m in maintenances if m.status != "cancelada" and (since is None or m.maintenance_date >= since))
+    unit = card["meter_unit"]
+    kpis = [
+        {"label": f"Custo por {'km' if unit == 'km' else 'hora'}", "value": _ih.br_money(card["season_cost"] / worked) if worked else "—", "hint": "combustível + peças + serviço"},
+        {"label": "Horas na safra" if unit == "h" else "Km na safra", "value": f"{_ih.br_number(worked)} {unit}" if worked else "—", "hint": f"desde {since.strftime('%d/%m/%Y')}" if since else "todo o histórico"},
+        {"label": "Consumo médio", "value": (_ih.br_number(sum(fuel_rates) / len(fuel_rates), 1) + (" km/L" if unit == "km" else " L/h")) if fuel_rates else "—", "hint": "entre abastecimentos com horímetro"},
+        {"label": "Combustível na safra", "value": _ih.br_qty(card["fuel_liters"], "L"), "hint": _ih.br_money(card["fuel_cost"])},
+    ]
+    costs = [
+        {"label": f"Combustível · {_ih.br_qty(card['fuel_liters'], 'L')}", "value": _ih.br_money(card["fuel_cost"])},
+        {"label": "Peças", "value": _ih.br_money(parts_cost)},
+        {"label": "Serviço de oficina", "value": _ih.br_money(service_cost)},
+    ]
+    return {"card": card, "timeline": timeline, "kpis": kpis, "costs": costs, "since": since}
+
+
+@router.get("/insumos/patrimonio/{asset_id}/ficha")
+def equipment_asset_sheet_page(
+    asset_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    asset = repo.get_equipment_asset(asset_id)
+    allowed = {farm.id for farm in scope.get("context_farms", [])}
+    if not asset or asset.farm_id not in allowed:
+        _flash(request, "error", "Máquina ou bem não encontrado.")
+        return _redirect("/insumos/patrimonio")
+    hub = _inputs_hub_data(repo, db, scope)
+    sheet = _asset_sheet(db, repo, asset, scope, hub["today"])
+    return templates.TemplateResponse(
+        "equipment_sheet.html",
+        _base_context(request, user, csrf_token, "assets", _repo=repo, title=asset.name, asset=asset, sheet=sheet, hub=hub),
+    )
