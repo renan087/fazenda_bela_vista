@@ -1,138 +1,265 @@
-{% macro findings(title, items) %}
-{% if items %}
-<section class="min-w-0 rounded-2xl border border-slate-200 bg-white p-4">
-    <h4 class="font-semibold text-slate-900">{{ title }}</h4>
-    <ul class="mt-2 list-disc space-y-2 pl-5 text-sm leading-relaxed text-slate-700">
-        {% for text in items %}<li>{{ text }}</li>{% endfor %}
-    </ul>
-</section>
-{% endif %}
+{#- Recomendação agronômica (motor v3). Doses vêm do cálculo determinístico; a IA só escreve textos. -#}
+{% macro qty(it) -%}
+{%- if it.g_100l %}{{ it.g_100l|decimal_br(0) }} g/100 L de calda
+{%- elif it.kg_ha is not none and it.kg_ha is defined %}{{ it.kg_ha|decimal_br(1 if it.kg_ha < 100 else 0) }} kg/ha{% if it.g_m2 %} · {{ it.g_m2|decimal_br(0) }} g/m²{% elif it.g_planta %} · {{ it.g_planta|decimal_br(0) }} g/planta{% endif %}
+{%- elif it.quantidade is not none and it.quantidade is defined %}{{ it.quantidade|decimal_br(1) }} {{ it.unidade }}
+{%- endif -%}
+{%- endmacro %}
+{% macro day(value) %}{{ value.rsplit('/', 1)[0] if value else '' }}{% endmacro %}
+{% macro trace(calc) %}
+<div class="ar-trace">
+    <p class="ar-formula">{{ calc.formula }}</p>
+    {% if calc.entradas %}<p class="ar-muted">{% for key, value in calc.entradas.items() %}{{ key }}: {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+    <ol>{% for step in calc.passos %}<li>{{ step }}</li>{% endfor %}</ol>
+    <p class="ar-muted"><a href="{{ calc.referencia.url }}" target="_blank" rel="noopener">{{ calc.referencia.titulo }}</a> — {{ calc.referencia.criterio }}</p>
+</div>
 {% endmacro %}
 
-{% macro plan_table(title, rows) %}
-{% if rows %}
-<section class="min-w-0 rounded-2xl border border-slate-200 bg-white p-4">
-    <h4 class="font-semibold text-slate-900">{{ title }}</h4>
-    <div class="mt-3 overflow-x-auto" tabindex="0" role="region" aria-label="{{ title }}">
-        <table class="w-full min-w-[42rem] text-left text-sm">
-            <thead class="bg-brand-50 text-brand-800">
-                <tr>
-                    <th scope="col" class="p-3">Ação e insumo</th>
-                    <th scope="col" class="p-3">Dose de planejamento</th>
-                    <th scope="col" class="p-3">Época e aplicação</th>
-                    <th scope="col" class="p-3">Fundamento e revisão</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-200 text-slate-700">
-                {% for row in rows %}
-                <tr class="align-top">
-                    <th scope="row" class="p-3 font-medium">
-                        {{ row.objetivo }}
-                        {% if row.nutrientes %}<span class="mt-1 block text-xs text-brand-800">{{ row.nutrientes|join(' · ') }}</span>{% endif %}
-                        {% if row.produto %}<span class="mt-1 block font-normal">{{ row.produto }}</span>{% endif %}
-                        {% if row.estoque %}<span class="mt-1 block text-xs font-normal">Saldo consultado: {{ row.estoque.saldo|decimal_br }} {{ row.estoque.unidade }}</span>{% endif %}
-                    </th>
-                    <td class="p-3">
-                        {% if row.dose %}
-                        <p class="whitespace-nowrap font-semibold">{{ row.dose.valor|decimal_br }} {{ row.dose.unidade }}{% if row.dose.base and row.dose.base != 'produto' %} de {{ row.dose.base }}{% endif %}</p>
-                        {% if row.dose.periodo %}<p class="mt-1 text-xs text-slate-600">{{ row.dose.periodo }}{% if row.dose.base == 'produto' %} · produto{% endif %}</p>{% endif %}
-                        {% if row.confirmar %}<p class="mt-1 text-xs font-medium text-amber-900">Condicionada à conferência</p>{% endif %}
-                        {% else %}
-                        <p class="font-medium text-amber-900">Confirmar antes de dosar</p>
-                        {% endif %}
-                    </td>
-                    <td class="p-3">
-                        {% if row.epoca %}<p class="font-medium">{{ row.epoca }}</p>{% endif %}
-                        {% if row.frequencia %}<p class="mt-1">{{ row.frequencia }}</p>{% endif %}
-                        {% if row.forma_aplicacao %}<p class="mt-1">{{ row.forma_aplicacao }}</p>{% endif %}
-                    </td>
-                    <td class="p-3">
-                        <p>{{ row.fundamentacao }}</p>
-                        {% if row.referencia %}
-                        <a class="mt-1 inline-block font-medium text-brand-700 underline" href="{{ row.referencia.url }}">{{ row.referencia.titulo }}</a>
-                        {% if row.criterio_referencia %}<p class="mt-1 text-xs text-slate-600">{{ row.criterio_referencia }}</p>{% endif %}
-                        {% endif %}
-                        {% if row.premissas %}<p class="mt-2 text-xs text-slate-600">Premissas · {{ row.premissas|join(' ') }}</p>{% endif %}
-                        {% if row.confirmar %}
-                        <ul class="mt-2 list-disc space-y-1 pl-4 text-xs text-amber-900">
-                            {% for value in row.confirmar %}<li>{{ value }}</li>{% endfor %}
-                        </ul>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</section>
-{% endif %}
-{% endmacro %}
-
-{% set recommendation = item.ai_recommendation|soil_recommendation %}
-{% if recommendation and recommendation.modulos_utilizados|reject('in', soil_ai_allowed_pages)|list %}
-<p class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">Seu acesso atual não inclui todos os módulos consultados para esta recomendação.</p>
-{% elif item.ai_recommendation %}
-{% if item.ai_status == 'outdated' %}
-<p class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">Os dados da análise foram editados após esta recomendação. Use Gerar IA para atualizá-la com os dados atuais.</p>
-{% endif %}
-<aside class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-    <strong>Revisão técnica antes da aplicação</strong>
-    <p class="mt-1">Confirme o laudo, as garantias dos insumos e as doses com o responsável técnico do setor.</p>
-</aside>
-{% if item.ai_error %}
-<p class="rounded-xl bg-slate-100 p-3 text-sm text-slate-700">{{ item.ai_error }} A recomendação anterior permanece disponível abaixo.</p>
-{% endif %}
-{% if recommendation %}
-{% set context = recommendation.contexto %}
-<p class="text-xs leading-relaxed text-slate-600">
-    Histórico de {{ context.desde.split('-')|reverse|join('/') }} a {{ context.ate.split('-')|reverse|join('/') }}
-    · {{ context.aplicacoes }} {{ 'aplicação registrada' if context.aplicacoes == 1 else 'aplicações registradas' }}
-    · {{ context.pendencias }} {{ 'agendamento' if context.pendencias == 1 else 'agendamentos' }}
-    · {{ context.recomendacoes }} {{ 'recomendação cadastrada' if context.recomendacoes == 1 else 'recomendações cadastradas' }}
-    · {{ context.lotes_estoque }} {{ 'lote em estoque' if context.lotes_estoque == 1 else 'lotes em estoque' }} consultados
-</p>
-{{ findings('Diagnóstico nutricional', recommendation.diagnostico) }}
-{% if recommendation.plano %}
-    {{ plan_table('Correções necessárias', recommendation.plano|selectattr('tipo', 'equalto', 'Correção')|list) }}
-    {{ plan_table('Plano de adubação', recommendation.plano|selectattr('tipo', 'equalto', 'Adubação')|list) }}
-{% else %}
-<p class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">Nenhuma ação de correção ou adubação indicada com os dados disponíveis.</p>
-{% endif %}
-{% if recommendation.versao == 2 %}
-<section class="rounded-2xl border border-slate-200 bg-white p-4">
-    <h4 class="font-semibold text-slate-900">Aproveitamento do estoque</h4>
-    {% if recommendation.estoque %}
-    <ul class="mt-2 grid gap-2 sm:grid-cols-2">
-        {% for entry in recommendation.estoque %}
-        <li class="min-w-0 rounded-xl bg-slate-50 p-3 text-sm">
-            <p class="break-words font-semibold text-slate-900">{{ entry.produto }}</p>
-            <p class="mt-1 text-slate-700">{{ entry.saldo|decimal_br }} {{ entry.unidade }} em estoque. {{ entry.situacao }}</p>
-        </li>
-        {% endfor %}
-    </ul>
-    {% elif context.estoque_consultado %}
-    <p class="mt-2 text-sm text-slate-700">Nenhum produto sugerido foi identificado no estoque consultado.</p>
-    {% else %}
-    <p class="mt-2 text-sm text-slate-700">Dados de estoque indisponíveis nesta consulta.</p>
+{% set plan = item.ai_recommendation|soil_recommendation %}
+{% set ar_id = dialog_id|default('ar-' ~ item.id) %}
+{% if plan and plan.modulos_utilizados|reject('in', soil_ai_allowed_pages)|list %}
+<p class="ar-note">Seu acesso atual não inclui todos os módulos consultados para esta recomendação.</p>
+{% elif plan and plan.versao == 3 %}
+{% set scope = plan.escopo %}
+{% set events = plan.cronograma %}
+{% set upcoming = events|selectattr('data', 'ge', plan.dados_em)|list %}
+<div class="ar" data-ar-root>
+    {% if item.ai_status == 'outdated' %}
+    <p class="ar-note ar-note-warn">Os dados da análise foram editados depois desta recomendação. Use “Gerar de novo” para atualizá-la.</p>
     {% endif %}
-</section>
-{% endif %}
-{% if recommendation.alertas %}
-<section class="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
-    <h4 class="font-semibold text-amber-950">Alertas e dados a confirmar</h4>
-    <ul class="mt-2 list-disc space-y-2 pl-5 text-sm leading-relaxed text-amber-950">
-        {% for text in recommendation.alertas %}<li>{{ text }}</li>{% endfor %}
-    </ul>
-</section>
-{% endif %}
-{{ findings('Histórico e recomendações cadastradas', recommendation.comparacao_manejo) }}
-{{ findings('Orientações de manejo', recommendation.orientacoes) }}
+    {% if item.ai_error %}<p class="ar-note">{{ item.ai_error }} A recomendação anterior continua abaixo.</p>{% endif %}
+    <div class="ar-chips">
+        <span class="ar-chip">{{ scope.cultura }}</span>
+        <span class="ar-chip">{{ scope.fase_label }}{% if scope.idade_meses %} · {{ (scope.idade_meses // 12) if scope.idade_meses >= 24 else scope.idade_meses }} {{ 'anos' if scope.idade_meses >= 24 else 'meses' }}{% endif %}</span>
+        {% if scope.produtividade_sc_ha %}<span class="ar-chip">{{ scope.produtividade_sc_ha|decimal_br(0) }} sc/ha</span>{% endif %}
+        <span class="ar-chip">{{ scope.irrigacao_label }}</span>
+        {% if scope.plantas_ha %}<span class="ar-chip">{{ scope.plantas_ha|decimal_br(0) }} plantas/ha</span>{% endif %}
+        {% if scope.area_ha %}<span class="ar-chip">{{ scope.area_ha|decimal_br(2 if scope.area_ha < 10 else 1) }} ha</span>{% endif %}
+        <span class="ar-chip ar-chip-soft">Amostra {{ scope.amostra.profundidade }}{% if scope.subsolo %} + 20–40 cm{% endif %}</span>
+    </div>
+
+    <div class="ar-tabs" role="tablist" aria-label="Seções da recomendação">
+        {% for key, label in [('geral', 'Visão geral'), ('diag', 'Diagnóstico'), ('corr', 'Calagem e gesso'), ('adub', 'Adubação'), ('crono', 'Cronograma'), ('calc', 'Cálculos e fontes')] %}
+        <button type="button" role="tab" class="ar-tab" id="{{ ar_id }}-tab-{{ key }}" aria-controls="{{ ar_id }}-panel-{{ key }}" aria-selected="{{ 'true' if loop.first else 'false' }}" tabindex="{{ 0 if loop.first else -1 }}" data-ar-tab="{{ key }}">{{ label }}</button>
+        {% endfor %}
+    </div>
+
+    {# ------------------------------------------------------------ Visão geral #}
+    <section class="ar-panel ar-grid-main" role="tabpanel" id="{{ ar_id }}-panel-geral" aria-labelledby="{{ ar_id }}-tab-geral" data-ar-panel="geral">
+        <div class="ar-col">
+            <div class="ar-card">
+                <div class="ar-card-head"><h4>O que fazer primeiro</h4><span class="ar-muted">em ordem de prioridade</span></div>
+                {% if plan.prioridades %}
+                <ol class="ar-priorities">
+                    {% for row in plan.prioridades %}
+                    <li><span class="ar-step">{{ loop.index }}</span><span class="ar-grow"><strong>{{ row.titulo }}</strong><span class="ar-muted">{{ row.detalhe }}</span></span>{% if row.quando %}<span class="ar-when">{{ row.quando }}</span>{% endif %}</li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="ar-muted">Nenhuma correção ou adubação necessária com os dados atuais.</p>
+                {% endif %}
+            </div>
+            <div class="ar-card">
+                <div class="ar-card-head"><h4>Leitura do agrônomo</h4><span class="ar-badge {{ 'ar-badge-info' if plan.ia.usada else 'ar-badge-soft' }}">{{ 'Texto escrito pela IA · doses calculadas pelo sistema' if plan.ia.usada else 'Resumo gerado pelo sistema' }}</span></div>
+                <p class="ar-text">{{ plan.resumo }}</p>
+                {% if plan.orientacoes %}<ul class="ar-list">{% for text in plan.orientacoes %}<li>{{ text }}</li>{% endfor %}</ul>{% endif %}
+            </div>
+        </div>
+        <div class="ar-col">
+            {% if plan.pendencias %}
+            <div class="ar-card ar-card-warn">
+                <h4>{{ 'Falta 1 dado' if plan.pendencias|length == 1 else 'Faltam ' ~ plan.pendencias|length ~ ' dados' }} para fechar o plano</h4>
+                <ul class="ar-pending">{% for row in plan.pendencias %}<li><strong>{{ row.dado }}.</strong> {{ row.motivo }} {{ row.impacto }}</li>{% endfor %}</ul>
+            </div>
+            {% endif %}
+            {% if plan.alertas %}
+            <div class="ar-card ar-card-warn"><h4>Confira no laudo</h4><ul class="ar-pending">{% for text in plan.alertas %}<li>{{ text }}</li>{% endfor %}</ul></div>
+            {% endif %}
+            {% if upcoming %}
+            <div class="ar-card">
+                <h4>Próximas aplicações</h4>
+                <ul class="ar-next">
+                    {% for event in upcoming[:3] %}
+                    <li><span class="ar-date">{{ event.quando.split('/')[0] }}<small>{{ event.quando.split('/')[1] }}</small></span><span class="ar-grow"><strong>{{ event.operacao }}</strong><span class="ar-muted">{{ event.itens|map(attribute='produto')|join(', ') }}</span></span></li>
+                    {% endfor %}
+                </ul>
+                <button type="button" class="ar-btn ar-btn-secondary ar-btn-block" data-ar-goto="crono">Ver cronograma completo</button>
+            </div>
+            {% endif %}
+            {% set buy = plan.produtos|selectattr('total_kg')|list %}
+            {% if buy and scope.area_ha %}
+            <div class="ar-card">
+                <h4>Quantidades para o setor ({{ scope.area_ha|decimal_br(2 if scope.area_ha < 10 else 1) }} ha)</h4>
+                <ul class="ar-buy">
+                    {% for product in buy %}
+                    <li><span>{{ product.produto }}</span><strong class="{{ 'ar-bad' if product.estoque and product.estoque.situacao and product.estoque.situacao.startswith('Faltam') else 'ar-good' if product.estoque else '' }}">{{ product.total_kg|decimal_br(0) }} kg{% if product.estoque and product.estoque.situacao %} · {{ 'em estoque' if product.estoque.situacao.startswith('Saldo') else product.estoque.situacao|replace(' para cobrir o setor.', '')|lower }}{% endif %}</strong></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    {# ------------------------------------------------------------ Diagnóstico #}
+    <section class="ar-panel ar-grid-half" role="tabpanel" id="{{ ar_id }}-panel-diag" aria-labelledby="{{ ar_id }}-tab-diag" data-ar-panel="diag" hidden>
+        <div class="ar-col">
+            <h4 class="ar-section-title">Diagnóstico</h4>
+            {% for row in plan.diagnostico %}
+            <div class="ar-card ar-finding">
+                <span class="ar-badge ar-level-{{ row.nivel }}">{{ {'critico': 'Crítico', 'atencao': 'Atenção', 'ok': 'Em ordem'}[row.nivel] }}</span>
+                <span class="ar-grow"><strong>{{ row.titulo }}</strong><span class="ar-muted">{{ row.texto }}</span></span>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="ar-card">
+            <div class="ar-card-head"><h4>Laudo interpretado</h4><span class="ar-muted">classes das tabelas oficiais</span></div>
+            <ul class="ar-indicators">
+                {% for row in plan.indicadores %}
+                <li>
+                    <span class="ar-grow"><strong>{{ row.nome }}</strong><span class="ar-muted">Ideal: {{ row.faixa_ideal }}</span></span>
+                    <span class="ar-num">{{ row.valor|decimal_br(2 if row.valor < 10 else 1 if row.valor < 100 else 0) }}{% if row.unidade %} {{ row.unidade }}{% endif %}</span>
+                    <span class="ar-badge ar-status-{{ row.status }}">{{ row.classe }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+
+    {# ------------------------------------------------------------ Corretivos #}
+    <section class="ar-panel ar-grid-half" role="tabpanel" id="{{ ar_id }}-panel-corr" aria-labelledby="{{ ar_id }}-tab-corr" data-ar-panel="corr" hidden>
+        {% for row in plan.corretivos %}
+        {% set event = events|selectattr('chave', 'equalto', row.tipo)|first %}
+        <div class="ar-card ar-col">
+            <div class="ar-card-head"><h4 class="ar-h-lg">{{ row.titulo }}</h4><span class="ar-badge {{ 'ar-level-critico' if row.necessario else 'ar-level-ok' if row.necessario == false else 'ar-level-atencao' }}">{{ 'Necessária' if row.necessario else 'Não necessária' if row.necessario == false else 'Dados incompletos' }}</span></div>
+            {% if row.necessario %}
+            {% set dose = row.dose_t_ha or row.dose_prnt100_t_ha %}
+            <div class="ar-stats">
+                {% if dose %}<div><span>Dose</span><strong>{{ dose|decimal_br(2) }}</strong><small>t/ha{% if row.tipo == 'calagem' %}{{ ' (PRNT do lote)' if row.dose_t_ha else ' (PRNT 100 %)' }}{% endif %}</small></div>
+                <div><span>Na faixa</span><strong>{{ row.g_m2|decimal_br(0) }}</strong><small>g/m²</small></div>
+                {% if row.total_t %}<div><span>No setor</span><strong>{{ (dose * scope.area_ha)|decimal_br(1) }}</strong><small>toneladas</small></div>{% endif %}{% endif %}
+            </div>
+            <dl class="ar-facts">
+                <dt>Produto</dt><dd>{{ row.produto }}{% if row.estoque %} · lote do estoque{% endif %}{% if row.tipo_calcario and row.tipo_calcario.split(' (')[0]|lower != row.produto|lower %} — indicado: {{ row.tipo_calcario|lower }}{% endif %}</dd>
+                {% if row.metodo %}<dt>Como</dt><dd>{{ row.metodo }}</dd>{% endif %}
+                {% if event %}<dt>Quando</dt><dd>{{ event.quando }}{% if row.parcelas and row.parcelas > 1 %} · em {{ row.parcelas }} parcelas, com 6 meses ou mais entre elas{% endif %}</dd>{% endif %}
+                <dt>Por quê</dt><dd>{{ row.justificativa }}{% if row.explicacao %} {{ row.explicacao }}{% endif %}</dd>
+            </dl>
+            {% else %}
+            <p class="ar-text">{{ row.justificativa or 'Complete os dados indicados na visão geral para avaliar.' }}</p>
+            {% endif %}
+            {% if row.calculo %}<details class="ar-details"><summary>Como calculamos</summary>{{ trace(row.calculo) }}</details>{% endif %}
+        </div>
+        {% else %}
+        <p class="ar-note">Calagem e gessagem não avaliadas: complete os dados indicados na visão geral.</p>
+        {% endfor %}
+    </section>
+
+    {# ------------------------------------------------------------ Adubação #}
+    <section class="ar-panel ar-col" role="tabpanel" id="{{ ar_id }}-panel-adub" aria-labelledby="{{ ar_id }}-tab-adub" data-ar-panel="adub" hidden>
+        {% if plan.necessidades or plan.micronutrientes %}
+        <div class="ar-card ar-flush">
+            <div class="ar-card-head ar-pad"><h4>Nutrientes do ciclo</h4><span class="ar-muted">kg/ha · descontado o que já foi aplicado ou agendado desde {{ plan.historico.desde.split('-')|reverse|join('/') }}</span></div>
+            <div class="ar-table-wrap" tabindex="0" role="region" aria-label="Nutrientes do ciclo">
+                <table class="ar-table">
+                    <thead><tr><th scope="col">Nutriente</th><th scope="col">Necessidade</th><th scope="col">Já aplicado</th><th scope="col">Agendado</th><th scope="col">Falta aplicar</th><th scope="col">Critério</th></tr></thead>
+                    <tbody>
+                        {% for row in plan.necessidades + plan.micronutrientes %}
+                        <tr><th scope="row">{{ row.label }}</th><td class="ar-num">{{ row.dose_kg_ha|decimal_br(1 if row.dose_kg_ha < 20 else 0) }}</td><td class="ar-num">{{ (row.aplicado_kg_ha or 0)|decimal_br(0) }}</td><td class="ar-num">{{ (row.agendado_kg_ha or 0)|decimal_br(0) }}</td><td class="ar-num"><strong>{{ row.saldo_kg_ha|decimal_br(1 if row.saldo_kg_ha < 20 else 0) }}</strong></td><td class="ar-muted">{{ row.calculo.referencia.criterio }}{% if row.via == 'foliar' %} · via foliar{% endif %}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+        {% if plan.produtos %}
+        <div class="ar-card ar-flush">
+            <div class="ar-card-head ar-pad"><h4>Produtos e quantidades</h4><span class="ar-muted">{% if scope.plantas_ha %}{{ scope.plantas_ha|decimal_br(0) }} plantas/ha{% endif %}{% if scope.area_ha %} · {{ scope.area_ha|decimal_br(2) }} ha{% endif %}</span></div>
+            <div class="ar-table-wrap" tabindex="0" role="region" aria-label="Produtos e quantidades">
+                <table class="ar-table">
+                    <thead><tr><th scope="col">Produto</th><th scope="col">kg/ha no ciclo</th><th scope="col">g/planta</th><th scope="col">Total no setor</th><th scope="col">Para quê</th><th scope="col">Estoque</th></tr></thead>
+                    <tbody>
+                        {% for row in plan.produtos %}
+                        <tr>
+                            <th scope="row">{{ row.produto }}{% if row.garantia %}<small class="ar-muted">{% for key, value in row.garantia.items() %}{{ value|decimal_br(0) }} % {{ key }}{% if not loop.last %} · {% endif %}{% endfor %}{% if row.estoque %} · {{ row.estoque.garantia_origem }}{% endif %}</small>{% endif %}</th>
+                            {% if row.dose_texto %}<td colspan="3">{{ row.dose_texto }}</td>{% else %}
+                            <td class="ar-num">{{ row.kg_ha|decimal_br(1 if row.kg_ha < 100 else 0) }}</td><td class="ar-num">{{ row.g_planta|decimal_br(0) if row.g_planta is not none else '—' }}</td><td class="ar-num"><strong>{{ row.total_kg|decimal_br(0) ~ ' kg' if row.total_kg is not none else '—' }}</strong></td>{% endif %}
+                            <td class="ar-muted">{{ row.finalidade }}{% if row.nota %}<small>{{ row.nota }}</small>{% endif %}</td>
+                            <td>{% if row.estoque %}<span class="ar-badge {{ 'ar-level-ok' if row.estoque.situacao and row.estoque.situacao.startswith('Saldo') else 'ar-level-critico' }}">{{ row.estoque.situacao or 'Em estoque' }}</span>{% else %}<span class="ar-badge ar-level-atencao">Comprar</span>{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% else %}
+        <p class="ar-note">Nenhum produto calculado. Veja na visão geral os dados que faltam.</p>
+        {% endif %}
+    </section>
+
+    {# ------------------------------------------------------------ Cronograma #}
+    <section class="ar-panel ar-grid-main" role="tabpanel" id="{{ ar_id }}-panel-crono" aria-labelledby="{{ ar_id }}-tab-crono" data-ar-panel="crono" hidden>
+        <ol class="ar-timeline">
+            {% for event in events %}
+            <li class="ar-tl-{{ event.chave }}">
+                <span class="ar-date">{{ event.quando.split('/')[0] }}<small>{{ event.quando.split('/')[1] }}</small></span>
+                <div class="ar-card ar-grow">
+                    <div class="ar-card-head"><strong>{{ event.operacao }}</strong><span class="ar-badge ar-badge-soft">{{ event.quando.split('/')[2] }}</span></div>
+                    <p class="ar-muted">{{ event.metodo }}</p>
+                    <ul class="ar-items">{% for it in event.itens %}<li><strong>{{ it.produto }}</strong> <span class="ar-num">{{ qty(it) }}</span>{% if it.total_kg %}<span class="ar-muted"> · {{ it.total_kg|decimal_br(0) }} kg no setor</span>{% endif %}</li>{% endfor %}</ul>
+                    {% if event.finalidade %}<p class="ar-muted">{{ event.finalidade }}{% if event.observacao %} {{ event.observacao }}{% endif %}</p>{% endif %}
+                </div>
+            </li>
+            {% else %}
+            <li class="ar-note">Nenhuma aplicação programada com os dados atuais.</li>
+            {% endfor %}
+        </ol>
+        <div class="ar-col">
+            {% if plan.compatibilidade %}
+            <div class="ar-card">
+                <h4>Cuidados entre aplicações</h4>
+                <ul class="ar-list">{% for row in plan.compatibilidade %}<li class="ar-compat-{{ row.nivel }}">{{ row.texto }}</li>{% endfor %}</ul>
+            </div>
+            {% endif %}
+            <div class="ar-card">
+                <h4>Levar para a agenda</h4>
+                <p class="ar-muted">Cria os agendamentos de adubação com estes produtos, para você conferir e confirmar.</p>
+                <button type="button" class="ar-btn ar-btn-disabled ar-btn-block" disabled>Agendar aplicações <span class="ar-badge ar-badge-soon">Em breve</span></button>
+            </div>
+        </div>
+    </section>
+
+    {# ------------------------------------------------------------ Cálculos #}
+    <section class="ar-panel ar-grid-main" role="tabpanel" id="{{ ar_id }}-panel-calc" aria-labelledby="{{ ar_id }}-tab-calc" data-ar-panel="calc" hidden>
+        <div class="ar-col">
+            <h4 class="ar-section-title">Memória de cálculo</h4>
+            {% for row in plan.corretivos + plan.necessidades + plan.micronutrientes %}
+            {% if row.calculo %}
+            <div class="ar-card"><strong>{{ row.titulo or row.label }}</strong>{{ trace(row.calculo) }}</div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        <div class="ar-col">
+            {% if plan.premissas %}<div class="ar-card"><h4>Premissas usadas</h4><ul class="ar-list">{% for text in plan.premissas %}<li>{{ text }}</li>{% endfor %}</ul></div>{% endif %}
+            {% if plan.referencias %}
+            <div class="ar-card">
+                <h4>Referências técnicas</h4>
+                <ul class="ar-refs">{% for ref in plan.referencias %}<li><a href="{{ ref.url }}" target="_blank" rel="noopener">{{ ref.titulo }}</a><span class="ar-muted">{{ ref.escopo }}</span></li>{% endfor %}</ul>
+            </div>
+            {% endif %}
+            <p class="ar-muted">{{ plan.motor }}{% if plan.ia.usada %} · textos por IA{% endif %}. Plano para planejamento, calculado a partir de tabelas oficiais. Confira o laudo e as garantias dos produtos com o responsável técnico antes de aplicar.</p>
+        </div>
+    </section>
+</div>
+{% elif plan %}
+<div class="ar">
+    <p class="ar-note ar-note-warn">Esta recomendação foi feita pelo modelo antigo, sem cálculo verificado das doses. Use “Gerar de novo” para ter o plano completo, com cronograma e quantidades.</p>
+    {% if plan.diagnostico %}<div class="ar-card"><h4>Diagnóstico anterior</h4><ul class="ar-list">{% for text in plan.diagnostico %}<li>{{ text }}</li>{% endfor %}</ul></div>{% endif %}
+</div>
+{% elif item.ai_recommendation %}
+<div class="ar">
+    <p class="ar-note ar-note-warn">Recomendação antiga, em texto livre. Use “Gerar de novo” para ter o plano calculado.</p>
+    <div class="ar-card"><p class="ar-text" style="white-space: pre-wrap">{{ item.ai_recommendation }}</p></div>
+</div>
 {% else %}
-<section class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-    <h4 class="font-semibold text-slate-900">Recomendação anterior</h4>
-    <p class="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{{ item.ai_recommendation }}</p>
-</section>
-{% endif %}
-{% else %}
-<p class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">{{ item.ai_error or 'Nenhuma recomendação agronômica gerada para esta análise.' }}</p>
+<p class="ar-note">{{ item.ai_error or 'Nenhuma recomendação gerada para esta análise. Use “Gerar de novo”.' }}</p>
 {% endif %}

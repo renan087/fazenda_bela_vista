@@ -7,7 +7,7 @@ import pytest
 from starlette.datastructures import FormData
 
 from app.models import Plot, SoilAnalysis
-from app.services.soil_ai_context import build_soil_ai_context
+from app.services.agronomy.soil import read_soil
 from app.services.soil_measurements import canonical_value, validate_metadata
 from tests.test_stock_assistant import _route_env
 
@@ -65,11 +65,10 @@ def test_create_edit_and_ai_keep_lab_metadata(monkeypatch):
     assert metadata["units"]["potassium"] == "cmolc/dm³"
     assert metadata["methods"]["phosphorus"] == "Mehlich-1"
     assert metadata["extra_values"]["boron"] == 0.34 and metadata["methods"]["boron"] == "Água quente"
-    context = build_soil_ai_context(db, row, date(2026, 11, 15), set())
-    assert context["solo"]["data"] == "2026-10-01"
-    assert context["solo"]["resultados"]["potássio"] == pytest.approx(117.3)
-    assert context["solo"]["resultados"]["cálcio"] == pytest.approx(2.4)
-    assert context["solo"]["valores_originais"]["potássio"] == pytest.approx(0.3)
+    reading = read_soil(row)
+    assert reading.sample_date.isoformat() == "2026-10-01"
+    assert reading.values["potassium"] == pytest.approx(117.3)
+    assert reading.values["calcium"] == pytest.approx(2.4)
     chart = json.loads(routes._soil_history_chart([row]))
     assert chart["potassium"] == pytest.approx([117.3])
 

@@ -23228,12 +23228,11 @@ async def create_soil_analysis_action(
         )
         analysis = _soil_timed("recommendation", "create", _apply_soil_ai_recommendation, repo, analysis, user)
         if analysis.ai_status == "generated":
-            _flash(request, "success", "Analise de solo salva e recomendacao da IA gerada com sucesso.")
-        elif analysis.ai_status == "skipped":
-            _flash(request, "success", "Analise de solo salva. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
+            _flash(request, "success", "Análise de solo salva e recomendação agronômica calculada.")
         else:
-            _flash(request, "error", "Analise de solo salva, mas a recomendacao da IA falhou nesta tentativa.")
-        return _redirect_with_query("/analise-solo", plot_id=plot.id, compare_plot_id=plot.id)
+            _flash(request, "error", "Análise de solo salva, mas não foi possível calcular a recomendação. Confira os dados do laudo e use “Gerar de novo”.")
+        return _redirect_with_query("/analise-solo", plot_id=plot.id, compare_plot_id=plot.id,
+                                    recommendation_id=analysis.id if analysis.ai_status == "generated" else None)
 
     try:
         return await run_in_threadpool(process_request)
@@ -23358,11 +23357,9 @@ def regenerate_soil_recommendation_action(
         return _redirect("/analise-solo")
     updated = _apply_soil_ai_recommendation(repo, analysis, user)
     if updated.ai_status == "generated":
-        _flash(request, "success", "Recomendacao agronomica regenerada com sucesso.")
-    elif updated.ai_status == "skipped":
-        _flash(request, "error", "OPENAI_API_KEY nao configurada para gerar a recomendacao.")
+        _flash(request, "success", "Recomendação agronômica atualizada.")
     else:
-        _flash(request, "error", "Nao foi possivel gerar a recomendacao agronomica nesta tentativa.")
+        _flash(request, "error", "Não foi possível calcular a recomendação nesta tentativa. Confira os dados do laudo.")
     return _redirect_with_query(
         "/analise-solo",
         recommendation_id=analysis_id if updated.ai_status == "generated" else None,

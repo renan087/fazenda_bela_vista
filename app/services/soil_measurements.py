@@ -21,6 +21,8 @@ EXTRA_FIELDS = {
     "copper": ("Cobre (Cu)", ("mg/dm³", "mg/kg")),
     "manganese": ("Manganês (Mn)", ("mg/dm³", "mg/kg")),
     "iron": ("Ferro (Fe)", ("mg/dm³", "mg/kg")),
+    "clay": ("Argila", ("%", "g/kg")),
+    "p_rem": ("Fósforo remanescente (P-rem)", ("mg/L",)),
 }
 METHODS = {
     "phosphorus": ("Fósforo", ("Não informado", "Mehlich-1", "Mehlich-3", "Resina", "Olsen")),
@@ -79,7 +81,7 @@ def validate_metadata(units, methods, collected, issued, depth_from, depth_to, e
             number = float(value)
         except (TypeError, ValueError):
             raise ValueError(f"Valor inválido para {EXTRA_FIELDS[field][0]}.")
-        if not isfinite(number) or number < 0 or number > 999999:
+        if not isfinite(number) or number < 0 or number > 999999 or (field == "clay" and number > 1000):
             raise ValueError(f"Valor inválido para {EXTRA_FIELDS[field][0]}.")
         extras[field] = number
     return {

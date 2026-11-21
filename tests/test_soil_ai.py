@@ -3,7 +3,6 @@ from datetime import date
 from types import SimpleNamespace
 
 import pytest
-from pydantic import ValidationError
 
 from app.core.permissions_catalog import PAGE_AGENDA, PAGE_INPUTS, PAGE_IRRIGATION, PAGE_OPERATIONS
 from app.models import (
@@ -13,7 +12,6 @@ from app.models import (
 from app.models.fertilization_item import FertilizationItem
 from app.models.fertilization_schedule_item import FertilizationScheduleItem
 from app.services import openai_service as service
-from app.services.soil_ai_context import build_soil_ai_context
 from tests.test_stock_assistant import _route_env
 
 TODAY = date(2026, 11, 20)
@@ -80,174 +78,9 @@ def soil_context(monkeypatch):
     db.close()
 
 
-def test_context_limits_data_to_farm_plot_period_and_authorized_modules(soil_context):
+def test_ai_timeout_has_no_retry_and_falls_back_to_deterministic_plan(soil_context, monkeypatch, caplog):
     _, db, _, analysis, _ = soil_context
-    context = build_soil_ai_context(db, analysis, TODAY, PAGES)
-    assert len(context["aplicacoes"]) == 1
-    assert context["aplicacoes"][0]["produtos"] == [
-        {"produto": "APLICAÇÃO DEPOIS DA COLETA", "quantidade_total": 50, "unidade": "kg"},
-    ]
-    assert context["agendamentos_pendentes"][0]["produtos"][0]["quantidade_total"] == 45
-    assert len(context["estoque_atual"]) == 1 and context["estoque_atual"][0]["saldo"] == 100
-    assert len(context["irrigacoes_manuais"]) == 1
-    assert {row["nome"] for row in context["recomendacoes_cadastradas_sem_data"]} == {"DO SETOR", "DA FAZENDA"}
-    assert "FIXA" not in str(context)
-    assert context["solo"]["resultados"]["cálcio"] is None
-
-    restricted = build_soil_ai_context(db, analysis, TODAY, set())
-    assert not restricted["modulos_utilizados"]
-    assert not restricted["estoque_atual"] and not restricted["aplicacoes"]
-    assert not restricted["agendamentos_pendentes"] and not restricted["recomendacoes_cadastradas_sem_data"]
-
-
-def _recommendation(stock=None, **dose_changes):
-    return service.SoilRecommendation.model_validate({
-        "diagnostico": ["Fósforo medido: 8 mg/dm³.", "Aplicar 90 kg/ha sem validação."],
-        "comparacao_manejo": ["Revisar as aplicações depois da amostragem."],
-        "alertas": [],
-        "orientacoes": ["Comparar com nova amostragem."],
-        "plano": [{
-            "tipo": "Adubação", "objetivo": "Planejar o aporte de fósforo",
-            "produto": stock["produto"] if stock else "Fonte fosfatada adequada",
-            "estoque_ref": stock["referencia"] if stock else None,
-            "nutrientes": ["P2O5"], "epoca": "Início das chuvas", "frequencia": "Em 2 parcelas",
-            "forma_aplicacao": "Em cobertura", "referencia_id": "embrapa_mg",
-            "criterio_referencia": "Capítulo de fertilidade e adubação", "premissas": [], "confirmar": [],
-            "fundamentacao": "Revisar fósforo do laudo para a fase do setor.",
-            "dose": {"valor": 40, "unidade": "kg/ha", "base": "P2O5", "periodo": "meta_ciclo",
-                     "indicadores": ["fósforo"], "trecho_da_garantia": None, **dose_changes},
-        }],
-    })
-
-
-def test_generation_and_rendering_use_configured_model_and_preserve_legacy(soil_context, monkeypatch):
-    routes, db, _, analysis, _ = soil_context
-    calls = []
-
-    def parse(**kwargs):
-        calls.append(kwargs)
-        context = build_soil_ai_context(db, analysis, TODAY, PAGES)
-        draft = _recommendation(context["estoque_atual"][0])
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(parsed=draft))])
-
-    monkeypatch.setattr(service, "get_settings", lambda: SimpleNamespace(
-        openai_api_key="fake-key", openai_recommendation_model="configured-model",
-    ))
-    monkeypatch.setattr(service, "today_in_app_timezone", lambda: TODAY)
-    completions = SimpleNamespace(parse=parse)
-    monkeypatch.setattr("openai.OpenAI", lambda **kwargs: SimpleNamespace(
-        beta=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
-    ))
-    result = service.gerar_recomendacao_adubacao(db, analysis, PAGES)
-    assert result["status"] == "generated" and result["model"] == "configured-model"
-    assert calls[0]["model"] == "configured-model" and "FIXA" not in calls[0]["messages"][1]["content"]
-    structured = service.read_soil_recommendation(result["recommendation"])
-    assert "referencias_tecnicas" in calls[0]["messages"][1]["content"]
-    assert structured["plano"][0]["dose"] == {
-        "valor": 40.0, "unidade": "kg/ha", "base": "P₂O₅", "periodo": "Meta do ciclo",
-    }
-    assert structured["estoque"][0]["saldo"] == 100
-    assert structured["diagnostico"] == ["Fósforo medido: 8 mg/dm³."]
-
-    template = routes.templates.env.get_template("partials/soil_ai_recommendation.html")
-    item = SimpleNamespace(ai_recommendation=result["recommendation"], ai_error=None)
-    html = template.render(item=item, soil_ai_allowed_pages=PAGES)
-    assert "Revisão técnica antes da aplicação" in html and "40,00 kg/ha" in html
-    assert "Diagnóstico nutricional" in html and "FIXA" not in html
-    assert "Em 2 parcelas" in html and "Em cobertura" in html
-    assert "de P₂O₅" in html and "Aproveitamento do estoque" in html
-    structured["versao"] = 1
-    assert service.read_soil_recommendation(json.dumps(structured))
-    assert "40,00 kg/ha" not in template.render(item=item, soil_ai_allowed_pages=set())
-    assert not service.soil_recommendation_summary(result["recommendation"], set())
-    assert "Histórico anterior" in template.render(
-        item=SimpleNamespace(ai_recommendation="Histórico anterior", ai_error=None), soil_ai_allowed_pages=PAGES,
-    )
-
-
-def _draft_context(db, analysis):
-    context = build_soil_ai_context(db, analysis, TODAY, PAGES)
-    context["referencias_tecnicas"] = service._technical_references(context)
-    return context
-
-
-def test_rejects_unfounded_doses_and_checks_balance(soil_context):
-    _, db, _, analysis, _ = soil_context
-    context = _draft_context(db, analysis)
-    stock = context["estoque_atual"][0]
-    for changes in ({"valor": -1}, {"indicadores": ["cálcio"]}, {"valor": 3.0001}, {"valor": 1000},
-                    {"base": "produto", "trecho_da_garantia": "20%"}, {"unidade": "L/ha"}):
-        result = service._prepare_recommendation(_recommendation(stock, **changes), context, TODAY)
-        assert result["plano"][0]["dose"] is None
-        assert result["plano"][0]["confirmar"]
-
-    with pytest.raises(ValidationError):
-        _recommendation(stock, unidade="kg/planta")
-    with pytest.raises(ValidationError):
-        _recommendation(stock, valor=float("nan"))
-
-    result = service._prepare_recommendation(
-        _recommendation(stock, valor=60, base="produto", trecho_da_garantia=GUARANTEE), context, TODAY,
-    )
-    assert result["plano"][0]["dose"]["valor"] == 60
-    assert "abaixo da quantidade" in result["estoque"][0]["situacao"]
-    excessive = _recommendation(stock, valor=3000, base="produto", trecho_da_garantia=GUARANTEE)
-    assert service._prepare_recommendation(excessive, context, TODAY)["plano"][0]["dose"] is None
-
-    context["agendamentos_pendentes"][0]["produtos"][0]["produto"] = stock["produto"]
-    result = service._prepare_recommendation(_recommendation(stock, periodo="saldo_ciclo"), context, TODAY)
-    assert result["plano"][0]["dose"] is None
-    assert any("aplicação pendente" in item for item in result["plano"][0]["confirmar"])
-    result = service._prepare_recommendation(_recommendation(stock), context, TODAY)
-    assert result["plano"][0]["dose"]["periodo"] == "Meta do ciclo"
-    assert any("aplicação pendente" in item for item in result["plano"][0]["confirmar"])
-
-
-def test_secondary_gap_and_empty_stock_keep_supported_nutrient_dose(soil_context):
-    _, db, _, analysis, _ = soil_context
-    context = _draft_context(db, analysis)
-    context["estoque_atual"] = []
-    context["escopo"]["area_ha"] = None
-    context["solo"]["observacoes"] = None
-    context["modulos_consultados"].remove(PAGE_AGENDA)
-    phosphorus = _recommendation()
-    nitrogen = _recommendation(base="N", indicadores=[])
-    nitrogen.plano[0].nutrientes = ["N"]
-    nitrogen.plano[0].produto = "Ureia"
-    nitrogen.plano[0].fundamentacao = "Considera a meta informada para o cafeeiro em produção."
-    phosphorus.plano.extend(nitrogen.plano)
-
-    result = service._prepare_recommendation(phosphorus, context, TODAY)
-    assert result["plano"][0]["dose"] is None
-    assert "unidades do laudo" in result["plano"][0]["confirmar"][0]
-    assert result["plano"][1]["dose"]["base"] == "N"
-    assert "apurar o saldo" in result["plano"][1]["confirmar"][0]
-    assert result["estoque"] == []
-
-    context["perfil"]["target_productivity_sacks_per_ha"] = None
-    context["escopo"]["estimativa_setor_sacas_ha"] = 35
-    result = service._prepare_recommendation(nitrogen, context, TODAY)
-    assert result["plano"][0]["dose"]
-    assert "estimativa de produção" in result["plano"][0]["premissas"][0]
-
-    nitrogen.plano[0].dose.periodo = "saldo_ciclo"
-    result = service._prepare_recommendation(nitrogen, context, TODAY)
-    assert result["plano"][0]["dose"] is None
-
-
-def test_regeneration_rejects_analysis_outside_active_farm(soil_context, monkeypatch):
-    routes, db, user, analysis, other_farm = soil_context
-    request = SimpleNamespace(session={})
-    monkeypatch.setattr(routes, "_launch_scope_or_redirect", lambda *args, **kwargs: ({"active_farm_id": other_farm.id}, None))
-    monkeypatch.setattr(routes, "_apply_soil_ai_recommendation", lambda *args: pytest.fail("Geração fora da fazenda ativa"))
-    response = routes.regenerate_soil_recommendation_action(analysis.id, request, "x", db, user)
-    assert response.headers["Location"] == "/analise-solo"
-
-
-def test_openai_timeout_has_no_automatic_retry_and_logs_duration(soil_context, monkeypatch, caplog):
-    _, db, _, analysis, _ = soil_context
-    calls = []
-    clients = []
+    calls, clients = [], []
 
     def parse(**kwargs):
         calls.append(kwargs)
@@ -264,11 +97,33 @@ def test_openai_timeout_has_no_automatic_retry_and_logs_duration(soil_context, m
     monkeypatch.setattr("openai.OpenAI", client)
     with caplog.at_level("INFO", logger="uvicorn.error"):
         result = service.gerar_recomendacao_adubacao(db, analysis, PAGES)
-    assert result["status"] == "error"
-    assert len(calls) == 1 and calls[0]["timeout"] == 60
-    assert clients[0]["max_retries"] == 0
+    plan = service.read_soil_recommendation(result["recommendation"])
+    assert result["status"] == "generated" and plan["ia"]["usada"] is False and plan["resumo"]
+    assert len(calls) == 1 and calls[0]["timeout"] == 45 and clients[0]["max_retries"] == 0
+    assert "FIXA" not in result["recommendation"]
     assert "soil_ai stage=openai duration_ms=" in caplog.text
     assert "soil_ai stage=context duration_ms=" in caplog.text
+
+
+def test_context_limits_history_and_stock_to_farm_plot_and_modules(soil_context):
+    from app.services.agronomy.context import gather
+    _, db, _, analysis, _ = soil_context
+    inputs = gather(db, analysis, TODAY, PAGES)
+    assert [a.products[0]["produto"] for a in inputs.applications] == ["APLICAÇÃO DEPOIS DA COLETA"]
+    assert [s.products[0]["produto"] for s in inputs.scheduled] == ["AGENDADO"]
+    assert [lot.name for lot in inputs.stock] == ["Superfosfato simples"]
+    restricted = gather(db, analysis, TODAY, set())
+    assert not restricted.applications and not restricted.scheduled and not restricted.stock
+    assert not restricted.history_available
+
+
+def test_regeneration_rejects_analysis_outside_active_farm(soil_context, monkeypatch):
+    routes, db, user, analysis, other_farm = soil_context
+    request = SimpleNamespace(session={})
+    monkeypatch.setattr(routes, "_launch_scope_or_redirect", lambda *args, **kwargs: ({"active_farm_id": other_farm.id}, None))
+    monkeypatch.setattr(routes, "_apply_soil_ai_recommendation", lambda *args: pytest.fail("Geração fora da fazenda ativa"))
+    response = routes.regenerate_soil_recommendation_action(analysis.id, request, "x", db, user)
+    assert response.headers["Location"] == "/analise-solo"
 
 
 def test_incomplete_profile_can_generate_a_plan(soil_context, monkeypatch):
@@ -297,40 +152,3 @@ def test_failed_manual_generation_keeps_outdated_warning(soil_context, monkeypat
     assert updated.ai_error == "Falha simulada"
 
 
-def test_formation_reference_uses_pit_units_without_productivity(soil_context):
-    _, db, _, analysis, _ = soil_context
-    profile = analysis.farm.agronomic_profile
-    profile.region = "Bahia"
-    profile.crop_stage = "Café arábica em formação"
-    profile.culture = "Café arábica"
-    profile.target_productivity_sacks_per_ha = None
-    analysis.potassium = 0.09
-    analysis.laboratory_metadata = json.dumps({"units": {"potassium": "cmolc/dm³"}})
-    db.commit()
-    context = _draft_context(db, analysis)
-    context["estoque_atual"] = []
-    draft = _recommendation()
-    draft.plano[0].dose = None
-    result = service._prepare_recommendation(draft, context, TODAY)
-    rows = [row for row in result["plano"] if row.get("dose") and row["dose"]["unidade"] == "g/cova"]
-    assert [(row["dose"]["base"], row["dose"]["valor"]) for row in rows] == [
-        ("N", 10), ("N", 20), ("K₂O", 40), ("K₂O", 60),
-    ]
-    assert all("Se a lavoura estiver" in row["epoca"] for row in rows)
-    assert all(any("Minas Gerais" in note for note in row["confirmar"]) for row in rows)
-    assert all(row["dose"]["periodo"] == "Referência condicionada" for row in rows)
-
-    # Legacy result without a known unit must not be used to select a K class.
-    analysis.laboratory_metadata = None
-    analysis.observations = None
-    db.commit()
-    context = _draft_context(db, analysis)
-    result = service._prepare_recommendation(draft, context, TODAY)
-    assert not any(row.get("dose") and row["dose"]["base"] == "K₂O" for row in result["plano"])
-
-    # The arábica table cannot be used for conilon.
-    profile.culture = "Café conilon"
-    db.commit()
-    context = _draft_context(db, analysis)
-    result = service._prepare_recommendation(draft, context, TODAY)
-    assert not any(row.get("dose") and row["dose"]["unidade"] == "g/cova" for row in result["plano"])
