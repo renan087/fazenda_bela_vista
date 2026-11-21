@@ -148,12 +148,16 @@
 
                         {# PASSO 3 — PLANTIO #}
                         <section class="szw-panel" data-stw-panel="2" aria-labelledby="stw-t2" hidden>
-                            <div class="szw-head"><h2 id="stw-t2">O que está plantado?</h2><p>Com a data e o espaçamento, o SiSFarm calcula plantas, idade e se o setor já produz.</p></div>
-                            {% if not ep %}
-                            <div class="stw-seg" role="radiogroup" aria-label="Cadastrar plantio agora?">
-                                <button type="button" role="radio" aria-checked="true" data-stw-skip="plant" data-value="now">Cadastrar plantio agora</button>
-                                <button type="button" role="radio" aria-checked="false" data-stw-skip="plant" data-value="later">Deixar para depois</button>
+                            <div class="szw-head szw-head-row">
+                                <div><h2 id="stw-t2">O que está plantado?</h2><p>Com a data e o espaçamento, o SiSFarm calcula plantas, idade e se o setor já produz.</p></div>
+                                {% if not ep %}
+                                <div class="stw-seg" role="radiogroup" aria-label="Cadastrar plantio agora?">
+                                    <button type="button" role="radio" aria-checked="true" data-stw-skip="plant" data-value="now">Cadastrar plantio agora</button>
+                                    <button type="button" role="radio" aria-checked="false" data-stw-skip="plant" data-value="later">Deixar para depois</button>
+                                </div>
+                                {% endif %}
                             </div>
+                            {% if not ep %}
                             <p class="stw-later" data-stw-later="plant" hidden>Tudo bem. O setor fica como “Sem plantio informado” e não entra nas metas de sacas. Complete depois editando o setor.</p>
                             {% elif ep.active_planting %}
                             <div class="stw-current"><p>Plantio atual{% if ep.active_planting.planting_date %} desde {{ ep.active_planting.planting_date.strftime('%m/%Y') }}{% endif %}. Corrija aqui os dados; para trocar a lavoura use “Renovar plantio”.</p><button type="button" class="szw-btn" data-renew-open>Renovar plantio</button></div>
@@ -191,12 +195,16 @@
 
                         {# PASSO 4 — MANEJO #}
                         <section class="szw-panel" data-stw-panel="3" aria-labelledby="stw-t3" hidden>
-                            <div class="szw-head"><h2 id="stw-t3">Irrigação e solo</h2><p>Usado na recomendação de adubação, no controle de água e na leitura da chuva.</p></div>
-                            {% if not ep %}
-                            <div class="stw-seg" role="radiogroup" aria-label="Informar irrigação e solo agora?">
-                                <button type="button" role="radio" aria-checked="true" data-stw-skip="man" data-value="now">Informar agora</button>
-                                <button type="button" role="radio" aria-checked="false" data-stw-skip="man" data-value="later">Deixar para depois</button>
+                            <div class="szw-head szw-head-row">
+                                <div><h2 id="stw-t3">Irrigação e solo</h2><p>Usado na recomendação de adubação, no controle de água e na leitura da chuva.</p></div>
+                                {% if not ep %}
+                                <div class="stw-seg" role="radiogroup" aria-label="Informar irrigação e solo agora?">
+                                    <button type="button" role="radio" aria-checked="true" data-stw-skip="man" data-value="now">Informar agora</button>
+                                    <button type="button" role="radio" aria-checked="false" data-stw-skip="man" data-value="later">Deixar para depois</button>
+                                </div>
+                                {% endif %}
                             </div>
+                            {% if not ep %}
                             <p class="stw-later" data-stw-later="man" hidden>Sem problema. Irrigação e solo ficam como “Não informado”. A recomendação de adubação deste setor só fica disponível depois que você completar.</p>
                             {% endif %}
                             <div class="stw-group" data-stw-group="man">
@@ -266,7 +274,7 @@
                             {% set already = ep and ep in plot_wizard_season.plots %}
                             <label class="szw-integ stw-season">
                                 <span class="szw-grow"><strong>Incluir na {{ plot_wizard_season.name }} (ativa)</strong><small data-stw-season-desc>Entra com a meta de produção do setor. Sem isso, o setor fica fora dos custos e da produção desta safra.</small></span>
-                                <input type="checkbox" name="include_in_season" value="1" class="szw-check" data-stw-season {% if not ep or already %}checked{% endif %} {% if already %}disabled{% endif %}>
+                                <input type="checkbox" role="switch" name="include_in_season" value="1" class="szw-check" data-stw-season {% if not ep or already %}checked{% endif %} {% if already %}disabled{% endif %}>
                                 <span class="szw-toggle" aria-hidden="true"><span></span></span>
                             </label>
                             {% endif %}
