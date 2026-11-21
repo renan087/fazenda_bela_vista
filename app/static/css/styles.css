@@ -9863,6 +9863,9 @@ dialog.stw-dialog::-webkit-scrollbar { display: none; }
 .ar-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 11px; font: 600 13px Inter, sans-serif; cursor: pointer; white-space: nowrap; }
 .ar-btn svg { width: 16px; height: 16px; }
 .ar-btn-secondary { background: #fff; border: 1px solid #D6DDD5; color: #16201A; }
+.ar-btn-primary { background: #446A36; border: 1px solid #446A36; color: #fff; text-decoration: none; }
+.ar-btn-primary:hover { background: #3A5C2E; border-color: #3A5C2E; color: #fff; }
+.ar-head-actions { display: flex; gap: 8px; }
 .ar-btn-secondary:hover { background: #F6F8F5; }
 .ar-btn-icon { width: 40px; padding: 0; }
 .ar-btn-block { width: 100%; margin-top: 12px; }
@@ -9876,8 +9879,9 @@ dialog.stw-dialog::-webkit-scrollbar { display: none; }
     .ar-dialog { width: 100vw; max-height: 94vh; margin: auto 0 0; border-radius: 22px 22px 0 0; }
     .ar-dialog-shell { max-height: 94vh; }
     .ar-dialog-head { padding: 16px; flex-wrap: wrap; }
-    .ar-dialog-head form { order: 3; width: 100%; }
-    .ar-dialog-head form .ar-btn { width: 100%; min-height: 44px; }
+    .ar-head-actions { order: 3; width: 100%; }
+    .ar-head-actions > * { flex: 1 1 0; }
+    .ar-head-actions .ar-btn { width: 100%; min-height: 44px; }
     .ar-btn-icon { width: 44px; min-height: 44px; }
     .ar-dialog-body { padding: 0 16px 24px; }
     .ar-title { font-size: 19px; }

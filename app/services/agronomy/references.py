@@ -7,28 +7,33 @@ cálculos importam daqui, o que mantém a rastreabilidade de cada dose.
 
 REFERENCES = {
     "manual_cafe_mg": {
+        "abnt": "MESQUITA, C. M. de et al. <b>Manual do café</b>: manejo de cafezais em produção. Belo Horizonte: EMATER-MG, 2016.",
         "titulo": "Manual do Café — Manejo de cafezais em produção (Emater-MG), tabelas transcritas da "
                   "5ª Aproximação (CFSEMG, 1999)",
         "url": "https://www.emater.mg.gov.br/download.do?id=17572",
         "escopo": "Café arábica em produção — Minas Gerais e regiões com recomendação semelhante.",
     },
     "cfsemg_5a": {
+        "abnt": "RIBEIRO, A. C.; GUIMARÃES, P. T. G.; ALVAREZ V., V. H. (Ed.). <b>Recomendações para o uso de corretivos e fertilizantes em Minas Gerais</b>: 5ª aproximação. Viçosa, MG: Comissão de Fertilidade do Solo do Estado de Minas Gerais, 1999.",
         "titulo": "Recomendações para o uso de corretivos e fertilizantes em Minas Gerais — 5ª Aproximação "
                   "(Ribeiro, Guimarães & Alvarez V., 1999)",
-        "url": "https://www.infoteca.cnptia.embrapa.br/infoteca/handle/doc/1148365",
+        "url": "",
         "escopo": "Interpretação de análise de solo, calagem e gessagem.",
     },
     "incaper_conilon": {
+        "abnt": "PREZOTTI, L. C.; GUARÇONI M., A.; BRAGANÇA, S. M.; LANI, J. A. Conilon coffee liming and fertilization. In: FERRÃO, R. G. et al. (Ed.). <b>Conilon coffee</b>. 3. ed. Vitória, ES: Incaper, 2019. cap. 14.",
         "titulo": "Incaper — Café Conilon, cap. 14: Calagem e adubação (Prezotti et al.; 2019)",
         "url": "https://biblioteca.incaper.es.gov.br/digital/bitstream/123456789/3531/1/chapter-14-liming-fertilization.pdf",
         "escopo": "Café conilon/robusta (Coffea canephora) — plantio, formação e produção.",
     },
     "embrapa_conilon_pa": {
+        "abnt": "VELOSO, C. A. C.; AUGUSTO, S. G. Café ‘Conilon’ (<i>Coffea canephora</i> L.). In: BRASIL, E. C.; CRAVO, M. da S.; VIÉGAS, I. de J. M. (Ed.). <b>Recomendações de calagem e adubação para o estado do Pará</b>. 2. ed. Brasília, DF: Embrapa, 2020. p. 267-272.",
         "titulo": "Embrapa — Recomendações de calagem e adubação para o Pará, cap. Café Conilon (Veloso & Augusto, 2020)",
         "url": "https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1127269/1/LV-RecomendacaoSolo-2020-269-274.pdf",
         "escopo": "Parcelamento (40/30/30) e calagem em faixa para café conilon.",
     },
     "embrapa_cafe_mg": {
+        "abnt": "FERREIRA, W. P. M. <b>Boas práticas agrícolas aplicadas à lavoura cafeeira para o estado de Minas Gerais</b>. Brasília, DF: Embrapa Café, 2022. (Sistemas de produção, 1).",
         "titulo": "Embrapa Café — Boas práticas agrícolas aplicadas à lavoura cafeeira para o estado de Minas Gerais (2022)",
         "url": "https://www.infoteca.cnptia.embrapa.br/handle/doc/1148365",
         "escopo": "Café arábica em formação — Tabela 2 (g por cova).",

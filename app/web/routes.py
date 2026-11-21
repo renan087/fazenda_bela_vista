@@ -23427,6 +23427,33 @@ def soil_analysis_pdf_download(
     return Response(content=analysis.pdf_data, media_type=analysis.pdf_content_type or "application/pdf", headers=headers)
 
 
+@router.get("/analise-solo/{analysis_id}/recomendacao.pdf")
+def soil_recommendation_pdf_download(
+    analysis_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    from app.services.agronomy.report import build_pdf, file_slug
+
+    repo = _repository(db)
+    allowed_farms = {farm.id for farm in _global_scope_context(request, repo)["context_farms"]}
+    analysis = repo.get_soil_analysis(analysis_id)
+    if not analysis or not analysis.plot or analysis.farm_id not in allowed_farms:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    plan = read_soil_recommendation(analysis.ai_recommendation)
+    if not plan or plan.get("versao") != 3:
+        _flash(request, "error", "Gere a recomendação de novo para baixar o PDF.")
+        return _redirect_with_query("/analise-solo", plot_id=analysis.plot_id)
+    if not set(plan.get("modulos_utilizados", [])) <= _soil_ai_allowed_pages(db, user):
+        return Response(status_code=status.HTTP_403_FORBIDDEN)
+    content = build_pdf(plan, farm=analysis.farm.name, plot=analysis.plot.name, analysis_date=analysis.analysis_date,
+                        laboratory=analysis.laboratory, generated_at=format_app_datetime(analysis.ai_generated_at) or None)
+    filename = f"recomendacao-{file_slug(analysis.plot.name)}-{analysis.analysis_date.isoformat()}.pdf"
+    return Response(content=content, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
 def _map_page_data(geojson: str, plots: list, scope: dict) -> dict:
     """Setores, fazendas e indicadores da pagina Mapa da Fazenda."""
     try:

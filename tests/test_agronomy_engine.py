@@ -316,3 +316,33 @@ def test_template_renders_v3_plan_and_legacy(farm, monkeypatch):
     assert "modelo antigo" in template.render(item=legacy, soil_ai_allowed_pages=PAGES)
     text = SimpleNamespace(id=2, ai_recommendation="Texto livre", ai_error=None, ai_status=None)
     assert "Texto livre" in template.render(item=text, soil_ai_allowed_pages=PAGES)
+
+
+def test_pdf_route_builds_report_with_logo_and_references(farm, monkeypatch):
+    from app.models import Farm
+    from app.services.agronomy.report import build_pdf, file_slug
+    monkeypatch.setattr(service, "get_settings", lambda: SimpleNamespace(openai_api_key="", openai_recommendation_model="m"))
+    monkeypatch.setattr(service, "today_in_app_timezone", lambda: TODAY)
+    routes = farm.routes
+    monkeypatch.setattr(routes, "_soil_ai_allowed_pages", lambda *a: PAGES)
+    routes._apply_soil_ai_recommendation(routes._repository(farm.db), farm.analysis, farm.user)
+    own = farm.db.get(Farm, farm.farm_id)
+    monkeypatch.setattr(routes, "_global_scope_context", lambda *a, **k: {"context_farms": [own]})
+    request = SimpleNamespace(session={})
+    response = routes.soil_recommendation_pdf_download(farm.analysis.id, request, farm.db, farm.user)
+    assert response.media_type == "application/pdf" and response.body.startswith(b"%PDF")
+    assert 'filename="recomendacao-talhao-1-2026-07-10.pdf"' in response.headers["content-disposition"]
+    assert b"/Subtype /Image" in response.body  # logomarca na capa
+
+    monkeypatch.setattr(routes, "_soil_ai_allowed_pages", lambda *a: set())
+    assert routes.soil_recommendation_pdf_download(farm.analysis.id, request, farm.db, farm.user).status_code == 403
+    monkeypatch.setattr(routes, "_global_scope_context", lambda *a, **k: {"context_farms": []})
+    assert routes.soil_recommendation_pdf_download(farm.analysis.id, request, farm.db, farm.user).status_code == 404
+    monkeypatch.setattr(routes, "_global_scope_context", lambda *a, **k: {"context_farms": [own]})
+    farm.analysis.ai_recommendation = "Texto antigo"
+    farm.db.commit()
+    assert routes.soil_recommendation_pdf_download(farm.analysis.id, request, farm.db, farm.user).status_code in (302, 303)
+
+    plan = agronomy.read(service.gerar_recomendacao_adubacao(farm.db, farm.analysis, PAGES)["recommendation"])
+    assert file_slug("Talhão Ç 1") == "talhao-c-1"
+    assert build_pdf(plan, farm="F", plot="P", analysis_date=None, laboratory="L").startswith(b"%PDF")
