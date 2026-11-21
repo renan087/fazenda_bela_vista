@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io1">
+<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io2">
 {% macro when(d) -%}
 {%- if not d -%}—{%- elif d == hub.today -%}hoje{%- elif (hub.today - d).days == 1 -%}ontem{%- else -%}{{ d.strftime('%d/%m') }}{%- endif -%}
 {%- endmacro %}
@@ -15,14 +15,14 @@
             <a class="io-btn" href="/mobile/assistente">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
                 Falar com o Pezinho</a>
-            <a class="io-btn is-primary" href="/insumos/comprados">
+            <a class="io-btn is-primary" href="/insumos/comprados/nova">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                 Lançar compra</a>
         </div>
     </header>
 
     <nav class="io-qa-grid" aria-label="Atalhos">
-        <a class="io-qa" href="/insumos/comprados">
+        <a class="io-qa" href="/insumos/comprados/nova">
             <span class="io-ico io-tone-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg></span>
             <strong>Chegou mercadoria</strong><span>Lançar compra ou nota</span></a>
         <button type="button" class="io-qa" data-io-open="use">

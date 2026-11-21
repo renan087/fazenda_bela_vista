@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io2">
+<div class="sf-page io-page cw-page" data-cw-page{% if done %} data-cw-done{% endif %}>
+    <header class="io-head">
+        <div>
+            <a class="io-crumb" href="/insumos/comprados">Insumos e máquinas › Compras ›</a>
+            <h1 class="io-title">Lançar compra</h1>
+            <p class="io-sub" data-cw-sub>Uma nota pode ter adubo, diesel e EPI juntos. Cada item vai para o lugar certo do estoque.</p>
+        </div>
+        {% if not done %}
+        <div class="io-actions">
+            <button type="button" class="io-btn is-ghost" data-cw-draft>Salvar rascunho</button>
+            <a class="io-btn" href="/insumos/comprados">Cancelar</a>
+        </div>
+        {% endif %}
+    </header>
+
+    {% if done %}
+    <section class="io-card cw-done" aria-live="polite">
+        <span class="cw-done-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span>
+        <h2 class="io-h2" style="font-size:24px;font-weight:800">Compra registrada</h2>
+        <p class="io-sub" style="max-width:480px;font-size:15px">
+            {{ done.count }} {{ 'item entrou' if done.count == 1 else 'itens entraram' }} no estoque ({{ done.total }}).
+            {% if done.installments > 1 %}As {{ done.installments }} parcelas estão em contas a pagar.{% elif done.finance %}O pagamento já está no Financeiro.{% else %}Sem conta escolhida, a compra não foi para o Financeiro.{% endif %}
+            {% if done.attached %}A nota ficou anexada.{% endif %}
+        </p>
+        <div class="io-actions" style="justify-content:center">
+            <a class="io-btn is-primary" href="/insumos/estoque">Ver estoque</a>
+            <a class="io-btn" href="/insumos/estoque?registrar=uso">Registrar uso agora</a>
+            <a class="io-btn" href="/insumos/comprados/nova">Lançar outra nota</a>
+        </div>
+    </section>
+    {% elif not wizard.can_launch %}
+    <section class="io-card io-empty" style="padding:40px 16px"><strong>Escolha a fazenda no topo da página</strong><span>A compra entra no estoque da fazenda ativa.</span></section>
+    {% else %}
+    <nav class="cw-steps" aria-label="Etapas da compra">
+        {% for label in ['Nota', 'Itens', 'Pagamento', 'Conferir'] %}
+        <button type="button" class="cw-step" data-cw-goto="{{ loop.index }}"><span aria-hidden="true"></span><b>{{ loop.index }}. {{ label }}</b></button>
+        {% endfor %}
+    </nav>
+    <p class="io-note io-tone-blue io-hidden" data-cw-restored>Recuperamos o rascunho que você deixou. <button type="button" class="cw-link" data-cw-discard>Começar do zero</button></p>
+
+    <form method="post" action="/insumos/comprados/nota" enctype="multipart/form-data" class="io-split" data-cw-form novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="payload" data-cw-payload>
+        <section class="io-card cw-main io-main">
+            {# 1 · Nota #}
+            <div class="cw-pane" data-cw-step="1">
+                <div class="cw-pane-head"><h2 class="io-h2" style="font-size:20px;font-weight:800">De quem você comprou?</h2><p class="io-sub">Os dados da nota servem para achar a compra depois e conferir com o Financeiro.</p></div>
+                <label class="cw-drop">
+                    <span class="io-ico io-tone-green" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/></svg></span>
+                    <span class="cw-drop-txt"><strong>Foto ou arquivo da nota <span class="io-pill io-tone-blue">Leitura automática em breve</span></strong><span data-cw-file-label>Opcional. A nota fica anexada a cada item da compra.</span></span>
+                    <span class="io-btn">Anexar nota</span>
+                    <input type="file" name="attachments" accept="image/*,.pdf" class="sr-only" data-cw-file>
+                </label>
+                <div class="io-fld">
+                    <label for="cw-supplier">Fornecedor</label>
+                    <input id="cw-supplier" type="text" maxlength="160" autocomplete="off" data-cw-note="supplier" placeholder="Nome de quem vendeu">
+                    {% if wizard.suppliers %}
+                    <div class="cw-chips"><span>Usados há pouco:</span>{% for s in wizard.suppliers %}<button type="button" class="io-chip" data-cw-supplier="{{ s }}">{{ s }}</button>{% endfor %}</div>
+                    {% endif %}
+                </div>
+                <div class="cw-grid3">
+                    <label class="io-fld"><span>Número da nota <em>(opcional)</em></span><input type="text" maxlength="40" data-cw-note="invoice" placeholder="Ex.: 18.322"><small>Evita lançar a mesma nota duas vezes.</small></label>
+                    <label class="io-fld"><span>Data da compra</span><input type="date" data-cw-note="date"></label>
+                    <div class="io-fld"><span>Fazenda</span><div class="cw-static">{{ wizard.farm }}</div><small>Para mudar, troque a fazenda no topo.</small></div>
+                </div>
+                <label class="io-fld"><span>Observação <em>(opcional)</em></span><input type="text" maxlength="200" data-cw-note="notes" placeholder="Ex.: entrega na sede"></label>
+                <p class="io-note io-tone-amber io-hidden" role="status" data-cw-dup></p>
+            </div>
+
+            {# 2 · Itens #}
+            <div class="cw-pane io-hidden" data-cw-step="2">
+                <div class="cw-pane-head"><h2 class="io-h2" style="font-size:20px;font-weight:800">O que veio na nota?</h2><p class="io-sub">Busque o item. Toque num item da lista para ver ou mudar os detalhes.</p></div>
+                <div class="cw-items" data-cw-items></div>
+                <div class="cw-add">
+                    <label class="io-search cw-search">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                        <span class="sr-only">Adicionar item</span>
+                        <input type="search" autocomplete="off" placeholder="Adicionar item: digite o nome (ex.: ureia, diesel, luva)" data-cw-search>
+                    </label>
+                    <div class="cw-sugg io-hidden" role="listbox" data-cw-sugg></div>
+                </div>
+                <div class="cw-total"><span>Total da nota</span><strong data-cw-total>R$ 0,00</strong></div>
+            </div>
+
+            {# 3 · Pagamento #}
+            <div class="cw-pane io-hidden" data-cw-step="3">
+                <div class="cw-pane-head"><h2 class="io-h2" style="font-size:20px;font-weight:800">Como foi pago?</h2><p class="io-sub">O pagamento vai direto para o Financeiro: pago no extrato, a pagar em contas a pagar.</p></div>
+                <div class="cw-modes" role="radiogroup" aria-label="Forma de pagamento">
+                    <button type="button" class="cw-mode" role="radio" data-cw-mode="vista"><strong>À vista</strong><span>Pix, boleto, dinheiro ou transferência</span></button>
+                    <button type="button" class="cw-mode" role="radio" data-cw-mode="prazo"><strong>Parcelado</strong><span>Boleto ou prazo com o fornecedor</span></button>
+                    <button type="button" class="cw-mode" role="radio" data-cw-mode="cartao"{% if not wizard.cards %} disabled title="Cadastre um cartão no Financeiro"{% endif %}><strong>Cartão de crédito</strong><span>{{ 'Entra na fatura do cartão' if wizard.cards else 'Nenhum cartão cadastrado' }}</span></button>
+                </div>
+                <div class="cw-grid3" data-cw-pay="vista prazo">
+                    <label class="io-fld"><span>Conta que paga</span><select data-cw-p="account_id">
+                        <option value="">Não lançar no Financeiro</option>
+                        {% for a in wizard.accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+                    </select></label>
+                    <label class="io-fld"><span>Como</span><select data-cw-p="method">{% for m in wizard.methods %}<option>{{ m }}</option>{% endfor %}</select></label>
+                </div>
+                <div class="cw-grid3" data-cw-pay="prazo">
+                    <label class="io-fld"><span>Parcelas</span><select data-cw-p="count">{% for n in range(1, 25) %}<option value="{{ n }}">{{ n }} {{ 'vez' if n == 1 else 'vezes' }}</option>{% endfor %}</select></label>
+                    <label class="io-fld"><span>1º vencimento</span><input type="date" data-cw-p="first_due"></label>
+                    <div class="io-fld"><span>A cada</span><div class="cw-static">mês</div></div>
+                </div>
+                <div class="cw-parcels" data-cw-pay="prazo" data-cw-parcels></div>
+                <div class="cw-grid3" data-cw-pay="cartao">
+                    <label class="io-fld"><span>Cartão</span><select data-cw-p="card_id">{% for c in wizard.cards %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+                    <label class="io-fld"><span>Parcelas no cartão</span><select data-cw-p="card_count">{% for n in range(1, 13) %}<option value="{{ n }}">{{ n }} {{ 'vez' if n == 1 else 'vezes' }}</option>{% endfor %}</select></label>
+                    <div class="io-note io-tone-blue" data-cw-card-info></div>
+                </div>
+                <p class="io-note io-tone-amber io-hidden" data-cw-nofin>Sem conta escolhida, a compra entra no estoque mas não vai para o Financeiro.</p>
+            </div>
+
+            {# 4 · Conferir #}
+            <div class="cw-pane io-hidden" data-cw-step="4">
+                <div class="cw-pane-head"><h2 class="io-h2" style="font-size:20px;font-weight:800">Confira antes de gravar</h2><p class="io-sub">É assim que o estoque e o Financeiro vão ficar. Toque numa etapa lá em cima para corrigir.</p></div>
+                <div class="cw-review" data-cw-review></div>
+                <div class="io-note io-tone-blue" data-cw-review-fin></div>
+            </div>
+
+            <p class="io-note io-tone-red io-hidden" role="alert" data-cw-error></p>
+            <div class="cw-nav">
+                <button type="button" class="io-btn" data-cw-prev>Voltar</button>
+                <div class="cw-nav-right">
+                    <span class="cw-nav-total io-hidden" data-cw-nav-total></span>
+                    <button type="button" class="io-btn is-primary" data-cw-next>Continuar</button>
+                    <button type="submit" class="io-btn is-primary io-hidden" data-cw-submit>Confirmar compra</button>
+                </div>
+            </div>
+        </section>
+
+        <aside class="io-card cw-side io-side" aria-label="Resumo da nota" data-cw-summary></aside>
+    </form>
+    <script type="application/json" data-cw-data>{{ wizard|tojson }}</script>
+    <script src="{{ url_for('static', path='js/purchase_wizard.js') }}?v=20261121cw1" defer></script>
+    {% endif %}
+</div>
+{% if done %}<script>try { localStorage.removeItem('sisfarm.compra.rascunho'); } catch (e) {}</script>{% endif %}
+{% endblock %}

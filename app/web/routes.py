@@ -303,6 +303,7 @@ from app.services.rbac_service import (
     user_has_permission,
 )
 from app.services.forms import (
+    refresh_shared_purchase_transaction,
     PLANTING_END_REASONS,
     PlantingRenewalError,
     renew_planting,
@@ -13845,7 +13846,8 @@ def delete_purchased_input_action(
     if tx_id:
         tx = repo.get_finance_transaction(tx_id)
         if tx:
-            repo.delete(tx)
+            # Nota com vários itens: mantém o lançamento e recalcula o total; sem itens, remove.
+            refresh_shared_purchase_transaction(repo, tx)
     _flash(request, "success", "Insumo comprado excluido com sucesso.")
     return _redirect("/insumos/comprados")
 
@@ -25945,3 +25947,178 @@ def equipment_asset_sheet_page(
         "equipment_sheet.html",
         _base_context(request, user, csrf_token, "assets", _repo=repo, title=asset.name, asset=asset, sheet=sheet, hub=hub),
     )
+
+
+# ---------------------------------------------------------------------------
+# Compra em 4 etapas (nota com vários itens)
+# ---------------------------------------------------------------------------
+from app.services import purchase_note as _pn  # noqa: E402
+
+SUPPLY_PURCHASE_UNITS = ["un", "par", "cx", "kit", "peça", "rolo", "saco", "m", "m²", "m³", "L", "ml", "kg", "g"]
+PURCHASE_WIZARD_TYPES = [
+    {"key": "def", "label": "Defensivo", "item_type": "insumo_agricola",
+     "categories": ["Fungicida", "Herbicida", "Inseticida", "Acaricida", "Adjuvante", "Outros Defensivos"]},
+    {"key": "fert", "label": "Fertilizante ou corretivo", "item_type": "insumo_agricola", "categories": ["Fertilizantes", "Corretivos de Solo"]},
+    {"key": "comb", "label": "Combustível ou lubrificante", "item_type": "combustivel", "categories": ["Combustíveis", "Lubrificantes", "Outros Itens"]},
+    {"key": "sup", "label": "Suprimento, peça ou EPI", "item_type": "suprimento", "categories": list(SUPPLY_CATEGORY_OPTIONS)},
+    {"key": "outros", "label": "Outro insumo", "item_type": "insumo_agricola", "categories": ["Outros Itens", "Outros Custos de Insumos"]},
+]
+
+
+def _purchase_wizard_units(category: str, item_type: str) -> list[str]:
+    if item_type == "suprimento":
+        return SUPPLY_PURCHASE_UNITS
+    return list(_purchase_input_category_profile(category).get("units") or ["kg"])
+
+
+def _purchase_wizard_data(repo: FarmRepository, scope: dict) -> dict:
+    farm = scope.get("active_farm")
+    farm_id = scope.get("active_farm_id")
+    stock = {i["id"]: i for i in _ih.build_stock_items(repo, farm_id, today_in_app_timezone())} if farm_id else {}
+    catalog = []
+    for item in repo.list_input_catalog():
+        if item.item_type not in _ih.STOCK_TYPES or not item.is_active:
+            continue
+        unit = _input_catalog_primary_unit_from_first_entry(repo, item) or item.default_unit
+        row = stock.get(item.id)
+        catalog.append({
+            "name": item.name, "item_type": item.item_type, "category": item.category, "unit": unit,
+            "group": _ih.item_group(item.item_type, item.category), "group_label": _ih.GROUP_LABELS[_ih.item_group(item.item_type, item.category)],
+            "stock": row["available_label"] if row else f"0 {unit}", "available": row["available"] if row else 0,
+            "stock_unit": row["unit"] if row else unit, "minimum": float(item.low_stock_threshold or 0),
+            "units": _purchase_wizard_units(item.category, item.item_type),
+        })
+    entries = [e for e in repo.list_purchased_inputs() if farm_id and e.farm_id == farm_id]
+    entries.sort(key=lambda e: (e.purchase_date or date.min, e.id or 0), reverse=True)
+    suppliers: list[str] = []
+    notes = []
+    for entry in entries:
+        name = (entry.supplier_name or "").strip()
+        if name and name.lower() not in [s.lower() for s in suppliers] and len(suppliers) < 6:
+            suppliers.append(name)
+        marker = re.search(r"Nota fiscal ([^·]+)", entry.notes or "")
+        if marker and name:
+            notes.append({"supplier": name, "invoice": marker.group(1).strip(), "date": entry.purchase_date.strftime("%d/%m/%Y") if entry.purchase_date else ""})
+    accounts = repo.list_finance_accounts(farm_id=farm_id) if farm_id else []
+    cards = repo.list_finance_credit_cards(farm_id=farm_id) if farm_id else []
+    return {
+        "catalog": sorted(catalog, key=lambda c: c["name"].lower()),
+        "types": [{**t, "group_label": _ih.GROUP_LABELS[t["key"]], "units": {c: _purchase_wizard_units(c, t["item_type"]) for c in t["categories"]}} for t in PURCHASE_WIZARD_TYPES],
+        "suppliers": suppliers,
+        "notes": notes[:200],
+        "accounts": [{"id": a.id, "name": a.account_name, "default": bool(a.is_default)} for a in accounts],
+        "cards": [{"id": c.id, "name": getattr(c, "card_name", None) or getattr(c, "name", None) or f"Cartão {c.id}",
+                   "closing_day": int(getattr(c, "closing_day", 0) or 0), "due_day": int(getattr(c, "due_day", 0) or 0)} for c in cards],
+        "methods": [m for m in FINANCE_TRANSACTION_EXPENSE_PAYMENT_METHODS if m != "Cartão de crédito"],
+        "today": today_in_app_timezone().isoformat(),
+        "farm": farm.name if farm else None,
+        "can_launch": bool(farm_id),
+    }
+
+
+@router.get("/insumos/comprados/nova")
+def purchase_wizard_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    done = request.session.pop("purchase_note_done", None) if request.query_params.get("registrada") == "1" else None
+    return templates.TemplateResponse(
+        "purchase_wizard.html",
+        _base_context(request, user, csrf_token, "purchased_inputs", _repo=repo, title="Lançar compra",
+                      wizard=_purchase_wizard_data(repo, scope), done=done),
+    )
+
+
+def _resolve_wizard_item(repo: FarmRepository, raw: dict, number: int, many: bool) -> dict:
+    prefix = f"Item {number}: " if many else ""
+    name = _clean_text(raw.get("name"))
+    if not name:
+        raise ValueError(prefix + "informe o nome do item.")
+    item_type = (raw.get("item_type") or "").strip()
+    category = (raw.get("category") or "").strip()
+    unit = _clean_text(raw.get("unit"))
+    existing = repo.get_input_catalog_by_normalized_name(_normalize_input_name(name))
+    try:
+        if (existing and existing.item_type == "suprimento") or (not existing and item_type == "suprimento"):
+            if existing:
+                category = existing.category
+                unit = _input_catalog_primary_unit_from_first_entry(repo, existing) or existing.default_unit
+            elif category not in SUPPLY_CATEGORY_OPTIONS:
+                raise ValueError("escolha a categoria do suprimento.")
+            if unit not in SUPPLY_PURCHASE_UNITS and not existing:
+                raise ValueError("escolha uma unidade válida.")
+            resolved = ("suprimento", category, unit, "")
+        else:
+            if item_type not in {"insumo_agricola", "combustivel"} and not existing:
+                raise ValueError("escolha o tipo do item novo.")
+            resolved = _validate_purchased_entry_package_unit(
+                repo, item_type=item_type or "insumo_agricola", category=category, name=name,
+                package_unit=unit, package_unit_override=None,
+            )
+    except ValueError as exc:
+        raise ValueError(f"{prefix}{exc}")
+    return {**raw, "name": name, "item_type": resolved[0], "category": resolved[1], "package_unit": resolved[2], "override": False}
+
+
+@router.post("/insumos/comprados/nota")
+async def register_purchase_note_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    back = "/insumos/comprados/nova"
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, back, require_season=False)
+    if denied:
+        return denied
+    try:
+        payload = json.loads(str(form.get("payload") or "{}"))
+        if not isinstance(payload, dict):
+            raise ValueError
+    except ValueError:
+        _flash(request, "error", "Não entendi a compra enviada. Seu rascunho continua salvo; tente de novo.")
+        return _redirect(back)
+    note = payload.get("note") or {}
+    payment = payload.get("payment") or {}
+    raw_items = [i for i in (payload.get("items") or []) if isinstance(i, dict)]
+    try:
+        purchase_date = _pn._date(note.get("date"), "data da compra") or today_in_app_timezone()
+        items = [_resolve_wizard_item(repo, raw, n, len(raw_items) > 1) for n, raw in enumerate(raw_items, start=1)]
+        mode = payment.get("mode")
+        finance_account = None
+        credit_card = None
+        if mode == "cartao":
+            credit_card = _resolve_optional_finance_credit_card(repo, active_farm=scope["active_farm"], credit_card_id=payment.get("card_id"), payment_method="Cartão de crédito")
+        else:
+            finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=payment.get("account_id"))
+        attachments = _read_attachments(await _request_attachments(request))
+        created, tx = _pn.register_purchase_note(
+            repo, farm_id=scope["active_farm_id"], supplier=note.get("supplier"), invoice=note.get("invoice"),
+            purchase_date=purchase_date, items=items, payment=payment, finance_account=finance_account,
+            credit_card=credit_card, notes=note.get("notes"),
+        )
+    except ValueError as exc:
+        _flash(request, "error", f"{exc} Seu rascunho continua salvo.")
+        return _redirect(back)
+    saved = 0
+    try:
+        for entry in created:
+            saved = _save_purchased_input_attachments(repo, entry, attachments) or saved
+    except Exception:
+        _flash(request, "error", "A compra foi registrada, mas não foi possível guardar a nota anexada agora.")
+    installments = len(tx.installments or []) if tx is not None else 0
+    request.session["purchase_note_done"] = {
+        "count": len(created),
+        "total": _ih.br_money(sum(float(e.total_cost or 0) for e in created)),
+        "installments": installments,
+        "finance": bool(tx),
+        "attached": bool(saved),
+    }
+    return _redirect(back + "?registrada=1")

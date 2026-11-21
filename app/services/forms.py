@@ -924,6 +924,12 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             "first_installment_date": first_installment_date,
         },
     )
+    shared_tx = repository.get_finance_transaction(updated_item.finance_transaction_id) if updated_item.finance_transaction_id else None
+    if shared_tx is not None and len(shared_tx.purchased_inputs or []) > 1:
+        # Item de uma nota com vários itens: o pagamento é da nota inteira.
+        # Só recalcula o total e as parcelas; nunca apaga o lançamento compartilhado.
+        refresh_shared_purchase_transaction(repository, shared_tx)
+        return updated_item
     if should_create_financial_transaction:
         source_value = "Insumos" if item_type == "insumo_agricola" else "Suprimentos"
         if updated_item.finance_transaction_id:
@@ -1002,6 +1008,39 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             repository.db.commit()
         updated_item.finance_transaction_id = None
     return updated_item
+
+
+def refresh_shared_purchase_transaction(repository: FarmRepository, tx: FinanceTransaction) -> FinanceTransaction | None:
+    """Recalcula o lançamento de uma nota com vários itens depois de editar ou excluir um item.
+
+    Sem itens restantes, o lançamento é removido. As parcelas são refeitas com o
+    mesmo plano de pagamento (parcelas já pagas são preservadas).
+    """
+    repository.db.refresh(tx)
+    items = list(tx.purchased_inputs or [])
+    if not items:
+        repository.db.delete(tx)
+        repository.db.commit()
+        return None
+    tx.amount = round(sum(float(item.total_cost or 0) for item in items), 2)
+    credit_card = repository.get_finance_credit_card(tx.credit_card_id) if tx.credit_card_id else None
+    _replace_installments(
+        repository,
+        tx,
+        _build_installments(
+            amount=float(tx.amount),
+            payment_condition=tx.payment_condition or "a_vista",
+            payment_method=tx.payment_method,
+            credit_card=credit_card,
+            reference_date=tx.launch_date,
+            installment_count=int(tx.installment_count or 1),
+            installment_frequency=tx.installment_frequency,
+            first_installment_date=tx.first_installment_date,
+        ),
+    )
+    repository.db.add(tx)
+    repository.db.commit()
+    return tx
 
 
 def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentAsset:

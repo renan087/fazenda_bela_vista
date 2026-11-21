@@ -61,7 +61,7 @@
     {'label': 'Consumo de insumo', 'hint': 'Dá baixa no estoque', 'href': '/mobile/assistente?q=Usei%20', 'icon': 'box', 'tone': 'amber'},
     {'label': 'Aplicação ou adubação', 'hint': 'O que foi feito em qual talhão', 'href': module_href('/fertilizacao'), 'icon': 'leaf', 'tone': 'green'},
     {'label': 'Colheita do dia', 'hint': 'Entra num lote de produção', 'href': module_href('/producao'), 'icon': 'bean', 'tone': 'green'},
-    {'label': 'Compra de insumo', 'hint': 'Entrada no estoque', 'href': module_href('/insumos/comprados'), 'icon': 'cart', 'tone': 'green'},
+    {'label': 'Compra de insumo', 'hint': 'Entrada no estoque', 'href': module_href('/insumos/comprados/nova'), 'icon': 'cart', 'tone': 'green'},
     {'label': 'Conta a pagar', 'hint': 'Vai para o financeiro', 'href': module_href('/gestao-financeira/contas'), 'icon': 'coin', 'tone': 'amber'},
 ] -%}
 {%- set sf_user_name = session_display_name if session_display_name is defined else (user.name or user.email) -%}

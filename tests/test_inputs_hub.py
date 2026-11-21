@@ -12,11 +12,12 @@ from app.models.plot import Plot
 from app.models.purchased_input import PurchasedInput
 from app.models.stock_output import StockOutput
 from app.services import inputs_hub as ih
+from app.services.forms import _normalize_input_name
 from tests.test_coffee_sales import env  # noqa: F401
 
 
 def _item(db, name, item_type="insumo_agricola", category="Fertilizantes", unit="sc", threshold=None):
-    item = InputCatalog(name=name, normalized_name=name.lower(), item_type=item_type, category=category, default_unit=unit,
+    item = InputCatalog(name=name, normalized_name=_normalize_input_name(name), item_type=item_type, category=category, default_unit=unit,
                         low_stock_threshold=threshold, is_active=True)
     db.add(item)
     db.flush()

@@ -366,7 +366,7 @@ def build_alerts(stock_items, machines, last_inventory: date | None, today: date
             if item["minimum_label"]:
                 detail += f" · mínimo {item['minimum_label']}"
             alerts.append({"tone": "red" if item["status"] == "out" else "amber", "title": title, "detail": detail + ".",
-                           "action": "Lançar compra", "href": "/insumos/comprados", "rank": rank})
+                           "action": "Lançar compra", "href": "/insumos/comprados/nova", "rank": rank})
         if item["expiring_count"]:
             lot = next(l for l in item["lots"] if l["tone"] in {"amber", "red"})
             expired = lot["days_to_expire"] < 0

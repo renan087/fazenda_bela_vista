@@ -2,7 +2,7 @@
 {% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline %}
 {% block content %}
 <div class="stock-page-shell sf-page">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io1">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io2">
     {%- set io_items = hub['items'] -%}
     {%- set io_sel = selected_stock_item if selected_stock_item in io_items|map(attribute='id')|list else (io_items[0].id if io_items else None) -%}
     <div class="io-page" data-io-filter-root>
@@ -17,14 +17,14 @@
                     <summary class="io-btn">Mais opções</summary>
                     <div class="io-menu-panel" role="menu">
                         <button type="button" role="menuitem" data-stock-adjustment-open>Ajustar saldo</button>
-                        <a role="menuitem" href="/insumos/suprimentos">Lançar suprimento ou EPI</a>
+                        <a role="menuitem" href="/insumos/comprados">Ver todas as compras</a>
                         <a role="menuitem" href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}">Exportar em PDF</a>
                         <a role="menuitem" href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}">Exportar em planilha</a>
                     </div>
                 </details>
                 <button type="button" class="io-btn" data-stock-inventory-open>Contar estoque</button>
                 <button type="button" class="io-btn" data-io-open="use">Registrar uso</button>
-                <a class="io-btn is-primary" href="/insumos/comprados">
+                <a class="io-btn is-primary" href="/insumos/comprados/nova">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                     Lançar compra</a>
             </div>
@@ -94,7 +94,7 @@
                     {% endif %}
                     <div class="io-grid2">
                         {% if i.available > 0 %}<button type="button" class="io-btn is-primary" data-io-open="use" data-io-item="{{ i.id }}">Registrar uso</button>{% endif %}
-                        <a class="io-btn" href="{{ '/insumos/suprimentos' if i.item_type == 'suprimento' else '/insumos/comprados' }}">Comprar mais</a>
+                        <a class="io-btn" href="/insumos/comprados/nova">Comprar mais</a>
                     </div>
                 </section>
                 {% endfor %}
@@ -104,7 +104,7 @@
         <section class="io-card io-empty" style="padding:40px 16px">
             <strong>O estoque ainda está vazio</strong>
             <span>Lance a primeira compra de insumo, combustível ou suprimento. O saldo aparece aqui na hora.</span>
-            <div class="io-actions" style="justify-content:center"><a class="io-btn is-primary" href="/insumos/comprados">Lançar compra</a><a class="io-btn" href="/insumos/suprimentos">Lançar suprimento</a></div>
+            <div class="io-actions" style="justify-content:center"><a class="io-btn is-primary" href="/insumos/comprados/nova">Lançar compra</a></div>
         </section>
         {% endif %}
         <h2 class="io-h2" style="margin-top:8px">Movimentações</h2>

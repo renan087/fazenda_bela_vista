@@ -172,7 +172,7 @@
                             <div class="hd-pop hd-new-pop">
                                 <p class="hd-pop-label">Registrar</p>
                                 <a href="/mobile/assistente?q=Usei%20" class="hd-mi">Consumo de insumo</a>
-                                <a href="{{ module_href('/insumos/comprados') }}" class="hd-mi">Compra</a>
+                                <a href="{{ module_href('/insumos/comprados/nova') }}" class="hd-mi">Compra</a>
                                 <a href="{{ module_href('/fertilizacao') }}" class="hd-mi">Aplicação</a>
                                 <a href="/pluviometria" class="hd-mi">Chuva</a>
                                 <a href="{{ module_href('/gestao-financeira/contas') }}" class="hd-mi">Conta a pagar</a>
@@ -227,7 +227,7 @@
                         .filter((p) => p.label && p.href && p.href.startsWith('/') && !seen.has(p.href) && seen.add(p.href));
                 };
                 const ACTIONS = [
-                    ['Registrar consumo de insumo', '/mobile/assistente?q=Usei%20'], ['Lançar compra', '/insumos/comprados'],
+                    ['Registrar consumo de insumo', '/mobile/assistente?q=Usei%20'], ['Lançar compra', '/insumos/comprados/nova'],
                     ['Registrar aplicação', '/fertilizacao'], ['Registrar chuva', '/pluviometria'], ['Nova conta a pagar', '/gestao-financeira/contas'],
                 ];
                 let items = [];
@@ -668,7 +668,7 @@
                     <p>{{ item.message }}</p>
                     {% if item.meta %}<small>{{ item.meta }}</small>{% endif %}
                     <div class="nf-actions">
-                        {% if k == 'stock' %}<a class="nf-btn is-primary" href="{{ module_href('/insumos/comprados') }}" data-nf-act>Lançar compra</a><a class="nf-btn" href="{{ item.href }}" data-nf-act>Ver estoque</a>
+                        {% if k == 'stock' %}<a class="nf-btn is-primary" href="{{ module_href('/insumos/comprados/nova') }}" data-nf-act>Lançar compra</a><a class="nf-btn" href="{{ item.href }}" data-nf-act>Ver estoque</a>
                         {% elif k == 'payable' %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Ver conta</a>
                         {% elif k == 'receivable' %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Ver recebimento</a>
                         {% elif k == 'rainfall' %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Registrar chuva</a>

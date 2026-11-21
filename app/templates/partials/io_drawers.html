@@ -23,7 +23,7 @@
             {% if not dw.can_launch %}
             <div class="io-note io-tone-amber">Escolha a fazenda e a safra no topo da página para registrar o uso.</div>
             {% elif not dw['items'] %}
-            <div class="io-empty"><strong>Nenhum item com saldo</strong><span>Lance uma compra primeiro; depois o uso aparece aqui.</span><a class="io-btn is-primary" href="/insumos/comprados">Lançar compra</a></div>
+            <div class="io-empty"><strong>Nenhum item com saldo</strong><span>Lance uma compra primeiro; depois o uso aparece aqui.</span><a class="io-btn is-primary" href="/insumos/comprados/nova">Lançar compra</a></div>
             {% else %}
             <div data-io-step="edit" data-io-pane="one" class="io-list" style="gap:16px">
                 <label class="io-fld">Item do estoque<select data-f="input_id" required></select></label>
@@ -132,4 +132,4 @@
         </div>
     </form>
 </dialog>
-<script src="{{ url_for('static', path='js/inputs_hub.js') }}?v=20261121io1" defer></script>
+<script src="{{ url_for('static', path='js/inputs_hub.js') }}?v=20261121io2" defer></script>
