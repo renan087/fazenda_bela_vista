@@ -3,13 +3,15 @@
 {% set single_farm = plots_farm_scope_locked or (farms|length == 1) %}
 {% set the_farm_id = (ep.farm_id if ep else (plots_scope_active_farm_id if plots_farm_scope_locked else (selected_farm_id or (farms[0].id if farms|length == 1 else '')))) %}
 {% set the_farm_name = (ep.farm.name if ep and ep.farm else (plots_locked_farm_name if plots_farm_scope_locked else (farms[0].name if farms|length == 1 else ''))) %}
-<dialog id="plots-launch-modal" class="app-modal stw-dialog rounded-[2rem] p-0 shadow-2xl w-full max-w-6xl overflow-hidden">
+<dialog id="plots-launch-modal" class="app-modal stw-dialog rounded-[1.5rem] p-0 shadow-2xl w-full overflow-hidden">
     <div class="stw-shell">
         <header class="stw-modal-head">
             <div class="szp-title">
                 <nav aria-label="Caminho" class="szp-crumb"><a href="/setores">Setores</a> / {% if ep %}{{ ep.name }}{% else %}Novo setor{% endif %}</nav>
-                <h3 class="stw-h1">{% if ep %}Editar setor{% else %}Novo setor{% endif %}</h3>
-                <p><span data-stw-farm-label>{{ the_farm_name or 'Escolha a fazenda' }}</span> · <span data-stw-draft-status>rascunho salvo automaticamente</span></p>
+                <div class="stw-title-line">
+                    <h3 class="stw-h1">{% if ep %}Editar setor{% else %}Novo setor{% endif %}</h3>
+                    <p><span data-stw-farm-label>{{ the_farm_name or 'Escolha a fazenda' }}</span> · <span data-stw-draft-status>rascunho salvo automaticamente</span></p>
+                </div>
             </div>
             <div class="szp-actions">
                 <button type="button" class="szw-btn" data-plots-launch-close>Cancelar</button>
@@ -152,7 +154,7 @@
                                 <div><h2 id="stw-t2">O que está plantado?</h2><p>Com a data e o espaçamento, o SiSFarm calcula plantas, idade e se o setor já produz.</p></div>
                                 {% if not ep %}
                                 <div class="stw-seg" role="radiogroup" aria-label="Cadastrar plantio agora?">
-                                    <button type="button" role="radio" aria-checked="true" data-stw-skip="plant" data-value="now">Cadastrar plantio agora</button>
+                                    <button type="button" role="radio" aria-checked="true" data-stw-skip="plant" data-value="now">Cadastrar agora</button>
                                     <button type="button" role="radio" aria-checked="false" data-stw-skip="plant" data-value="later">Deixar para depois</button>
                                 </div>
                                 {% endif %}
@@ -219,10 +221,10 @@
                                 </div>
                                 <div class="stw-irrig-box" data-stw-irrig-box="gotejo" hidden>
                                     <div class="stw-grid4">
-                                        <label class="szw-field"><span>Linhas de mangueira</span><input name="irrigation_line_count" class="szw-input" inputmode="numeric" value="{{ ep.irrigation_line_count if ep and ep.irrigation_line_count else '' }}" data-stw-lines></label>
-                                        <label class="szw-field"><span>Comprimento médio (m)</span><input name="irrigation_line_length_meters" class="szw-input" inputmode="decimal" value="{{ (ep.irrigation_line_length_meters|string).replace('.', ',') if ep and ep.irrigation_line_length_meters else '' }}" data-stw-line-len></label>
-                                        <label class="szw-field"><span>Entre gotejadores (m)</span><input class="szw-input" inputmode="decimal" value="{{ (ep.drip_spacing_meters|string).replace('.', ',') if ep and ep.drip_spacing_meters else '' }}" data-stw-drip-m></label>
-                                        <label class="szw-field"><span>Vazão do gotejador (L/h)</span><input name="drip_liters_per_hour" class="szw-input" inputmode="decimal" value="{{ (ep.drip_liters_per_hour|string).replace('.', ',') if ep and ep.drip_liters_per_hour else '' }}" data-stw-drip-lh></label>
+                                        <label class="szw-field" title="Linhas de mangueira"><span>Linhas</span><input name="irrigation_line_count" class="szw-input" inputmode="numeric" value="{{ ep.irrigation_line_count if ep and ep.irrigation_line_count else '' }}" data-stw-lines></label>
+                                        <label class="szw-field" title="Comprimento médio (m)"><span>Comp. médio (m)</span><input name="irrigation_line_length_meters" class="szw-input" inputmode="decimal" value="{{ (ep.irrigation_line_length_meters|string).replace('.', ',') if ep and ep.irrigation_line_length_meters else '' }}" data-stw-line-len></label>
+                                        <label class="szw-field" title="Espaçamento entre gotejadores (m)"><span>Gotejadores (m)</span><input class="szw-input" inputmode="decimal" value="{{ (ep.drip_spacing_meters|string).replace('.', ',') if ep and ep.drip_spacing_meters else '' }}" data-stw-drip-m></label>
+                                        <label class="szw-field" title="Vazão de cada gotejador (L/h)"><span>Vazão (L/h)</span><input name="drip_liters_per_hour" class="szw-input" inputmode="decimal" value="{{ (ep.drip_liters_per_hour|string).replace('.', ',') if ep and ep.drip_liters_per_hour else '' }}" data-stw-drip-lh></label>
                                     </div>
                                     <input type="hidden" name="drip_spacing_centimeters" value="{{ (ep.drip_spacing_meters * 100)|round(2) if ep and ep.drip_spacing_meters else '' }}" data-stw-drip-cm>
                                     <div class="stw-calcs">
