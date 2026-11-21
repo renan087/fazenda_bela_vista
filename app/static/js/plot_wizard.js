@@ -206,6 +206,46 @@
 
     // ---------- plantio ----------
     const newVarInput = $('[data-stw-new-variety-input]');
+    const monthInput = $('[data-stw-month]');
+    const monthHint = $('[data-stw-month-hint]');
+    const formatPlantingMonth = (raw) => {
+        const txt = String(raw ?? '').trim();
+        const iso = /^(\d{4})-(\d{2})$/.exec(txt);
+        if (iso) return `${iso[2]}/${iso[1]}`;
+        const digits = txt.replace(/\D/g, '').slice(0, 6);
+        if (digits.length <= 2) return digits;
+        return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    };
+    const parsePlantingMonth = (raw) => {
+        const txt = String(raw ?? '').trim();
+        if (!txt) return { y: 0, m: 0, error: '' };
+        let m = 0, y = 0;
+        const br = /^(\d{2})\/(\d{4})$/.exec(txt);
+        const iso = /^(\d{4})-(\d{2})$/.exec(txt);
+        if (br) { m = Number(br[1]); y = Number(br[2]); }
+        else if (iso) { y = Number(iso[1]); m = Number(iso[2]); }
+        else return { y: 0, m: 0, error: txt.length >= 3 ? 'Digite no formato MM/AAAA (ex.: 03/2021).' : '' };
+        const maxYear = today.getFullYear() + 2;
+        if (m < 1 || m > 12) return { y: 0, m: 0, error: 'Mês inválido — use de 01 a 12 (ex.: 03/2021).' };
+        if (y < 1900 || y > maxYear) return { y: 0, m: 0, error: `Informe um ano entre 1900 e ${maxYear}.` };
+        return { y, m, error: '' };
+    };
+    const formatAgeLabel = (totalMonths) => {
+        if (totalMonths < 0) return 'Plantio futuro';
+        if (totalMonths === 0) return 'Menos de 1 mês';
+        const yrs = Math.floor(totalMonths / 12);
+        const mos = totalMonths % 12;
+        if (yrs === 0) return `${mos} ${mos === 1 ? 'mês' : 'meses'}`;
+        if (mos === 0) return `${yrs} ${yrs === 1 ? 'ano' : 'anos'}`;
+        return `${yrs} ${yrs === 1 ? 'ano' : 'anos'} e ${mos} ${mos === 1 ? 'mês' : 'meses'}`;
+    };
+    if (monthInput) {
+        if (monthInput.value) monthInput.value = formatPlantingMonth(monthInput.value);
+        monthInput.addEventListener('input', () => {
+            const formatted = formatPlantingMonth(monthInput.value);
+            if (monthInput.value !== formatted) monthInput.value = formatted;
+        });
+    }
     $('[data-stw-new-variety]').addEventListener('click', () => {
         newVarInput.hidden = !newVarInput.hidden;
         if (!newVarInput.hidden) { $$('input[name="variety_id"]').forEach((r) => { r.checked = false; }); newVarInput.focus(); } else newVarInput.value = '';
@@ -213,19 +253,21 @@
     });
     $$('input[name="variety_id"]').forEach((r) => r.addEventListener('change', () => { newVarInput.hidden = true; newVarInput.value = ''; }));
     const planting = () => {
-        const month = $('[data-stw-month]').value;
-        const [y, m] = month ? month.split('-').map(Number) : [0, 1];
+        const parsed = parsePlantingMonth(monthInput?.value || '');
+        const y = parsed.y;
+        const m = parsed.m;
         const row = num($('[data-stw-row]').value);
         const plant = num($('[data-stw-plant]').value);
         const area = effectiveArea();
         const estimate = row && plant && area ? area * 10000 / (row * plant) : 0;
         const counted = Math.round(num($('[data-stw-counted]').value));
-        const age = y ? (today.getFullYear() + today.getMonth() / 12) - (y + (m - 1) / 12) : 0;
-        const forming = y && age < 2.5;
+        const totalMonths = y ? (today.getFullYear() - y) * 12 + (today.getMonth() + 1 - m) : 0;
+        const age = y ? totalMonths / 12 : 0;
+        const forming = Boolean(y && totalMonths < 30);
         const yieldHa = num($('[data-stw-yield]').value);
         const varietyEl = form.querySelector('input[name="variety_id"]:checked');
         const variety = newVarInput.value.trim() || (varietyEl ? varietyEl.nextElementSibling.textContent : '');
-        return { y, m, row, plant, estimate, counted, plants: counted || estimate, age, forming, yieldHa, variety, density: row && plant ? 10000 / (row * plant) : 0 };
+        return { y, m, monthError: parsed.error, totalMonths, row, plant, estimate, counted, plants: counted || estimate, age, forming, yieldHa, variety, density: row && plant ? 10000 / (row * plant) : 0 };
     };
     const stageOf = (p) => (later.plant || !p.y ? ['Sem plantio informado', 'is-muted'] : p.forming ? ['Em formação', 'is-info'] : ['Em produção', 'is-ok']);
 
@@ -287,10 +329,20 @@
         const dripM = num($('[data-stw-drip-m]').value);
         $('[data-stw-drip-cm]').value = dripM ? String(Math.round(dripM * 10000) / 100) : '';
         // plantio
+        if (monthHint) {
+            monthHint.textContent = p.monthError || 'Ex.: 03/2021 (mês e ano)';
+            monthHint.classList.toggle('is-err', Boolean(p.monthError));
+        }
         $('[data-stw-plants-est]').textContent = p.estimate ? int(p.estimate) : '—';
         $('[data-stw-density]').textContent = p.density ? `${int(p.density)} plantas/ha` : 'Informe o espaçamento';
-        $('[data-stw-age]').textContent = p.y ? `${n1(Math.max(0, p.age))} anos` : '—';
-        $('[data-stw-first-harvest]').textContent = p.y ? (p.forming ? `Primeira colheita prevista em ${Math.floor(p.y + 2.5 + (p.m - 1) / 12)}` : 'Já em idade de produção') : '';
+        $('[data-stw-age]').textContent = p.y ? formatAgeLabel(p.totalMonths) : '—';
+        $('[data-stw-first-harvest]').textContent = p.y
+            ? (p.totalMonths < 0
+                ? `Previsto para ${String(p.m).padStart(2, '0')}/${p.y}`
+                : p.forming
+                    ? `1ª colheita prevista em ${Math.floor(p.y + (p.m - 1 + 30) / 12)}`
+                    : 'Já em idade de produção (≥ 2,5 anos)')
+            : 'Calculada pelo mês do plantio';
         const [stageTxt, stageCls] = stageOf(p);
         $('[data-stw-stage]').textContent = stageTxt; $('[data-stw-stage]').className = `szw-chip ${stageCls}`;
         // irrigação
@@ -473,7 +525,11 @@
             } else if (el.type === 'checkbox') el.checked = true;
             else el.value = value;
         });
-        $$('[data-stw-month], [data-stw-plant], [data-stw-counted], [data-stw-yield], [data-stw-drip-m]').forEach((el, i) => { if (draft.values[`__ui${i}`] !== undefined) el.value = draft.values[`__ui${i}`]; });
+        $$('[data-stw-month], [data-stw-plant], [data-stw-counted], [data-stw-yield], [data-stw-drip-m]').forEach((el, i) => {
+            if (draft.values[`__ui${i}`] !== undefined) {
+                el.value = el.matches('[data-stw-month]') ? formatPlantingMonth(draft.values[`__ui${i}`]) : draft.values[`__ui${i}`];
+            }
+        });
         Object.assign(later, draft.later || {});
         applySkip('plant'); applySkip('man');
         if (draftStatus && draft.savedAt) {

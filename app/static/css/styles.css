@@ -9532,6 +9532,110 @@ dialog.pl-del-dialog::backdrop { background: rgba(15, 21, 19, .48); backdrop-fil
     .pl-drawer-backdrop, .pl-drawer-panel, .pl-meter > i, .pl-card, .pl-thumb { transition: none !important; }
 }
 
+/* ==========================================================================
+   Assistente de Setor (.stw-*) — Foco padrão SiSFarm e layout sem rolagem em tela cheia
+   ========================================================================== */
+.stw-shell .szw-input,
+.stw .szw-input {
+    transition: border-color .15s, box-shadow .15s, background-color .15s;
+}
+.stw-shell .szw-input:focus,
+.stw-shell .szw-input:focus-visible,
+.stw .szw-input:focus,
+.stw .szw-input:focus-visible,
+#plot-renew-modal input:focus,
+#plot-renew-modal select:focus {
+    outline: none !important;
+    background: #FFFFFF;
+    border-color: #446A36 !important;
+    --tw-ring-color: rgba(68, 106, 54, .22);
+    --tw-ring-shadow: 0 0 0 3px rgba(68, 106, 54, .22);
+    box-shadow: 0 0 0 3px rgba(68, 106, 54, .22) !important;
+}
+.stw-shell button:focus-visible,
+.stw-shell a:focus-visible,
+.stw-shell [role="radio"]:focus-visible {
+    outline: 2px solid #446A36 !important;
+    outline-offset: 2px;
+    box-shadow: none !important;
+}
+.stw-shell .stw-pill input:focus-visible + span,
+.stw-shell .stw-irrig input:focus-visible + span {
+    outline: 2px solid #446A36 !important;
+    outline-offset: 2px;
+    box-shadow: none !important;
+}
+.stw-shell .stw-pill input:focus,
+.stw-shell .stw-irrig input:focus,
+.stw-shell .szw-check:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+.stw .szw-field small.is-err { color: #B42318; font-weight: 500; }
+
+/* Tela cheia desktop: aproveita a largura e evita barra de rolagem interna nos 5 passos */
+@media (min-width: 1024px) {
+    dialog.stw-dialog {
+        width: min(1240px, calc(100vw - 2rem));
+        max-width: min(1240px, calc(100vw - 2rem)) !important;
+        max-height: calc(100dvh - 1.25rem);
+    }
+    .stw-shell { max-height: calc(100dvh - 1.25rem); }
+    .stw-modal-head { padding: 12px 20px 10px; gap: 10px; }
+    .stw-h1 { font-size: 22px; line-height: 1.15; }
+    .stw-modal-head .szp-crumb { font-size: 12px; }
+    .stw-modal-head .szp-title p { font-size: 12.5px; }
+    .stw-scroll { padding: 0 20px 14px; }
+    .stw.szw-page { gap: 12px; }
+    .stw .szw-layout { gap: 16px; }
+    .stw .szw-card .szw-steps { padding: 9px 14px; }
+    .stw .szw-card .szw-panel { padding: 16px 20px; gap: 13px; }
+    .stw .szw-head h2 { font-size: 18px; }
+    .stw .szw-head p { font-size: 13px; margin-top: 2px; }
+    .stw .szw-grid2 { gap: 12px 16px; }
+    .stw-grid3 { gap: 12px; }
+    .stw-grid4 { gap: 10px; }
+    .stw-group { gap: 13px; }
+    .stw .szw-field { gap: 4px; }
+    .stw .szw-field > span { font-size: 12.5px; }
+    .stw .szw-field small { font-size: 12px; line-height: 1.35; }
+    .stw .szw-input, .stw-shell .szw-input { min-height: 38px; padding-top: 0; padding-bottom: 0; font-size: 14px; border-radius: 10px; }
+    .stw-auto { padding: 9px 12px; }
+    .stw-auto p { font-size: 12px; line-height: 1.35; }
+    .stw-seg button { min-height: 36px; font-size: 13px; }
+    .stw-pill span, .stw-pill-more { min-height: 34px; padding: 0 12px; font-size: 13px; }
+    .stw-calcs { gap: 10px; }
+    .stw-calc { padding: 9px 12px; }
+    .stw-calc > span:first-child { font-size: 11.5px; }
+    .stw-calc strong { font-size: 16px; }
+    .stw-calc small { font-size: 11.5px; }
+    .stw-current { padding: 9px 12px; }
+    .stw-current p { font-size: 12.5px; }
+    .stw-mapbar { padding: 7px 12px; font-size: 12.5px; }
+    .stw-map { height: clamp(190px, 28dvh, 260px); min-height: 180px; }
+    .stw-tools { padding: 8px 12px; }
+    .stw-tools .szw-btn { min-height: 34px; font-size: 12.5px; padding: 0 12px; }
+    .stw-drop { padding: 9px 14px; }
+    .stw-map-foot small { font-size: 12px; }
+    .stw-irrig > span { padding: 10px 12px; border-radius: 12px; }
+    .stw-irrig input:checked + span { padding: 9px 11px; }
+    .stw-irrig strong { font-size: 14px; }
+    .stw-irrig small { font-size: 12px; }
+    .stw-laudo { min-height: 46px; font-size: 13px; }
+    .stw .szw-info { padding: 9px 12px; font-size: 12.5px; }
+    .stw .szw-card .szw-foot { padding: 11px 20px; }
+    .stw .szw-card .szw-foot .szw-btn { min-height: 38px; }
+    .stw .szw-side { gap: 12px; }
+    .stw .szw-side .szw-aside { padding: 14px; gap: 9px; border-radius: 16px; }
+    .stw-mini svg { max-height: 126px; }
+    .stw-mini-empty { height: 92px; }
+    .stw-aside-name strong { font-size: 17px; }
+    .stw .szw-aside dl div { padding: 6px 0; font-size: 12.5px; }
+    .stw .szw-aside dd { font-size: 13px; }
+    .stw .szw-tip { padding: 11px 13px; }
+    .stw .szw-tip p { font-size: 12px; line-height: 1.4; }
+}
+
 /* ===== Recomendação agronômica (ar-) ===== */
 .ar-dialog { width: min(1180px, calc(100vw - 32px)); max-width: none; max-height: calc(100vh - 48px); border-radius: 22px; background: #fff; color: #16201A; font-family: Inter, system-ui, sans-serif; overflow: hidden; }
 .ar-dialog-shell { display: flex; flex-direction: column; max-height: calc(100vh - 48px); }

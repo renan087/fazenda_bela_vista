@@ -169,7 +169,7 @@
                                     <small>Cultura: Café. Para outra cultura, toque em “+ Outra”.</small>
                                 </div>
                                 <div class="stw-grid3">
-                                    <label class="szw-field"><span>Mês do plantio</span><input type="month" class="szw-input" value="{{ ep.planting_date.strftime('%Y-%m') if ep and ep.planting_date else '' }}" data-stw-month></label>
+                                    <label class="szw-field"><span>Mês do plantio</span><input type="text" class="szw-input" inputmode="numeric" maxlength="7" placeholder="MM/AAAA" autocomplete="off" value="{{ ep.planting_date.strftime('%m/%Y') if ep and ep.planting_date else '' }}" data-stw-month><small data-stw-month-hint>Ex.: 03/2021 (mês e ano)</small></label>
                                     <label class="szw-field"><span>Entre linhas (m)</span><input name="spacing_row_meters" class="szw-input" inputmode="decimal" value="{{ (ep.spacing_row_meters|string).replace('.', ',') if ep and ep.spacing_row_meters else '' }}" data-stw-row></label>
                                     <label class="szw-field"><span>Entre plantas (m)</span><input class="szw-input" inputmode="decimal" value="{{ (ep.spacing_plant_meters|string).replace('.', ',') if ep and ep.spacing_plant_meters else '' }}" data-stw-plant></label>
                                 </div>
@@ -179,8 +179,8 @@
                                 <input type="hidden" name="estimated_yield_sacks" value="{{ ep.estimated_yield_sacks if ep and ep.estimated_yield_sacks else '' }}" data-stw-yield-total>
                                 <div class="stw-calcs">
                                     <div class="stw-calc"><span>Plantas estimadas</span><strong data-stw-plants-est>—</strong><small data-stw-density>Informe o espaçamento</small></div>
-                                    <div class="stw-calc"><span>Idade</span><strong data-stw-age>—</strong><small data-stw-first-harvest></small></div>
-                                    <div class="stw-calc"><span>Situação</span><span><span class="szw-chip is-muted" data-stw-stage>Sem plantio informado</span></span><small>Calculada pela idade</small></div>
+                                    <div class="stw-calc"><span>Idade</span><strong data-stw-age>—</strong><small data-stw-first-harvest>Calculada pelo mês do plantio</small></div>
+                                    <div class="stw-calc"><span>Situação</span><span><span class="szw-chip is-muted" data-stw-stage>Sem plantio informado</span></span><small>Produz após 2,5 anos</small></div>
                                 </div>
                                 <div class="szw-grid2">
                                     <label class="szw-field"><span>Plantas contadas <em class="szw-opt">(opcional)</em></span><input class="szw-input" inputmode="numeric" value="{{ ep.plant_count if ep and ep.plant_count else '' }}" placeholder="Se você contou, vale este número" data-stw-counted><small>Use quando houver falhas ou replantas.</small></label>
