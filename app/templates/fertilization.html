@@ -171,7 +171,7 @@
         <div class="ft-stage-top">
             <div>
                 <h2>Histórico de aplicações</h2>
-                <p class="ft-stage-sub">Clique em qualquer registro para ver alocação FIFO de estoque, irrigação vinculada e custo por hectare.</p>
+                <p class="ft-stage-sub">Lista enxuta por data. Abra <strong>Detalhes</strong> em qualquer linha para ver lotes FIFO, doses, irrigação e observações.</p>
             </div>
             <label class="sl-search ft-search">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -189,6 +189,7 @@
                 <button type="button" class="sl-chip" aria-pressed="false" data-ft-fert-filter="from_schedule">Da Agenda <span>{{ k.from_schedule_count }}</span></button>
                 <button type="button" class="sl-chip" aria-pressed="false" data-ft-fert-filter="manual">Avulsas <span>{{ k.manual_count }}</span></button>
             </div>
+            <button type="button" class="ft-link-btn" data-ft-fert-toggle-all hidden>Recolher dias</button>
         </div>
 
         <div class="ft-fert-list" data-ft-fert-list>
@@ -229,5 +230,5 @@
     "canWrite": can_write_page,
     "rows": ctx.history_rows
 }|tojson }}</script>
-<script src="{{ url_for('static', path='js/fertilization_page.js') }}?v=20261121ft1" defer></script>
+<script src="{{ url_for('static', path='js/fertilization_page.js') }}?v=20261121ft4" defer></script>
 {% endblock %}

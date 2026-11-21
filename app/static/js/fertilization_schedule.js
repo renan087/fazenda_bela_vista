@@ -44,6 +44,8 @@
     const CAN_WRITE = Boolean(DATA.canWrite);
     const WEATHER = DATA.weather || {};
 
+    const DAYS_PER_PAGE = 5;
+
     const state = {
         view: 'list',
         filter: 'all',
@@ -51,7 +53,10 @@
         search: '',
         selectedIds: new Set(),
         collapsedDates: {},
-        openPopover: null, // { type: 'day'|'item'|'menu', key }
+        compCollapsedDates: {},
+        schedPage: 1,
+        compPage: 1,
+        openPopover: null, // { type: 'day'|'item'|'menu'|'comp_menu', key }
         calYear: Number(TODAY.slice(0, 4)),
         calMonth: Number(TODAY.slice(5, 7)) - 1, // 0-indexed
         reschedIds: [],
@@ -59,6 +64,44 @@
         reschedShiftDays: 2,
         execDraft: null,
     };
+
+    function paginateDateGroups(groups, rawPage, getCount) {
+        const totalGroups = groups.length;
+        const totalItems = groups.reduce((acc, g) => acc + getCount(g), 0);
+        const totalPages = Math.max(1, Math.ceil(totalGroups / DAYS_PER_PAGE));
+        const page = Math.min(Math.max(1, Number(rawPage) || 1), totalPages);
+        const startIdx = (page - 1) * DAYS_PER_PAGE;
+        const slice = groups.slice(startIdx, startIdx + DAYS_PER_PAGE);
+        const shownItems = slice.reduce((acc, g) => acc + getCount(g), 0);
+        return { page, totalPages, totalGroups, totalItems, slice, startIdx, shownItems };
+    }
+
+    function renderPaginationBar(pg, attrName, itemLabel) {
+        if (pg.totalPages <= 1) return '';
+        const pages = [];
+        for (let p = 1; p <= pg.totalPages; p++) {
+            if (p === 1 || p === pg.totalPages || Math.abs(p - pg.page) <= 1) pages.push(p);
+            else if (pages[pages.length - 1] !== '…') pages.push('…');
+        }
+        const fromDay = pg.startIdx + 1;
+        const toDay = pg.startIdx + pg.slice.length;
+        return `
+            <nav class="ft-pag" aria-label="Paginação da listagem">
+                <div class="ft-pag-info">
+                    Mostrando <strong>${fromDay}–${toDay}</strong> de <strong>${pg.totalGroups} datas</strong>
+                    <span class="ft-hide-xs"> · ${pg.shownItems} de ${pg.totalItems} ${esc(itemLabel)}</span>
+                </div>
+                <div class="ft-pag-nav">
+                    <button type="button" class="ft-pag-btn" ${attrName}="${pg.page - 1}" ${pg.page <= 1 ? 'disabled' : ''}>← Anterior</button>
+                    ${pages.map((p) => p === '…'
+                        ? '<span class="ft-pag-dots" aria-hidden="true">…</span>'
+                        : `<button type="button" class="ft-pag-btn ${p === pg.page ? 'is-active' : ''}" ${attrName}="${p}" ${p === pg.page ? 'aria-current="page"' : ''}>${p}</button>`
+                    ).join('')}
+                    <button type="button" class="ft-pag-btn" ${attrName}="${pg.page + 1}" ${pg.page >= pg.totalPages ? 'disabled' : ''}>Próxima →</button>
+                </div>
+            </nav>
+        `;
+    }
 
     const IC = {
         check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
@@ -255,7 +298,17 @@
             return;
         }
 
-        daysWrap.innerHTML = groups.map((g) => {
+        const pg = paginateDateGroups(groups, state.schedPage, (g) => g.items.length);
+        state.schedPage = pg.page;
+
+        if (toggleAllBtn) {
+            const allCol = pg.slice.length > 0 && pg.slice.every((g) => state.collapsedDates[g.date]);
+            toggleAllBtn.textContent = allCol ? 'Expandir todos os dias' : 'Recolher dias';
+            toggleAllBtn.dataset.mode = allCol ? 'expand' : 'collapse';
+            toggleAllBtn.hidden = groups.length <= 1;
+        }
+
+        daysWrap.innerHTML = pg.slice.map((g) => {
             const collapsed = Boolean(state.collapsedDates[g.date]);
             const dayIds = g.items.map((i) => i.id);
             const popOpen = state.openPopover?.type === 'day' && state.openPopover.key === g.date;
@@ -296,7 +349,7 @@
                     `}
                 </section>
             `;
-        }).join('');
+        }).join('') + renderPaginationBar(pg, 'data-ft-pag-sched', 'agendamentos');
     }
 
     function renderRow(s, dayGroup) {
@@ -443,26 +496,111 @@
         if (!completedWrap) return;
         const items = filteredCompleted();
         if (!items.length) {
-            completedWrap.innerHTML = '<div class="pd-empty"><strong>Nenhum agendamento concluído neste filtro.</strong><span>Quando você executar um agendamento, ele aparece aqui vinculado à aplicação em Fertilização.</span></div>';
+            completedWrap.innerHTML = '<div class="pd-empty"><strong>Nenhum agendamento concluído neste filtro.</strong><span>Quando você executar um agendamento, ele aparece aqui agrupado por data e vinculado à aplicação em Fertilização.</span></div>';
             return;
         }
-        completedWrap.innerHTML = `<div class="ft-completed-list">${items.map((s) => `
-            <article class="ft-comp-row">
-                <div class="ft-comp-main">
-                    <div class="ft-comp-top">
-                        <strong>${esc(s.plot_name)}</strong>
-                        <span class="pd-chip is-ok">Concluído</span>
-                        <span class="pd-chip is-${esc(s.method_tone)}">${esc(s.method_label)}</span>
-                        <span class="ft-comp-dates">Previsto: ${esc(s.scheduled_date_br)}${s.completed_date_br ? ` · Aplicado: ${esc(s.completed_date_br)}` : ''}</span>
-                    </div>
-                    <div class="ft-comp-inputs">${esc(s.inputs_summary)}</div>
+
+        const byDate = new Map();
+        items.forEach((s) => {
+            const dt = s.completed_date || s.scheduled_date || TODAY;
+            if (!byDate.has(dt)) byDate.set(dt, []);
+            byDate.get(dt).push(s);
+        });
+
+        const groups = [...byDate.entries()]
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([date, list]) => {
+                const totalArea = list.reduce((a, s) => a + Number(s.plot_area || 0), 0);
+                const totalCost = list.reduce((a, s) => a + Number(s.completed_cost ?? s.est_cost ?? 0), 0);
+                const methodsSummary = [...new Set(list.map((s) => s.method_short))].filter(Boolean).join(', ');
+                return { date, hdr: fmtDayHeader(date), items: list, totalArea, totalCost, methodsSummary };
+            });
+
+        const pg = paginateDateGroups(groups, state.compPage, (g) => g.items.length);
+        state.compPage = pg.page;
+        const allCol = pg.slice.length > 0 && pg.slice.every((g) => state.compCollapsedDates[g.date]);
+
+        completedWrap.innerHTML = `
+            ${groups.length > 1 ? `
+                <div class="ft-comp-bar">
+                    <span>${pg.totalItems} concluído${pg.totalItems !== 1 ? 's' : ''} em ${pg.totalGroups} datas</span>
+                    <button type="button" class="ft-link-btn" data-ft-toggle-all-comp="${allCol ? 'expand' : 'collapse'}">
+                        ${allCol ? 'Expandir dias' : 'Recolher dias'}
+                    </button>
                 </div>
-                <div class="ft-comp-actions">
-                    ${s.fertilization_record_id ? `<a class="sf-btn sf-btn-secondary sf-btn-sm" href="/fertilizacao">Ver em Fertilização${s.completed_cost ? ` (${fmtBRL(s.completed_cost)})` : ''} →</a>` : ''}
-                    ${CAN_WRITE ? `<button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-ft-confirm-revert="${s.id}">Reabrir</button>` : ''}
-                </div>
-            </article>
-        `).join('')}</div>`;
+            ` : ''}
+            <div class="ft-days-wrap">
+                ${pg.slice.map((g) => {
+                    const collapsed = Boolean(state.compCollapsedDates[g.date]);
+                    return `
+                        <section class="ft-day ${collapsed ? 'is-collapsed' : ''}">
+                            <div class="ft-day-head">
+                                <button type="button" class="ft-day-toggle" data-ft-toggle-comp-day="${esc(g.date)}" aria-expanded="${!collapsed}">
+                                    <span class="ft-day-chev ${collapsed ? 'is-rot' : ''}">${IC.chev}</span>
+                                    <strong class="ft-day-main">${esc(g.hdr.main)}</strong>
+                                    <span class="ft-day-sub">${esc(g.hdr.sub)}</span>
+                                    <span class="pd-chip is-ok">Concluído</span>
+                                    <span class="ft-day-meta">· ${g.items.length} talh${g.items.length > 1 ? 'ões' : 'ão'} · ${fmtNum(g.totalArea, 1)} ha${collapsed ? ` · ${esc(g.methodsSummary)}` : ''}</span>
+                                </button>
+                                ${g.totalCost > 0 ? `<span class="ft-day-total">${fmtBRL(g.totalCost)}</span>` : ''}
+                            </div>
+                            ${collapsed ? '' : `
+                                <div class="ft-day-rows">
+                                    ${g.items.map((s) => {
+                                        const cost = Number(s.completed_cost ?? s.est_cost ?? 0);
+                                        const costHa = s.plot_area > 0 ? cost / s.plot_area : 0;
+                                        const dateDiffers = s.completed_date && s.scheduled_date && s.completed_date !== s.scheduled_date;
+                                        const isMenuPop = state.openPopover?.type === 'comp_menu' && state.openPopover.key === s.id;
+                                        return `
+                                            <div class="ft-row">
+                                                <div class="ft-row-left">
+                                                    <div class="ft-row-info">
+                                                        <div class="ft-row-title-line">
+                                                            <button type="button" class="ft-row-title" data-ft-detail="${s.id}">${esc(s.plot_name)}</button>
+                                                            <span class="ft-row-area">${fmtNum(s.plot_area, 1)} ha</span>
+                                                            ${dateDiffers ? `<span class="ft-row-prev">· Previsto ${esc(s.scheduled_date_br)}</span>` : ''}
+                                                        </div>
+                                                        <div class="ft-row-sub">
+                                                            <span class="ft-row-method"><i style="background:${esc(s.method_dot)}"></i>${esc(s.method_short)}${s.duration_minutes ? ` · ${s.duration_minutes} min` : ''}</span>
+                                                            <span class="ft-sep">·</span>
+                                                            <span class="ft-row-inputs">${esc(s.inputs_summary)}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="ft-row-right">
+                                                    ${cost > 0 ? `
+                                                        <div class="ft-row-cost-stack">
+                                                            <strong>${fmtBRL(cost)}</strong>
+                                                            <small>${fmtBRL(costHa)}/ha</small>
+                                                        </div>
+                                                    ` : ''}
+                                                    <button type="button" class="sf-btn sf-btn-secondary sf-btn-sm" data-ft-detail="${s.id}">Detalhes</button>
+                                                    <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm ft-ic-btn" data-ft-open-comp-menu="${s.id}" aria-label="Mais ações" title="Mais ações">
+                                                        ${IC.dots}
+                                                    </button>
+                                                    ${isMenuPop ? `
+                                                        <div class="ft-pop is-menu" data-ft-pop-box>
+                                                            <button type="button" class="ft-pop-item" data-ft-detail="${s.id}">Ver detalhes completos</button>
+                                                            ${s.fertilization_record_id ? `<a class="ft-pop-item" href="/fertilizacao">Ver em Fertilização</a>` : ''}
+                                                            ${CAN_WRITE && s.fertilization_record_id ? `<a class="ft-pop-item" href="/fertilizacao/agendamentos/novo?copy_fert_id=${s.fertilization_record_id}">Agendar novamente</a>` : ''}
+                                                            ${CAN_WRITE ? `
+                                                                <div class="ft-pop-div"></div>
+                                                                <button type="button" class="ft-pop-item" data-ft-confirm-revert="${s.id}">Reabrir agendamento</button>
+                                                            ` : ''}
+                                                        </div>
+                                                    ` : ''}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            `}
+                        </section>
+                    `;
+                }).join('')}
+            </div>
+            ${renderPaginationBar(pg, 'data-ft-pag-comp', 'concluídos')}
+        `;
     }
 
     function syncBulkBar() {
@@ -813,6 +951,46 @@
                 renderAll();
             });
         });
+        root.querySelectorAll('[data-ft-open-comp-menu]').forEach((el) => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = Number(el.dataset.ftOpenCompMenu);
+                state.openPopover = (state.openPopover?.type === 'comp_menu' && state.openPopover.key === id) ? null : { type: 'comp_menu', key: id };
+                renderAll();
+            });
+        });
+        root.querySelectorAll('[data-ft-toggle-comp-day]').forEach((el) => {
+            el.addEventListener('click', () => {
+                const dt = el.dataset.ftToggleCompDay;
+                state.compCollapsedDates[dt] = !state.compCollapsedDates[dt];
+                state.openPopover = null;
+                renderAll();
+            });
+        });
+        root.querySelector('[data-ft-toggle-all-comp]')?.addEventListener('click', (e) => {
+            const mode = e.currentTarget.dataset.ftToggleAllComp;
+            const dates = [...new Set((DATA.completedItems || []).map((i) => i.completed_date || i.scheduled_date || TODAY))];
+            if (mode === 'collapse') dates.forEach((d) => { state.compCollapsedDates[d] = true; });
+            else state.compCollapsedDates = {};
+            state.openPopover = null;
+            renderAll();
+        });
+        root.querySelectorAll('[data-ft-pag-sched]').forEach((el) => {
+            el.addEventListener('click', () => {
+                state.schedPage = Number(el.dataset.ftPagSched);
+                state.openPopover = null;
+                renderAll();
+                daysWrap?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
+        root.querySelectorAll('[data-ft-pag-comp]').forEach((el) => {
+            el.addEventListener('click', () => {
+                state.compPage = Number(el.dataset.ftPagComp);
+                state.openPopover = null;
+                renderAll();
+                completedWrap?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
         root.querySelectorAll('[data-ft-pop-box]').forEach((el) => el.addEventListener('click', (e) => e.stopPropagation()));
 
         root.querySelectorAll('[data-ft-quick-move]').forEach((el) => {
@@ -932,22 +1110,23 @@
         btn.addEventListener('click', () => { state.view = btn.dataset.ftView; state.openPopover = null; renderAll(); });
     });
     root.querySelectorAll('[data-ft-filter]').forEach((btn) => {
-        btn.addEventListener('click', () => { state.view = 'list'; state.filter = btn.dataset.ftFilter; state.openPopover = null; renderAll(); });
+        btn.addEventListener('click', () => { state.view = 'list'; state.filter = btn.dataset.ftFilter; state.schedPage = 1; state.openPopover = null; renderAll(); });
     });
     root.querySelectorAll('[data-ft-filter-jump]').forEach((btn) => {
         btn.addEventListener('click', () => {
             state.view = 'list';
             state.filter = btn.dataset.ftFilterJump;
+            state.schedPage = 1;
             state.openPopover = null;
             renderAll();
             root.querySelector('.ft-stage')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
     });
     root.querySelector('[data-ft-method-filter]')?.addEventListener('change', (e) => {
-        state.methodFilter = e.target.value; state.openPopover = null; renderAll();
+        state.methodFilter = e.target.value; state.schedPage = 1; state.openPopover = null; renderAll();
     });
     root.querySelector('[data-ft-search]')?.addEventListener('input', (e) => {
-        state.search = e.target.value; renderAll();
+        state.search = e.target.value; state.schedPage = 1; state.compPage = 1; renderAll();
     });
     root.querySelector('[data-ft-demand-toggle]')?.addEventListener('click', (e) => {
         const body = root.querySelector('[data-ft-demand-body]');

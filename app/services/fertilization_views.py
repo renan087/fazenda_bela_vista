@@ -432,6 +432,11 @@ def serialize_schedule_for_client(
         "cumulative_shortages": val_info.get("cumulative_shortages", []),
         "items": items_list,
         "inputs_summary": summary_inputs,
+        "completed_date": (
+            sch.fertilization_record.application_date.isoformat()
+            if sch.fertilization_record and sch.fertilization_record.application_date
+            else None
+        ),
         "completed_date_br": (
             sch.fertilization_record.application_date.strftime("%d/%m/%Y")
             if sch.fertilization_record and sch.fertilization_record.application_date

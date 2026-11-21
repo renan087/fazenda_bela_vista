@@ -10627,8 +10627,10 @@ button.ft-kpi.is-interactive:hover { border-color: #C4D0C2; background: #FAFBF9;
 .ft-day-main { font-size: .9375rem; font-weight: 700; color: #16201A; font-variant-numeric: tabular-nums; }
 .ft-day-sub { font-size: .875rem; font-weight: 500; color: #5B6660; }
 .ft-day-meta { font-size: .78rem; color: #7A857E; font-variant-numeric: tabular-nums; }
+.ft-day-total { font-size: .78rem; font-weight: 700; color: #16201A; font-variant-numeric: tabular-nums; flex: none; }
 .ft-day-actions { display: flex; align-items: center; gap: .35rem; position: relative; }
 .ft-btn-rain { color: #1F5FA8; border-color: #C6DCF4; background: #E8F1FB; }
+.ft-comp-bar { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .65rem; font-size: .78rem; color: #7A857E; font-variant-numeric: tabular-nums; }
 
 /* Linhas limpas dentro da data */
 .ft-day-rows > .ft-row + .ft-row { border-top: 1px solid #EEF1ED; }
@@ -10646,6 +10648,8 @@ button.ft-kpi.is-interactive:hover { border-color: #C4D0C2; background: #FAFBF9;
 .ft-row-title { border: 0; background: transparent; padding: 0; font-size: .92rem; font-weight: 700; color: #16201A; cursor: pointer; text-align: left; }
 .ft-row-title:hover { color: #446A36; }
 .ft-row-area { font-size: .76rem; color: #7A857E; font-variant-numeric: tabular-nums; }
+.ft-row-prev { font-size: .74rem; color: #7A857E; font-variant-numeric: tabular-nums; }
+.ft-row-origin { font-size: .74rem; color: #7A857E; }
 .ft-row-sub { margin-top: .18rem; display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; font-size: .78rem; color: #5B6660; }
 .ft-row-method { display: inline-flex; align-items: center; gap: .35rem; font-weight: 600; color: #16201A; }
 .ft-row-method i { width: 8px; height: 8px; border-radius: 999px; flex: none; }
@@ -10655,6 +10659,20 @@ button.ft-kpi.is-interactive:hover { border-color: #C4D0C2; background: #FAFBF9;
 .ft-row-alert svg { width: .85rem; height: .85rem; }
 .ft-row-right { display: flex; align-items: center; gap: .35rem; flex: none; position: relative; }
 .ft-row-cost { font-size: .8rem; font-weight: 600; color: #5B6660; font-variant-numeric: tabular-nums; margin-right: .45rem; }
+.ft-row-cost-stack { text-align: right; font-variant-numeric: tabular-nums; margin-right: .45rem; line-height: 1.2; }
+.ft-row-cost-stack strong { display: block; font-size: .875rem; font-weight: 700; color: #16201A; }
+.ft-row-cost-stack small { display: block; font-size: .72rem; color: #7A857E; margin-top: 2px; }
+
+/* Paginação elegante agrupada por data */
+.ft-pag { margin-top: .95rem; padding: .7rem .9rem; border-radius: 14px; border: 1px solid #E3E8E2; background: #FAFBF9; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .65rem; }
+.ft-pag-info { font-size: .78rem; color: #5B6660; font-variant-numeric: tabular-nums; }
+.ft-pag-info strong { color: #16201A; font-weight: 600; }
+.ft-pag-nav { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.ft-pag-btn { min-width: 34px; height: 34px; padding: 0 10px; border-radius: 9px; border: 1px solid #D6DDD5; background: #fff; color: #16201A; font-size: .78rem; font-weight: 600; font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; transition: background .14s ease, border-color .14s ease, color .14s ease; }
+.ft-pag-btn:hover:not(:disabled) { background: #F6F8F5; border-color: #B9C8B5; }
+.ft-pag-btn.is-active { background: #16201A; border-color: #16201A; color: #fff; }
+.ft-pag-btn:disabled { opacity: .42; cursor: not-allowed; background: #F6F8F5; }
+.ft-pag-dots { padding: 0 4px; font-size: .76rem; color: #7A857E; }
 
 /* Popover leve de reagendamento / menu */
 .ft-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 45; background: #fff; border: 1px solid #D6DDD5; border-radius: 14px; box-shadow: 0 14px 36px rgba(15,21,19,.16); padding: .6rem; min-width: 245px; }
