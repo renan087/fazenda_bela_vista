@@ -658,6 +658,10 @@ def _sync_schema() -> None:
         WHERE NOT EXISTS (SELECT 1 FROM plot_plantings pp WHERE pp.plot_id = p.id)
         """,
         "ALTER TABLE crop_season_plots ADD COLUMN IF NOT EXISTS planting_id INTEGER REFERENCES plot_plantings(id) ON DELETE SET NULL",
+        "ALTER TABLE crop_seasons ADD COLUMN IF NOT EXISTS goals_json TEXT",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS map_color VARCHAR(9)",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS group_name VARCHAR(80)",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS soil_texture VARCHAR(20)",
         "ALTER TABLE stock_assistant_drafts ALTER COLUMN plot_id DROP NOT NULL",
         "ALTER TABLE assistant_threads ADD COLUMN IF NOT EXISTS channel VARCHAR(20)",
         "ALTER TABLE stock_assistant_drafts ADD COLUMN IF NOT EXISTS notes TEXT",

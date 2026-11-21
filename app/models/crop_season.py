@@ -27,6 +27,8 @@ class CropSeason(Base):
     area_unit: Mapped[str] = mapped_column(String(20), nullable=False, default="ha")
     notes: Mapped[str] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="planejada")
+    # Metas da safra (produtividade por setor, orçamento por hectare e preço de referência), em JSON.
+    goals_json: Mapped[str] = mapped_column(Text, nullable=True)
 
     farm = relationship("Farm", back_populates="crop_seasons")
     variety = relationship("CoffeeVariety", back_populates="crop_seasons")

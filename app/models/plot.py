@@ -31,6 +31,9 @@ class Plot(Base):
     sprinkler_count: Mapped[int] = mapped_column(Integer, nullable=True)
     sprinkler_liters_per_hour: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+    map_color: Mapped[str] = mapped_column(String(9), nullable=True)
+    group_name: Mapped[str] = mapped_column(String(80), nullable=True)
+    soil_texture: Mapped[str] = mapped_column(String(20), nullable=True)
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id"), nullable=True)
     variety_id: Mapped[int] = mapped_column(ForeignKey("coffee_varieties.id"), nullable=True)
 

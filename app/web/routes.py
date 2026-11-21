@@ -95,6 +95,17 @@ from app.models.system_maintenance import SystemMaintenance
 from app.services.audit_log_service import append_audit_event
 from app.services.maintenance import MODES as MAINTENANCE_MODES, MaintenanceError, compute_state as compute_maintenance_state, current_state as current_maintenance_state, save_state as save_maintenance_state
 from app.core.user_context import persist_user_context, sync_user_context_from_preferences
+from app.services.season_goals import (
+    BUDGET_CATEGORIES,
+    coffee_year_options,
+    common_variety_id,
+    goals_summary,
+    load_goals,
+    parse_goals,
+    plot_stage,
+    plot_yield_history,
+    status_from_dates,
+)
 from app.db.session import get_db
 from app.models import (
     OrganizationAccessGrant,
@@ -17413,6 +17424,55 @@ def delete_variety_action(
     return _redirect("/variedades")
 
 
+def _season_wizard_payload(repo: FarmRepository, db: Session, scope: dict, crop_seasons, edit_season, farm_id, today: date) -> dict:
+    """Dados do assistente de safra: setores, histórico, ano-safra, cotação e safra anterior."""
+    plots = repo.list_plots(farm_ids=[farm_id]) if farm_id else []
+    history = plot_yield_history(db, plots)
+    plot_rows = []
+    for plot in plots:
+        planting = plot.active_planting
+        planting_date = (planting.planting_date if planting else None) or plot.planting_date
+        variety = (planting.variety if planting else None) or plot.variety
+        plot_rows.append({
+            "id": plot.id,
+            "name": plot.name,
+            "area": float(plot.area_hectares or 0),
+            "variety": variety.name if variety else None,
+            "plants": (planting.plant_count if planting else None) or plot.plant_count or 0,
+            "year": planting_date.year if planting_date else None,
+            "stage": plot_stage(plot, today),
+            "hist": history.get(plot.id),
+        })
+    others = sorted((season for season in crop_seasons if not edit_season or season.id != edit_season.id), key=lambda season: season.start_date, reverse=True)
+    previous = others[0] if others else None
+    quote = repo.get_latest_coffee_quote("arabica")
+    return {
+        "plots": plot_rows,
+        "periods": coffee_year_options(today),
+        "categories": [{"key": key, "label": label, "hint": hint} for key, label, hint in BUDGET_CATEGORIES],
+        "price": float(quote.price_brl) if quote else None,
+        "price_date": quote.quote_date.strftime("%d/%m/%Y") if quote else None,
+        "today": today.isoformat(),
+        "previous": {
+            "name": previous.name,
+            "plot_ids": [plot.id for plot in previous.plots],
+            "goals": load_goals(previous),
+        } if previous else None,
+        "edit": {
+            "id": edit_season.id,
+            "name": edit_season.name,
+            "start": edit_season.start_date.isoformat(),
+            "end": edit_season.end_date.isoformat(),
+            "culture": edit_season.culture,
+            "plot_ids": [plot.id for plot in edit_season.plots],
+            "goals": load_goals(edit_season),
+            "notes": edit_season.notes or "",
+            "status": edit_season.status,
+        } if edit_season else None,
+        "is_active": bool(edit_season and scope.get("active_season_id") == edit_season.id),
+    }
+
+
 @router.get("/safras")
 def crop_seasons_page(
     request: Request,
@@ -17496,6 +17556,8 @@ def crop_seasons_page(
         "running_cost": running_cost,
         "running_cost_per_ha": round(running_cost / running_area, 2) if running_area else 0,
     }
+    season_wizard = _season_wizard_payload(repo, db, scope, crop_seasons, edit_season, effective_farm_id, today)
+    season_goal_summaries = {season.id: goals_summary(season) for season in crop_seasons}
     return templates.TemplateResponse(
         "seasons.html",
         _base_context(
@@ -17515,6 +17577,8 @@ def crop_seasons_page(
             season_summary=season_summary,
             edit_season=edit_season,
             view_season=view_season,
+            season_wizard=season_wizard,
+            season_goal_summaries=season_goal_summaries,
         ),
     )
 
@@ -17989,6 +18053,14 @@ def _season_area_hectares(season) -> float:
     return float(season.cultivated_area or 0) * SEASON_AREA_UNITS.get(season.area_unit or "ha", SEASON_AREA_UNITS["ha"])[1]
 
 
+def _save_season_goals(repo: FarmRepository, season, raw_goals: str | None) -> None:
+    """Grava as metas do assistente. Sem campo enviado (formulário antigo), mantém o que já existe."""
+    if raw_goals is None:
+        return
+    parsed = parse_goals(raw_goals, {plot.id for plot in season.plots})
+    repo.update(season, {"goals_json": json.dumps(parsed, ensure_ascii=False) if parsed else None})
+
+
 @router.post("/safras")
 def create_crop_season_action(
     request: Request,
@@ -18002,11 +18074,12 @@ def create_crop_season_action(
     cultivated_area: str | None = Form(None),
     area_unit: str = Form("ha"),
     notes: str | None = Form(None),
-    status_value: str = Form(..., alias="status"),
+    status_value: str | None = Form(None, alias="status"),
+    goals: str | None = Form(None),
+    make_active: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     scope, denied = _launch_scope_or_redirect(request, repo, "/safras", require_season=False)
@@ -18041,8 +18114,12 @@ def create_crop_season_action(
         if not _variety_matches_scope(selected_variety, scope):
             _flash(request, "error", "A variedade selecionada nao pertence a organizacao atual.")
             return _redirect("/safras")
+    season_plots = [available_plots[plot_id] for plot_id in dict.fromkeys(plot_ids)]
+    if not selected_variety_id:
+        selected_variety_id = common_variety_id(season_plots)
+    status_value = status_from_dates(parsed_start_date, parsed_end_date, date.today())
     try:
-        create_crop_season(
+        new_season = create_crop_season(
             repo,
             {
                 "farm_id": scope["active_farm_id"],
@@ -18058,11 +18135,14 @@ def create_crop_season_action(
                 "status": status_value,
             },
         )
+        _save_season_goals(repo, new_season, goals)
     except Exception:
         logger.exception("Falha ao criar safra", extra={"farm_id": scope["active_farm_id"], "start_date": start_date, "end_date": end_date})
         _flash(request, "error", "Nao foi possivel salvar a safra agora. Revise os dados e tente novamente.")
         return _redirect("/safras")
-    _flash(request, "success", "Safra cadastrada com sucesso.")
+    if make_active:
+        persist_user_context(request, db, user, new_season.farm_id, new_season.id)
+    _flash(request, "success", f"{new_season.name} criada." + (" Ela já é a safra ativa no topo." if make_active else ""))
     return _redirect("/safras")
 
 
@@ -18080,11 +18160,12 @@ def update_crop_season_action(
     cultivated_area: str | None = Form(None),
     area_unit: str = Form("ha"),
     notes: str | None = Form(None),
-    status_value: str = Form(..., alias="status"),
+    status_value: str | None = Form(None, alias="status"),
+    goals: str | None = Form(None),
+    make_active: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     scope, denied = _launch_scope_or_redirect(request, repo, "/safras", require_season=False)
@@ -18128,6 +18209,10 @@ def update_crop_season_action(
         if not _variety_matches_scope(selected_variety, scope):
             _flash(request, "error", "A variedade selecionada nao pertence a organizacao atual.")
             return _redirect("/safras")
+    season_plots = [available_plots[plot_id] for plot_id in dict.fromkeys(plot_ids)]
+    if not selected_variety_id and season_plots:
+        selected_variety_id = common_variety_id(season_plots)
+    status_value = status_from_dates(parsed_start_date, parsed_end_date, date.today(), crop_season.status)
     try:
         update_crop_season(
             repo,
@@ -18146,10 +18231,13 @@ def update_crop_season_action(
                 "status": status_value,
             },
         )
+        _save_season_goals(repo, crop_season, goals)
     except Exception:
         logger.exception("Falha ao atualizar safra", extra={"season_id": season_id, "farm_id": scope["active_farm_id"]})
         _flash(request, "error", "Nao foi possivel atualizar a safra agora. Revise os dados e tente novamente.")
         return _redirect("/safras")
+    if make_active:
+        persist_user_context(request, db, user, crop_season.farm_id, crop_season.id)
     _flash(request, "success", "Safra atualizada com sucesso.")
     return _redirect("/safras")
 
