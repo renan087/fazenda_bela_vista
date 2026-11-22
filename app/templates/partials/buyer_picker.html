@@ -88,6 +88,15 @@
                             Isento / não contribuinte de ICMS
                         </label>
                     </div>
+                    <div class="bp-f bp-s3">
+                        <label for="bp-ie-ind">Indicador de IE (NF-e) <small>opcional</small></label>
+                        <select id="bp-ie-ind" name="ie_indicator">
+                            <option value="">Não informado</option>
+                            <option value="contribuinte">1 — Contribuinte ICMS</option>
+                            <option value="isento">2 — Contribuinte isento</option>
+                            <option value="nao_contribuinte">9 — Não contribuinte</option>
+                        </select>
+                    </div>
                 </div>
             </section>
 
@@ -111,6 +120,10 @@
                     <div class="bp-f bp-s4"><label for="bp-city">Cidade<span class="bp-req"> *</span></label><input id="bp-city" name="city" maxlength="120"></div>
                     <div class="bp-f bp-s2"><label for="bp-uf">UF<span class="bp-req"> *</span></label>
                         <select id="bp-uf" name="state"><option value=""></option>{% for uf in ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'] %}<option>{{ uf }}</option>{% endfor %}</select>
+                    </div>
+                    <div class="bp-f bp-s3">
+                        <label for="bp-ibge">Código IBGE do município <small>7 dígitos · preenchido automaticamente quando conhecido</small></label>
+                        <input id="bp-ibge" name="municipality_code" maxlength="7" inputmode="numeric" placeholder="Ex.: 2933307" autocomplete="off">
                     </div>
                 </div>
             </section>

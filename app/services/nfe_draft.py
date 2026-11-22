@@ -69,11 +69,16 @@ def buyer_prefill(buyer):
     """Sugestão inicial, nunca uma afirmação de conformidade fiscal."""
     if not buyer or buyer.person_type != 'pf':
         return {}
+    from app.services.ibge_municipalities import resolve_municipality_code
+    mun_code = getattr(buyer, 'municipality_code', None) or resolve_municipality_code(buyer.city, buyer.state)
+    ie_indicator = getattr(buyer, 'ie_indicator', None) or ''
     return {'recipient_name': buyer.name or '', 'recipient_cpf': buyer.document or '',
-            'recipient_ie': buyer.state_registration or '', 'recipient_postal_code': buyer.postal_code or '',
+            'recipient_ie': buyer.state_registration or '', 'recipient_ie_indicator': ie_indicator,
+            'recipient_postal_code': buyer.postal_code or '',
             'recipient_street': buyer.street or '', 'recipient_number': buyer.number or '',
             'recipient_complement': buyer.complement or '', 'recipient_district': buyer.district or '',
-            'recipient_city': buyer.city or '', 'recipient_state': buyer.state or ''}
+            'recipient_city': buyer.city or '', 'recipient_municipality_code': mun_code or '',
+            'recipient_state': buyer.state or ''}
 
 
 def clean_draft_details(data):

@@ -304,8 +304,8 @@
         if (d.length !== 14) { setMsg(msg, 'Digite os 14 números do CNPJ para buscar.', 'error'); docInput.focus(); return; }
         lookup(`/producao/compradores/consulta/cnpj/${d}`, event.currentTarget, msg, (data) => {
             const keep = (key) => (form.elements[key].value || '').trim();
-            ['name', 'trade_name', 'postal_code', 'street', 'number', 'complement', 'district', 'city', 'state', 'phone', 'email']
-                .forEach((key) => { if (data[key] && !keep(key)) form.elements[key].value = data[key]; });
+            ['name', 'trade_name', 'postal_code', 'street', 'number', 'complement', 'district', 'city', 'state', 'municipality_code', 'phone', 'email']
+                .forEach((key) => { if (data[key] && form.elements[key] && !keep(key)) form.elements[key].value = data[key]; });
             setMsg(msg, data.active === false ? 'Atenção: este CNPJ não está ativo na Receita.' : 'Dados preenchidos pelo CNPJ. Confira abaixo.', data.active === false ? 'error' : 'ok');
         });
     });
@@ -315,7 +315,7 @@
         const msg = $('[data-bp-cep-msg]');
         if (digits(cep.value).length !== 8) { setMsg(msg, 'O CEP precisa ter 8 números.', 'error'); cep.focus(); return; }
         lookup(`/producao/compradores/consulta/cep/${digits(cep.value)}`, event.currentTarget, msg, (data) => {
-            ['street', 'district', 'city', 'state'].forEach((key) => { if (data[key]) form.elements[key].value = data[key]; });
+            ['street', 'district', 'city', 'state', 'municipality_code'].forEach((key) => { if (data[key] && form.elements[key]) form.elements[key].value = data[key]; });
             setMsg(msg, 'Endereço preenchido. Informe o número.', 'ok');
             form.elements.number.focus();
         });

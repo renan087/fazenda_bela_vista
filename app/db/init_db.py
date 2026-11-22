@@ -905,6 +905,8 @@ def _sync_schema() -> None:
         "UPDATE coffee_commercialization_records SET net_value = total_value, discount_value = 0 WHERE net_value IS NULL",
         "ALTER TABLE coffee_commercialization_records ADD COLUMN IF NOT EXISTS buyer_id INTEGER REFERENCES coffee_buyers(id) ON DELETE SET NULL",
         "CREATE INDEX IF NOT EXISTS ix_coffee_commercialization_records_buyer_id ON coffee_commercialization_records (buyer_id)",
+        "ALTER TABLE coffee_buyers ADD COLUMN IF NOT EXISTS municipality_code VARCHAR(7)",
+        "ALTER TABLE coffee_buyers ADD COLUMN IF NOT EXISTS ie_indicator VARCHAR(20)",
         "ALTER TABLE harvest_records ADD COLUMN IF NOT EXISTS measure_unit VARCHAR(20)",
         "ALTER TABLE harvest_records ADD COLUMN IF NOT EXISTS measured_quantity NUMERIC(14,2)",
         "ALTER TABLE harvest_records ADD COLUMN IF NOT EXISTS yield_factor NUMERIC(10,3)",

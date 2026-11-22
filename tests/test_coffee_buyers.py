@@ -112,3 +112,36 @@ def test_sale_form_uses_buyer_picker_and_modal():
     for text in ["Vou emitir nota fiscal", "Buscar dados", "Isento / não contribuinte de ICMS", "É produtor rural com inscrição estadual",
                  "E-mail para receber a nota", 'aria-label="Fechar"']:
         assert text in partial
+
+
+def test_buyer_clean_payload_resolves_ibge_and_validates_ie_indicator():
+    from app.services.coffee_buyers import clean_payload
+    from app.services.nfe_draft import buyer_prefill
+
+    values, errors = clean_payload({
+        "person_type": "pf",
+        "name": "Comprador Conquista",
+        "document": "52998224725",
+        "city": "Vitória da Conquista",
+        "state": "BA",
+        "ie_indicator": "nao_contribuinte",
+    })
+    assert errors == []
+    assert values["municipality_code"] == "2933307"
+    assert values["ie_indicator"] == "nao_contribuinte"
+
+    _, bad_ibge = clean_payload({"person_type": "pf", "name": "X", "municipality_code": "123"})
+    assert any("IBGE" in e for e in bad_ibge)
+
+    _, bad_ind = clean_payload({"person_type": "pf", "name": "X", "ie_indicator": "invalido"})
+    assert any("indicador" in e.lower() for e in bad_ind)
+
+    buyer = SimpleNamespace(
+        person_type="pf", name="Comprador Conquista", document="52998224725",
+        state_registration=None, ie_indicator="nao_contribuinte", postal_code="45000000",
+        street="Rua A", number="10", complement=None, district="Centro",
+        city="Barra do Choça", municipality_code=None, state="BA",
+    )
+    prefill = buyer_prefill(buyer)
+    assert prefill["recipient_municipality_code"] == "2902906"
+    assert prefill["recipient_ie_indicator"] == "nao_contribuinte"

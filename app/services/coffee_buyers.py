@@ -8,6 +8,9 @@ import unicodedata
 import httpx
 
 from app.models.coffee_buyer import CoffeeBuyer
+from app.services.ibge_municipalities import resolve_municipality_code
+
+ALLOWED_IE_INDICATORS = {"contribuinte", "isento", "nao_contribuinte"}
 
 UF_CODES = {
     "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB",
@@ -90,9 +93,11 @@ def serialize(buyer: CoffeeBuyer, last_sale=None) -> dict:
     return {
         "id": buyer.id, "person_type": buyer.person_type, "name": buyer.name, "trade_name": buyer.trade_name or "",
         "document": format_document(buyer.document), "state_registration": buyer.state_registration or "",
+        "ie_indicator": getattr(buyer, "ie_indicator", None) or "",
         "ie_exempt": bool(buyer.ie_exempt), "rural_producer": bool(buyer.rural_producer),
         "postal_code": format_postal_code(buyer.postal_code), "street": buyer.street or "", "number": buyer.number or "",
         "complement": buyer.complement or "", "district": buyer.district or "", "city": buyer.city or "",
+        "municipality_code": getattr(buyer, "municipality_code", None) or "",
         "state": buyer.state or "", "phone": buyer.phone or "", "email": buyer.email or "",
         "contact_name": buyer.contact_name or "", "missing": missing, "invoice_ready": not missing,
         "last_sale": last_sale.strftime("%d/%m/%Y") if last_sale else "",
@@ -127,6 +132,16 @@ def clean_payload(data: dict) -> tuple[dict, list[str]]:
     if state and state not in UF_CODES:
         errors.append("UF inválida. Use a sigla do estado, como MG.")
     values["state"] = state or None
+    mun_code = digits(data.get("municipality_code"))
+    if mun_code and len(mun_code) != 7:
+        errors.append("O código IBGE do município precisa ter 7 números.")
+    elif not mun_code and values.get("city") and values.get("state"):
+        mun_code = resolve_municipality_code(values["city"], values["state"])
+    values["municipality_code"] = mun_code or None
+    ie_ind = str(data.get("ie_indicator") or "").strip().lower()
+    if ie_ind and ie_ind not in ALLOWED_IE_INDICATORS:
+        errors.append("Indicador de inscrição estadual inválido.")
+    values["ie_indicator"] = ie_ind or None
     if values["email"] and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", values["email"]):
         errors.append("E-mail inválido.")
     if not values["name"]:
@@ -181,11 +196,13 @@ def lookup_cnpj(cnpj: str) -> dict | None:
     if not data:
         return None
     street = " ".join(filter(None, [_title(data.get("descricao_tipo_de_logradouro")), _title(data.get("logradouro"))]))
+    city = _title(data.get("municipio"))
+    state = (data.get("uf") or "").upper()
     return {
         "name": (data.get("razao_social") or "").strip(), "trade_name": (data.get("nome_fantasia") or "").strip(),
         "postal_code": format_postal_code(data.get("cep")), "street": street, "number": (data.get("numero") or "").strip(),
         "complement": _title(data.get("complemento")), "district": _title(data.get("bairro")),
-        "city": _title(data.get("municipio")), "state": (data.get("uf") or "").upper(),
+        "city": city, "state": state, "municipality_code": resolve_municipality_code(city, state),
         "phone": (data.get("ddd_telefone_1") or "").strip(), "email": (data.get("email") or "").strip().lower(),
         "active": str(data.get("descricao_situacao_cadastral") or "").upper() in {"", "ATIVA"},
     }
@@ -195,5 +212,12 @@ def lookup_cep(cep: str) -> dict | None:
     data = _get_json(f"{BRASILAPI}/cep/v1/{digits(cep)}")
     if not data:
         return None
-    return {"street": data.get("street") or "", "district": data.get("neighborhood") or "",
-            "city": data.get("city") or "", "state": (data.get("state") or "").upper()}
+    city = data.get("city") or ""
+    state = (data.get("state") or "").upper()
+    return {
+        "street": data.get("street") or "",
+        "district": data.get("neighborhood") or "",
+        "city": city,
+        "state": state,
+        "municipality_code": resolve_municipality_code(city, state),
+    }
