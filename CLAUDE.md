@@ -29,6 +29,7 @@ ERP agrícola para fazendas de café (pt-BR). Usuários: produtores e equipe de 
 ## UX e responsividade
 - Mobile-first: quebras em 639px (celular), 1023px (tablet), 1400px+ (desktop largo). Sem rolagem horizontal; alvos de toque ≥ 44px; painéis viram gaveta inferior no celular.
 - Nada é registrado sem confirmação do usuário (rascunho → conferir → confirmar). Mostrar impacto (ex.: estoque antes → depois).
+- Menus suspensos (três pontinhos, “Mais ações”) e popovers sempre fecham ao clicar fora deles (e com Esc).
 - Estados vazios com mensagem útil; erros em linguagem clara com o próximo passo. Respeitar `prefers-reduced-motion`.
 - Acessibilidade: `aria-label` em botões só com ícone, foco visível, contraste adequado.
 
