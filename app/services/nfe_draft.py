@@ -35,3 +35,31 @@ def create_draft(db, *, organization_id, farm_id, user_id, records):
     db.add(draft)
     db.commit()
     return draft
+
+
+def clean_issuer(data):
+    """Valida formato sem presumir credenciamento ou enquadramento tributário."""
+    import re
+    from app.services.coffee_buyers import valid_cpf
+    limits = {'name': 180, 'state_registration': 30, 'street': 180, 'number': 30,
+              'complement': 120, 'district': 120, 'city': 120}
+    cleaned = {}
+    for field, limit in limits.items():
+        value = ' '.join(str(data.get(field) or '').split())
+        if len(value) > limit:
+            raise ValueError('Um dos campos excede o tamanho permitido.')
+        cleaned[field] = value
+    for field, size in [('cpf', 11), ('postal_code', 8), ('municipality_code', 7)]:
+        raw = str(data.get(field) or '').strip()
+        if re.search(r'[^0-9.\-/\s]', raw):
+            raise ValueError('CPF, CEP e código do município devem conter apenas números.')
+        value = re.sub(r'\D', '', raw)
+        if value and len(value) != size:
+            raise ValueError('Confira CPF, CEP e código IBGE do município.')
+        cleaned[field] = value
+    if cleaned['cpf'] and not valid_cpf(cleaned['cpf']):
+        raise ValueError('CPF inválido.')
+    cleaned['state'] = str(data.get('state') or 'BA').strip().upper()
+    if cleaned['state'] != 'BA':
+        raise ValueError('Por enquanto o cadastro fiscal está disponível apenas para a Bahia.')
+    return cleaned

@@ -22903,9 +22903,49 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
                                           farm_id=scope["active_farm_id"]).first()
     if not draft:
         raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
+    from app.models.nfe_draft import NfeIssuerProfile
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id,
+                                                  farm_id=scope["active_farm_id"]).first()
     return templates.TemplateResponse("nfe_draft.html", _base_context(
         request, user, csrf_token, "commercialization", title="Rascunho fiscal", draft=draft,
-        snapshot=json.loads(draft.snapshot_json), _repo=repo))
+        issuer=issuer, snapshot=json.loads(draft.snapshot_json), _repo=repo))
+
+
+@router.post("/producao/rascunhos-fiscais/{draft_id}/emitente")
+async def fiscal_issuer_save(draft_id: str, request: Request, db: Session = Depends(get_db),
+                             user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import NfeDraft, NfeIssuerProfile
+    from app.services.nfe_draft import clean_issuer
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    draft = db.query(NfeDraft).filter_by(id=draft_id, organization_id=user.organization_id,
+                                          farm_id=scope["active_farm_id"]).first()
+    farm = db.get(Farm, scope["active_farm_id"])
+    if not draft or not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
+    try:
+        values = clean_issuer(form)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/rascunhos-fiscais/" + draft.id)
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    if not issuer:
+        issuer = NfeIssuerProfile(id=uuid4().hex, organization_id=user.organization_id, farm_id=farm.id)
+        db.add(issuer)
+    for key, value in values.items():
+        setattr(issuer, key, value)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        _flash(request, "error", "O cadastro foi alterado simultaneamente. Reabra e tente novamente.")
+        return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+    _flash(request, "success", "Dados do emitente salvos para preparação. A emissão ainda não está disponível.")
+    return _redirect("/producao/rascunhos-fiscais/" + draft_id)
 
 
 @router.post("/producao/vendas/{sale_code}/situacao")
