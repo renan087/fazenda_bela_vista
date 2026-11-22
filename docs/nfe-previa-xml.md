@@ -42,3 +42,20 @@ Próximos componentes: snapshots fiscais imutáveis, unidade e valores unitário
 ### Valores tributários de teste
 
 O rascunho permite registrar valores fictícios de ICMS, IBS e CBS por lote. Os totais exibidos são apenas somas dos valores salvos e aparecem somente quando todos os lotes possuem o campo preenchido; zero explícito não equivale a ausência de informação. Esses campos não calculam tributos, não validam a operação e ainda não alimentam o XML candidato. A definição tributária e o mapeamento exigem revisão técnica e fiscal antes de qualquer emissão.
+
+
+## Mapeamento técnico para revisão
+
+A simulação interna agora inclui os campos de unidade, quantidade, valor unitário e valores tributários salvos por lote, inclusive zero explícito. Um elemento vazio indica ausência de informação; nenhum imposto ou total é calculado na exportação. Essa simulação mantém o formato próprio `preparacao_sisfarm` e não é o XML de uma NF-e.
+
+A inspeção preliminar do pacote recebido indica os seguintes destinos possíveis para valores por item. São caminhos condicionais para orientar o desenvolvimento, não uma determinação de enquadramento ou autorização para gerar o grupo tributário:
+
+| Dado do rascunho | Possível destino no XML NF-e | Condição para implementação |
+| --- | --- | --- |
+| Base e valor ICMS | `det/imposto/ICMS/ICMSxx/vBC` e `vICMS` | Grupo e campos dependem do CST, regime e operação; alguns grupos não possuem esses campos. |
+| Base IBS/CBS | `det/imposto/IBSCBS/gIBSCBS/vBC` | Presença depende do CST, classificação e regras vigentes. |
+| IBS estadual | `det/imposto/IBSCBS/gIBSCBS/gIBSUF/vIBSUF` | Exige grupo aplicável, alíquota e demais informações exigidas. |
+| IBS municipal | `det/imposto/IBSCBS/gIBSCBS/gIBSMun/vIBSMun` | Exige grupo aplicável, alíquota e demais informações exigidas. |
+| CBS | `det/imposto/IBSCBS/gIBSCBS/gCBS/vCBS` | Exige grupo aplicável, alíquota e demais informações exigidas. |
+
+Esses caminhos foram inspecionados no pacote recebido ainda não autenticado; não habilitam o validador da aplicação. A [NT 2025.002-RTC do Portal Nacional](https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?AspxAutoDetectCookieSupport=1&conteudo=xxtjiU7xjnk%3D) descreve regras adicionais, inclusive condições para o valor do IBS. O pacote, as tabelas de CST e classificação e a versão vigente precisam ser conferidos antes de implementar os grupos. A soma simples dos valores de teste não constitui o cálculo de `vIBS`, que pode depender de outras parcelas. O XML candidato permanece sem tributação, chave e assinatura.

@@ -7,7 +7,11 @@ RECIPIENT_FIELDS = ('recipient_name', 'recipient_cpf', 'recipient_ie', 'recipien
                     'recipient_postal_code', 'recipient_street', 'recipient_number', 'recipient_complement',
                     'recipient_district', 'recipient_city', 'recipient_municipality_code', 'recipient_state')
 PRODUCT_FIELDS = ('product_description', 'product_ncm', 'operation_nature', 'operation_cfop')
-TECH_FIELDS = ('origin', 'icms_cst', 'ibs_cbs_cst', 'ibs_cbs_class')
+TECH_FIELDS = ('origin', 'icms_cst', 'ibs_cbs_cst', 'ibs_cbs_class',
+               'commercial_unit', 'commercial_quantity', 'commercial_unit_price',
+               'tax_unit', 'tax_quantity', 'tax_unit_price',
+               'icms_base', 'icms_value', 'ibs_cbs_base', 'ibs_uf_value',
+               'ibs_municipal_value', 'cbs_value')
 
 
 def _element(parent, name, value):
