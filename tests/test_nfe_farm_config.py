@@ -196,3 +196,27 @@ def test_tax_profile_create_approve_and_apply_to_draft(monkeypatch):
     assert tech is not None and json.loads(tech.data_json)['items'][0]['icms_cst'] == '40'
     assert json.loads(tech.data_json)['items'][0]['commercial_unit'] == 'SC'
     db.close()
+
+
+def test_fiscal_config_sections_and_decimal_mask_fields():
+    from app.services import nfe_fiscal_setup as fs
+    from app.web import routes
+    from jinja2 import ChoiceLoader, DictLoader
+
+    assert routes._nf_cfg_section('cert') == 'cert'
+    assert routes._nf_cfg_section('amb') == 'num' and routes._nf_cfg_section('txt') == 'num'
+    assert routes._nf_cfg_section('xyz', 'emit') == 'emit'
+
+    env = routes.templates.env.overlay(loader=ChoiceLoader([
+        DictLoader({'base.html': '{% block content %}{% endblock %}'}), routes.templates.env.loader,
+    ]))
+    html = env.get_template('nfe_farm_config.html').render(
+        issuer=None, cfg=None, readiness={'config': None}, certificates=[], master_key_configured=True,
+        can_manage_cert=True, can_write_page=True, csrf_token='x', allowed_environments=[],
+        allowed_credential_statuses=[], allowed_crts=[], section='oper', item='novo', product_views=[], operations=[],
+        finalities=fs.FINALITIES, funrural_options=fs.FUNRURAL_OPTIONS, icms_csts=fs.ICMS_CSTS,
+        operation_missing=fs.operation_missing, operation_templates=fs.OPERATION_TEMPLATES,
+    )
+    assert 'data-nx-section="cert"' in html and 'name="next_section"' in html
+    assert 'name="icms_rate"' in html and html.count('data-fc-mask="dec"') >= 4
+    assert 'name="default_series"' in html and 'data-fc-series' in html

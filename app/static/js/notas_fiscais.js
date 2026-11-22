@@ -311,9 +311,120 @@
         root.querySelectorAll('[data-nx-section]').forEach(function (s) { s.hidden = s !== target; });
         root.querySelectorAll('.nx-sn[data-nx-sec]').forEach(function (s) { if (s.getAttribute('data-nx-sec') === key) s.setAttribute('aria-current', 'page'); else s.removeAttribute('aria-current'); });
         try { history.replaceState(null, '', '?secao=' + key); } catch (err) { /* sem histórico */ }
+        var from = root.querySelector('[data-fc-from]'); if (from) from.value = key;
+        var openId = link.getAttribute('data-fc-open'); if (openId) { var d = document.getElementById(openId); if (d) { d.open = true; d.scrollIntoView({ block: 'start' }); return; } }
+        window.scrollTo({ top: 0 });
         var h = target.querySelector('h2'); if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
       });
     });
+  }
+
+  /* ---------------------------------------------------------------- configurações fiscais: máscara, CEP e prévias */
+  function decFormat(n) {
+    return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function decMask(raw, maxDigits) {
+    var d = String(raw || '').replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, maxDigits);
+    if (!d) return '';
+    return decFormat(parseInt(d, 10) / 100);
+  }
+  function initFiscalForms(root) {
+    /* Campos decimais: digitar 100 vira 1,00. Campos inteiros não usam esta máscara. */
+    root.querySelectorAll('[data-fc-mask="dec"]').forEach(function (input) {
+      var max = parseInt(input.getAttribute('data-fc-digits') || '8', 10);
+      var v = String(input.value || '').trim();
+      if (v) {
+        var n = parseFloat(v.indexOf(',') >= 0 ? v.replace(/\./g, '').replace(',', '.') : v);
+        input.value = isFinite(n) ? decFormat(n) : '';
+      }
+      input.addEventListener('input', function () {
+        input.value = decMask(input.value, max);
+        try { input.setSelectionRange(input.value.length, input.value.length); } catch (err) { /* campo sem seleção */ }
+      });
+    });
+    var emit = root.querySelector('[data-fc-emit]');
+    if (emit) {
+      var docLabels = root.querySelectorAll('[data-fc-doc-label]');
+      emit.querySelectorAll('[data-fc-person]').forEach(function (r) {
+        r.addEventListener('change', function () { docLabels.forEach(function (l) { l.textContent = r.value === 'cnpj' ? 'CNPJ' : 'CPF'; }); });
+      });
+      var defaults = {};
+      root.querySelectorAll('[data-fc-out]').forEach(function (el) { defaults[el.getAttribute('data-fc-out')] = el.textContent; });
+      function mirror(input) {
+        var key = input.getAttribute('data-fc-mirror');
+        root.querySelectorAll('[data-fc-out="' + key + '"]').forEach(function (el) {
+          var v = input.value.trim(); if (key === 'name') v = v.toUpperCase();
+          el.textContent = v || (key === 'number' ? 's/n' : defaults[key]);
+        });
+      }
+      emit.querySelectorAll('[data-fc-mirror]').forEach(function (input) { input.addEventListener('input', function () { mirror(input); }); });
+      var sn = emit.querySelector('[data-fc-sn]'); var num = emit.querySelector('[name="number"]');
+      if (sn && num) sn.addEventListener('change', function () {
+        num.readOnly = sn.checked; num.value = sn.checked ? 'S/N' : ''; if (!sn.checked) num.focus(); mirror(num);
+      });
+      var btn = emit.querySelector('[data-fc-cep]'); var cep = emit.querySelector('[name="postal_code"]'); var msg = emit.querySelector('[data-fc-cep-msg]');
+      var tag = emit.querySelector('[data-fc-af]'); var ibgeOut = root.querySelector('[data-fc-ibge-out]');
+      function lookup() {
+        var digits = cep.value.replace(/\D/g, '');
+        if (digits.length !== 8) { msg.textContent = 'O CEP precisa ter 8 números.'; cep.focus(); return; }
+        btn.disabled = true; msg.textContent = 'Buscando o endereço…';
+        fetch('/producao/compradores/consulta/cep/' + digits, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (res) {
+            if (!res.ok || !res.j.data) { msg.textContent = (res.j && res.j.error) || 'CEP não encontrado. Preencha o endereço à mão.'; return; }
+            var d = res.j.data;
+            cep.value = d.postal_code || cep.value; mirror(cep);
+            emit.querySelectorAll('[data-fc-fill]').forEach(function (el) {
+              var k = el.getAttribute('data-fc-fill'); if (d[k]) { el.value = d[k]; if (el.hasAttribute('data-fc-mirror')) mirror(el); }
+            });
+            if (ibgeOut && d.municipality_code) ibgeOut.textContent = d.municipality_code;
+            if (tag) tag.hidden = false;
+            msg.textContent = 'Endereço preenchido. Confira e complete o número.';
+            if (num && !num.readOnly) num.focus();
+          })
+          .catch(function () { msg.textContent = 'Não foi possível buscar agora. Preencha o endereço à mão.'; })
+          .then(function () { btn.disabled = false; });
+      }
+      if (btn && cep && msg) {
+        btn.addEventListener('click', lookup);
+        cep.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); lookup(); } });
+      }
+    }
+    root.querySelectorAll('[data-fc-eye]').forEach(function (b) {
+      var input = document.getElementById(b.getAttribute('data-fc-eye'));
+      b.addEventListener('click', function () {
+        var show = input.type === 'password'; input.type = show ? 'text' : 'password';
+        b.setAttribute('aria-pressed', show ? 'true' : 'false'); b.setAttribute('aria-label', show ? 'Esconder senha' : 'Mostrar senha');
+      });
+    });
+    var prod = root.querySelector('[data-fc-product]');
+    if (prod) {
+      var ncm = prod.querySelector('[data-fc-ncm]');
+      prod.querySelectorAll('[data-fc-ncm-pick]').forEach(function (b) {
+        b.addEventListener('click', function () { if (ncm) { ncm.value = b.getAttribute('data-fc-ncm-pick'); ncm.classList.remove('is-missing'); ncm.focus(); } });
+      });
+      var conv = prod.querySelector('[data-fc-conv]');
+      function convText() {
+        if (!conv) return;
+        var sale = prod.querySelector('[data-fc-unit="sale"]').value; var tax = prod.querySelector('[data-fc-unit="tax"]').value;
+        var raw = prod.querySelector('[data-fc-unit="kg"]').value.replace(/\./g, '').replace(',', '.'); var kg = parseFloat(raw);
+        if (sale === tax || !isFinite(kg) || kg <= 0) { conv.textContent = ''; return; }
+        var fmt = function (n) { return n.toLocaleString('pt-BR', { maximumFractionDigits: 2 }); };
+        conv.textContent = sale === 'SC'
+          ? 'Exemplo: uma venda de 100 sacas sai na nota como ' + fmt(100 * kg) + ' kg.'
+          : 'Exemplo: uma venda de 6.000 kg sai na nota como ' + fmt(6000 / kg) + ' sacas.';
+      }
+      prod.addEventListener('input', convText); prod.addEventListener('change', convText); convText();
+    }
+    var numbering = root.querySelector('[data-fc-numbering]');
+    if (numbering) {
+      var series = numbering.querySelector('[data-fc-series]'); var next = numbering.querySelector('[data-fc-next]'); var outN = numbering.querySelector('[data-fc-nxt-out]');
+      var upd = function () {
+        var n = parseInt(next.value, 10);
+        outN.textContent = 'Série ' + (series.value || '—') + ' · Nº ' + (isFinite(n) ? n.toLocaleString('pt-BR') : '—');
+      };
+      series.addEventListener('input', upd); next.addEventListener('input', upd);
+    }
   }
 
   /* ---------------------------------------------------------------- emitir NF: modal do comprador, transporte e carga */
@@ -410,7 +521,9 @@
       out('ibsl', 'IBS' + (any ? ' (' + pct(rate('ibsuf') + rate('ibsmun')) + ')' : ''));
       out('cbs', any ? brl(GROSS * rate('cbs') / 100) : 'sem alíquota');
       out('ibs', any ? brl(GROSS * (rate('ibsuf') + rate('ibsmun')) / 100) : 'sem alíquota');
-      var fun = field('fun'); out('fun', fun ? fun.options[fun.selectedIndex].text.toLowerCase() : '—');
+      var fun = calc.querySelector('[data-nx-tax="fun"]:checked') || field('fun');
+      var funText = !fun ? '—' : fun.options ? fun.options[fun.selectedIndex].text : ((fun.closest('label') || fun).querySelector('b') || {}).textContent || '';
+      out('fun', funText.toLowerCase());
     }
     calc.addEventListener('input', update); calc.addEventListener('change', update); update();
   }
@@ -422,7 +535,7 @@
     if (kind === 'list') initList(root);
     initMoreMenus(root);
     initCounters(root);
-    if (kind === 'config') { initConfig(root); initOperationEditor(root); }
+    if (kind === 'config') { initConfig(root); initFiscalForms(root); initOperationEditor(root); }
     if (kind === 'emit') initEmit(root);
   });
 })();

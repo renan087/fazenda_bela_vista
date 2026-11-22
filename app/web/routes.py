@@ -23214,21 +23214,38 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
     issuer_ok = bool(issuer and issuer.name and issuer.cpf and issuer.state_registration and issuer.municipality_code)
     product_views = [fs.product_view(p) for p in products]
     active_ops = [g for g in operations if g["active"]]
+    cfg_obj = readiness.get("config")
+    series = cfg_obj.default_series if cfg_obj else 920
+    next_number = cfg_obj.next_number if cfg_obj else 1
+    cert_ok = cert_days is not None and cert_days >= 0
+    complete_products = sum(1 for v in product_views if v["complete"])
+    drafts = sum(1 for g in operations if not g["active"] or g["draft"])
+    place = " – ".join(x for x in ((issuer.city if issuer else ""), (cfg_obj.state if cfg_obj else "")) if x)
+    if cert_ok:
+        cert_text = f"Válido até {active_cert.valid_until.strftime('%d/%m/%Y')} · faltam {cert_days} dias"
+    elif active_cert:
+        cert_text = "Certificado vencido · envie um novo"
+    else:
+        cert_text = "Nenhum certificado enviado"
     setup_steps = [
-        {"key": "emit", "title": "Emitente e certificado", "ok": issuer_ok and cert_days is not None and cert_days >= 0,
-         "text": ("CPF, IE e endereço preenchidos" if issuer_ok else "Faltam dados do produtor") + " · " +
-                 (f"certificado válido por {cert_days} dias" if cert_days is not None and cert_days >= 0 else "sem certificado A1 ativo")},
-        {"key": "prod", "title": "Produtos fiscais", "ok": any(v["complete"] for v in product_views),
-         "text": (f"{len(products)} produto(s) · {sum(1 for v in product_views if v['complete'])} completo(s)" if products else "Nenhum produto cadastrado")},
-        {"key": "oper", "title": "Operações fiscais", "ok": bool(active_ops),
-         "text": (f"{len(active_ops)} ativa(s)" + (f" e {sum(1 for g in operations if not g['active'] or g['draft'])} rascunho(s)" if any((not g['active']) or g['draft'] for g in operations) else "")) if operations else "Nenhuma operação cadastrada"},
-        {"key": "num", "title": "Série e numeração", "ok": True,
-         "text": f"Série {readiness['config'].default_series if readiness.get('config') else 920} · próxima nota {readiness['config'].next_number if readiness.get('config') else 1}"},
-        {"key": "txt", "title": "Textos padrão", "ok": True, "text": "Texto somado às informações complementares" if prefs and prefs.default_info else "Opcional"},
+        {"key": "emit", "title": "Seus dados", "hint": "Quem vende", "ok": issuer_ok,
+         "desc": "Nome, CPF, inscrição estadual e endereço da fazenda.",
+         "text": (" · ".join(x for x in (issuer.name, f"IE {issuer.state_registration}", place) if x) if issuer_ok else "Faltam dados do produtor")},
+        {"key": "cert", "title": "Certificado digital", "hint": (f"Válido por {cert_days} dias" if cert_ok else "Assinatura das notas"), "ok": cert_ok,
+         "desc": "O arquivo A1 que assina as notas no seu nome.", "text": cert_text},
+        {"key": "prod", "title": "Produtos", "hint": "O que vende", "ok": complete_products > 0,
+         "desc": "O café que você vende, do jeito que aparece na nota.",
+         "text": (f"{len(products)} produto(s) · {complete_products} completo(s)" if products else "Nenhum produto cadastrado · comece por um modelo")},
+        {"key": "oper", "title": "Operações", "hint": "Como vende", "ok": bool(active_ops),
+         "desc": "Como você vende: venda, remessa para armazém, exportação.",
+         "text": ((f"{len(active_ops)} ativa(s)" + (f" · {drafts} rascunho(s)" if drafts else "")) if operations else "Nenhuma operação · comece pelo modelo “Venda de produção”")},
+        {"key": "num", "title": "Numeração e textos", "hint": "Ajustes finais", "ok": True, "optional": True,
+         "desc": "Série, número da próxima nota e textos que vão em todas as notas.",
+         "text": f"Série {series} · próxima nota nº {next_number}" + (" · texto padrão definido" if prefs and prefs.default_info else "")},
     ]
-    section = request.query_params.get("secao") or ("oper" if products and not active_ops else "inicio")
-    if section not in ("inicio", "emit", "prod", "oper", "num", "txt", "amb"):
-        section = "inicio"
+    raw_section = request.query_params.get("secao") or ""
+    open_env = raw_section == "amb"
+    section = _nf_cfg_section(raw_section, "oper" if products and not active_ops else "inicio")
     item = request.query_params.get("item") or ""
     return templates.TemplateResponse("nfe_farm_config.html", _base_context(
         request, user, csrf_token, "fiscal_notes",
@@ -23244,11 +23261,21 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
         allowed_credential_statuses=ALLOWED_CREDENTIAL_STATUSES,
         allowed_crts=ALLOWED_CRTS,
         _repo=repo,
-        section=section, item=item, product_views=product_views, operations=operations, has_logo=bool(logo), prefs=prefs,
+        section=section, open_env=open_env, item=item, product_views=product_views, operations=operations, has_logo=bool(logo), prefs=prefs,
         setup_steps=setup_steps, cert_days=cert_days, lot_stage_choices=fs.LOT_STAGE_CHOICES, units=fs.UNITS, origins=fs.ORIGINS,
         finalities=fs.FINALITIES, funrural_options=fs.FUNRURAL_OPTIONS, icms_csts=fs.ICMS_CSTS, product_templates=fs.PRODUCT_TEMPLATES,
         operation_templates=fs.OPERATION_TEMPLATES, operation_missing=fs.operation_missing,
     ))
+
+
+NF_CFG_SECTIONS = ("inicio", "emit", "cert", "prod", "oper", "num")
+
+
+def _nf_cfg_section(value, default: str = "inicio") -> str:
+    """Seção válida da página de Configurações fiscais (nomes antigos viram os novos)."""
+    key = str(value or "").strip()
+    key = {"txt": "num", "amb": "num"}.get(key, key)
+    return key if key in NF_CFG_SECTIONS else default
 
 
 @router.post("/producao/nfe/configuracao/emitente")
@@ -23299,13 +23326,13 @@ async def nfe_farm_config_save(request: Request, db: Session = Depends(get_db),
     except ValueError as exc:
         db.rollback()
         _flash(request, "error", str(exc))
-        return _redirect("/producao/nfe/configuracao")
+        return _redirect(f"/producao/nfe/configuracao?secao={_nf_cfg_section(form.get('from_section'), 'emit')}")
     except IntegrityError:
         db.rollback()
         _flash(request, "error", "A configuração fiscal foi alterada simultaneamente. Tente novamente.")
-        return _redirect("/producao/nfe/configuracao")
+        return _redirect(f"/producao/nfe/configuracao?secao={_nf_cfg_section(form.get('from_section'), 'emit')}")
     _flash(request, "success", "Configuração fiscal da fazenda salva com sucesso. A transmissão real permanece bloqueada.")
-    return _redirect("/producao/nfe/configuracao")
+    return _redirect(f"/producao/nfe/configuracao?secao={_nf_cfg_section(form.get('next_section'), 'emit')}")
 
 
 @router.post("/producao/nfe/configuracao/certificado")
@@ -23330,13 +23357,13 @@ async def nfe_farm_certificate_upload(request: Request, db: Session = Depends(ge
     env = str(form.get("environment") or "homologacao").strip().lower()
     if env != "homologacao":
         _flash(request, "error", "Nesta etapa apenas certificados para o ambiente de homologação podem ser carregados.")
-        return _redirect("/producao/nfe/configuracao")
+        return _redirect("/producao/nfe/configuracao?secao=cert")
 
     upload = form.get("certificate_file")
     password = str(form.get("certificate_password") or "")
     if not upload or not hasattr(upload, "read"):
         _flash(request, "error", "Selecione o arquivo do certificado A1 (.pfx ou .p12).")
-        return _redirect("/producao/nfe/configuracao")
+        return _redirect("/producao/nfe/configuracao?secao=cert")
     pfx_bytes = await upload.read()
     try:
         stored = store_encrypted_certificate(
@@ -23351,9 +23378,9 @@ async def nfe_farm_certificate_upload(request: Request, db: Session = Depends(ge
     except ValueError as exc:
         db.rollback()
         _flash(request, "error", str(exc))
-        return _redirect("/producao/nfe/configuracao")
+        return _redirect("/producao/nfe/configuracao?secao=cert")
     _flash(request, "success", f"Certificado A1 ({stored.subject_cn or 'titular'}) criptografado e salvo com segurança.")
-    return _redirect("/producao/nfe/configuracao")
+    return _redirect("/producao/nfe/configuracao?secao=cert")
 
 
 @router.post("/producao/nfe/configuracao/certificado/{cert_id}/desativar")
@@ -23383,7 +23410,7 @@ async def nfe_farm_certificate_deactivate(cert_id: str, request: Request, db: Se
     cert.is_active = False
     db.commit()
     _flash(request, "success", "Certificado A1 desativado nesta fazenda.")
-    return _redirect("/producao/nfe/configuracao")
+    return _redirect("/producao/nfe/configuracao?secao=cert")
 
 
 @router.post("/producao/nfe/configuracao/perfis")
