@@ -24,6 +24,17 @@
             {% endif %}
         </div>
     </header>
+    {% if lot_trail %}
+    <nav class="lt-trail" aria-label="Trilha do lote">
+        <ol>
+            {% for st in lot_trail %}
+            <li class="is-{{ st.state }}"{% if st.state == 'current' %} aria-current="step"{% endif %}>
+                <a href="{{ st.href }}">{% if st.done %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>{% elif st.state == 'current' %}<span class="lt-trail-dot" aria-hidden="true"></span>{% endif %}<span>{{ st.text }}</span></a>
+            </li>
+            {% endfor %}
+        </ol>
+    </nav>
+    {% endif %}
     {% if new_sale %}{{ sale_next(new_sale, (fiscal_note_by_sale or {}).get(new_sale.code), csrf_token, can_write_page, "/producao/lotes/" ~ lot.id) }}{% endif %}
 
     {% if lot_legacy %}
@@ -84,7 +95,7 @@
         </div>
 
         <aside class="lt-side">
-            <section class="pd-card lt-stage">
+            <section class="pd-card lt-stage" id="lt-stage">
                 <h2>Onde o lote está agora</h2>
                 <p class="lt-now"><i class="is-{{ lot_stage_code }}" aria-hidden="true"></i>{{ lot_stage_label }}{% if lot.warehouse_receipt %} · recibo {{ lot.warehouse_receipt }}{% endif %}</p>
                 <form method="post" action="/producao/lotes/{{ lot.id }}/etapa" class="lt-stage-form" data-stage-form>

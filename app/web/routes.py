@@ -21043,6 +21043,7 @@ def lot_detail_page(
             lot_sales=lot_groups, lot_timeline=timeline(harvest, analyses, groups, today),
             fiscal_note_by_sale=_nf_notes_by_sale(db, user, scope.get("active_farm_id"), _nf_drafts_by_sale(db, user, scope.get("active_farm_id"), groups)),
             new_sale=next((g for g in groups if g["code"] == request.query_params.get("venda_nova")), None),
+            lot_trail=_lot_trail(db, user, scope, harvest, analyses, groups, available, can_sell),
             lot_produced=produced, lot_sold=sold, lot_negotiated=negotiated, lot_delivered=sold - negotiated,
             lot_available=available, lot_value_estimate=available * ref_price if ref_price else None,
             lot_stage_code=stage_code, lot_stage_label=stage_label, lot_stages=LOT_STAGES, lot_stage_hints=STAGE_HINTS,
@@ -27325,6 +27326,43 @@ def _nf_attention(db: Session, user: User, farm_id: int | None, groups: list[dic
                       "title": f"{len(without)} venda{'s' if len(without) > 1 else ''} entregue{'s' if len(without) > 1 else ''} sem nota",
                       "detail": f"{codes} · Emitir NF"})
     return items[:2]
+
+
+def _lot_trail(db: Session, user: User, scope: dict, harvest, analyses, groups: list[dict], available: float, can_sell: bool) -> list[dict]:
+    """Trilha do lote (colhido → recebido): cada etapa sabe se está feita, se é a próxima e para onde leva."""
+    from app.models.nfe_draft import NfeClientFiscalConfig
+    farm_id = scope.get("active_farm_id")
+    notes = _nf_notes_by_sale(db, user, farm_id, _nf_drafts_by_sale(db, user, farm_id, groups)) if groups else {}
+    issues_nf = bool(notes) or bool(farm_id and db.query(NfeClientFiscalConfig).filter_by(
+        organization_id=user.organization_id, farm_id=farm_id).first())
+    lot_url = f"/producao/lotes/{harvest.id}"
+    without_nf = [g for g in groups if (notes.get(g["code"]) or {}).get("status") in (None, "cancelada")]
+    pending_receipt = [g for g in groups if g["status"] != "recebido"]
+    sold_all = bool(groups) and available <= 0
+    steps = [
+        {"key": "colhido", "label": "Colhido", "done": True, "href": f"/producao/colheitas/{harvest.id}/editar"},
+        {"key": "beneficiado", "label": "Beneficiado", "todo": "Informar benefício", "done": not harvest.sacks_estimated,
+         "href": f"{lot_url}#lt-stage"},
+        {"key": "classificado", "label": "Classificado", "todo": "Classificar (opcional)", "done": bool(analyses), "optional": True,
+         "href": (f"/producao/classificacao/{analyses[0].id}" if analyses else
+                  f"/producao/classificacao?harvest_id={harvest.id}&novo=1&origem=producao")},
+        {"key": "vendido", "label": "Vendido", "done": sold_all,
+         "todo": (f"Vender {_format_decimal_br(available, 0 if available == int(available) else 2)} sc"
+                  + (" restantes" if groups else "")) if available > 0 else "Vender",
+         "href": f"/producao/vendas/nova?lote={harvest.id}" if can_sell else f"/producao/comercializacao?harvest_id={harvest.id}"},
+        {"key": "nota", "label": "Nota fiscal", "optional": not issues_nf, "done": bool(groups) and not without_nf,
+         "todo": (f"Emitir NF ({len(without_nf)} venda{'s' if len(without_nf) > 1 else ''})" if groups and without_nf
+                  else ("Nota fiscal" if issues_nf else "Nota fiscal (se emitir)")),
+         "href": (f"/producao/comercializacao?venda={without_nf[0]['code']}" if without_nf
+                  else f"/producao/comercializacao?harvest_id={harvest.id}")},
+        {"key": "recebido", "label": "Recebido", "done": bool(groups) and not pending_receipt, "todo": "Receber",
+         "href": f"/producao/comercializacao?venda={pending_receipt[0]['code']}" if pending_receipt else f"/producao/comercializacao?harvest_id={harvest.id}"},
+    ]
+    current = next((st for st in steps if not st["done"] and not st.get("optional")), None)
+    for st in steps:
+        st["state"] = "done" if st["done"] else ("current" if st is current else ("optional" if st.get("optional") else "todo"))
+        st["text"] = st["label"] if st["done"] else st.get("todo", st["label"])
+    return steps
 
 
 def _nf_saved_json(db: Session, user: User, farm: Farm, draft) -> tuple[dict, dict]:
