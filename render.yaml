@@ -15,6 +15,8 @@ services:
         value: America/Sao_Paulo
       - key: SECRET_KEY
         generateValue: true
+      - key: NFE_CERT_MASTER_KEY
+        generateValue: true
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: 60
       - key: ADMIN_NAME

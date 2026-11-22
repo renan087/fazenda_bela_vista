@@ -192,7 +192,8 @@ def evaluate_pilot_homologation_readiness(db, *, organization_id: int, farm_id: 
         sefaz_verified = False
 
     network_env_on = os.environ.get('NFE_ENABLE_SEFAZ_NETWORK', '').strip().lower() == 'true'
-    master_key_on = len(os.environ.get('NFE_CERT_MASTER_KEY', '').strip()) >= 32
+    from app.services.nfe_certificate_vault import is_master_key_configured
+    master_key_on = is_master_key_configured()
 
     checks = [
         {

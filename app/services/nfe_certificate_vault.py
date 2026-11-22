@@ -32,8 +32,24 @@ RSA_SHA1_ALG = 'http://www.w3.org/2000/09/xmldsig#rsa-sha1'
 SHA1_ALG = 'http://www.w3.org/2000/09/xmldsig#sha1'
 
 
+def _configured_master_key() -> str:
+    """Lê a chave do ambiente; se ausente, do .env (via Settings)."""
+    raw = os.environ.get('NFE_CERT_MASTER_KEY', '')
+    if raw.strip():
+        return raw
+    try:
+        from app.core.config import get_settings
+        return get_settings().nfe_cert_master_key or ''
+    except Exception:
+        return ''
+
+
+def is_master_key_configured() -> bool:
+    return len(_configured_master_key().strip()) >= 32
+
+
 def _get_master_key(master_key: str | None = None) -> bytes:
-    raw = master_key if master_key is not None else os.environ.get('NFE_CERT_MASTER_KEY', '')
+    raw = master_key if master_key is not None else _configured_master_key()
     if not isinstance(raw, str) or len(raw.strip()) < 32:
         raise ValueError(
             'Chave mestra NFE_CERT_MASTER_KEY ausente ou muito curta (mínimo 32 caracteres).'

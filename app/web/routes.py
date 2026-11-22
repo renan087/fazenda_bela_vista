@@ -23197,7 +23197,8 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
         .limit(30)
         .all()
     )
-    master_key_configured = len(os.environ.get("NFE_CERT_MASTER_KEY", "").strip()) >= 32
+    from app.services.nfe_certificate_vault import is_master_key_configured
+    master_key_configured = is_master_key_configured()
     from datetime import datetime as _dt, timezone as _tz
     from app.services import nfe_fiscal_setup as fs
     fs.convert_legacy_profiles(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id)

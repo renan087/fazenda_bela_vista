@@ -127,7 +127,7 @@
           {% endif %}
           <p class="nx-desc">O arquivo e a senha ficam guardados criptografados e nunca aparecem na tela.</p>
           {% if not master_key_configured %}
-          <div class="nx-banner is-amber">{{ nxi('alert', 20) }}<span>O cofre de certificados ainda não foi configurado no servidor (<code>NFE_CERT_MASTER_KEY</code>). Fale com o suporte do SiSFarm.</span></div>
+          <div class="nx-banner is-amber">{{ nxi('alert', 20) }}<span>O cofre de certificados ainda não foi configurado no servidor (<code>NFE_CERT_MASTER_KEY</code>). O administrador precisa definir essa chave (32+ caracteres) nas variáveis de ambiente do Render e reiniciar o serviço.</span></div>
           {% endif %}
           {% if can_write_page and can_manage_cert %}
           <form method="post" action="/producao/nfe/configuracao/certificado" enctype="multipart/form-data" class="nx-g" style="align-items:end">
