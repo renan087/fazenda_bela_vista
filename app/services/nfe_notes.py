@@ -234,7 +234,15 @@ def confirm_emission(db, *, draft: NfeDraft, user_id: int) -> dict:
     )
     if not result['ok'] and result.get('missing_fields'):
         raise ValueError('Faltam dados para emitir: ' + ', '.join(result['missing_fields'][:6]) + '.')
+    if load_note(db, draft, issuer=issuer)['status'] == 'autorizada':
+        _sync_sale(db, draft, authorized=True)
     return result
+
+
+def _sync_sale(db, draft: NfeDraft, *, authorized: bool) -> None:
+    from app.services.coffee_sales import sync_status_with_invoice
+    if draft.sale_code:
+        sync_status_with_invoice(db, farm_id=draft.farm_id, sale_code=draft.sale_code, authorized=authorized)
 
 
 def cancel_note(db, *, draft: NfeDraft, user_id: int, reason: str, now: datetime | None = None) -> None:
@@ -264,6 +272,7 @@ def cancel_note(db, *, draft: NfeDraft, user_id: int, reason: str, now: datetime
     record_draft_event(db, draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id,
                        event_type='cancelamento_simulado', summary='Nota cancelada (ambiente de teste).',
                        user_id=user_id, metadata={'reason': reason}, commit=True)
+    _sync_sale(db, draft, authorized=False)
 
 
 def delete_draft(db, *, draft: NfeDraft) -> None:

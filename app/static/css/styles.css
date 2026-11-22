@@ -12107,3 +12107,21 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .nx-tl2-more ul { list-style: none; margin: .5rem 0 0; padding: .5rem 0 0 .75rem; border-left: 2px solid #eef1ed; display: flex; flex-direction: column; gap: .5rem; font-size: .75rem; color: #46514a; animation: nx-in .25s ease-out; }
 .nx-tl2-more b { font-weight: 600; color: #16201a; }
 @media (prefers-reduced-motion: reduce) { .nx-tl2-more ul { animation: none; } .nx-tl2-more summary svg { transition: none; } }
+/* Próximos passos depois de registrar uma venda */
+.sn-card { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: .875rem 1rem; margin: 0 0 1.25rem; padding: 1rem 3.25rem 1rem 1rem; border-radius: 1rem; background: #e6f4e2; border: 1px solid #bfe0b6; animation: nx-in .3s ease-out; }
+.sn-ok { width: 2.5rem; height: 2.5rem; flex: none; border-radius: 50%; background: #1f7a3a; color: #fff; display: grid; place-items: center; }
+.sn-ok svg { width: 1.25rem; height: 1.25rem; }
+.sn-text { flex: 1 1 18rem; min-width: 0; }
+.sn-text h2 { margin: 0; font-size: 1rem; font-weight: 700; color: #165c2b; }
+.sn-text p { margin: .125rem 0 0; font-size: .8125rem; color: #165c2b; line-height: 1.45; }
+.sn-text .sn-hint { margin-top: .375rem; font-weight: 600; }
+.sn-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.sn-actions form { margin: 0; }
+.sn-actions .sf-btn { min-height: 2.5rem; }
+.sn-close { position: absolute; top: .5rem; right: .5rem; width: 2.75rem; height: 2.75rem; border-radius: .625rem; display: grid; place-items: center; color: #165c2b; }
+.sn-close:hover { background: rgba(255, 255, 255, .6); }
+.sn-close svg { width: 1.125rem; height: 1.125rem; }
+.sn-close:focus-visible { outline: 3px solid #9bcb6b; outline-offset: 2px; }
+.lt-sale-chips { display: flex; flex-wrap: wrap; gap: .375rem; margin: .375rem 0; }
+@media (max-width: 639px) { .sn-actions { width: 100%; } .sn-actions .sf-btn, .sn-actions form { flex: 1 1 auto; } .sn-actions form .sf-btn { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .sn-card { animation: none; } }

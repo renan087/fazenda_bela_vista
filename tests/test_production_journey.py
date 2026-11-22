@@ -140,8 +140,10 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     assert f'name="lot_id" value="{lot_id}" id="vw-lot-{lot_id}" checked' in sale
     assert f'name="origem_lote" value="{lot_id}"' in sale
 
-    assert sell(4).headers["location"] == lot_url
-    page = get(lot_url)
+    assert sell(4).headers["location"] == lot_url + "?venda_nova=V-0001"
+    page = get(lot_url + "?venda_nova=V-0001")
+    assert 'Venda V-0001 registrada' in page and 'Emitir NF' in page and 'Marcar entregue' in page
+    assert 'Sem nota fiscal' in page
     assert '6,00 sc <small>disponíveis de 10,00</small>' in page
     assert 'Comprador' in page and 'V-0001 · 4,00 sc' in page and 'Venda V-0001 negociada' in page
     sale_details = get("/producao/comercializacao?venda=V-0001")
@@ -153,7 +155,7 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     retry = sell(7)
     assert retry.status_code == 422 and "ultrapassa o saldo" in retry.body.decode()
 
-    assert sell(6).headers["location"] == lot_url
+    assert sell(6).headers["location"] == lot_url + "?venda_nova=V-0002"
     page = get(lot_url)
     assert 'Sem saldo para venda' in page and 'Ver vendas' in page
     assert 'Vender deste lote' not in page

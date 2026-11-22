@@ -192,7 +192,8 @@ def group_sales(records: list[CoffeeCommercializationRecord]) -> list[dict]:
         gross = round(sum(_num(r.total_value) for r in rows), 2)
         net = round(sum(_num(r.net_value if r.net_value is not None else r.total_value) for r in rows), 2)
         status = (first.status or "negociado").lower()
-        step = SALE_STATUS_STEPS.index(status) if status in SALE_STATUS_STEPS else (1 if status == "faturado" else 0)
+        # Faturada = nota fiscal autorizada; o café ainda não foi entregue (passo 0).
+        step = SALE_STATUS_STEPS.index(status) if status in SALE_STATUS_STEPS else 0
         result.append({
             "code": code, "records": rows, "first": first, "sale_date": first.sale_date, "buyer_name": first.buyer_name,
             "buyer_id": first.buyer_id, "sacks": round(sum(_num(r.equivalent_sacks) for r in rows), 4),
@@ -221,6 +222,21 @@ def set_status(db, records: list[CoffeeCommercializationRecord], status: str, on
         if status == "recebido":
             record.received_on = on_date
     db.commit()
+
+
+def sync_status_with_invoice(db, *, farm_id: int, sale_code: str, authorized: bool) -> bool:
+    """Nota autorizada fatura a venda negociada; nota cancelada devolve a venda faturada para negociada."""
+    records = sale_records(db, farm_id, sale_code)
+    changed = False
+    for record in records:
+        current = (record.status or "negociado").lower()
+        if authorized and current == "negociado":
+            record.status, changed = "faturado", True
+        elif not authorized and current == "faturado":
+            record.status, changed = "negociado", True
+    if changed:
+        db.commit()
+    return changed
 
 
 def sold_sacks_by_harvest(records) -> dict[int, float]:

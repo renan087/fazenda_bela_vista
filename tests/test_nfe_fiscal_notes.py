@@ -474,3 +474,22 @@ def test_history_groups_repeated_saves_and_keeps_milestones_apart():
     assert edit['count'] == 2 and len(edit['items']) == 2 and edit['first'] == '13:03'
     assert items[3]['count'] == 2 and 'Produto fiscal “A”' in items[3]['text'] and 'Operação fiscal “B”' in items[3]['text']
     db.close()
+
+
+def test_authorized_note_invoices_sale_and_cancel_returns_it(monkeypatch):
+    from app.services.coffee_sales import group_sales, sale_records
+    routes, db, user, scope, draft, flashes = _routes_env(monkeypatch)
+    from datetime import date
+    from app.models.coffee_commercialization import CoffeeCommercializationRecord
+    db.add(CoffeeCommercializationRecord(farm_id=draft.farm_id, sale_code=draft.sale_code, sale_date=date(2026, 11, 20),
+                                         buyer_name='Comprador', lot_label='L1', quantity_sold=2, equivalent_sacks=2,
+                                         unit_price=100, total_value=200, status='negociado'))
+    db.commit()
+    notes.confirm_emission(db, draft=draft, user_id=user.id)
+    records = sale_records(db, draft.farm_id, draft.sale_code)
+    assert records and all(r.status == 'faturado' for r in records)
+    group = group_sales(records)[0]
+    assert group['status_label'] == 'Faturada' and group['step'] == 0  # ainda falta entregar
+    notes.cancel_note(db, draft=draft, user_id=user.id, reason='Quantidade informada errada')
+    assert all(r.status == 'negociado' for r in sale_records(db, draft.farm_id, draft.sale_code))
+    db.close()

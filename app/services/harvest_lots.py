@@ -125,7 +125,7 @@ def timeline(harvest: HarvestRecord, analyses, sale_groups, today: date) -> list
         if group["received_on"]:
             items.append({"date": group["received_on"], "order": 5, "kind": "recebimento", "title": f"Venda {group['code']} recebida",
                           "detail": None, "sale_code": group["code"]})
-        if group["status"] == "negociado" and group["delivery_due_date"]:
+        if group["status"] in ("negociado", "faturado") and group["delivery_due_date"]:
             late = group["delivery_due_date"] < today
             items.append({"date": group["delivery_due_date"], "order": 6, "kind": "proximo", "pending": True,
                           "title": f"{'Entrega atrasada' if late else 'Próximo'}: entregar {_fmt(mine, 2)} sc",

@@ -20882,13 +20882,13 @@ def production_page(
     gross = sum(g["gross"] for g in groups)
     sold = sum(g["sacks"] for g in groups)
     attention = []
-    for g in sorted((g for g in groups if g["status"] == "negociado"), key=lambda g: g["delivery_due_date"] or date.max)[:2]:
+    for g in sorted((g for g in groups if g["status"] in {"negociado", "faturado"}), key=lambda g: g["delivery_due_date"] or date.max)[:2]:
         due = g["delivery_due_date"]
         attention.append({"tone": "error" if due and due < today else "info", "icon": "truck", "href": f"/producao/comercializacao?venda={g['code']}",
                           "title": (f"Entrega atrasada: {_format_decimal_br(g['sacks'])} sc" if due and due < today else
                                     f"Entregar {_format_decimal_br(g['sacks'])} sc" + (f" até {due.strftime('%d/%m')}" if due else "")),
                           "detail": f"Venda {g['code']} · {g['buyer_name']}"})
-    for g in [g for g in groups if g["status"] in {"entregue", "faturado"}][:2]:
+    for g in [g for g in groups if g["status"] == "entregue"][:2]:
         attention.append({"tone": "done", "icon": "money", "href": f"/producao/comercializacao?venda={g['code']}",
                           "title": f"Receber R$ {_format_decimal_br(g['net'])}", "detail": f"Venda {g['code']} · {g['buyer_name']}"})
     if unclassified:
@@ -20961,7 +20961,7 @@ def lot_detail_page(
     groups = group_sales(group_records)
     produced = float(harvest.sacks_produced or 0)
     sold = sum(float(s.equivalent_sacks or 0) for s in own_sales)
-    negotiated = sum(float(s.equivalent_sacks or 0) for s in own_sales if (s.status or "negociado") == "negociado")
+    negotiated = sum(float(s.equivalent_sacks or 0) for s in own_sales if (s.status or "negociado") in ("negociado", "faturado"))
     available = max(produced - sold, 0)
     priced = [s for s in own_sales if float(s.equivalent_sacks or 0) > 0]
     ref_price = (sum(float(s.unit_price or 0) for s in priced) / len(priced)) if priced else None
@@ -20979,6 +20979,8 @@ def lot_detail_page(
             request, user, csrf_token, "harvest", _repo=repo,
             lot=harvest, lot_code=_lot_display_code(harvest), lot_analyses=analyses, lot_latest=analyses[0] if analyses else None,
             lot_sales=lot_groups, lot_timeline=timeline(harvest, analyses, groups, today),
+            fiscal_note_by_sale=_nf_notes_by_sale(db, user, scope.get("active_farm_id"), _nf_drafts_by_sale(db, user, scope.get("active_farm_id"), groups)),
+            new_sale=next((g for g in groups if g["code"] == request.query_params.get("venda_nova")), None),
             lot_produced=produced, lot_sold=sold, lot_negotiated=negotiated, lot_delivered=sold - negotiated,
             lot_available=available, lot_value_estimate=available * ref_price if ref_price else None,
             lot_stage_code=stage_code, lot_stage_label=stage_label, lot_stages=LOT_STAGES, lot_stage_hints=STAGE_HINTS,
@@ -22104,36 +22106,14 @@ def commercialization_page(
     status_counts = {value: sum(1 for g in all_groups if g["status"] == value) for value, _ in SALE_STATUS_OPTIONS}
     lots_with_balance = [lot for lot in lots if lot["available"] > 0]
     from app.models.nfe_draft import NfeDraft
-    draft_by_sale = {}
-    if scope.get("active_farm_id") and user.organization_id and page_groups:
-        drafts = (db.query(NfeDraft).filter(NfeDraft.organization_id == user.organization_id,
-                 NfeDraft.farm_id == scope["active_farm_id"],
-                 NfeDraft.sale_code.in_([group["code"] for group in page_groups]))
-                 .order_by(NfeDraft.created_at.desc(), NfeDraft.id.desc()).all())
-        current_ids = {group["code"]: sorted(row.id for row in group["records"]) for group in page_groups}
-        for item in drafts:
-            try:
-                origin_ids = json.loads(item.snapshot_json).get("origem_ids")
-            except (ValueError, TypeError, AttributeError):
-                continue
-            if origin_ids == current_ids.get(item.sale_code):
-                draft_by_sale.setdefault(item.sale_code, item.id)
-    note_by_sale = {}
-    if draft_by_sale:
-        from app.models.nfe_draft import NfeIssuerProfile
-        from app.services.nfe_notes import load_note
-        _issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=scope["active_farm_id"]).first()
-        for _code, _did in draft_by_sale.items():
-            _d = db.get(NfeDraft, _did)
-            if _d is not None:
-                _n = load_note(db, _d, issuer=_issuer)
-                note_by_sale[_code] = {"id": _d.id, "status": _n["status"], "label": _n["meta"]["label"], "tone": _n["meta"]["tone"],
-                                       "number": _n["number"], "issues": len(_n["issues"])}
+    draft_by_sale = _nf_drafts_by_sale(db, user, scope.get("active_farm_id"), page_groups)
+    note_by_sale = _nf_notes_by_sale(db, user, scope["active_farm_id"], draft_by_sale)
+    new_sale = request.query_params.get("nova") == "1" and next((g for g in page_groups if g["code"] == focus), None)
     return templates.TemplateResponse(
         "commercialization.html",
         _base_context(
             request, user, csrf_token, "commercialization", _repo=repo,
-            sale_groups=page_groups, fiscal_draft_by_sale=draft_by_sale, fiscal_note_by_sale=note_by_sale, sale_pagination=pagination, sale_focus=focus,
+            sale_groups=page_groups, fiscal_draft_by_sale=draft_by_sale, fiscal_note_by_sale=note_by_sale, new_sale=new_sale or None, sale_pagination=pagination, sale_focus=focus,
             sale_status_options=SALE_STATUS_OPTIONS, sale_status_counts=status_counts, sale_total_count=len(all_groups),
             sale_selected_status=normalized_status, sale_search=search or "", sale_harvest_id=harvest_id,
             sale_filters_active=bool(normalized_status or search_term or harvest_id),
@@ -22401,7 +22381,7 @@ def _production_lots(request: Request, repo: FarmRepository, db: Session, scope:
         own = [s for s in sales if s.harvest_id == harvest.id]
         produced = float(harvest.sacks_produced or 0)
         sold = sum(float(s.equivalent_sacks or 0) for s in own)
-        negotiated = sum(float(s.equivalent_sacks or 0) for s in own if (s.status or "negociado") == "negociado")
+        negotiated = sum(float(s.equivalent_sacks or 0) for s in own if (s.status or "negociado") in ("negociado", "faturado"))
         other = sum(float(s.equivalent_sacks or 0) for s in own if not exclude_sale_code or s.sale_code != exclude_sale_code)
         quality, tone = _classification_label(latest.get(harvest.id))
         rows.append({
@@ -22578,8 +22558,8 @@ async def _sale_save(request: Request, db: Session, user: User, csrf_token: str,
     _flash(request, "success", f"Venda {code} {'atualizada' if sale_code else 'registrada'} com sucesso.")
     origin_lot = _int_or_none(form.get("origem_lote"))
     if origin_lot and origin_lot in raw_lines:
-        return _redirect(f"/producao/lotes/{origin_lot}")
-    return _redirect_with_query("/producao/comercializacao", venda=code)
+        return _redirect_with_query(f"/producao/lotes/{origin_lot}", venda_nova=None if sale_code else code)
+    return _redirect_with_query("/producao/comercializacao", venda=code, nova=None if sale_code else "1")
 
 
 @router.post("/producao/vendas")
@@ -27200,6 +27180,42 @@ def _nf_map_form(data: dict, prev_details: dict) -> None:
         same_city = (str(data.get("recipient_city") or "").strip().lower() == str(prev_details.get("recipient_city") or "").strip().lower())
         data["recipient_municipality_code"] = found or data.get("recipient_municipality_code") or (
             prev_details.get("recipient_municipality_code", "") if same_city else "")
+
+
+def _nf_drafts_by_sale(db: Session, user: User, farm_id: int, groups: list[dict]) -> dict:
+    """Rascunho/nota mais recente de cada venda (só se os lotes da venda não mudaram)."""
+    from app.models.nfe_draft import NfeDraft
+    found = {}
+    if not (farm_id and user.organization_id and groups):
+        return found
+    drafts = (db.query(NfeDraft).filter(NfeDraft.organization_id == user.organization_id, NfeDraft.farm_id == farm_id,
+              NfeDraft.sale_code.in_([g["code"] for g in groups]))
+              .order_by(NfeDraft.created_at.desc(), NfeDraft.id.desc()).all())
+    current_ids = {g["code"]: sorted(row.id for row in g["records"]) for g in groups}
+    for item in drafts:
+        try:
+            origin_ids = json.loads(item.snapshot_json).get("origem_ids")
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if origin_ids == current_ids.get(item.sale_code):
+            found.setdefault(item.sale_code, item.id)
+    return found
+
+
+def _nf_notes_by_sale(db: Session, user: User, farm_id: int, draft_by_sale: dict) -> dict:
+    from app.models.nfe_draft import NfeDraft, NfeIssuerProfile
+    from app.services.nfe_notes import load_note
+    out = {}
+    if not draft_by_sale:
+        return out
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm_id).first()
+    for code, draft_id in draft_by_sale.items():
+        draft = db.get(NfeDraft, draft_id)
+        if draft is not None:
+            note = load_note(db, draft, issuer=issuer)
+            out[code] = {"id": draft.id, "status": note["status"], "label": note["meta"]["label"], "tone": note["meta"]["tone"],
+                         "number": note["number"], "issues": len(note["issues"])}
+    return out
 
 
 def _nf_saved_json(db: Session, user: User, farm: Farm, draft) -> tuple[dict, dict]:

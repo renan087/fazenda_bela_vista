@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/production_nav.html" import production_tabs %}
+{% from "partials/sale_next.html" import sale_next, sale_nf_chip %}
 {% block content %}
 {% set k = sale_kpis %}
 <div class="sf-page pd-page sl-page">
@@ -16,6 +17,7 @@
         </div>
     </header>
     {{ production_tabs('sales') }}
+    {% if new_sale %}{{ sale_next(new_sale, (fiscal_note_by_sale or {}).get(new_sale.code), csrf_token, can_write_page) }}{% endif %}
 
     <section class="sl-kpis" aria-label="Resumo das vendas">
         <article class="pd-card"><p class="pd-eyebrow">Vendido</p><strong>{{ k.sacks|decimal_br }} sc</strong><span>R$ {{ k.gross|decimal_br }} bruto</span></article>
@@ -85,7 +87,7 @@
                     <li class="{{ 'is-on' if g.step >= 1 }}">Entregue{% if g.delivered_on %} <small>{{ g.delivered_on.strftime('%d/%m') }}</small>{% endif %}</li>
                     <li class="{{ 'is-on' if g.step >= 2 }}">Recebida{% if g.received_on %} <small>{{ g.received_on.strftime('%d/%m') }}</small>{% endif %}</li>
                 </ol>
-                {% if g.status == 'negociado' and g.delivery_due_date %}
+                {% if g.status in ('negociado', 'faturado') and g.delivery_due_date %}
                 <p class="sl-due{% if g.delivery_due_date < today %} is-late{% endif %}">{{ 'Entrega atrasada desde' if g.delivery_due_date < today else 'Entregar até' }} {{ g.delivery_due_date.strftime('%d/%m/%Y') }}</p>
                 {% endif %}
             </div>
