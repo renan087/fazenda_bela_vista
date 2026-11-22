@@ -142,17 +142,18 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
 
     assert sell(4).headers["location"] == lot_url + "?venda_nova=V-0001"
     page = get(lot_url + "?venda_nova=V-0001")
-    assert 'Venda V-0001 registrada' in page and 'Emitir NF' in page and 'Marcar entregue' in page
-    assert 'aria-label="Trilha do lote"' in page and 'Vender 6 sc restantes' in page
-    assert 'aria-current="step"' in page
+    assert 'Venda V-0001 registrada' in page and 'Emitir NF' in page and 'data-sv-toast' in page
+    assert 'Trilha do lote' not in page and 'O que fazer agora' not in page
+    assert 'Registrar entrega' not in page and 'Entrega: a entregar' in page
     assert 'Sem nota fiscal' in page
     assert '6,00 sc <small>disponíveis de 10,00</small>' in page
     assert 'Comprador' in page and 'V-0001 · 4,00 sc' in page and 'Venda V-0001 negociada' in page
     sale_details = get("/producao/comercializacao?venda=V-0001")
     assert 'id="venda-V-0001"' in sale_details and 'is-focus' in sale_details
     assert 'Mostrando <b>1–1</b> de <b>1 venda</b>' in sale_details and 'aria-label="Vendas por página"' in sale_details
-    assert 'aria-label="Mais ações da venda V-0001"' in sale_details and 'Registrar entrega' in sale_details
+    assert 'aria-label="Mais ações da venda V-0001"' in sale_details and 'Marcar como entregue' in sale_details
     assert 'Excluir venda' in sale_details and 'Desfazer' not in sale_details
+    assert '>Sem nota' in sale_details and 'name="por"' in sale_details and '<option value="100">' in sale_details
     assert f'href="/producao?lote={lot_id}"' in sale_details
     other_sales = get(f"/producao/comercializacao?harvest_id={other_lot.id}")
     assert 'id="venda-V-0001"' not in other_sales
@@ -163,6 +164,5 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     assert sell(6).headers["location"] == lot_url + "?venda_nova=V-0002"
     page = get(lot_url)
     assert 'Sem saldo para venda' in page and 'Ver vendas' in page
-    assert '<span>Vendido</span>' in page  # trilha: lote todo vendido
     assert 'Vender deste lote' not in page
     assert 'O lote escolhido está indisponível para uma nova venda' in get(sale_url)

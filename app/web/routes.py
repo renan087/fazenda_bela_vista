@@ -1116,7 +1116,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         "csrf_token": csrf_token,
         "page": page,
         "flash": flash,
-        "return_to": None if modal_mode else _active_return(request),
+        "return_to": None if modal_mode else _return_chip(_active_return(request), db_session),
         "modal_mode": modal_mode,
         "menu_visibility": _build_menu_visibility(user, permission_codes),
         "permission_codes": permission_codes,
@@ -1741,6 +1741,22 @@ def _active_return(request: Request) -> dict | None:
     if stack and any(path.startswith(prefix) for prefix in stack[-1]["on"]):
         return stack[-1]
     return None
+
+
+def _return_chip(item: dict | None, db_session) -> dict | None:
+    """Rótulo curto do chip "‹ voltar": a nota mostra o código da venda."""
+    if not item:
+        return None
+    label = item["label"]
+    match = re.fullmatch(r"/producao/rascunhos-fiscais/([0-9a-f]{32})", item["path"])
+    if match and db_session is not None:
+        from app.models.nfe_draft import NfeDraft
+        try:
+            draft = db_session.get(NfeDraft, match.group(1))
+        except Exception:  # noqa: BLE001 - o chip é só atalho
+            draft = None
+        label = f"Nota da venda {draft.sale_code}" if draft is not None and draft.sale_code else "Nota fiscal"
+    return {**item, "label": label}
 
 
 def _pop_return(request: Request, on_prefix: str) -> str | None:
@@ -2695,6 +2711,17 @@ def _season_launch_plots(plots: list[Plot], scope: dict) -> list[Plot]:
     if not season or not season.plots:
         return plots
     return [plot for plot in season.plots if plot.farm_id == scope.get("active_farm_id")]
+
+
+def _harvest_plot_choices(request: Request, repo, scope: dict) -> tuple[list, list]:
+    """Talhões da safra ativa e, à parte, os da fazenda que ainda estão fora dela."""
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope.get("active_season"))
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    inside = _season_launch_plots(plots, scope)
+    ids = {p.id for p in inside}
+    outside = [p for p in plots if p.id not in ids and p.farm_id == scope.get("active_farm_id")]
+    key = lambda p: p.name or ""  # noqa: E731
+    return sorted(inside, key=key), sorted(outside, key=key)
 
 
 def _plot_allowed_for_season_launch(plot: Plot, scope: dict) -> bool:
@@ -21043,7 +21070,6 @@ def lot_detail_page(
             lot_sales=lot_groups, lot_timeline=timeline(harvest, analyses, groups, today),
             fiscal_note_by_sale=_nf_notes_by_sale(db, user, scope.get("active_farm_id"), _nf_drafts_by_sale(db, user, scope.get("active_farm_id"), groups)),
             new_sale=next((g for g in groups if g["code"] == request.query_params.get("venda_nova")), None),
-            lot_trail=_lot_trail(db, user, scope, harvest, analyses, groups, available, can_sell),
             lot_produced=produced, lot_sold=sold, lot_negotiated=negotiated, lot_delivered=sold - negotiated,
             lot_available=available, lot_value_estimate=available * ref_price if ref_price else None,
             lot_stage_code=stage_code, lot_stage_label=stage_label, lot_stages=LOT_STAGES, lot_stage_hints=STAGE_HINTS,
@@ -21071,9 +21097,7 @@ def harvest_form_page(
     scope, denied = _launch_scope_or_redirect(request, repo, "/producao")
     if denied:
         return denied
-    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
-    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
-    launch_plots = _season_launch_plots(plots, scope)
+    launch_plots, other_plots = _harvest_plot_choices(request, repo, scope)
     harvest = None
     if lot_id:
         harvest = _lot_in_scope(request, repo, lot_id, scope)
@@ -21105,6 +21129,7 @@ def harvest_form_page(
             hv_totals={"produced": sum(float(h.sacks_produced or 0) for h in repo.list_harvests()
                                        if h.plot_id in plot_ids and harvest_matches_season(h, season))},
             hv_preselect_plot=_optional_query_int(request.query_params.get("talhao")),
+            hv_other_plots=[] if harvest else other_plots,
         ),
     )
 
@@ -21277,6 +21302,17 @@ def _suggest_next_harvest_lot_code(repo: FarmRepository, reference_date: date | 
     return f"{base_date.year}-L{seq:03d}"
 
 
+def _sale_quick_harvest(request: Request, repo, scope: dict) -> dict | None:
+    """Dados da gaveta "Registrar colheita" dentro da Nova venda."""
+    from app.services.harvest_lots import LOT_STAGES
+    if not scope.get("active_season_id"):
+        return None
+    inside, outside = _harvest_plot_choices(request, repo, scope)
+    season = scope.get("active_season")
+    return {"plots": inside, "other": outside, "season": season, "today": today_in_app_timezone(),
+            "stages": [(v, l) for v, l in LOT_STAGES if v != "armazem"][::-1]}
+
+
 def _commercialization_record_matches_scope(record: CoffeeCommercializationRecord, scope: dict) -> bool:
     if scope.get("active_farm_id") and record.farm_id != scope["active_farm_id"]:
         return False
@@ -21306,18 +21342,29 @@ def create_harvest_action(
     measure_unit: str | None = Form(None),
     measured_quantity: str | None = Form(None),
     yield_factor: str | None = Form(None),
+    situacao: str | None = Form(None),
+    incluir_safra: str | None = Form(None),
+    apos: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    quick_sale = apos == "venda"
+    form_url = "/producao/vendas/nova" if quick_sale else "/producao/colheitas/nova"
     plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/producao")
     if denied:
         return denied
+    included = None
+    if not _plot_allowed_for_season_launch(plot, scope) and incluir_safra == "1" and scope.get("active_season"):
+        # "Incluir Setor 3 na safra?": o talhão passa a fazer parte da safra ativa ali mesmo.
+        scope["active_season"].plots.append(plot)
+        db.commit()
+        included = f"{plot.name} incluído na {scope['active_season'].name}. "
     if not _plot_allowed_for_season_launch(plot, scope):
         _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
-        return _redirect("/producao")
+        return _redirect(form_url if quick_sale else "/producao")
     try:
         _validate_harvest_date_for_season(harvest_date, scope.get("active_season"))
         maturation_value = _validate_harvest_percentage(maturation_percentage, "Percentual de maturação")
@@ -21325,13 +21372,16 @@ def create_harvest_action(
         moisture_value = _validate_harvest_percentage(input_moisture_percentage, "Umidade na entrada")
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect("/producao/colheitas/nova")
+        return _redirect(form_url)
     try:
         sacks_value, measure_extra = _harvest_measure(measure_unit, measured_quantity, yield_factor, sacks_produced,
                                                       initial_destination, harvest if False else None)
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect("/producao/colheitas/nova")
+        return _redirect(form_url)
+    from app.services.harvest_lots import LOT_STAGE_LABELS
+    if isinstance(situacao, str) and situacao in LOT_STAGE_LABELS and situacao != "armazem":
+        measure_extra["lot_stage"] = situacao
     area = float(plot.area_hectares) if plot else 0
     harvest = create_harvest(
         repo,
@@ -21355,7 +21405,11 @@ def create_harvest_action(
         },
         area,
     )
-    _flash(request, "success", f"Colheita registrada. Lote {harvest.lot_code} criado.")
+    if quick_sale:
+        # Colheita rápida dentro da Nova venda: volta com o lote novo já escolhido.
+        request.session["sale_toast"] = {"text": f"{included or ''}Lote {harvest.lot_code} criado e selecionado", "undo": None}
+        return _redirect_with_query("/producao/vendas/nova", lote=harvest.id)
+    _flash(request, "success", f"{included or ''}Colheita registrada. Lote {harvest.lot_code} criado.")
     back = _pop_return(request, "/producao/colheitas/nova")
     if back in ("/producao/vendas/nova", "/producao/classificacao/nova"):
         return _redirect_with_query(back, lote=harvest.id)
@@ -22142,22 +22196,38 @@ def commercialization_page(
     all_groups = list(groups)
     if harvest_id:
         groups = [g for g in groups if any(lot["harvest_id"] == harvest_id for lot in g["lots"])]
-    normalized_status = (status or "").strip().lower()
-    if normalized_status:
-        groups = [g for g in groups if g["status"] == normalized_status]
+    today = today_in_app_timezone()
+    farm_id = scope.get("active_farm_id")
+    draft_by_sale = _nf_drafts_by_sale(db, user, farm_id, all_groups)
+    note_by_sale = _nf_notes_by_sale(db, user, farm_id, draft_by_sale)
+    track = _sale_track(db, all_groups, note_by_sale, today)
+    # Filtros: o que falta fazer em cada venda (entrega, recebimento e nota são independentes).
+    filters = {"a_entregar": lambda g: not g["delivered"], "a_receber": lambda g: not track[g["code"]]["receipt"]["received"],
+               "sem_nota": lambda g: (note_by_sale.get(g["code"]) or {}).get("status") not in ("autorizada", "enviando")}
+    chosen_filter = (request.query_params.get("filtro") or "").strip().lower()
+    chosen_filter = chosen_filter if chosen_filter in filters else ""
+    filter_counts = {key: sum(1 for g in groups if fn(g)) for key, fn in filters.items()}
+    if chosen_filter:
+        groups = [g for g in groups if filters[chosen_filter](g)]
     search_term = _normalize_search_value((search or "").strip())
     if search_term:
-        groups = [g for g in groups if search_term in _normalize_search_value(
-            f"{g['code']} {g['buyer_name'] or ''} {' '.join(l['label'] or '' for l in g['lots'])} {g['contract_number'] or ''}")]
+        def haystack(g):
+            nf = note_by_sale.get(g["code"]) or {}
+            number = str(nf.get("number") or "")
+            return _normalize_search_value(
+                f"{g['code']} {g['buyer_name'] or ''} {' '.join(l['label'] or '' for l in g['lots'])} {g['contract_number'] or ''} "
+                f"{number} {number.lstrip('0')} nf {number}")
+        groups = [g for g in groups if search_term in haystack(g)]
     focus = (request.query_params.get("venda") or "").strip()
     if focus.isdigit():
         legacy = next((item for item in sales if item.id == int(focus)), None)
         focus = legacy.sale_code if legacy and legacy.sale_code else focus
-    # 10, 20 ou 50 por página; a escolha fica lembrada na sessão.
-    chosen = str(request.query_params.get("por_pagina") or "")
-    if chosen in ("10", "20", "50"):
-        request.session["sales_per_page"] = int(chosen)
-    per_page = request.session.get("sales_per_page") if request.session.get("sales_per_page") in (10, 20, 50) else 10
+    # 10, 30, 50 ou 100 por página; a escolha fica lembrada na sessão.
+    sizes = (10, 30, 50, 100)
+    chosen = _positive_int(request.query_params.get("por"), 0)
+    if chosen in sizes:
+        request.session["sales_per_page"] = chosen
+    per_page = request.session.get("sales_per_page") if request.session.get("sales_per_page") in sizes else 10
     total_pages = max(1, (len(groups) + per_page - 1) // per_page)
     page = min(_positive_int(request.query_params.get("commercialization_page"), 1), total_pages)
     focus_index = next((i for i, g in enumerate(groups) if g["code"] == focus), None)
@@ -22175,38 +22245,69 @@ def commercialization_page(
             numbers.append({"gap": True})
         numbers.append({"n": number, "url": page_url(number), "current": number == page})
         last = number
+    keep = {k: v for k, v in (("filtro", chosen_filter), ("search", search or ""), ("harvest_id", harvest_id or "")) if v}
     pagination = {
         "page": page, "total_pages": total_pages, "has_prev": page > 1, "has_next": page < total_pages,
         "prev_url": page_url(page - 1), "next_url": page_url(page + 1), "numbers": numbers,
         "from": (page - 1) * per_page + 1 if groups else 0, "to": min(page * per_page, len(groups)), "total": len(groups),
-        "per_page": per_page,
-        "per_page_urls": [(n, _url_with_query(request, por_pagina=n, commercialization_page=None, venda=None, nova=None)) for n in (10, 20, 50)],
+        "per_page": per_page, "sizes": sizes, "keep": keep,
     }
     sold_sacks = sum(g["sacks"] for g in all_groups)
     gross = sum(g["gross"] for g in all_groups)
-    received = sum(g["net"] for g in all_groups if g["status"] == "recebido")
-    to_receive = sum(g["net"] for g in all_groups if g["status"] != "recebido")
-    status_counts = {value: sum(1 for g in all_groups if g["status"] == value) for value, _ in SALE_STATUS_OPTIONS}
+    received = sum(track[g["code"]]["receipt"]["paid_amount"] for g in all_groups)
+    to_receive = sum(g["net"] for g in all_groups) - received
     lots_with_balance = [lot for lot in lots if lot["available"] > 0]
-    from app.models.nfe_draft import NfeDraft
-    draft_by_sale = _nf_drafts_by_sale(db, user, scope.get("active_farm_id"), page_groups)
-    note_by_sale = _nf_notes_by_sale(db, user, scope["active_farm_id"], draft_by_sale)
     new_sale = request.query_params.get("nova") == "1" and next((g for g in page_groups if g["code"] == focus), None)
     return templates.TemplateResponse(
         "commercialization.html",
         _base_context(
             request, user, csrf_token, "commercialization", _repo=repo,
-            sale_groups=page_groups, fiscal_draft_by_sale=draft_by_sale, fiscal_note_by_sale=note_by_sale, new_sale=new_sale or None, sale_pagination=pagination, sale_focus=focus,
-            sale_status_options=SALE_STATUS_OPTIONS, sale_status_counts=status_counts, sale_total_count=len(all_groups),
-            sale_selected_status=normalized_status, sale_search=search or "", sale_harvest_id=harvest_id,
-            sale_filters_active=bool(normalized_status or search_term or harvest_id),
-            sale_kpis={"sacks": sold_sacks, "gross": gross, "received": received, "to_receive": to_receive,
+            sale_groups=page_groups, fiscal_draft_by_sale=draft_by_sale, fiscal_note_by_sale=note_by_sale, new_sale=new_sale or None,
+            sale_pagination=pagination, sale_focus=focus, sale_track=track, sale_back_url=_url_with_query(request, venda=None, nova=None, por=None), sale_toast=request.session.pop("sale_toast", None),
+            sale_filter=chosen_filter, sale_filter_counts=filter_counts, sale_total_count=len(all_groups),
+            sale_search=search or "", sale_harvest_id=harvest_id,
+            sale_filters_active=bool(chosen_filter or search_term or harvest_id),
+            sale_kpis={"sacks": sold_sacks, "gross": gross, "received": received, "to_receive": max(0.0, to_receive),
                        "avg_price": gross / sold_sacks if sold_sacks else None,
                        "available": sum(lot["available"] for lot in lots_with_balance),
                        "available_lots": len(lots_with_balance)},
-            sale_lots=lots_with_balance, today=today_in_app_timezone(),
+            sale_lots=lots_with_balance, today=today,
         ),
     )
+
+
+def _sale_track(db: Session, groups: list[dict], note_by_sale: dict, today) -> dict:
+    """Andamento de cada venda para os ícones da lista: entrega (caminhão) e recebimento (moeda)."""
+    from app.models.finance_transaction_installment import FinanceTransactionInstallment
+    from app.services.coffee_sales import receipt_info
+    tx_ids = [g["finance_transaction_id"] for g in groups if g["finance_transaction_id"]]
+    by_tx: dict[int, list] = {}
+    if tx_ids:
+        for inst in (db.query(FinanceTransactionInstallment)
+                     .filter(FinanceTransactionInstallment.finance_transaction_id.in_(tx_ids))
+                     .order_by(FinanceTransactionInstallment.installment_number, FinanceTransactionInstallment.id)):
+            by_tx.setdefault(inst.finance_transaction_id, []).append(inst)
+    out = {}
+    for g in groups:
+        due = g["delivery_due_date"]
+        if g["delivered"]:
+            d = {"state": "done", "title": "Entregue", "detail": f"em {g['delivered_on'].strftime('%d/%m/%Y')}", "tip": "Entregue"}
+        elif due and due < today:
+            d = {"state": "warn", "title": "Entrega atrasada", "detail": f"prazo era {due.strftime('%d/%m/%Y')}", "tip": "Entrega atrasada"}
+        else:
+            d = {"state": "", "title": "A entregar", "detail": f"até {due.strftime('%d/%m/%Y')}" if due else "sem prazo combinado",
+                 "tip": "A entregar"}
+        r = receipt_info(g, by_tx.get(g["finance_transaction_id"], []), today)
+        if r["received"]:
+            r.update(state="done", title="Recebida", tip="Recebida")
+        elif r["partial"]:
+            r.update(state="part", title=f"{r['paid_count']} de {r['count']} parcelas recebidas", tip=f"Recebido {r['pct']}%")
+        elif r["late"]:
+            r.update(state="warn", title="Recebimento atrasado", tip="Parcela vencida")
+        else:
+            r.update(state="", title="A receber", tip="A receber")
+        out[g["code"]] = {"delivery": d, "receipt": r}
+    return out
 
 
 def _resolve_coffee_buyer(db: Session, user: User, buyer_id: object, buyer_name: object) -> tuple[int | None, str]:
@@ -22534,6 +22635,8 @@ def _sale_form_render(request: Request, db: Session, user: User, csrf_token: str
             finance_accounts=finance_accounts, finance_transaction_payment_methods=FINANCE_TRANSACTION_REVENUE_PAYMENT_METHODS,
             sale_default_account_id=next((a.id for a in finance_accounts if a.is_default), None),
             sale_avg_price=avg_price, sale_origin_lot=lote, today=today_in_app_timezone(),
+            sale_quick=_sale_quick_harvest(request, repo, scope) if not existing else None,
+            sale_toast=request.session.pop("sale_toast", None),
         ),
     )
     response.status_code = status_code
@@ -23398,6 +23501,10 @@ async def nfe_farm_config_save(request: Request, db: Session = Depends(get_db),
         db.rollback()
         _flash(request, "error", "A configuração fiscal foi alterada simultaneamente. Tente novamente.")
         return _redirect(f"/producao/nfe/configuracao?secao={_nf_cfg_section(form.get('from_section'), 'emit')}")
+    back = None if form.get("next_section") else _pop_return(request, "/producao/nfe/configuracao")
+    if back:
+        _flash(request, "success", "Configuração salva. De volta à nota.")
+        return _redirect(back)
     _flash(request, "success", "Configuração fiscal da fazenda salva com sucesso. A transmissão real permanece bloqueada.")
     return _redirect(f"/producao/nfe/configuracao?secao={_nf_cfg_section(form.get('next_section'), 'emit')}")
 
@@ -23656,6 +23763,124 @@ def sale_status_action(
     if isinstance(voltar, str) and re.fullmatch(r"/producao/lotes/\d+", voltar):
         return _redirect(voltar)
     return _redirect_with_query("/producao/comercializacao", venda=sale_code)
+
+
+def _sale_action_scope(request: Request, db: Session, sale_code: str, csrf_token: str):
+    from app.services.coffee_sales import sale_records
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return None, None, denied
+    records = sale_records(db, scope["active_farm_id"], sale_code)
+    if not records or not all(_commercialization_record_matches_scope(r, scope) for r in records):
+        _flash(request, "error", "Venda não encontrada na fazenda ativa.")
+        return None, None, _redirect("/producao/comercializacao")
+    return scope, records, None
+
+
+def _sale_back(sale_code: str, voltar: str | None):
+    if isinstance(voltar, str) and re.fullmatch(r"/producao/lotes/\d+", voltar):
+        return _redirect(voltar)
+    if isinstance(voltar, str) and voltar.startswith("/producao/comercializacao") and "//" not in voltar and "\\" not in voltar:
+        return _redirect(f"{voltar}{'&' if '?' in voltar else '?'}{urlencode({'venda': sale_code})}")
+    return _redirect_with_query("/producao/comercializacao", venda=sale_code)
+
+
+def _sale_keep_invoiced(db: Session, user: User, farm_id: int, sale_code: str, records) -> None:
+    """Sem entrega e sem recebimento, a venda com nota autorizada continua Faturada."""
+    from app.services.coffee_sales import group_sales, sync_status_with_invoice
+    if any((r.status or "") != "negociado" for r in records):
+        return
+    notes = _nf_notes_by_sale(db, user, farm_id, _nf_drafts_by_sale(db, user, farm_id, group_sales(records)))
+    if (notes.get(sale_code) or {}).get("status") == "autorizada":
+        sync_status_with_invoice(db, farm_id=farm_id, sale_code=sale_code, authorized=True)
+
+
+def _sale_toast(request: Request, text: str, undo_url: str | None = None, fields: dict | None = None) -> None:
+    request.session["sale_toast"] = {"text": text, "undo": {"url": undo_url, "fields": fields or {}} if undo_url else None}
+
+
+@router.post("/producao/vendas/{sale_code}/entrega")
+async def sale_delivery_action(
+    sale_code: str,
+    request: Request,
+    csrf_token: str = Form(...),
+    acao: str = Form(...),
+    data: str | None = Form(None),
+    voltar: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    """Entrega do café, independente do recebimento: marcar, desfazer, mudar a data ou o prazo."""
+    from app.services.coffee_sales import set_delivery, set_delivery_due
+    scope, records, denied = _sale_action_scope(request, db, sale_code, csrf_token)
+    if denied:
+        return denied
+    when = _date_or_none(data)
+    url = f"/producao/vendas/{sale_code}/entrega"
+    before = records[0].delivered_on
+    if acao == "entregar":
+        set_delivery(db, records, True, when)
+        _sale_toast(request, f"Venda {sale_code} marcada como entregue", url, {"acao": "desfazer"})
+    elif acao == "desfazer":
+        set_delivery(db, records, False)
+        _sale_keep_invoiced(db, user, scope["active_farm_id"], sale_code, records)
+        _sale_toast(request, f"Entrega da venda {sale_code} desfeita", url,
+                    {"acao": "entregar", "data": before.isoformat()} if before else {"acao": "entregar"})
+    elif acao == "data" and when:
+        set_delivery(db, records, True, when)
+        _sale_toast(request, f"Entrega da venda {sale_code} em {when.strftime('%d/%m/%Y')}", url,
+                    {"acao": "data", "data": before.isoformat()} if before else None)
+    elif acao == "prazo":
+        old_due = records[0].delivery_due_date
+        set_delivery_due(db, records, when)
+        _sale_toast(request, f"Prazo de entrega: {when.strftime('%d/%m/%Y') if when else 'sem prazo'}", url,
+                    {"acao": "prazo", "data": old_due.isoformat() if old_due else ""})
+    else:
+        _flash(request, "error", "Informe uma data válida.")
+    if request.session.get("sale_toast") and not (request.session["sale_toast"].get("undo") or {}).get("fields"):
+        request.session["sale_toast"]["undo"] = None
+    return _sale_back(sale_code, voltar)
+
+
+@router.post("/producao/vendas/{sale_code}/recebimento")
+async def sale_receipt_action(
+    sale_code: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    """Recebimento da venda: parcelas escolhidas (ou todas) ficam pagas no Financeiro."""
+    from app.services.coffee_sales import receive, undo_receive
+    form = await request.form()
+    scope, records, denied = _sale_action_scope(request, db, sale_code, str(form.get("csrf_token") or ""))
+    if denied:
+        return denied
+    ids = [int(v) for v in form.getlist("parcela") if str(v).isdigit()]
+    for chunk in str(form.get("parcelas") or "").split(","):
+        if chunk.strip().isdigit():
+            ids.append(int(chunk.strip()))
+    url = f"/producao/vendas/{sale_code}/recebimento"
+    acao = str(form.get("acao") or "")
+    try:
+        if acao == "receber":
+            paid = receive(db, records, ids or None, _date_or_none(str(form.get("data") or "")))
+            if ids:
+                text = f"{len(paid)} parcela{'s' if len(paid) != 1 else ''} recebida{'s' if len(paid) != 1 else ''} · venda {sale_code}"
+            else:
+                text = f"Venda {sale_code} recebida"
+            _sale_toast(request, text, url, {"acao": "desfazer", "parcelas": ",".join(map(str, paid))})
+        elif acao == "desfazer":
+            undo_receive(db, records, ids or None)
+            _sale_keep_invoiced(db, user, scope["active_farm_id"], sale_code, records)
+            _sale_toast(request, f"Recebimento da venda {sale_code} desfeito", url,
+                        {"acao": "receber", "parcelas": ",".join(map(str, ids))})
+        else:
+            _flash(request, "error", "Ação inválida.")
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+    return _sale_back(sale_code, str(form.get("voltar") or "") or None)
 
 
 @router.post("/producao/vendas/{sale_code}/excluir")
@@ -27351,43 +27576,6 @@ def _nf_attention(db: Session, user: User, farm_id: int | None, groups: list[dic
                       "title": f"{len(without)} venda{'s' if len(without) > 1 else ''} entregue{'s' if len(without) > 1 else ''} sem nota",
                       "detail": f"{codes} · Emitir NF"})
     return items[:2]
-
-
-def _lot_trail(db: Session, user: User, scope: dict, harvest, analyses, groups: list[dict], available: float, can_sell: bool) -> list[dict]:
-    """Trilha do lote (colhido → recebido): cada etapa sabe se está feita, se é a próxima e para onde leva."""
-    from app.models.nfe_draft import NfeClientFiscalConfig
-    farm_id = scope.get("active_farm_id")
-    notes = _nf_notes_by_sale(db, user, farm_id, _nf_drafts_by_sale(db, user, farm_id, groups)) if groups else {}
-    issues_nf = bool(notes) or bool(farm_id and db.query(NfeClientFiscalConfig).filter_by(
-        organization_id=user.organization_id, farm_id=farm_id).first())
-    lot_url = f"/producao/lotes/{harvest.id}"
-    without_nf = [g for g in groups if (notes.get(g["code"]) or {}).get("status") in (None, "cancelada")]
-    pending_receipt = [g for g in groups if g["status"] != "recebido"]
-    sold_all = bool(groups) and available <= 0
-    steps = [
-        {"key": "colhido", "label": "Colhido", "done": True, "href": f"/producao/colheitas/{harvest.id}/editar"},
-        {"key": "beneficiado", "label": "Beneficiado", "todo": "Informar benefício", "done": not harvest.sacks_estimated,
-         "href": f"{lot_url}#lt-stage"},
-        {"key": "classificado", "label": "Classificado", "todo": "Classificar (opcional)", "done": bool(analyses), "optional": True,
-         "href": (f"/producao/classificacao/{analyses[0].id}" if analyses else
-                  f"/producao/classificacao?harvest_id={harvest.id}&novo=1&origem=producao")},
-        {"key": "vendido", "label": "Vendido", "done": sold_all,
-         "todo": (f"Vender {_format_decimal_br(available, 0 if available == int(available) else 2)} sc"
-                  + (" restantes" if groups else "")) if available > 0 else "Vender",
-         "href": f"/producao/vendas/nova?lote={harvest.id}" if can_sell else f"/producao/comercializacao?harvest_id={harvest.id}"},
-        {"key": "nota", "label": "Nota fiscal", "optional": not issues_nf, "done": bool(groups) and not without_nf,
-         "todo": (f"Emitir NF ({len(without_nf)} venda{'s' if len(without_nf) > 1 else ''})" if groups and without_nf
-                  else ("Nota fiscal" if issues_nf else "Nota fiscal (se emitir)")),
-         "href": (f"/producao/comercializacao?venda={without_nf[0]['code']}" if without_nf
-                  else f"/producao/comercializacao?harvest_id={harvest.id}")},
-        {"key": "recebido", "label": "Recebido", "done": bool(groups) and not pending_receipt, "todo": "Receber",
-         "href": f"/producao/comercializacao?venda={pending_receipt[0]['code']}" if pending_receipt else f"/producao/comercializacao?harvest_id={harvest.id}"},
-    ]
-    current = next((st for st in steps if not st["done"] and not st.get("optional")), None)
-    for st in steps:
-        st["state"] = "done" if st["done"] else ("current" if st is current else ("optional" if st.get("optional") else "todo"))
-        st["text"] = st["label"] if st["done"] else st.get("todo", st["label"])
-    return steps
 
 
 def _nf_saved_json(db: Session, user: User, farm: Farm, draft) -> tuple[dict, dict]:

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/production_nav.html" import quality_chip %}
-{% from "partials/sale_next.html" import sale_next, sale_nf_chip %}
+{% from "partials/sale_next.html" import sale_nf_chip, sale_toast %}
 {% block content %}
 {% set q_text, q_tone = lot_quality %}
 <div class="sf-page pd-page lt-page" data-production-focused-lot>
@@ -24,18 +24,6 @@
             {% endif %}
         </div>
     </header>
-    {% if lot_trail %}
-    <nav class="lt-trail" aria-label="Trilha do lote">
-        <ol>
-            {% for st in lot_trail %}
-            <li class="is-{{ st.state }}"{% if st.state == 'current' %} aria-current="step"{% endif %}>
-                <a href="{{ st.href }}">{% if st.done %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>{% elif st.state == 'current' %}<span class="lt-trail-dot" aria-hidden="true"></span>{% endif %}<span>{{ st.text }}</span></a>
-            </li>
-            {% endfor %}
-        </ol>
-    </nav>
-    {% endif %}
-    {% if new_sale %}{{ sale_next(new_sale, (fiscal_note_by_sale or {}).get(new_sale.code), csrf_token, can_write_page, "/producao/lotes/" ~ lot.id) }}{% endif %}
 
     {% if lot_legacy %}
     <div class="pd-alert is-warn">
@@ -160,19 +148,12 @@
                 {% for sale in lot_sales %}
                 <article class="lt-sale">
                     <div class="lt-sale-top"><strong>{{ sale.code }} · {{ sale.mine|decimal_br }} sc</strong><strong>R$ {{ (sale.mine * sale.unit_price)|decimal_br }}</strong></div>
-                    <div class="lt-sale-chips"><span class="pd-chip {{ 'is-done' if sale.status == 'recebido' else ('is-info' if sale.status in ['entregue', 'faturado'] else 'is-ok') }}">{{ sale.status_label }}</span>{{ sale_nf_chip((fiscal_note_by_sale or {}).get(sale.code)) }}</div>
                     <p>{{ sale.buyer_name }} · R$ {{ sale.unit_price|decimal_br }}/sc{% if sale.lots|length > 1 %} · venda com {{ sale.lots|length }} lotes{% endif %}</p>
-                    <ol class="sl-steps" aria-label="Andamento da venda">
-                        <li class="is-on">Negociada</li><li class="{{ 'is-on' if sale.step >= 1 }}">Entregue</li><li class="{{ 'is-on' if sale.step >= 2 }}">Recebida</li>
-                    </ol>
-                    {% if sale.step < 2 %}
-                    <form method="post" action="/producao/vendas/{{ sale.code }}/situacao">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <input type="hidden" name="status" value="{{ 'entregue' if sale.step == 0 else 'recebido' }}">
-                        <input type="hidden" name="voltar" value="/producao/lotes/{{ lot.id }}">
-                        <button class="sf-btn sf-btn-secondary" type="submit">{{ 'Registrar entrega' if sale.step == 0 else 'Registrar recebimento' }}</button>
-                    </form>
-                    {% endif %}
+                    <div class="lt-sale-foot">
+                        {{ sale_nf_chip((fiscal_note_by_sale or {}).get(sale.code)) }}
+                        <span class="lt-sale-track"><span class="sv-ic sv-ic-sm{{ ' is-done' if sale.delivered }}" title="{{ 'Entregue' if sale.delivered else 'A entregar' }}" role="img" aria-label="Entrega: {{ 'entregue' if sale.delivered else 'a entregar' }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7M7 19a1.6 1.6 0 1 0 0-3.2A1.6 1.6 0 0 0 7 19zM17 19a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z"/></svg></span><span class="sv-ic sv-ic-sm{{ ' is-done' if sale.received }}" title="{{ 'Recebida' if sale.received else 'A receber' }}" role="img" aria-label="Recebimento: {{ 'recebida' if sale.received else 'a receber' }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM14.5 9.5c-.4-.9-1.4-1.5-2.5-1.5-1.5 0-2.5.8-2.5 2s1.1 1.7 2.5 2 2.5.8 2.5 2-1 2-2.5 2c-1.1 0-2.1-.6-2.5-1.5M12 6.5v1.5M12 16v1.5"/></svg></span>
+                        <a class="lt-sale-open" href="/producao/comercializacao?venda={{ sale.code }}">Ver na lista</a></span>
+                    </div>
                 </article>
                 {% else %}
                 <p class="lt-muted">Nenhuma venda deste lote ainda.</p>
@@ -181,6 +162,7 @@
         </aside>
     </div>
 </div>
+{% if new_sale %}{{ sale_toast(new_sale, (fiscal_note_by_sale or {}).get(new_sale.code), csrf_token, can_write_page) }}{% endif %}
 <script>
 document.querySelectorAll('[data-stage-form]').forEach((form) => {
     const box = form.querySelector('[data-stage-armazem]');

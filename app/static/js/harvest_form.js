@@ -142,3 +142,48 @@
     });
     syncUnit();
 })();
+
+/* Talhão fora da safra: pergunta ali mesmo se deve entrar na safra ativa. */
+(function () {
+  'use strict';
+  const ask = document.querySelector('[data-hf-ask]');
+  const flag = document.querySelector('[data-hf-include-flag]');
+  if (!ask || !flag) return;
+  const radios = document.querySelectorAll('input[name="plot_id"]');
+  let pending = null;
+  const toast = (text) => {
+    const t = document.createElement('div');
+    t.className = 'sv-toast'; t.setAttribute('role', 'status'); t.textContent = text;
+    document.body.appendChild(t);
+    setTimeout(() => { t.classList.add('is-out'); setTimeout(() => t.remove(), 260); }, 4000);
+  };
+  radios.forEach((r) => r.addEventListener('change', () => {
+    if (r.dataset.out === '1' && flag.value !== r.value) {
+      pending = r; flag.dataset.ok = '';
+      ask.querySelector('[data-hf-plotname]').textContent = r.dataset.name;
+      ask.hidden = false;
+    } else if (r.dataset.out !== '1') {
+      ask.hidden = true;
+    }
+  }));
+  ask.querySelector('[data-hf-no]').addEventListener('click', () => {
+    if (pending) pending.checked = false;
+    pending = null; ask.hidden = true;
+  });
+  ask.querySelector('[data-hf-yes]').addEventListener('click', () => {
+    if (!pending) return;
+    flag.value = '1'; flag.dataset.plot = pending.value; ask.hidden = true;
+    pending.closest('.hf-plot').classList.remove('is-out');
+    const tag = pending.closest('.hf-plot').querySelector('.hf-out'); if (tag) tag.textContent = 'Entra na safra';
+    toast(pending.dataset.name + ' será incluído na safra ao salvar');
+    pending = null;
+  });
+  // Não deixa seguir com um talhão fora da safra sem a resposta.
+  document.querySelectorAll('[data-vw-next], [data-vw-submit]').forEach((b) => b.addEventListener('click', (e) => {
+    const chosen = document.querySelector('input[name="plot_id"]:checked');
+    if (chosen && chosen.dataset.out === '1' && flag.dataset.plot !== chosen.value) {
+      e.preventDefault(); e.stopImmediatePropagation(); ask.hidden = false;
+      ask.querySelector('[data-hf-plotname]').textContent = chosen.dataset.name; pending = chosen;
+    }
+  }, true));
+})();

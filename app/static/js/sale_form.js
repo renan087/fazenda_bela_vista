@@ -171,3 +171,53 @@
     refresh();
     if (document.querySelector('.pd-alert.is-error[role=alert]:not([data-vw-error])')) go(lots.some((el) => $('.vw-lot-check', el).checked) ? 2 : 1);
 })();
+
+/* Gaveta "Registrar colheita" dentro da Nova venda; talhão fora da safra pode ser incluído ali mesmo. */
+(function () {
+  'use strict';
+  const box = document.querySelector('[data-qh]');
+  if (box) {
+    const form = box.querySelector('[data-qh-form]');
+    const plot = form.querySelector('[data-qh-plot]');
+    const ask = form.querySelector('[data-qh-ask]');
+    const okLine = form.querySelector('[data-qh-included]');
+    const include = form.querySelector('[data-qh-include]');
+    const err = form.querySelector('[data-qh-error]');
+    let opener = null;
+    const open = (btn) => { opener = btn; box.hidden = false; document.body.style.overflow = 'hidden'; plot.focus(); };
+    const close = () => { box.hidden = true; document.body.style.overflow = ''; if (opener) opener.focus(); };
+    document.querySelectorAll('[data-qh-open]').forEach((b) => b.addEventListener('click', () => open(b)));
+    box.querySelectorAll('[data-qh-close]').forEach((b) => b.addEventListener('click', close));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !box.hidden) close(); });
+    plot.addEventListener('change', () => {
+      const opt = plot.selectedOptions[0];
+      const out = opt && opt.dataset.out === '1';
+      include.value = ''; okLine.hidden = true;
+      ask.hidden = !out;
+      if (out) ask.querySelector('[data-qh-plotname]').textContent = opt.textContent.replace(' · fora da safra', '');
+    });
+    ask.querySelector('[data-qh-no]').addEventListener('click', () => { plot.value = ''; ask.hidden = true; plot.focus(); });
+    ask.querySelector('[data-qh-yes]').addEventListener('click', () => {
+      include.value = '1'; ask.hidden = true;
+      okLine.textContent = ask.querySelector('[data-qh-plotname]').textContent + ' será incluído na safra ao salvar.';
+      okLine.hidden = false;
+    });
+    form.addEventListener('submit', (e) => {
+      let msg = '';
+      const opt = plot.selectedOptions[0];
+      if (!plot.value) msg = 'Escolha o talhão.';
+      else if (opt.dataset.out === '1' && include.value !== '1') msg = 'Inclua o talhão na safra para registrar a colheita.';
+      else if (!form.harvest_date.value) msg = 'Informe a data da colheita.';
+      else if (!(parseFloat(String(form.measured_quantity.value).replace(/\./g, '').replace(',', '.')) > 0)) msg = 'Informe quantas sacas foram colhidas.';
+      if (msg) { e.preventDefault(); err.textContent = msg; err.hidden = false; }
+    });
+  }
+  const toast = document.querySelector('[data-sv-toast]');
+  if (toast) {
+    let timer = null;
+    const hide = () => { toast.classList.add('is-out'); setTimeout(() => toast.remove(), 260); };
+    const arm = () => { clearTimeout(timer); timer = setTimeout(hide, 7000); };
+    toast.addEventListener('mouseenter', () => clearTimeout(timer)); toast.addEventListener('mouseleave', arm);
+    toast.querySelector('[data-sv-toast-close]').addEventListener('click', hide); arm();
+  }
+})();

@@ -24,6 +24,7 @@ def test_sales_page_groups_sales_and_shows_progress():
     template = (root / "app/templates/commercialization.html").read_text()
     assert "production_tabs('sales')" in template
     assert "/producao/vendas/nova" in template and "Disponível para vender" in template
-    assert "Registrar entrega" in template and "Registrar recebimento" in template
-    assert 'aria-label="Andamento da venda"' in template
+    assert "Registrar entrega" not in template and "Registrar recebimento" not in template
+    assert "Marcar como entregue" in template and "Marcar como recebida" in template
+    assert 'aria-label="Entrega: {{ d.tip }}"' in template and "Comprador, lote ou nº da NF" in template
     assert "sf-page pd-page sl-page" in template

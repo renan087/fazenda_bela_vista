@@ -899,6 +899,9 @@ def _sync_schema() -> None:
         "ALTER TABLE coffee_commercialization_records ADD COLUMN IF NOT EXISTS brokerage_percent NUMERIC(6,3)",
         "ALTER TABLE coffee_commercialization_records ADD COLUMN IF NOT EXISTS freight_value NUMERIC(14,2)",
         "ALTER TABLE coffee_commercialization_records ADD COLUMN IF NOT EXISTS discount_value NUMERIC(14,2)",
+        # Entrega e recebimento independentes: vendas antigas ganham as datas que a situação já indicava.
+        "UPDATE coffee_commercialization_records SET delivered_on = sale_date WHERE status IN ('entregue', 'recebido') AND delivered_on IS NULL AND received_on IS NULL",
+        "UPDATE coffee_commercialization_records SET received_on = sale_date WHERE status = 'recebido' AND received_on IS NULL",
         "ALTER TABLE coffee_commercialization_records ADD COLUMN IF NOT EXISTS net_value NUMERIC(14,2)",
         "CREATE INDEX IF NOT EXISTS ix_coffee_commercialization_records_sale_code ON coffee_commercialization_records (sale_code)",
         "UPDATE coffee_commercialization_records SET sale_code = 'V-' || LPAD(id::text, 4, '0') WHERE sale_code IS NULL",

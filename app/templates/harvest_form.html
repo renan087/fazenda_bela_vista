@@ -27,7 +27,8 @@
             <legend class="sr-only">Dados da colheita</legend>
             <div class="vw-step" data-vw-step="1">
                 <h2>De qual talhão?</h2>
-                {% if hv_plots %}
+                {% if hv_plots or hv_other_plots %}
+                <input type="hidden" name="incluir_safra" value="" data-hf-include-flag>
                 <div class="hf-plots">
                     {% for plot in hv_plots %}
                     {% set last = hv_last_by_plot.get(plot.id) %}
@@ -38,9 +39,21 @@
                         <em>{{ ('Colhido em ' ~ last.strftime('%d/%m')) if last else 'Ainda não colhido' }}</em></span>
                     </label>
                     {% endfor %}
+                    {% for plot in hv_other_plots or [] %}
+                    <label class="hf-plot is-out">
+                        <input type="radio" name="plot_id" value="{{ plot.id }}" data-area="{{ plot.area_hectares or 0 }}" data-name="{{ plot.name }}" data-out="1" required>
+                        <span><strong>{{ plot.name }}</strong><small>{{ plot.variety.name ~ ' · ' if plot.variety }}{{ (plot.area_hectares or 0)|decimal_br(1) }} ha</small>
+                        <em class="hf-out">Fora da safra</em></span>
+                    </label>
+                    {% endfor %}
+                </div>
+                <div class="hf-include" data-hf-ask hidden>
+                    <span>Incluir <b data-hf-plotname></b> na {{ hv_season.name if hv_season else 'safra' }}?</span>
+                    <button type="button" class="sf-btn sf-btn-secondary" data-hf-no>Agora não</button>
+                    <button type="button" class="sf-btn sf-btn-primary" data-hf-yes>Incluir</button>
                 </div>
                 {% else %}
-                <div class="pd-empty"><strong>Nenhum talhão ligado à safra ativa.</strong><span>Vincule os talhões à safra em Safras para registrar colheitas.</span><a class="sf-btn sf-btn-secondary" href="{{ ('/safras/' ~ hv_season.id ~ '/editar') if hv_season else '/safras/nova' }}?voltar=/producao/colheitas/nova">Ligar talhões à safra</a></div>
+                <div class="pd-empty"><strong>Nenhum talhão cadastrado nesta fazenda.</strong><span>Cadastre os talhões para registrar colheitas.</span><a class="sf-btn sf-btn-secondary" href="/talhoes">Cadastrar talhões</a></div>
                 {% endif %}
                 <div class="vw-grid">
                     <label class="vw-f">Data da colheita
@@ -131,5 +144,5 @@
         </aside>
     </form>
 </div>
-<script src="{{ url_for('static', path='js/harvest_form.js') }}?v=1" defer></script>
+<script src="{{ url_for('static', path='js/harvest_form.js') }}?v=2" defer></script>
 {% endblock %}

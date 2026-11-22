@@ -203,6 +203,7 @@ def group_sales(records: list[CoffeeCommercializationRecord]) -> list[dict]:
             "delivery_due_date": first.delivery_due_date, "delivered_on": first.delivered_on,
             "received_on": first.received_on, "contract_number": first.contract_number,
             "finance_transaction_id": first.finance_transaction_id, "coffee_type": first.coffee_type,
+            "delivered": first.delivered_on is not None, "received": first.received_on is not None,
         })
     return result
 
@@ -221,6 +222,119 @@ def set_status(db, records: list[CoffeeCommercializationRecord], status: str, on
             record.received_on = None
         if status == "recebido":
             record.received_on = on_date
+    db.commit()
+
+
+def refresh_status(records: list[CoffeeCommercializationRecord]) -> None:
+    """Entrega e recebimento são independentes; a situação gravada só resume as duas datas."""
+    for record in records:
+        current = (record.status or "negociado").lower()
+        if record.received_on:
+            record.status = "recebido"
+        elif record.delivered_on:
+            record.status = "entregue"
+        else:
+            record.status = "faturado" if current == "faturado" else "negociado"
+
+
+def set_delivery(db, records: list[CoffeeCommercializationRecord], delivered: bool, on_date: date | None = None) -> None:
+    on_date = on_date or today_in_app_timezone()
+    for record in records:
+        record.delivered_on = on_date if delivered else None
+    refresh_status(records)
+    db.commit()
+
+
+def set_delivery_due(db, records: list[CoffeeCommercializationRecord], due: date | None) -> None:
+    for record in records:
+        record.delivery_due_date = due
+    db.commit()
+
+
+def _open(inst) -> bool:
+    return (inst.status or "pendente").strip().lower() != "pago"
+
+
+def sale_installments(db, transaction_id: int | None) -> list:
+    from app.models.finance_transaction_installment import FinanceTransactionInstallment
+    if not transaction_id:
+        return []
+    return (db.query(FinanceTransactionInstallment)
+            .filter(FinanceTransactionInstallment.finance_transaction_id == transaction_id)
+            .order_by(FinanceTransactionInstallment.installment_number, FinanceTransactionInstallment.id).all())
+
+
+def receipt_info(group: dict, installments: list, today: date | None = None) -> dict:
+    """Situação do recebimento: pelas parcelas do Financeiro quando existem; senão pela data da venda."""
+    today = today or today_in_app_timezone()
+    rows = []
+    for inst in installments:
+        paid = not _open(inst)
+        rows.append({"id": inst.id, "n": inst.installment_number, "due": inst.due_date, "amount": round(_num(inst.amount), 2),
+                     "paid": paid, "paid_at": inst.paid_at, "late": (not paid) and inst.due_date is not None and inst.due_date < today})
+    if rows:
+        total = round(sum(r["amount"] for r in rows), 2) or 0.0
+        paid_amount = round(sum(r["amount"] for r in rows if r["paid"]), 2)
+        open_rows = [r for r in rows if not r["paid"]]
+        received = not open_rows
+        pct = 100 if received else (round(paid_amount * 100 / total) if total else 0)
+    else:
+        total, paid_amount = group["net"], (group["net"] if group.get("received") else 0.0)
+        open_rows, received = [], bool(group.get("received"))
+        pct = 100 if received else 0
+    return {"rows": rows, "open": open_rows, "total": total, "paid_amount": paid_amount, "open_amount": round(total - paid_amount, 2),
+            "received": received, "pct": pct, "partial": 0 < pct < 100, "late": [r for r in open_rows if r["late"]],
+            "count": len(rows), "paid_count": len(rows) - len(open_rows)}
+
+
+def _sync_received(db, records, installments) -> None:
+    all_paid = bool(installments) and not any(_open(i) for i in installments)
+    stamp = max((i.paid_at for i in installments if i.paid_at), default=None) or today_in_app_timezone()
+    for record in records:
+        record.received_on = stamp if all_paid else None
+    refresh_status(records)
+
+
+def receive(db, records: list[CoffeeCommercializationRecord], installment_ids: list[int] | None = None,
+            on_date: date | None = None) -> list[int]:
+    """Marca como recebidas as parcelas escolhidas (todas as abertas se nenhuma for indicada).
+
+    Sem lançamento no Financeiro, a venda inteira fica recebida. Devolve as parcelas pagas agora."""
+    on_date = on_date or today_in_app_timezone()
+    tx_id = records[0].finance_transaction_id if records else None
+    installments = sale_installments(db, tx_id)
+    if not installments:
+        for record in records:
+            record.received_on = on_date
+        refresh_status(records)
+        db.commit()
+        return []
+    wanted = set(installment_ids or [])
+    paid_now = []
+    for inst in installments:
+        if _open(inst) and (not wanted or inst.id in wanted):
+            inst.status, inst.paid_at = "pago", on_date
+            paid_now.append(inst.id)
+    if wanted and not paid_now:
+        raise ValueError("Escolha parcelas em aberto desta venda.")
+    _sync_received(db, records, installments)
+    db.commit()
+    return paid_now
+
+
+def undo_receive(db, records: list[CoffeeCommercializationRecord], installment_ids: list[int] | None = None) -> None:
+    """Desfaz o recebimento: das parcelas indicadas, ou de tudo."""
+    installments = sale_installments(db, records[0].finance_transaction_id if records else None)
+    wanted = set(installment_ids or [])
+    for inst in installments:
+        if not _open(inst) and (not wanted or inst.id in wanted):
+            inst.status, inst.paid_at, inst.payment_notes = "pendente", None, None
+    if installments:
+        _sync_received(db, records, installments)
+    else:
+        for record in records:
+            record.received_on = None
+        refresh_status(records)
     db.commit()
 
 

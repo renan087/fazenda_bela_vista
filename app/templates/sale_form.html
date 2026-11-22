@@ -52,12 +52,14 @@
                         </div>
                     </div>
                     {% endfor %}
+                    {% if sale_quick %}<button type="button" class="vw-lot-add" data-qh-open><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Registrar colheita<small>o lote novo entra já marcado nesta venda</small></button>{% endif %}
                 </div>
                 {% else %}
                 <div class="pd-empty">
                     <strong>Nenhum lote com saldo para vender nesta safra.</strong>
-                    <span>Registre uma colheita primeiro ou confira a safra ativa no topo.</span>
-                    <a class="sf-btn sf-btn-primary" href="/producao/colheitas/nova?voltar=/producao/vendas/nova">Registrar colheita</a>
+                    <span>Registre a colheita aqui mesmo: o lote entra já marcado nesta venda.</span>
+                    {% if sale_quick %}<button type="button" class="sf-btn sf-btn-primary" data-qh-open>Registrar colheita</button>
+                    {% else %}<a class="sf-btn sf-btn-primary" href="/producao/colheitas/nova?voltar=/producao/vendas/nova">Registrar colheita</a>{% endif %}
                 </div>
                 {% endif %}
             </div>
@@ -170,8 +172,48 @@
             <p class="pd-note">Nada é registrado até você confirmar no passo 3.</p>
         </aside>
     </form>
+    {% if sale_quick %}{% set q = sale_quick %}
+    <div class="sv-dw" hidden data-qh>
+        <button type="button" class="sv-dw-ov" data-qh-close aria-label="Fechar"></button>
+        <form method="post" action="/producao" class="sv-dw-panel qh-panel" role="dialog" aria-modal="true" aria-labelledby="qh-title" novalidate data-qh-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="apos" value="venda">
+            <input type="hidden" name="measure_unit" value="sc_60"><input type="hidden" name="incluir_safra" value="" data-qh-include>
+            <header class="sv-dw-h"><div><h2 id="qh-title">Registrar colheita</h2><p>Só o essencial. O resto você completa depois no lote.</p></div>
+                <button type="button" class="sv-x" data-qh-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+            <div class="sv-dw-b qh-body">
+                <label class="vw-f">Talhão
+                    <select name="plot_id" required data-qh-plot>
+                        <option value="">Escolha o talhão</option>
+                        {% if q.plots %}<optgroup label="Na {{ q.season.name }}">{% for p in q.plots %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</optgroup>{% endif %}
+                        {% if q.other %}<optgroup label="Fora da safra">{% for p in q.other %}<option value="{{ p.id }}" data-out="1">{{ p.name }} · fora da safra</option>{% endfor %}</optgroup>{% endif %}
+                    </select>
+                </label>
+                <div class="qh-include" data-qh-ask hidden>
+                    <span>Incluir <b data-qh-plotname></b> na {{ q.season.name }}?</span>
+                    <button type="button" class="sf-btn sf-btn-secondary" data-qh-no>Agora não</button>
+                    <button type="button" class="sf-btn sf-btn-primary" data-qh-yes>Incluir</button>
+                </div>
+                <p class="qh-ok" data-qh-included hidden></p>
+                <label class="vw-f">Data da colheita
+                    <input type="date" name="harvest_date" value="{{ q.today.isoformat() }}" required{% if q.season %} min="{{ q.season.start_date.isoformat() }}" max="{{ q.season.end_date.isoformat() }}"{% endif %}>
+                </label>
+                <label class="vw-f">Sacas de 60 kg
+                    <input name="measured_quantity" inputmode="decimal" placeholder="0" required>
+                </label>
+                <label class="vw-f">Situação do café
+                    <select name="situacao">{% for v, l in q.stages %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+                </label>
+                <p class="pd-alert is-error" data-qh-error role="alert" hidden></p>
+            </div>
+            <footer class="sv-dw-f"><button type="button" class="sf-btn sf-btn-secondary" data-qh-close>Cancelar</button><button class="sf-btn sf-btn-primary" type="submit">Salvar e usar na venda</button></footer>
+        </form>
+    </div>
+    {% endif %}
+    {% if sale_toast %}
+    <div class="sv-toast" role="status" data-sv-toast><span>{{ sale_toast.text }}</span><button type="button" class="sv-toast-x" data-sv-toast-close aria-label="Fechar aviso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    {% endif %}
     {{ buyer_modal(csrf_token) }}
 </div>
 <script src="{{ url_for('static', path='js/buyer_picker.js') }}?v=20261122bp1" defer></script>
-<script src="{{ url_for('static', path='js/sale_form.js') }}?v=1" defer></script>
+<script src="{{ url_for('static', path='js/sale_form.js') }}?v=2" defer></script>
 {% endblock %}

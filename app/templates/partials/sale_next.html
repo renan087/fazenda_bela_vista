@@ -1,24 +1,20 @@
-{# Próximos passos logo depois de registrar uma venda: só aparece o que faz sentido para a situação dela. #}
-{% macro sale_next(g, nf, csrf_token, can_write, back='') %}
-<section class="sn-card" role="status" aria-labelledby="sn-title-{{ g.code }}" data-sn>
-  <span class="sn-ok" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span>
-  <div class="sn-text">
-    <h2 id="sn-title-{{ g.code }}">Venda {{ g.code }} registrada</h2>
-    <p>{{ g.sacks|decimal_br(0 if g.sacks == (g.sacks|int) else 2) }} sc para {{ g.buyer_name }} · R$ {{ g.net|decimal_br }}{% if g.finance_transaction_id %} · recebimento já lançado no Financeiro{% endif %}.</p>
-    <p class="sn-hint">O que fazer agora:</p>
-  </div>
-  <div class="sn-actions">
-    {% if can_write and not nf %}
-    <form method="post" action="/producao/vendas/{{ g.code }}/rascunho-fiscal"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="sf-btn sf-btn-primary" type="submit">Emitir NF</button></form>
-    {% elif nf and nf.status in ('rascunho', 'pendente', 'rejeitada') %}<a class="sf-btn sf-btn-primary" href="/producao/rascunhos-fiscais/{{ nf.id }}">Continuar NF</a>
-    {% elif nf %}<a class="sf-btn sf-btn-secondary" href="/notas-fiscais/{{ nf.id }}">Ver nota</a>{% endif %}
-    {% if can_write and g.step == 0 %}
-    <form method="post" action="/producao/vendas/{{ g.code }}/situacao"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="status" value="entregue">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}<button class="sf-btn sf-btn-secondary" type="submit">Marcar entregue</button></form>
-    {% endif %}
-    {% if g.finance_transaction_id %}<a class="sf-btn sf-btn-secondary" href="/gestao-financeira/contas?transaction_edit_id={{ g.finance_transaction_id }}">Ver parcelas</a>{% endif %}
-  </div>
-  <a class="sn-close" href="{{ back or ('/producao/comercializacao?venda=' ~ g.code) }}" aria-label="Fechar próximos passos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></a>
-</section>
+{# Aviso rápido depois de registrar uma venda: some sozinho; a nota pode ser emitida dali mesmo. #}
+{% macro sale_toast(g, nf, csrf_token, can_write) %}
+<div class="sv-toast" role="status" data-sv-toast>
+  <span>Venda {{ g.code }} registrada</span>
+  {% if can_write and not nf %}<form method="post" action="/producao/vendas/{{ g.code }}/rascunho-fiscal"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Emitir NF</button></form>{% endif %}
+  <button type="button" class="sv-toast-x" data-sv-toast-close aria-label="Fechar aviso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+</div>
+<script>
+(function () {
+  var t = document.currentScript.previousElementSibling, timer;
+  function hide() { t.classList.add('is-out'); setTimeout(function () { t.remove(); }, 260); }
+  function arm() { clearTimeout(timer); timer = setTimeout(hide, 7000); }
+  t.addEventListener('mouseenter', function () { clearTimeout(timer); }); t.addEventListener('mouseleave', arm);
+  t.addEventListener('focusin', function () { clearTimeout(timer); });
+  t.querySelector('[data-sv-toast-close]').addEventListener('click', hide); arm();
+})();
+</script>
 {% endmacro %}
 
 {% macro sale_nf_chip(nf) %}

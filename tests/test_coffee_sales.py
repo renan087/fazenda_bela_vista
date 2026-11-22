@@ -138,3 +138,129 @@ def test_sale_form_page_lists_lots_and_preselects_origin_lot(env):
     assert f'name="lot_id" value="{lot_a.id}" id="vw-lot-{lot_a.id}" checked' in html
     assert f'name="origem_lote" value="{lot_a.id}"' in html
     assert "Conferir" in html and "Funrural / Senar" in html and "data-buyer-picker" in html
+
+
+def _installments(env, records, amounts, first=date(2026, 1, 10)):
+    from app.models.finance_transaction_installment import FinanceTransactionInstallment
+    tx_id = records[0].finance_transaction_id
+    env.db.query(FinanceTransactionInstallment).filter_by(finance_transaction_id=tx_id).delete()
+    for n, amount in enumerate(amounts, start=1):
+        env.db.add(FinanceTransactionInstallment(finance_transaction_id=tx_id, installment_number=n, amount=amount,
+                                                 due_date=date(first.year + (first.month + n - 2) // 12, (first.month + n - 2) % 12 + 1, first.day),
+                                                 status="pendente"))
+    env.db.commit()
+    return sorted(env.db.query(FinanceTransactionInstallment).filter_by(finance_transaction_id=tx_id).all(), key=lambda i: i.installment_number)
+
+
+def _receipt_form(**fields):
+    return list(fields.items())
+
+
+def test_delivery_and_receipt_are_independent_and_receipt_pays_finance_installments(env):
+    from app.services.coffee_sales import sale_records
+    r = env.routes
+    lot_a, _ = env.lots
+    asyncio.run(r.sale_create_action(env.request("/producao/vendas", _sale_form(env, [(lot_a, "30")])), db=env.db, user=env.user))
+    records = sale_records(env.db, env.scope["active_farm_id"], "V-0001")
+    parcels = _installments(env, records, [100, 100, 100])
+
+    # Pagamento antecipado: recebe duas parcelas antes de entregar.
+    req = env.request("/x", _receipt_form(acao="receber", parcelas=f"{parcels[0].id},{parcels[1].id}"))
+    asyncio.run(r.sale_receipt_action("V-0001", req, db=env.db, user=env.user))
+    for item in parcels:
+        env.db.refresh(item)
+    assert [i.status for i in parcels] == ["pago", "pago", "pendente"]
+    assert env.session["sale_toast"]["text"].startswith("2 parcelas recebidas")
+    group = group_sales(sale_records(env.db, env.scope["active_farm_id"], "V-0001"))[0]
+    assert not group["delivered"] and not group["received"]
+
+    page = r.commercialization_page(env.request("/producao/comercializacao"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert 'class="sv-ic is-part"' in page and "--p: 67%" in page and "Recebido 67%" in page
+    assert "2 parcelas recebidas" in page and ">Desfazer</button>" in page  # aviso rápido com desfazer
+
+    # A última parcela fecha a venda como Recebida, ainda sem entrega.
+    asyncio.run(r.sale_receipt_action("V-0001", env.request("/x", _receipt_form(acao="receber")), db=env.db, user=env.user))
+    records = sale_records(env.db, env.scope["active_farm_id"], "V-0001")
+    assert records[0].status == "recebido" and records[0].received_on and records[0].delivered_on is None
+
+    asyncio.run(r.sale_delivery_action("V-0001", env.request("/x"), csrf_token="x", acao="entregar", data="2026-11-30",
+                                       voltar=None, db=env.db, user=env.user))
+    env.db.refresh(records[0])
+    assert records[0].delivered_on == date(2026, 11, 30) and records[0].status == "recebido"
+
+    # Desfazer o recebimento devolve as parcelas para pendente; a entrega continua.
+    asyncio.run(r.sale_receipt_action("V-0001", env.request("/x", _receipt_form(acao="desfazer")), db=env.db, user=env.user))
+    env.db.refresh(records[0])
+    assert records[0].status == "entregue" and records[0].received_on is None
+    for item in parcels:
+        env.db.refresh(item)
+    assert all(i.status == "pendente" and i.paid_at is None for i in parcels)
+
+    page = r.commercialization_page(env.request("/producao/comercializacao?filtro=a_receber"), db=env.db, user=env.user,
+                                    csrf_token="x").body.decode()
+    assert 'id="venda-V-0001"' in page and "Selecione as parcelas" in page
+    page = r.commercialization_page(env.request("/producao/comercializacao?filtro=a_entregar"), db=env.db, user=env.user,
+                                    csrf_token="x").body.decode()
+    assert 'id="venda-V-0001"' not in page
+
+
+def test_many_open_installments_use_stepper_and_year_drawer(env):
+    from app.services.coffee_sales import sale_records
+    r = env.routes
+    lot_a, _ = env.lots
+    asyncio.run(r.sale_create_action(env.request("/producao/vendas", _sale_form(env, [(lot_a, "30")])), db=env.db, user=env.user))
+    records = sale_records(env.db, env.scope["active_farm_id"], "V-0001")
+    _installments(env, records, [50] * 14, first=date(2025, 11, 10))
+    page = r.commercialization_page(env.request("/producao/comercializacao?por=30"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert "Receber as próximas" in page and "Escolher parcelas específicas…" in page
+    assert 'id="sv-dw-V-0001"' in page and "<b>2025</b>" in page and "<b>2026</b>" in page
+    assert "vencida" in page and '<option value="30" selected>' in page
+    assert env.session["sales_per_page"] == 30
+
+
+def test_sales_search_finds_sale_by_invoice_number(env, monkeypatch):
+    r = env.routes
+    lot_a, _ = env.lots
+    asyncio.run(r.sale_create_action(env.request("/producao/vendas", _sale_form(env, [(lot_a, "30")])), db=env.db, user=env.user))
+    monkeypatch.setattr(r, "_nf_notes_by_sale", lambda *a: {"V-0001": {"id": "d" * 32, "status": "autorizada", "label": "Autorizada",
+                                                                       "tone": "green", "number": "000127", "issues": 0}})
+    page = r.commercialization_page(env.request("/producao/comercializacao?search=127"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert 'id="venda-V-0001"' in page and "NF 000127" in page and "Ver nota" in page
+    page = r.commercialization_page(env.request("/producao/comercializacao?filtro=sem_nota"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert 'id="venda-V-0001"' not in page
+
+
+def test_quick_harvest_inside_sale_includes_plot_and_selects_new_lot(env, monkeypatch):
+    r = env.routes
+    season = env.scope["active_season"]
+    # o ambiente de teste libera todos os talhões; aqui vale a regra real da safra
+    monkeypatch.setattr(r, "_season_launch_plots", lambda plots, scope: list(scope["active_season"].plots) or plots)
+    in_plot = env.db.query(Plot).filter_by(name="Talhão 07").one()
+    season.plots.append(in_plot)
+    out_plot = Plot(name="Setor 3", farm_id=env.scope["active_farm_id"], area_hectares=2, plant_count=1)
+    env.db.add(out_plot)
+    env.db.commit()
+    monkeypatch.setattr(r, "_resolve_plot_in_scope", lambda request, repo, plot_id, path: (env.db.get(Plot, plot_id), env.scope, None))
+
+    html = r.sale_new_page(env.request("/producao/vendas/nova"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert "data-qh-open" in html and "Setor 3 · fora da safra" in html and "Salvar e usar na venda" in html
+
+    def harvest(plot, include=""):
+        return r.create_harvest_action(env.request("/producao"), csrf_token="x", plot_id=plot.id,
+                                       harvest_date=season.start_date.isoformat(), measure_unit="sc_60", measured_quantity="12",
+                                       situacao="tulha", incluir_safra=include, apos="venda", db=env.db, user=env.user,
+                                       **{k: None for k in ("lot_code", "sacks_produced", "harvest_type", "coffee_stage",
+                                                            "initial_destination", "responsible_name", "work_shift",
+                                                            "maturation_percentage", "impurity_percentage",
+                                                            "input_moisture_percentage", "volume_count", "notes", "yield_factor")})
+
+    refused = harvest(out_plot)
+    assert refused.headers["location"] == "/producao/vendas/nova"
+    assert env.session.pop("flash")["message"] == "O setor selecionado não está vinculado à safra ativa."
+    done = harvest(out_plot, "1")
+    assert env.session.get("flash") is None, env.session.get("flash")
+    lot = env.db.query(HarvestRecord).filter_by(plot_id=out_plot.id).one()
+    assert done.headers["location"] == f"/producao/vendas/nova?lote={lot.id}"
+    assert lot.lot_stage == "tulha" and float(lot.sacks_produced) == 12
+    assert out_plot in season.plots
+    assert env.session["sale_toast"]["text"].endswith(f"Lote {lot.lot_code} criado e selecionado")

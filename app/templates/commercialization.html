@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% from "partials/production_nav.html" import production_tabs %}
-{% from "partials/sale_next.html" import sale_next, sale_nf_chip %}
 {% block content %}
 {% set k = sale_kpis %}
 <div class="sf-page pd-page sl-page">
@@ -17,13 +16,12 @@
         </div>
     </header>
     {{ production_tabs('sales') }}
-    {% if new_sale %}{{ sale_next(new_sale, (fiscal_note_by_sale or {}).get(new_sale.code), csrf_token, can_write_page) }}{% endif %}
 
     <section class="sl-kpis" aria-label="Resumo das vendas">
         <article class="pd-card"><p class="pd-eyebrow">Vendido</p><strong>{{ k.sacks|decimal_br }} sc</strong><span>R$ {{ k.gross|decimal_br }} bruto</span></article>
         <article class="pd-card"><p class="pd-eyebrow">Preço médio</p><strong>{% if k.avg_price %}R$ {{ k.avg_price|decimal_br }}{% else %}—{% endif %}</strong><span>por saca de 60 kg</span></article>
-        <article class="pd-card"><p class="pd-eyebrow">Recebido</p><strong class="is-done">R$ {{ k.received|decimal_br }}</strong><span>vendas recebidas</span></article>
-        <article class="pd-card"><p class="pd-eyebrow">A receber</p><strong class="is-info">R$ {{ k.to_receive|decimal_br }}</strong><span>negociadas ou entregues</span></article>
+        <article class="pd-card"><p class="pd-eyebrow">Recebido</p><strong class="is-done">R$ {{ k.received|decimal_br }}</strong><span>parcelas e vendas recebidas</span></article>
+        <article class="pd-card"><p class="pd-eyebrow">A receber</p><strong class="is-info">R$ {{ k.to_receive|decimal_br }}</strong><span>ainda em aberto</span></article>
     </section>
 
     {% if sale_lots %}
@@ -47,95 +45,145 @@
     </section>
     {% endif %}
 
-    <section class="pd-card sl-list" aria-labelledby="sl-list-title">
-        <div class="sl-list-head">
+    {% set ICON = {
+        'truck': 'M3 7h11v9H3zM14 10h4l3 3v3h-7M7 19a1.6 1.6 0 1 0 0-3.2A1.6 1.6 0 0 0 7 19zM17 19a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z',
+        'coin': 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM14.5 9.5c-.4-.9-1.4-1.5-2.5-1.5-1.5 0-2.5.8-2.5 2s1.1 1.7 2.5 2 2.5.8 2.5 2-1 2-2.5 2c-1.1 0-2.1-.6-2.5-1.5M12 6.5v1.5M12 16v1.5',
+        'ok': 'M5 12l5 5 9-10', 'cal': 'M4 6h16v14H4zM4 10h16M9 3v4M15 3v4', 'undo': 'M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-2',
+        'fin': 'M3 6h18v12H3zM3 10h18M7 15h3', 'doc': 'M6 3h9l3 3v15H6zM9 9h6M9 13h6M9 17h4', 'eye': 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+        'list': 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01', 'edit': 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4', 'trash': 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'} %}
+    {% macro svg(name) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ICON[name] }}"/></svg>{% endmacro %}
+    {% macro dot(state) %}<i style="background: {{ {'done': '#446A36', 'part': '#446A36', 'warn': '#D18A00'}.get(state, '#A3ADA6') }}"></i>{% endmacro %}
+    {% set back_url = sale_back_url %}
+
+    <section class="pd-card sl-list sv-list" aria-labelledby="sl-list-title">
+        <div class="sv-head">
             <h2 id="sl-list-title">Vendas da safra</h2>
-            <form method="get" class="sl-filters" role="search">
-                <div class="sl-chips" role="group" aria-label="Filtrar por situação">
-                    <button type="submit" name="status" value="" class="sl-chip" aria-pressed="{{ 'true' if not sale_selected_status else 'false' }}">Todas <span>{{ sale_total_count }}</span></button>
-                    {% for value, label in sale_status_options %}
-                    <button type="submit" name="status" value="{{ value }}" class="sl-chip" aria-pressed="{{ 'true' if sale_selected_status == value else 'false' }}">{{ label }}s <span>{{ sale_status_counts[value] }}</span></button>
+            <form method="get" class="sv-filters" role="search">
+                <div class="sv-seg" role="group" aria-label="Filtrar vendas">
+                    {% for value, label in [('', 'Todas'), ('a_entregar', 'A entregar'), ('a_receber', 'A receber'), ('sem_nota', 'Sem nota')] %}
+                    <button type="submit" name="filtro" value="{{ value }}" aria-pressed="{{ 'true' if sale_filter == value else 'false' }}">{{ label }} <span>{{ sale_total_count if not value else sale_filter_counts[value] }}</span></button>
                     {% endfor %}
                 </div>
                 <label class="sl-search">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
                     <span class="sr-only">Buscar venda</span>
-                    <input type="search" name="search" value="{{ sale_search }}" placeholder="Comprador, lote ou contrato">
+                    <input type="search" name="search" value="{{ sale_search }}" placeholder="Comprador, lote ou nº da NF">
                 </label>
                 {% if sale_harvest_id %}<input type="hidden" name="harvest_id" value="{{ sale_harvest_id }}">{% endif %}
             </form>
         </div>
         {% if sale_filters_active %}<p class="sl-filter-note">Mostrando vendas filtradas. <a href="/producao/comercializacao">Limpar filtros</a></p>{% endif %}
 
+        {% if sale_groups %}
+        <div class="sv-cols" aria-hidden="true"><span>Venda</span><span>Comprador e lote</span><span>Nota fiscal</span><span>Andamento</span><span class="sv-r">Valor</span><span></span></div>
+        {% endif %}
         {% for g in sale_groups %}
-        <article class="sl-sale{% if g.code == sale_focus %} is-focus{% endif %}" id="venda-{{ g.code }}">
-            <div class="sl-sale-main">
-                <div class="sl-sale-title">
-                    <strong>{{ g.code }}</strong>
-                    <span class="pd-chip {{ 'is-done' if g.status == 'recebido' else ('is-info' if g.status in ['entregue', 'faturado'] else 'is-ok') }}">{{ g.status_label }}</span>
-                    {% set nfc = (fiscal_note_by_sale or {}).get(g.code) %}
-                    {% if nfc and nfc.status != 'cancelada' %}<a class="nx-chip is-{{ nfc.tone }}" style="text-decoration:none" href="{{ '/notas-fiscais/' ~ nfc.id }}">{% if nfc.number %}NF-e {{ nfc.number }} · {{ nfc.label }}{% elif nfc.status == 'pendente' %}NF em rascunho · {{ nfc.issues }} pendência{{ 's' if nfc.issues != 1 }}{% else %}NF em rascunho{% endif %}</a>
-                    {% else %}<span class="nx-chip is-neutral">Sem nota fiscal</span>{% endif %}
-                    <span class="sl-date">{{ g.sale_date.strftime('%d/%m/%Y') }}</span>
-                </div>
-                <p class="sl-buyer">{{ g.buyer_name }}</p>
-                <ul class="sl-sale-lots" aria-label="Lotes da venda">
-                    {% for lot in g.lots %}<li><a href="/producao?lote={{ lot.harvest_id }}">{{ lot.label }}</a> · {{ lot.sacks|decimal_br }} sc</li>{% endfor %}
-                </ul>
-                <ol class="sl-steps" aria-label="Andamento da venda">
-                    <li class="is-on">Negociada</li>
-                    <li class="{{ 'is-on' if g.step >= 1 }}">Entregue{% if g.delivered_on %} <small>{{ g.delivered_on.strftime('%d/%m') }}</small>{% endif %}</li>
-                    <li class="{{ 'is-on' if g.step >= 2 }}">Recebida{% if g.received_on %} <small>{{ g.received_on.strftime('%d/%m') }}</small>{% endif %}</li>
-                </ol>
-                {% if g.status in ('negociado', 'faturado') and g.delivery_due_date %}
-                <p class="sl-due{% if g.delivery_due_date < today %} is-late{% endif %}">{{ 'Entrega atrasada desde' if g.delivery_due_date < today else 'Entregar até' }} {{ g.delivery_due_date.strftime('%d/%m/%Y') }}</p>
-                {% endif %}
-            </div>
-            <div class="sl-sale-side">
-                <div class="sl-values">
-                    <strong>R$ {{ g.net|decimal_br }}</strong>
-                    <span>{{ g.sacks|decimal_br }} sc × R$ {{ g.unit_price|decimal_br }}{% if g.discount %} · descontos R$ {{ g.discount|decimal_br }}{% endif %}</span>
-                </div>
-                {% set nf = (fiscal_note_by_sale or {}).get(g.code) %}
-                {% set nf_live = nf and nf.status != 'cancelada' %}
-                {% set nf_open = nf_live and nf.status in ('rascunho', 'pendente', 'rejeitada') %}
-                {% set primary = 'entrega' if g.step == 0 else ('recebimento' if g.step == 1 else ('nf' if can_write_page and not (nf_live and nf.status in ('autorizada', 'enviando')) else 'ver')) %}
-                <div class="sl-actions">
-                    {% if primary in ('entrega', 'recebimento') and can_write_page %}
-                    <form method="post" action="/producao/vendas/{{ g.code }}/situacao">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <input type="hidden" name="status" value="{{ 'entregue' if primary == 'entrega' else 'recebido' }}">
-                        <input type="hidden" name="status_date" value="{{ today.isoformat() }}">
-                        <button class="sf-btn sf-btn-primary" type="submit">{{ 'Registrar entrega' if primary == 'entrega' else 'Registrar recebimento' }}</button>
-                    </form>
-                    {% elif primary == 'nf' %}
-                    {% if nf_open %}<a class="sf-btn sf-btn-primary" href="/producao/rascunhos-fiscais/{{ nf.id }}">{{ 'Corrigir NF' if nf.status == 'rejeitada' else 'Continuar NF' }}</a>
-                    {% else %}<form method="post" action="/producao/vendas/{{ g.code }}/rascunho-fiscal"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="sf-btn sf-btn-primary" type="submit">Emitir NF</button></form>{% endif %}
-                    {% elif nf_live %}<a class="sf-btn sf-btn-secondary" href="/notas-fiscais/{{ nf.id }}">Ver nota</a>
-                    {% else %}<a class="sf-btn sf-btn-secondary" href="/producao/vendas/{{ g.code }}/editar">Ver venda</a>{% endif %}
-                    <div class="sl-more" data-sl-more>
-                        <button type="button" class="sl-more-btn" data-sl-more-btn aria-haspopup="menu" aria-expanded="false" aria-label="Mais ações da venda {{ g.code }}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></button>
-                        <div class="sl-menu" role="menu" hidden>
-                            <p class="sl-menu-h">Venda {{ g.code }}</p>
-                            {% if primary != 'nf' %}
-                            {% if nf_live and nf.status in ('autorizada', 'enviando') %}{% if primary != 'ver' %}<a class="sl-mi" role="menuitem" href="/notas-fiscais/{{ nf.id }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>Ver nota</a>{% endif %}
-                            {% elif nf_open and can_write_page %}<a class="sl-mi" role="menuitem" href="/producao/rascunhos-fiscais/{{ nf.id }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6zM9 9h6M9 13h6M9 17h4"/></svg>{{ 'Corrigir NF' if nf.status == 'rejeitada' else 'Continuar NF' }}</a>
-                            {% elif can_write_page %}<form method="post" action="/producao/vendas/{{ g.code }}/rascunho-fiscal"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="sl-mi" role="menuitem" type="submit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6zM9 9h6M9 13h6M9 17h4"/></svg>Emitir NF</button></form>{% endif %}
-                            {% endif %}
-                            <a class="sl-mi" role="menuitem" href="/producao/vendas/{{ g.code }}/editar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg>{{ 'Editar venda' if can_write_page else 'Ver venda' }}</a>
-                            {% if g.finance_transaction_id %}<a class="sl-mi" role="menuitem" href="/gestao-financeira/contas?transaction_edit_id={{ g.finance_transaction_id }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18v12H3zM12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>Ver no Financeiro</a>{% endif %}
-                            {% if can_write_page and g.step > 0 %}
-                            <form method="post" action="/producao/vendas/{{ g.code }}/situacao"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="status" value="{{ 'negociado' if g.step == 1 else 'entregue' }}"><button class="sl-mi" role="menuitem" type="submit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-2"/></svg>{{ 'Desfazer entrega' if g.step == 1 else 'Desfazer recebimento' }}</button></form>
-                            {% endif %}
-                            {% if can_write_page %}
-                            <div class="sl-menu-sep" role="separator"></div>
-                            <form method="post" action="/producao/vendas/{{ g.code }}/excluir" onsubmit="return confirm('Excluir a venda {{ g.code }}? O saldo volta para os lotes{{ ' e o lançamento do Financeiro também é excluído' if g.finance_transaction_id }}.')">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button class="sl-mi is-danger" role="menuitem" type="submit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Excluir venda</button>
-                            </form>
-                            {% endif %}
-                        </div>
+        {% set nf = (fiscal_note_by_sale or {}).get(g.code) %}
+        {% set nf_live = nf and nf.status != 'cancelada' %}
+        {% set nf_done = nf_live and nf.status in ('autorizada', 'enviando') %}
+        {% set t = sale_track[g.code] %}{% set d = t.delivery %}{% set r = t.receipt %}
+        <article class="sv-row{% if g.code == sale_focus %} is-focus{% endif %}{% if new_sale and new_sale.code == g.code %} is-new{% endif %}" id="venda-{{ g.code }}" data-sv-href="/producao/vendas/{{ g.code }}/editar">
+            <div class="sv-c1"><a href="/producao/vendas/{{ g.code }}/editar"><b>{{ g.code }}</b></a><span>{{ g.sale_date.strftime('%d/%m/%Y') }}</span></div>
+            <div class="sv-c2"><b title="{{ g.buyer_name }}">{{ g.buyer_name }}</b><span>{% for lot in g.lots %}{% if lot.harvest_id %}<a href="/producao?lote={{ lot.harvest_id }}">{{ lot.label }}</a>{% else %}{{ lot.label }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</span></div>
+
+            <div class="sv-nfcell" data-sv-pop>
+                <button type="button" class="sv-nf{% if nf_done %} is-ok{% elif nf_live %} is-draft{% else %} is-none{% endif %}" data-sv-pop-btn aria-haspopup="true" aria-expanded="false" aria-label="Nota fiscal da venda {{ g.code }}">
+                    {% if nf_done and nf.number %}NF {{ nf.number }}{% elif nf_done %}NF enviada{% elif nf_live %}Em rascunho{% else %}Sem nota{% endif %}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div class="sv-pop" hidden>
+                    <div class="sv-ph"><small>Nota fiscal</small>
+                        {% if nf_done %}<b>{{ dot('done') }}{{ nf.label }}</b><span>{% if nf.number %}NF-e nº {{ nf.number }}{% else %}Aguardando a Sefaz{% endif %}</span>
+                        {% elif nf_live %}<b>{{ dot('warn') }}{{ 'Rejeitada' if nf.status == 'rejeitada' else 'Em rascunho' }}</b><span>{% if nf.issues %}{{ nf.issues }} pendência{{ 's' if nf.issues != 1 }} para resolver{% else %}Pronta para conferir e emitir{% endif %}</span>
+                        {% else %}<b>{{ dot('') }}Sem nota fiscal</b><span>{{ 'A nota anterior foi cancelada' if nf else 'Nenhuma nota emitida para esta venda' }}</span>{% endif %}
                     </div>
+                    {% if nf_done %}<a class="sv-pi is-main" href="/notas-fiscais/{{ nf.id }}">{{ svg('eye') }}Ver nota</a>
+                    {% elif nf_live and can_write_page %}<a class="sv-pi is-main" href="/producao/rascunhos-fiscais/{{ nf.id }}">{{ svg('doc') }}{{ 'Corrigir NF' if nf.status == 'rejeitada' else 'Continuar NF' }}</a>
+                    {% elif nf_live %}<a class="sv-pi" href="/notas-fiscais/{{ nf.id }}">{{ svg('eye') }}Ver nota</a>
+                    {% elif can_write_page %}<form method="post" action="/producao/vendas/{{ g.code }}/rascunho-fiscal"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="sv-pi is-main" type="submit">{{ svg('doc') }}Emitir NF</button></form>{% endif %}
+                </div>
+            </div>
+
+            <div class="sv-track">
+                <div class="sv-icwrap" data-sv-pop>
+                    <button type="button" class="sv-ic{% if d.state %} is-{{ d.state }}{% endif %}" data-sv-pop-btn aria-haspopup="true" aria-expanded="false" aria-label="Entrega: {{ d.tip }}">{{ svg('truck') }}<span class="sv-tip" aria-hidden="true">{{ d.tip }}</span></button>
+                    <div class="sv-pop" hidden>
+                        <div class="sv-ph"><small>Entrega</small><b>{{ dot(d.state) }}{{ d.title }}</b><span>{{ d.detail }}</span></div>
+                        {% if can_write_page %}
+                        {% if g.delivered %}
+                        <form method="post" action="/producao/vendas/{{ g.code }}/entrega"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><button class="sv-pi" type="submit" name="acao" value="desfazer">{{ svg('undo') }}Desfazer entrega</button></form>
+                        <form method="post" action="/producao/vendas/{{ g.code }}/entrega" class="sv-dateform" data-sv-date><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><input type="hidden" name="acao" value="data">
+                            <button class="sv-pi" type="button" data-sv-date-open>{{ svg('cal') }}Alterar data</button>
+                            <span class="sv-dateline" hidden><input type="date" name="data" value="{{ g.delivered_on.isoformat() }}" required aria-label="Data da entrega"><button class="sv-mini" type="submit">Salvar</button></span>
+                        </form>
+                        {% else %}
+                        <form method="post" action="/producao/vendas/{{ g.code }}/entrega"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><button class="sv-pi is-main" type="submit" name="acao" value="entregar">{{ svg('ok') }}Marcar como entregue</button></form>
+                        <form method="post" action="/producao/vendas/{{ g.code }}/entrega" class="sv-dateform" data-sv-date><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><input type="hidden" name="acao" value="prazo">
+                            <button class="sv-pi" type="button" data-sv-date-open>{{ svg('cal') }}Alterar prazo</button>
+                            <span class="sv-dateline" hidden><input type="date" name="data" value="{{ g.delivery_due_date.isoformat() if g.delivery_due_date else '' }}" aria-label="Prazo de entrega"><button class="sv-mini" type="submit">Salvar</button></span>
+                        </form>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="sv-icwrap" data-sv-pop>
+                    <button type="button" class="sv-ic{% if r.state %} is-{{ r.state }}{% endif %}" data-sv-pop-btn aria-haspopup="true" aria-expanded="false" aria-label="Recebimento: {{ r.tip }}"{% if r.state == 'part' %} style="--p: {{ r.pct }}%"{% endif %}>{{ svg('coin') }}<span class="sv-tip" aria-hidden="true">{{ r.tip }}</span></button>
+                    <div class="sv-pop sv-pop-r" hidden>
+                        <div class="sv-ph"><small>Recebimento</small><b>{{ dot(r.state) }}{{ r.title }}</b>
+                            <span>{% if r.received %}R$ {{ r.total|decimal_br }}{% if r.count > 1 %} em {{ r.count }} parcelas{% endif %}{% else %}R$ {{ r.paid_amount|decimal_br }} de R$ {{ r.total|decimal_br }}{% if r.late %} · {{ r.late|length }} vencida{{ 's' if r.late|length != 1 }}{% endif %}{% endif %}</span>
+                            {% if r.partial %}<div class="sv-bar"><i style="width: {{ r.pct }}%"></i></div>{% endif %}
+                        </div>
+                        {% set fin_url = '/gestao-financeira/contas?transaction_edit_id=' ~ g.finance_transaction_id if g.finance_transaction_id else '' %}
+                        {% if can_write_page %}
+                        {% if r.received %}
+                        <form method="post" action="/producao/vendas/{{ g.code }}/recebimento"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><button class="sv-pi" type="submit" name="acao" value="desfazer">{{ svg('undo') }}Desfazer recebimento</button></form>
+                        {% elif r.open|length <= 1 %}
+                        <form method="post" action="/producao/vendas/{{ g.code }}/recebimento"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><button class="sv-pi is-main" type="submit" name="acao" value="receber">{{ svg('ok') }}Marcar como recebida</button></form>
+                        {% elif r.open|length <= 6 %}
+                        <form method="post" action="/producao/vendas/{{ g.code }}/recebimento" data-sv-pick><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><input type="hidden" name="acao" value="receber">
+                            <div class="sv-pl">
+                                {% for p in r.rows %}
+                                {% if p.paid %}<div class="sv-pr is-paid"><span class="dt-chk"><input type="checkbox" class="dt-check" checked disabled aria-label="Parcela {{ p.n }} paga"></span><span>{{ p.n }}ª · {{ p.due.strftime('%d/%m') }}</span><span class="sv-ok">Paga</span></div>
+                                {% else %}<label class="sv-pr"><span class="dt-chk"><input type="checkbox" class="dt-check" name="parcela" value="{{ p.id }}" data-amount="{{ p.amount }}"></span><span>{{ p.n }}ª · {{ p.due.strftime('%d/%m/%Y') }}{% if p.late %}<em class="sv-late">vencida</em>{% endif %}</span><span class="sv-pv">R$ {{ p.amount|decimal_br }}</span></label>{% endif %}
+                                {% endfor %}
+                            </div>
+                            <button class="sv-pi is-main" type="submit" disabled data-sv-pick-btn>{{ svg('ok') }}<span>Selecione as parcelas</span></button>
+                        </form>
+                        {% else %}
+                        {% set first_n = r.late|length if r.late else 1 %}
+                        <form method="post" action="/producao/vendas/{{ g.code }}/recebimento" data-sv-step='{{ r.open|map(attribute="id")|list|tojson }}' data-sv-step-amounts='{{ r.open|map(attribute="amount")|list|tojson }}' data-sv-step-nums='{{ r.open|map(attribute="n")|list|tojson }}'>
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><input type="hidden" name="acao" value="receber"><input type="hidden" name="parcelas" value="" data-sv-step-ids>
+                            <div class="sv-stp"><span>Receber as próximas</span>
+                                <span class="sv-ctl"><button type="button" data-sv-step-minus aria-label="Uma parcela a menos">−</button><b data-sv-step-n>{{ first_n }}</b><button type="button" data-sv-step-plus aria-label="Uma parcela a mais">+</button></span>
+                            </div>
+                            <small class="sv-stp-sub" data-sv-step-sub></small>
+                            {% if r.late %}<button type="button" class="sv-lchip" data-sv-step-late="{{ r.late|length }}">{{ r.late|length }} vencida{{ 's' if r.late|length != 1 }} · receber todas</button>{% endif %}
+                            <button class="sv-pi is-main" type="submit" data-sv-step-btn data-start="{{ first_n }}">{{ svg('ok') }}<span>Receber</span></button>
+                            <button class="sv-pi" type="button" data-sv-drawer-open="sv-dw-{{ g.code }}">{{ svg('list') }}Escolher parcelas específicas…</button>
+                        </form>
+                        {% endif %}
+                        {% endif %}
+                        {% if fin_url %}<a class="sv-pi" href="{{ fin_url }}">{{ svg('fin') }}{{ 'Ver parcelas' if r.count > 1 else 'Ver no Financeiro' }}</a>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="sv-c4"><b>R$ {{ g.net|decimal_br }}</b><span>{{ g.sacks|decimal_br(0 if g.sacks == (g.sacks|int) else 2) }} sc · R$ {{ g.unit_price|decimal_br }}/sc</span></div>
+
+            <div class="sl-more" data-sl-more>
+                <button type="button" class="sl-more-btn" data-sl-more-btn aria-haspopup="menu" aria-expanded="false" aria-label="Mais ações da venda {{ g.code }}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></button>
+                <div class="sl-menu" role="menu" hidden>
+                    <p class="sl-menu-h">Venda {{ g.code }}</p>
+                    <a class="sl-mi" role="menuitem" href="/producao/vendas/{{ g.code }}/editar">{{ svg('edit') }}{{ 'Editar venda' if can_write_page else 'Ver venda' }}</a>
+                    {% if g.finance_transaction_id %}<a class="sl-mi" role="menuitem" href="/gestao-financeira/contas?transaction_edit_id={{ g.finance_transaction_id }}">{{ svg('fin') }}Ver no Financeiro</a>{% endif %}
+                    {% if can_write_page %}
+                    <div class="sl-menu-sep" role="separator"></div>
+                    <form method="post" action="/producao/vendas/{{ g.code }}/excluir" data-confirm="Excluir a venda {{ g.code }}? Os lotes voltam a ter o saldo disponível.">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button class="sl-mi is-danger" role="menuitem" type="submit">{{ svg('trash') }}Excluir venda</button>
+                    </form>
+                    {% endif %}
                 </div>
             </div>
         </article>
@@ -166,11 +214,55 @@
                 {% if sale_pagination.has_next %}<a href="{{ sale_pagination.next_url }}" aria-label="Próxima página">›</a>{% else %}<span class="is-off" aria-hidden="true">›</span>{% endif %}
             </div>
             {% endif %}
-            <div class="sl-pages-per" role="group" aria-label="Vendas por página"><span>Por página</span>{% for n, url in sale_pagination.per_page_urls %}<a href="{{ url }}"{% if n == sale_pagination.per_page %} class="is-on" aria-current="true"{% endif %}>{{ n }}</a>{% endfor %}</div>
+            <form method="get" action="/producao/comercializacao" class="sv-size">
+                {% for k2, v2 in sale_pagination.keep.items() %}<input type="hidden" name="{{ k2 }}" value="{{ v2 }}">{% endfor %}
+                <label for="sv-per-page">Por página</label>
+                <select id="sv-per-page" name="por" data-sv-autosubmit aria-label="Vendas por página">{% for n in sale_pagination.sizes %}<option value="{{ n }}"{% if n == sale_pagination.per_page %} selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+                <noscript><button class="sf-btn sf-btn-secondary" type="submit">Ok</button></noscript>
+            </form>
         </nav>
         {% endif %}
     </section>
+
+    {# Gaveta "Escolher parcelas" para vendas com muitas parcelas em aberto, agrupadas por ano. #}
+    {% for g in sale_groups %}{% set r = sale_track[g.code].receipt %}
+    {% if can_write_page and not r.received and r.open|length > 6 %}
+    <div class="sv-dw" id="sv-dw-{{ g.code }}" hidden data-sv-drawer>
+        <button type="button" class="sv-dw-ov" data-sv-drawer-close aria-label="Fechar"></button>
+        <form method="post" action="/producao/vendas/{{ g.code }}/recebimento" class="sv-dw-panel" role="dialog" aria-modal="true" aria-labelledby="sv-dw-t-{{ g.code }}" data-sv-pick>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><input type="hidden" name="acao" value="receber">
+            <header class="sv-dw-h"><div><h2 id="sv-dw-t-{{ g.code }}">Escolher parcelas</h2><p>Venda {{ g.code }} · {{ g.buyer_name }} · {{ r.open|length }} em aberto</p></div>
+                <button type="button" class="sv-x" data-sv-drawer-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+            <div class="sv-dw-b">
+                {% for year, items in r.open|groupby('due.year') %}
+                <details class="sv-yr"{% if loop.first %} open{% endif %} data-sv-year>
+                    <summary><span class="dt-chk" data-sv-year-all><input type="checkbox" class="dt-check" aria-label="Marcar todas de {{ year }}"></span><b>{{ year }}</b><small>{{ items|length }} parcela{{ 's' if items|length != 1 }} · R$ {{ items|sum(attribute='amount')|decimal_br }}{% set nl = items|selectattr('late')|list|length %}{% if nl %} · <span class="sv-late-d">{{ nl }} vencida{{ 's' if nl != 1 }}</span>{% endif %}</small><svg class="sv-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+                    <div class="sv-yrb">
+                        {% for p in items %}<label class="sv-pr"><span class="dt-chk"><input type="checkbox" class="dt-check" name="parcela" value="{{ p.id }}" data-amount="{{ p.amount }}"></span><span class="sv-pn">{{ p.n }}ª · <span{% if p.late %} class="sv-late-d" title="Vencida"{% endif %}>{{ p.due.strftime('%d/%m') }}</span>{% if p.late %}<span class="sr-only"> (vencida)</span>{% endif %}</span><span class="sv-pv">R$ {{ p.amount|decimal_br }}</span></label>{% endfor %}
+                    </div>
+                </details>
+                {% endfor %}
+            </div>
+            <footer class="sv-dw-f"><span data-sv-pick-sum>Nenhuma parcela</span><button class="sf-btn sf-btn-primary" type="submit" disabled data-sv-pick-btn><span>Receber selecionadas</span></button></footer>
+        </form>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    {% if sale_toast or new_sale %}
+    <div class="sv-toast" role="status" data-sv-toast>
+        {% if sale_toast %}
+        <span>{{ sale_toast.text }}</span>
+        {% if sale_toast.undo %}<form method="post" action="{{ sale_toast.undo.url }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}">{% for k2, v2 in sale_toast.undo.fields.items() %}<input type="hidden" name="{{ k2 }}" value="{{ v2 }}">{% endfor %}<button type="submit">Desfazer</button></form>{% endif %}
+        {% else %}
+        <span>Venda {{ new_sale.code }} registrada</span>
+        {% set nf = (fiscal_note_by_sale or {}).get(new_sale.code) %}
+        {% if can_write_page and not nf %}<form method="post" action="/producao/vendas/{{ new_sale.code }}/rascunho-fiscal"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Emitir NF</button></form>{% endif %}
+        {% endif %}
+        <button type="button" class="sv-toast-x" data-sv-toast-close aria-label="Fechar aviso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    {% endif %}
 </div>
-<script src="/static/js/commercialization.js?v=20261122sl1" defer></script>
+<script src="/static/js/commercialization.js?v=20261122sv1" defer></script>
 {% if sale_focus %}<script>document.getElementById({{ ('venda-' ~ sale_focus)|tojson }})?.scrollIntoView({ block: 'center' });</script>{% endif %}
 {% endblock %}
