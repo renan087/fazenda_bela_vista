@@ -73,7 +73,7 @@
       </a>
       <span class="fc-rsep" aria-hidden="true"></span>
       {% for s in setup_steps %}
-      {% set tone = 'is-ok' if s.ok and not s.optional else ('is-warn' if not s.ok and partial.get(s.key) else '') %}
+      {% set tone = 'is-ok' if s.ok else ('is-warn' if not s.ok and partial.get(s.key) else '') %}
       <a class="nx-sn fc-st {{ tone }}" href="?secao={{ s.key }}" data-nx-sec="{{ s.key }}" {% if section == s.key %}aria-current="page"{% endif %}>
         <span class="fc-n">{% if tone == 'is-ok' %}{{ nxi('check', 15, 3) }}<span class="sr-only">Pronto:</span>{% else %}{{ loop.index }}{% endif %}</span>
         <span><b>{{ s.title }}</b><small>{{ s.hint }}</small></span>
@@ -101,12 +101,11 @@
           <div><h2>As {{ setup_steps|length }} etapas</h2><p class="nx-desc">Siga na ordem. Cada etapa mostra o que falta.</p></div>
           <div class="fc-rows">
             {% for s in setup_steps %}
-            {% set tone = 'is-ok' if s.ok and not s.optional else ('is-warn' if not s.ok and partial.get(s.key) else '') %}
+            {% set tone = 'is-ok' if s.ok else ('is-warn' if not s.ok and partial.get(s.key) else '') %}
             <a class="fc-row {{ tone }}{% if next_step and next_step.key == s.key %} is-next{% endif %}" href="?secao={{ s.key }}" data-nx-sec="{{ s.key }}">
               <span class="fc-n">{% if tone == 'is-ok' %}{{ nxi('check', 17, 3) }}{% else %}{{ loop.index }}{% endif %}</span>
               <span class="fc-row-b"><b>{{ loop.index }}. {{ s.title }}</b><span>{{ s.desc }}</span><small>{{ s.text }}</small></span>
-              {% if s.optional %}<span class="nx-tag is-info">Opcional</span>
-              {% elif s.ok %}<span class="nx-tag is-ok">Pronto</span>
+              {% if s.ok %}<span class="nx-tag is-ok">Pronto</span>
               {% elif partial.get(s.key) %}<span class="nx-tag is-warn">Falta completar</span>
               {% else %}<span class="nx-tag is-off">A fazer</span>{% endif %}
               <span class="fc-go">{{ 'Revisar' if s.ok else ('Completar' if partial.get(s.key) else 'Começar') }} →</span>
