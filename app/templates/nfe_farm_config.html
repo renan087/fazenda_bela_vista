@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block content %}
+{% set total_checks = readiness.checks | length %}
+{% set ok_checks = total_checks - (readiness.blockers | length) %}
+{% set readiness_pct = ((ok_checks * 100) // total_checks) if total_checks else 0 %}
+<div class="sf-page nf-page">
+  <nav class="pd-crumbs" aria-label="Caminho da página">
+    <a href="/producao">Produção</a>
+    <span aria-hidden="true">/</span>
+    <a href="/producao/comercializacao">Comercialização</a>
+    <span aria-hidden="true">/</span>
+    <span aria-current="page">Configuração fiscal da fazenda</span>
+  </nav>
+
+  <header class="pd-head">
+    <div>
+      <h1 class="sf-page-title">Configuração fiscal da fazenda</h1>
+      <p class="sf-page-subtitle">Cadastro unificado do produtor emitente e cofre criptografado de certificado A1 (SaaS multi-cliente)</p>
+    </div>
+    <div class="pd-head-actions flex flex-wrap gap-2">
+      <a class="sf-btn sf-btn-secondary" href="/producao/nfe/painel-tecnico">Painel técnico NF-e</a>
+      <a class="sf-btn sf-btn-secondary" href="/producao/comercializacao">Voltar às vendas</a>
+    </div>
+  </header>
+
+  <div class="nf-banner" role="note">
+    <span class="nf-banner-dot" aria-hidden="true"></span>
+    <div>
+      <strong>Configuração isolada por fazenda cliente.</strong>
+      Os dados cadastrados aqui pertencem exclusivamente a esta fazenda e nunca são compartilhados com outros clientes ou com o administrador da plataforma. A transmissão real permanece bloqueada até a homologação oficial.
+    </div>
+  </div>
+
+  <div class="nf-layout">
+    <div class="nf-main">
+      <section class="nf-card" aria-labelledby="emitter-heading">
+        <div class="nf-card-head">
+          <div>
+            <h2 id="emitter-heading" class="nf-card-title">1. Produtor emitente e parâmetros fiscais</h2>
+            <p class="nf-card-desc">Configure uma única vez. Esses dados alimentam automaticamente os rascunhos fiscais desta fazenda.</p>
+          </div>
+          <span class="nf-pill is-neutral">Cadastro unificado</span>
+        </div>
+
+        <form method="post" action="/producao/nfe/configuracao/emitente" class="mt-4 space-y-4">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+          <div class="nf-subblock">
+            <p class="nf-subblock-title">Identificação fiscal do emitente</p>
+            <div class="nf-grid-3">
+              <label class="nf-field">
+                <span class="nf-field-label">Tipo de emitente</span>
+                <select name="person_type" class="nf-select">
+                  <option value="pf" {% if not cfg or cfg.person_type == 'pf' %}selected{% endif %}>Produtor rural (CPF)</option>
+                  <option value="cnpj" {% if cfg and cfg.person_type == 'cnpj' %}selected{% endif %}>Pessoa jurídica (CNPJ · expansão)</option>
+                </select>
+              </label>
+              <label class="nf-field">
+                <span class="nf-field-label">Nome completo / Razão social</span>
+                <input name="name" maxlength="180" value="{{ issuer.name if issuer else '' }}" placeholder="Nome do produtor titular" class="nf-input">
+              </label>
+              <label class="nf-field">
+                <span class="nf-field-label">CPF ou CNPJ</span>
+                <input name="document" maxlength="18" value="{{ (cfg.document if cfg and cfg.document else (issuer.cpf if issuer else '')) }}" placeholder="Somente números" class="nf-input">
+              </label>
+              <label class="nf-field">
+                <span class="nf-field-label">Inscrição Estadual (IE)</span>
+                <input name="state_registration" maxlength="30" value="{{ (cfg.state_registration if cfg and cfg.state_registration else (issuer.state_registration if issuer else '')) }}" placeholder="IE do estabelecimento rural" class="nf-input">
+              </label>
+              <label class="nf-field">
+                <span class="nf-field-label">CRT</span>
+                <select name="crt" class="nf-select">
+                  <option value="">Não informado</option>
+                  {% for code, label in allowed_crts %}
+                  <option value="{{ code }}" {% if cfg and cfg.crt == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label class="nf-field">
+                <span class="nf-field-label">UF do emitente</span>
+                <input name="state" maxlength="2" value="{{ (cfg.state if cfg else (issuer.state if issuer else 'BA')) }}" placeholder="BA" class="nf-input">
+              </label>
+            </div>
+          </div>
+
+          <div class="nf-subblock">
+            <p class="nf-subblock-title">Endereço do estabelecimento</p>
+            <div class="nf-grid-3">
+              <label class="nf-field"><span class="nf-field-label">CEP</span><input name="postal_code" maxlength="9" value="{{ issuer.postal_code if issuer else '' }}" placeholder="00000-000" class="nf-input"></label>
+              <label class="nf-field"><span class="nf-field-label">Logradouro / Estrada</span><input name="street" maxlength="180" value="{{ issuer.street if issuer else '' }}" placeholder="Rodovia, fazenda ou rua" class="nf-input"></label>
+              <label class="nf-field"><span class="nf-field-label">Número</span><input name="number" maxlength="30" value="{{ issuer.number if issuer else '' }}" placeholder="S/N se não houver" class="nf-input"></label>
+              <label class="nf-field"><span class="nf-field-label">Complemento</span><input name="complement" maxlength="120" value="{{ issuer.complement if issuer else '' }}" placeholder="Opcional" class="nf-input"></label>
+              <label class="nf-field"><span class="nf-field-label">Bairro / Localidade</span><input name="district" maxlength="120" value="{{ issuer.district if issuer else '' }}" placeholder="Zona rural ou distrito" class="nf-input"></label>
+              <label class="nf-field"><span class="nf-field-label">Município</span><input name="city" maxlength="120" value="{{ issuer.city if issuer else '' }}" placeholder="Ex.: Vitória da Conquista" class="nf-input"></label>
+              <label class="nf-field"><span class="nf-field-label">Código IBGE (7 dígitos)</span><input name="municipality_code" maxlength="7" inputmode="numeric" value="{{ issuer.municipality_code if issuer else '' }}" placeholder="Preenchido automaticamente se conhecido" class="nf-input"></label>
+            </div>
+          </div>
+
+          <div class="nf-subblock">
+            <p class="nf-subblock-title">Série, numeração e credenciamento SEFAZ</p>
+            <div class="nf-grid-4">
+              <label class="nf-field"><span class="nf-field-label">Série padrão (PF: 920–969)</span><input type="number" name="default_series" min="0" max="969" value="{{ cfg.default_series if cfg else 920 }}" class="nf-input"></label>
+              <label class="nf-field"><span class="nf-field-label">Próximo número</span><input type="number" name="next_number" min="1" max="999999999" value="{{ cfg.next_number if cfg else 1 }}" class="nf-input"></label>
+              <label class="nf-field"><span class="nf-field-label">Ambiente</span>
+                <select name="environment" class="nf-select">
+                  {% for code, label in allowed_environments %}
+                  <option value="{{ code }}" {% if cfg and cfg.environment == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label class="nf-field"><span class="nf-field-label">Credenciamento SEFAZ</span>
+                <select name="sefaz_credential_status" class="nf-select">
+                  {% for code, label in allowed_credential_statuses %}
+                  <option value="{{ code }}" {% if cfg and cfg.sefaz_credential_status == code %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <label class="mt-3 flex items-center gap-2.5 text-sm text-[#16201A]">
+              <input type="checkbox" name="pilot_homologacao_enabled" value="1" {% if cfg and cfg.pilot_homologacao_enabled %}checked{% endif %} class="rounded border-[#D6DDD5] text-[#446A36] focus:ring-[#446A36]">
+              <span>Habilitar esta fazenda como produtor piloto de homologação (transmissão real segue bloqueada até liberação da trava)</span>
+            </label>
+          </div>
+
+          <div class="nf-form-actions">
+            <p class="nf-form-hint">Se o município estiver na tabela IBGE local, o código de 7 dígitos é preenchido automaticamente.</p>
+            {% if can_write_page %}<button class="sf-btn sf-btn-primary" type="submit">Salvar configuração fiscal</button>{% endif %}
+          </div>
+        </form>
+      </section>
+
+      <section id="certificado-a1" class="nf-card" aria-labelledby="cert-heading">
+        <div class="nf-card-head">
+          <div>
+            <h2 id="cert-heading" class="nf-card-title">2. Certificado Digital A1 (`.pfx` / `.p12`)</h2>
+            <p class="nf-card-desc">O arquivo e a senha são validados em memória e criptografados com <strong>AES-256-GCM</strong> vinculados a esta fazenda. A chave mestra fica fora do banco de dados.</p>
+          </div>
+          {% if master_key_configured %}
+          <span class="nf-pill is-ok">Cofre pronto</span>
+          {% else %}
+          <span class="nf-pill is-warn">Chave mestra pendente</span>
+          {% endif %}
+        </div>
+
+        {% if not master_key_configured %}
+        <div class="mt-3 nf-banner">
+          <span class="nf-banner-dot" aria-hidden="true"></span>
+          <span>Defina a variável de ambiente <code>NFE_CERT_MASTER_KEY</code> (mínimo 32 caracteres) no servidor antes de carregar um certificado A1.</span>
+        </div>
+        {% endif %}
+
+        {% if can_write_page and can_manage_cert %}
+        <form method="post" action="/producao/nfe/configuracao/certificado" enctype="multipart/form-data" class="mt-4">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="nf-grid-3">
+            <label class="nf-field">
+              <span class="nf-field-label">Arquivo do certificado A1 (`.pfx` ou `.p12`)</span>
+              <input type="file" name="certificate_file" accept=".pfx,.p12" required class="nf-input">
+            </label>
+            <label class="nf-field">
+              <span class="nf-field-label">Senha do certificado</span>
+              <input type="password" name="certificate_password" autocomplete="new-password" required placeholder="Senha do arquivo .pfx" class="nf-input">
+            </label>
+            <label class="nf-field">
+              <span class="nf-field-label">Ambiente do certificado</span>
+              <select name="environment" class="nf-select">
+                <option value="homologacao">Homologação (tpAmb=2)</option>
+              </select>
+            </label>
+          </div>
+          <div class="nf-form-actions">
+            <p class="nf-form-hint">Somente certificados A1 válidos e não expirados são aceitos. Ao carregar um novo, o anterior é desativado.</p>
+            <button class="sf-btn sf-btn-primary" type="submit" {% if not master_key_configured %}disabled{% endif %}>Criptografar e salvar certificado A1</button>
+          </div>
+        </form>
+        {% elif not can_manage_cert %}
+        <p class="mt-3 text-sm text-[#5B6660]">Apenas o proprietário ou administrador da organização possui permissão (<code>nfe.certificate.manage</code>) para carregar ou desativar certificados A1.</p>
+        {% endif %}
+
+        {% if certificates %}
+        <div class="mt-5 space-y-2.5">
+          <h3 class="nf-subblock-title">Certificados registrados nesta fazenda</h3>
+          {% for cert in certificates %}
+          <div class="nf-subblock flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div class="space-y-1 text-xs">
+              <div class="flex flex-wrap items-center gap-2">
+                <strong class="text-sm text-[#16201A]">{{ cert.subject_cn or 'Certificado A1' }}</strong>
+                {% if cert.is_active %}<span class="nf-pill is-ok">Ativo</span>{% else %}<span class="nf-pill is-neutral">Inativo</span>{% endif %}
+                <span class="nf-pill is-neutral">{{ cert.environment }}</span>
+              </div>
+              <p class="text-[#5B6660]">Emissor: {{ cert.issuer_cn or '-' }} · Validade: <span class="tabular-nums">{{ cert.valid_from.strftime('%d/%m/%Y') if cert.valid_from else '-' }} até {{ cert.valid_until.strftime('%d/%m/%Y') if cert.valid_until else '-' }}</span></p>
+              <p class="font-mono text-[#5B6660] tabular-nums">SHA-256: {{ cert.fingerprint_sha256[:16] }}…</p>
+            </div>
+            {% if cert.is_active and can_write_page and can_manage_cert %}
+            <form method="post" action="/producao/nfe/configuracao/certificado/{{ cert.id }}/desativar">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="sf-btn sf-btn-secondary">Desativar</button>
+            </form>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="mt-4 text-sm text-[#5B6660]">Nenhum certificado A1 carregado para esta fazenda ainda.</p>
+        {% endif %}
+      </section>
+    </div>
+
+    <aside class="nf-aside" aria-label="Prontidão de homologação desta fazenda">
+      <section class="nf-card">
+        <div class="nf-card-head">
+          <h2 class="nf-card-title">Prontidão de homologação</h2>
+          <span class="nf-pill {% if readiness.ready_for_official_homologacao %}is-ok{% else %}is-warn{% endif %} tabular-nums">{{ readiness_pct }}%</span>
+        </div>
+        <div class="mt-2 nf-progress" role="progressbar" aria-valuenow="{{ readiness_pct }}" aria-valuemin="0" aria-valuemax="100">
+          <div class="nf-progress-bar" style="width: {{ readiness_pct }}%;"></div>
+        </div>
+        <ul class="mt-4 nf-check-list">
+          {% for check in readiness.checks %}
+          <li class="nf-check-item">
+            <span class="text-xs font-medium text-[#16201A]">{{ check.label }}</span>
+            {% if check.ok %}
+            <span class="nf-pill is-ok shrink-0">Ok</span>
+            {% else %}
+            <span class="nf-pill is-warn shrink-0">Pendente</span>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        <div class="mt-4 nf-actions-stack">
+          <a class="sf-btn sf-btn-secondary" href="/producao/nfe/painel-tecnico">Abrir painel técnico NF-e</a>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+{% endblock %}

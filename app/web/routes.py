@@ -23094,6 +23094,187 @@ async def nfe_client_config_save(request: Request, db: Session = Depends(get_db)
     return _redirect("/producao/nfe/painel-tecnico")
 
 
+@router.get("/producao/nfe/configuracao")
+def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
+                         user: User = Depends(get_current_user_web),
+                         csrf_token: str = Depends(get_csrf_token)):
+    import os
+    from app.models.nfe_draft import NfeCertificateVault, NfeIssuerProfile
+    from app.services.nfe_client_config import (
+        ALLOWED_CREDENTIAL_STATUSES,
+        ALLOWED_CRTS,
+        ALLOWED_ENVIRONMENTS,
+        evaluate_pilot_homologation_readiness,
+    )
+    from app.services.nfe_permissions import has_fiscal_permission
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    if not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=403, detail="Fazenda indisponível.")
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    readiness = evaluate_pilot_homologation_readiness(db, organization_id=user.organization_id, farm_id=farm.id)
+    certificates = (
+        db.query(NfeCertificateVault)
+        .filter_by(organization_id=user.organization_id, farm_id=farm.id)
+        .order_by(NfeCertificateVault.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    master_key_configured = len(os.environ.get("NFE_CERT_MASTER_KEY", "").strip()) >= 32
+    return templates.TemplateResponse("nfe_farm_config.html", _base_context(
+        request, user, csrf_token, "commercialization",
+        title="Configuração fiscal da fazenda",
+        issuer=issuer,
+        cfg=readiness["config"],
+        readiness=readiness,
+        certificates=certificates,
+        master_key_configured=master_key_configured,
+        can_manage_cert=has_fiscal_permission(user, "nfe.certificate.manage"),
+        allowed_environments=ALLOWED_ENVIRONMENTS,
+        allowed_credential_statuses=ALLOWED_CREDENTIAL_STATUSES,
+        allowed_crts=ALLOWED_CRTS,
+        _repo=repo,
+    ))
+
+
+@router.post("/producao/nfe/configuracao/emitente")
+async def nfe_farm_config_save(request: Request, db: Session = Depends(get_db),
+                               user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import NfeIssuerProfile
+    from app.services.ibge_municipalities import resolve_municipality_code
+    from app.services.nfe_client_config import save_client_fiscal_config
+    from app.services.nfe_draft import clean_issuer
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    if not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=403, detail="Fazenda indisponível.")
+    try:
+        cfg = save_client_fiscal_config(
+            db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id, data=form
+        )
+        # Sincroniza NfeIssuerProfile quando emitente for PF na Bahia (mantendo compatibilidade com rascunhos).
+        mun_code = str(form.get("municipality_code") or "").strip()
+        if not mun_code:
+            mun_code = resolve_municipality_code(str(form.get("city") or ""), cfg.state)
+        issuer_payload = {
+            "name": form.get("name") or "",
+            "cpf": cfg.document if cfg.person_type == "pf" else "",
+            "state_registration": cfg.state_registration,
+            "postal_code": form.get("postal_code") or "",
+            "street": form.get("street") or "",
+            "number": form.get("number") or "",
+            "complement": form.get("complement") or "",
+            "district": form.get("district") or "",
+            "city": form.get("city") or "",
+            "municipality_code": mun_code,
+            "state": cfg.state if cfg.state == "BA" else "BA",
+        }
+        issuer_values = clean_issuer(issuer_payload)
+        issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+        if not issuer:
+            issuer = NfeIssuerProfile(id=uuid4().hex, organization_id=user.organization_id, farm_id=farm.id)
+            db.add(issuer)
+        for key, value in issuer_values.items():
+            setattr(issuer, key, value)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/nfe/configuracao")
+    except IntegrityError:
+        db.rollback()
+        _flash(request, "error", "A configuração fiscal foi alterada simultaneamente. Tente novamente.")
+        return _redirect("/producao/nfe/configuracao")
+    _flash(request, "success", "Configuração fiscal da fazenda salva com sucesso. A transmissão real permanece bloqueada.")
+    return _redirect("/producao/nfe/configuracao")
+
+
+@router.post("/producao/nfe/configuracao/certificado")
+async def nfe_farm_certificate_upload(request: Request, db: Session = Depends(get_db),
+                                      user: User = Depends(get_current_user_web)):
+    from app.services.nfe_certificate_vault import store_encrypted_certificate
+    from app.services.nfe_permissions import require_fiscal_permission
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    if not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=403, detail="Fazenda indisponível.")
+    try:
+        require_fiscal_permission(user, "nfe.certificate.manage")
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Sem permissão para gerenciar certificado A1.") from None
+
+    env = str(form.get("environment") or "homologacao").strip().lower()
+    if env != "homologacao":
+        _flash(request, "error", "Nesta etapa apenas certificados para o ambiente de homologação podem ser carregados.")
+        return _redirect("/producao/nfe/configuracao")
+
+    upload = form.get("certificate_file")
+    password = str(form.get("certificate_password") or "")
+    if not upload or not hasattr(upload, "read"):
+        _flash(request, "error", "Selecione o arquivo do certificado A1 (.pfx ou .p12).")
+        return _redirect("/producao/nfe/configuracao")
+    pfx_bytes = await upload.read()
+    try:
+        stored = store_encrypted_certificate(
+            db,
+            organization_id=user.organization_id,
+            farm_id=farm.id,
+            environment=env,
+            pfx_bytes=pfx_bytes,
+            password=password,
+            user_id=user.id,
+        )
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/nfe/configuracao")
+    _flash(request, "success", f"Certificado A1 ({stored.subject_cn or 'titular'}) criptografado e salvo com segurança.")
+    return _redirect("/producao/nfe/configuracao")
+
+
+@router.post("/producao/nfe/configuracao/certificado/{cert_id}/desativar")
+async def nfe_farm_certificate_deactivate(cert_id: str, request: Request, db: Session = Depends(get_db),
+                                          user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import NfeCertificateVault
+    from app.services.nfe_permissions import require_fiscal_permission
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    if not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=403, detail="Fazenda indisponível.")
+    try:
+        require_fiscal_permission(user, "nfe.certificate.manage")
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Sem permissão para gerenciar certificado A1.") from None
+
+    cert = db.query(NfeCertificateVault).filter_by(
+        id=cert_id, organization_id=user.organization_id, farm_id=farm.id
+    ).first()
+    if not cert:
+        raise HTTPException(status_code=404, detail="Certificado não encontrado.")
+    cert.is_active = False
+    db.commit()
+    _flash(request, "success", "Certificado A1 desativado nesta fazenda.")
+    return _redirect("/producao/nfe/configuracao")
+
+
 @router.get("/producao/rascunhos-fiscais/{draft_id}/versoes/{version}/json")
 def fiscal_snapshot_download(draft_id: str, version: int, request: Request, db: Session = Depends(get_db),
                              user: User = Depends(get_current_user_web)):
