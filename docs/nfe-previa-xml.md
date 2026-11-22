@@ -79,3 +79,12 @@ Foram implementados os componentes locais de identificação e numeração para 
 - **Faixa de séries para produtor rural PF:** segue a faixa `920`–`969` (referência NT 2018.001). O algoritmo de chave já aceita `document_type='cnpj'` (séries `0`–`889`) e todas as 27 UFs do IBGE para expansão futura, mantendo o fluxo da interface restrito à Bahia e a CPF nesta etapa.
 - **Chave de acesso simulada (44 dígitos):** composta com `cUF`, `AAMM`, documento com 14 posições (`000` + CPF para pessoa física), `mod`, `serie`, `nNF`, `tpEmis`, `cNF` aleatório (evitando padrões proibidos pela NT 2019.001 e igualdade com `nNF`) e dígito verificador `cDV` calculado pelo Módulo 11.
 - **Limites preservados:** a chave simulada aparece apenas na tela de revisão e na simulação interna (`preparacao_sisfarm/identificacao_teste`). O arquivo `estrutura-incompleta-nao-transmitir.xml` continua deliberadamente sem `Id`, assinatura ou tributação e segue rejeitado pelo XSD. Nenhuma emissão real ou transmissão à SEFAZ foi habilitada.
+
+
+## Snapshots imutáveis e histórico local
+
+O serviço `app/services/nfe_snapshots.py` e as tabelas `nfe_draft_snapshots` e `nfe_draft_events` registram versões congeladas e uma linha do tempo local do rascunho:
+
+- **Congelamento imutável com SHA-256:** ao congelar uma versão de teste (`v1`, `v2`, …), o sistema serializa em JSON canônico todos os dados efetivamente salvos naquele momento (snapshot comercial da venda, cadastro do produtor, destinatário/operação salvos, dados técnicos, identificação fictícia e pendências de preenchimento) e armazena o hash SHA-256. Alterações posteriores no cadastro do produtor ou nos formulários do rascunho não alteram versões anteriores; sugestões não salvas do comprador nunca entram no snapshot.
+- **Verificação de integridade:** a listagem na tela e o download em JSON (`/producao/rascunhos-fiscais/{draft_id}/versoes/{version}/json`) conferem o SHA-256 em tempo constante (`hmac.compare_digest`) e bloqueiam exportação caso haja divergência.
+- **Histórico local:** alterações nos dados do produtor, destinatário, dados técnicos, identificação de teste e congelamento de versões são registradas em `nfe_draft_events`. Trata-se apenas de trilha preparatória local, distinta de eventos fiscais da SEFAZ (cancelamento, CC-e, etc.). Nenhuma assinatura, autorização ou transmissão foi habilitada.

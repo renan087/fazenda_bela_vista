@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -14,9 +14,6 @@ class NfeDraft(Base):
     snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-
-from sqlalchemy import UniqueConstraint
 
 
 class NfeIssuerProfile(Base):
@@ -100,3 +97,36 @@ class NfeDraftIdentification(Base):
     payment_method: Mapped[str] = mapped_column(String(2), nullable=False, default='')
     updated_by: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class NfeDraftSnapshot(Base):
+    """Versão imutável local do rascunho para conferência; não possui validade fiscal."""
+    __tablename__ = 'nfe_draft_snapshots'
+    __table_args__ = (
+        UniqueConstraint('draft_id', 'version', name='uq_nfe_draft_snapshot_version'),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    draft_id: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    farm_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default='congelado_teste')
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    note: Mapped[str] = mapped_column(String(240), nullable=False, default='')
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class NfeDraftEvent(Base):
+    """Histórico local de alterações preparatórias do rascunho; não é evento SEFAZ."""
+    __tablename__ = 'nfe_draft_events'
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    draft_id: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    farm_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    summary: Mapped[str] = mapped_column(String(240), nullable=False)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default='{}')
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -22634,6 +22634,7 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
         PRESENCE_INDICATORS,
         build_simulated_access_key_summary,
     )
+    from app.services.nfe_snapshots import list_draft_events, list_draft_snapshots
     issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id,
                                                   farm_id=scope["active_farm_id"]).first()
     snapshot = json.loads(draft.snapshot_json)
@@ -22649,10 +22650,12 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
         draft_id=draft.id, organization_id=user.organization_id, farm_id=scope["active_farm_id"]
     ).first()
     key_summary = build_simulated_access_key_summary(issuer, technical, identification)
+    snapshots = list_draft_snapshots(db, draft_id=draft.id, organization_id=user.organization_id, farm_id=scope["active_farm_id"])
+    draft_events = list_draft_events(db, draft_id=draft.id, organization_id=user.organization_id, farm_id=scope["active_farm_id"])
     return templates.TemplateResponse("nfe_draft.html", _base_context(
         request, user, csrf_token, "commercialization", title="Rascunho fiscal", draft=draft,
         issuer=issuer, details=prepared, snapshot=snapshot, technical=technical, technical_items=technical_items,
-        identification=identification, key_summary=key_summary,
+        identification=identification, key_summary=key_summary, snapshots=snapshots, draft_events=draft_events,
         consumer_indicators=CONSUMER_INDICATORS, presence_indicators=PRESENCE_INDICATORS, payment_methods=PAYMENT_METHODS,
         item_review={r['item_index']: r['issues'] for r in review_item_values(snapshot, technical)},
         tax_summaries=summarize_test_tax_values(snapshot, technical),
@@ -22742,6 +22745,12 @@ async def fiscal_technical_save(draft_id: str, request: Request, db: Session = D
     row.data_json = json.dumps(values, ensure_ascii=False)
     row.schema_version = 1
     row.updated_by = user.id
+    from app.services.nfe_snapshots import record_draft_event
+    record_draft_event(
+        db, draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id,
+        event_type="dados_tecnicos_salvos", summary="Dados fiscais e de transporte de teste atualizados.",
+        user_id=user.id,
+    )
     try:
         db.commit()
     except IntegrityError:
@@ -22779,6 +22788,12 @@ async def fiscal_details_save(draft_id: str, request: Request, db: Session = Dep
         db.add(details)
     details.data_json = json.dumps(values, ensure_ascii=False)
     details.updated_by = user.id
+    from app.services.nfe_snapshots import record_draft_event
+    record_draft_event(
+        db, draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id,
+        event_type="detalhes_salvos", summary="Dados do destinatário, produto e operação salvos.",
+        user_id=user.id,
+    )
     try:
         db.commit()
     except IntegrityError:
@@ -22816,6 +22831,12 @@ async def fiscal_issuer_save(draft_id: str, request: Request, db: Session = Depe
         db.add(issuer)
     for key, value in values.items():
         setattr(issuer, key, value)
+    from app.services.nfe_snapshots import record_draft_event
+    record_draft_event(
+        db, draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id,
+        event_type="emitente_salvo", summary="Cadastro preparatório do produtor atualizado.",
+        user_id=user.id,
+    )
     try:
         db.commit()
     except IntegrityError:
@@ -22843,7 +22864,7 @@ async def fiscal_identification_save(draft_id: str, request: Request, db: Sessio
     if not draft or not farm or farm.organization_id != user.organization_id:
         raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
     try:
-        reserve_or_update_test_identification(
+        ident = reserve_or_update_test_identification(
             db,
             organization_id=user.organization_id,
             farm_id=farm.id,
@@ -22858,8 +22879,99 @@ async def fiscal_identification_save(draft_id: str, request: Request, db: Sessio
         db.rollback()
         _flash(request, "error", "A numeração de teste foi atualizada simultaneamente. Tente novamente.")
         return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+    from app.services.nfe_snapshots import record_draft_event
+    record_draft_event(
+        db, draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id,
+        event_type="identificacao_teste_salva",
+        summary=f"Identificação de teste salva (série {ident.series}, número fictício {ident.number}).",
+        user_id=user.id,
+        metadata={"series": ident.series, "number": ident.number},
+        commit=True,
+    )
     _flash(request, "success", "Identificação e numeração fictícia salvas para teste. Nenhuma nota foi emitida ou transmitida.")
     return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+
+
+@router.post("/producao/rascunhos-fiscais/{draft_id}/congelar-versao")
+async def fiscal_snapshot_freeze(draft_id: str, request: Request, db: Session = Depends(get_db),
+                                 user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import (
+        NfeDraft,
+        NfeDraftDetails,
+        NfeDraftIdentification,
+        NfeDraftTechnicalData,
+        NfeIssuerProfile,
+    )
+    from app.services.nfe_snapshots import freeze_draft_snapshot
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    draft = db.query(NfeDraft).filter_by(id=draft_id, organization_id=user.organization_id,
+                                          farm_id=scope["active_farm_id"]).first()
+    if not draft or not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    details_row = db.query(NfeDraftDetails).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    technical_row = db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    identification = db.query(NfeDraftIdentification).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    try:
+        frozen = freeze_draft_snapshot(
+            db,
+            draft=draft,
+            issuer=issuer,
+            details=json.loads(details_row.data_json) if details_row else {},
+            details_saved=bool(details_row),
+            technical=json.loads(technical_row.data_json) if technical_row else {},
+            identification=identification,
+            user_id=user.id,
+            note=str(form.get("note") or ""),
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+    except IntegrityError:
+        db.rollback()
+        _flash(request, "error", "Outra versão foi congelada simultaneamente. Tente novamente.")
+        return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+    _flash(request, "success", f"Versão de teste v{frozen.version} congelada com hash SHA-256. Nenhuma nota foi emitida.")
+    return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+
+
+@router.get("/producao/rascunhos-fiscais/{draft_id}/versoes/{version}/json")
+def fiscal_snapshot_download(draft_id: str, version: int, request: Request, db: Session = Depends(get_db),
+                             user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import NfeDraft, NfeDraftSnapshot
+    from app.services.nfe_snapshots import export_snapshot_json_bytes
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    draft = db.query(NfeDraft).filter_by(id=draft_id, organization_id=user.organization_id, farm_id=scope["active_farm_id"]).first()
+    if not draft or not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
+    row = db.query(NfeDraftSnapshot).filter_by(
+        draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id, version=version
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Versão congelada não encontrada.")
+    try:
+        content = export_snapshot_json_bytes(row)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="A integridade desta versão congelada não pôde ser confirmada.") from None
+    return Response(
+        content,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="snapshot-teste-v{version}.json"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.post("/producao/vendas/{sale_code}/situacao")
