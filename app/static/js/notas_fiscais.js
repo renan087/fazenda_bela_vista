@@ -316,6 +316,51 @@
     });
   }
 
+  /* ---------------------------------------------------------------- operação fiscal: abas e exemplo de tributos */
+  function initOperationEditor(root) {
+    var tabs = root.querySelectorAll('[data-nx-optab]');
+    function show(key) {
+      tabs.forEach(function (t) { t.setAttribute('aria-selected', t.getAttribute('data-nx-optab') === key ? 'true' : 'false'); });
+      root.querySelectorAll('[data-nx-oppanel]').forEach(function (p) { p.hidden = p.getAttribute('data-nx-oppanel') !== key; });
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () { show(t.getAttribute('data-nx-optab')); });
+      t.addEventListener('keydown', function (e) {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        var next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+        next.focus(); show(next.getAttribute('data-nx-optab'));
+      });
+    });
+    var form = tabs.length ? tabs[0].closest('form') : null;
+    if (form) form.addEventListener('invalid', function (e) {
+      var panel = e.target.closest('[data-nx-oppanel]'); if (panel && panel.hidden) show(panel.getAttribute('data-nx-oppanel'));
+    }, true);
+    var calc = root.querySelector('[data-nx-taxcalc]');
+    if (!calc) return;
+    var GROSS = 156000;
+    function field(k) { return calc.querySelector('[data-nx-tax="' + k + '"]'); }
+    function out(k, v) { var el = calc.querySelector('[data-nx-out="' + k + '"]'); if (el) el.textContent = v; }
+    function rate(k) { var el = field(k); var raw = String(el && el.value || '').replace(/[%\s]/g, ''); if (raw.indexOf(',') >= 0) raw = raw.replace(/\./g, '').replace(',', '.'); var n = parseFloat(raw); return isFinite(n) && n >= 0 ? n : 0; }
+    function has(k) { var el = field(k); return !!(el && el.value.trim()); }
+    function brl(n) { return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function pct(n) { return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) + '%'; }
+    var labels = { '40': 'isento', '41': 'não tributada', '50': 'suspenso', '60': 'cobrado antes (ST)', '90': 'outras situações' };
+    function update() {
+      var cst = field('cst').value; var icms = field('icms'); var on = cst === '00';
+      icms.disabled = !on; icms.classList.toggle('is-off', !on);
+      var help = calc.querySelector('[data-nx-tax-help]');
+      if (help) help.textContent = on ? 'Usada para calcular base e valor em cada lote' : 'Não se aplica nesta situação';
+      out('icms', !cst ? 'escolha a situação' : on ? brl(GROSS * rate('icms') / 100) + ' (' + pct(rate('icms')) + ')' : 'R$ 0,00 · ' + (labels[cst] || ''));
+      var any = has('cbs') || has('ibsuf') || has('ibsmun');
+      out('cbsl', 'CBS' + (any ? ' (' + pct(rate('cbs')) + ')' : ''));
+      out('ibsl', 'IBS' + (any ? ' (' + pct(rate('ibsuf') + rate('ibsmun')) + ')' : ''));
+      out('cbs', any ? brl(GROSS * rate('cbs') / 100) : 'sem alíquota');
+      out('ibs', any ? brl(GROSS * (rate('ibsuf') + rate('ibsmun')) / 100) : 'sem alíquota');
+      var fun = field('fun'); out('fun', fun ? fun.options[fun.selectedIndex].text.toLowerCase() : '—');
+    }
+    calc.addEventListener('input', update); calc.addEventListener('change', update); update();
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     var root = document.querySelector('[data-nx-page]');
     if (!root) return;
@@ -323,6 +368,6 @@
     if (kind === 'list') initList(root);
     initMoreMenus(root);
     initCounters(root);
-    if (kind === 'config') initConfig(root);
+    if (kind === 'config') { initConfig(root); initOperationEditor(root); }
   });
 })();

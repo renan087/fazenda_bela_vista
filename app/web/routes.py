@@ -22677,6 +22677,9 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
     issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id,
                                                   farm_id=scope["active_farm_id"]).first()
     snapshot = json.loads(draft.snapshot_json)
+    from app.services.nfe_notes import load_note as _nf_load_note
+    if farm is not None and _nf_load_note(db, draft, issuer=issuer)["status"] in ("rascunho", "pendente", "rejeitada"):
+        _nf_resync(db, user, draft, issuer)
     details = db.query(NfeDraftDetails).filter_by(draft_id=draft.id, organization_id=user.organization_id,
                                                   farm_id=scope["active_farm_id"]).first()
     buyer = db.query(CoffeeBuyer).filter_by(id=snapshot.get("comprador_id"), organization_id=user.organization_id).first() if snapshot.get("comprador_id") else None
@@ -22707,7 +22710,8 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
     key_summary = build_simulated_access_key_summary(issuer, technical, identification)
     snapshots = list_draft_snapshots(db, draft_id=draft.id, organization_id=user.organization_id, farm_id=scope["active_farm_id"])
     draft_events = list_draft_events(db, draft_id=draft.id, organization_id=user.organization_id, farm_id=scope["active_farm_id"])
-    from app.services.nfe_fiscal_setup import active_operations, draft_sources, list_products
+    from app.services.harvest_lots import LOT_STAGE_LABELS
+    from app.services.nfe_fiscal_setup import active_operations, draft_sources, list_products, product_view
     from app.services.nfe_notes import load_note
     note = load_note(db, draft, issuer=issuer)
     step = request.query_params.get("etapa") or ""
@@ -22731,7 +22735,8 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
         tax_review=review_test_tax_fields(snapshot, technical),
         review=review_preparation(snapshot, issuer, prepared, details_saved=bool(details)), _repo=repo,
         step=step, note=note, sources=draft_sources(db, draft=draft),
-        fiscal_products=list_products(db, organization_id=user.organization_id, farm_id=scope["active_farm_id"]),
+        fiscal_products=[product_view(p) for p in list_products(db, organization_id=user.organization_id, farm_id=scope["active_farm_id"])],
+        lot_stage_label=LOT_STAGE_LABELS.get(_nf_lot_stage(db, farm, draft) or "", "") if farm else "",
         fiscal_operations=active_operations(db, organization_id=user.organization_id, farm_id=scope["active_farm_id"]),
         freight_options=[("9", "Sem transporte (retirada)"), ("0", "Por conta da fazenda (CIF)"), ("1", "Por conta do comprador (FOB)"),
                          ("2", "Por conta de terceiros"), ("3", "Transporte próprio da fazenda"), ("4", "Transporte próprio do comprador")]))
@@ -23239,7 +23244,7 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
         _repo=repo,
         section=section, item=item, product_views=product_views, operations=operations, has_logo=bool(logo), prefs=prefs,
         setup_steps=setup_steps, cert_days=cert_days, lot_stage_choices=fs.LOT_STAGE_CHOICES, units=fs.UNITS, origins=fs.ORIGINS,
-        finalities=fs.FINALITIES, funrural_options=fs.FUNRURAL_OPTIONS, product_templates=fs.PRODUCT_TEMPLATES,
+        finalities=fs.FINALITIES, funrural_options=fs.FUNRURAL_OPTIONS, icms_csts=fs.ICMS_CSTS, product_templates=fs.PRODUCT_TEMPLATES,
         operation_templates=fs.OPERATION_TEMPLATES, operation_missing=fs.operation_missing,
     ))
 
@@ -27144,6 +27149,38 @@ def fiscal_note_delete(draft_id: str, request: Request, csrf_token: str = Form(.
     return _redirect("/notas-fiscais")
 
 
+def _nf_saved_json(db: Session, user: User, farm: Farm, draft) -> tuple[dict, dict]:
+    from app.models.nfe_draft import NfeDraftDetails, NfeDraftTechnicalData
+    rows = [db.query(m).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+            for m in (NfeDraftDetails, NfeDraftTechnicalData)]
+    return tuple(json.loads(r.data_json) if r else {} for r in rows)
+
+
+def _nf_buyer(db: Session, user: User, draft):
+    snapshot = json.loads(draft.snapshot_json)
+    return (db.query(CoffeeBuyer).filter_by(id=snapshot.get("comprador_id"), organization_id=user.organization_id).first()
+            if snapshot.get("comprador_id") else None)
+
+
+def _nf_resync(db: Session, user: User, draft, issuer, *, product=None) -> None:
+    """Reaplica o cadastro fiscal atual ao rascunho (CFOP pelo estado do comprador, tributos pelas alíquotas)."""
+    from app.services.nfe_fiscal_setup import resync_draft
+    try:
+        resync_draft(db, draft=draft, buyer=_nf_buyer(db, user, draft), issuer_state=(issuer.state if issuer else "BA"),
+                     user_id=user.id, product=product)
+    except ValueError:
+        db.rollback()
+
+
+def _nf_lot_stage(db: Session, farm: Farm, draft):
+    from app.models.harvest import HarvestRecord
+    from app.services.coffee_sales import sale_records
+    from app.services.harvest_lots import stage_of
+    records = sale_records(db, farm.id, draft.sale_code)
+    harvest = db.get(HarvestRecord, records[0].harvest_id) if records and getattr(records[0], "harvest_id", None) else None
+    return stage_of(harvest)[0] if harvest is not None else None
+
+
 def _nf_create_draft_for_sale(db: Session, user: User, farm: Farm, sale_code: str, scope: dict):
     from app.models.harvest import HarvestRecord
     from app.models.nfe_draft import NfeIssuerProfile
@@ -27290,40 +27327,65 @@ async def fiscal_notes_batch(kind: str, request: Request, db: Session = Depends(
         "Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
 
 
-@router.post("/producao/rascunhos-fiscais/{draft_id}/aplicar-operacao")
-def fiscal_apply_operation_action(draft_id: str, request: Request, csrf_token: str = Form(...),
-                                  operation_id: str = Form(""), product_id: str = Form(""),
-                                  db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
-    from app.models.nfe_draft import NfeFiscalOperation, NfeFiscalProduct, NfeIssuerProfile
-    from app.services.nfe_fiscal_setup import apply_setup_to_draft
-    from app.services.nfe_notes import load_note
+@router.post("/producao/rascunhos-fiscais/{draft_id}/produto-fiscal")
+def fiscal_draft_pick_product(draft_id: str, request: Request, csrf_token: str = Form(...), product_id: str = Form(""),
+                              always: str = Form(""), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Troca o produto fiscal da nota (vale para todos os lotes). Os dados vêm do cadastro."""
+    from app.models.nfe_draft import NfeFiscalProduct, NfeIssuerProfile
+    from app.services.nfe_fiscal_setup import link_product_to_stage
     validate_csrf(request, csrf_token)
-    repo, scope, farm, denied = _nf_scope(request, db, user)
+    draft, issuer, farm, denied = _nf_editable_draft(request, db, user, draft_id)
     if denied:
         return denied
+    back = f"/producao/rascunhos-fiscais/{draft.id}"
+    product = db.query(NfeFiscalProduct).filter_by(id=product_id, organization_id=user.organization_id, farm_id=farm.id).first()
+    if not product:
+        _flash(request, "error", "Escolha um produto fiscal da lista.")
+        return _redirect(back)
+    if always == "1":
+        link_product_to_stage(db, product=product, stage=_nf_lot_stage(db, farm, draft))
+    _nf_resync(db, user, draft, issuer, product=product)
+    _flash(request, "success", f"Produto fiscal “{product.name}” aplicado à nota.")
+    return _redirect(back)
+
+
+@router.post("/producao/rascunhos-fiscais/{draft_id}/completar-produto")
+def fiscal_draft_complete_product(draft_id: str, request: Request, csrf_token: str = Form(...), description: str = Form(""),
+                                  ncm: str = Form(""), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Completa o cadastro do produto fiscal (vale para esta e as próximas notas) e atualiza o rascunho."""
+    from app.services.nfe_fiscal_setup import complete_product, draft_sources
+    validate_csrf(request, csrf_token)
+    draft, issuer, farm, denied = _nf_editable_draft(request, db, user, draft_id)
+    if denied:
+        return denied
+    back = f"/producao/rascunhos-fiscais/{draft.id}"
+    product = draft_sources(db, draft=draft)["product"]
+    if not product:
+        _flash(request, "error", "Escolha primeiro o produto fiscal da nota.")
+        return _redirect(back)
+    try:
+        complete_product(db, product=product, data={"description": description, "ncm": ncm})
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(back)
+    _nf_resync(db, user, draft, issuer, product=product)
+    _flash(request, "success", f"Cadastro de “{product.name}” completado. Vale também para as próximas notas.")
+    return _redirect(back)
+
+
+def _nf_editable_draft(request: Request, db: Session, user: User, draft_id: str):
+    from app.models.nfe_draft import NfeIssuerProfile
+    from app.services.nfe_notes import load_note
+    repo, scope, farm, denied = _nf_scope(request, db, user)
+    if denied:
+        return None, None, None, denied
     draft = _nf_draft(db, user, farm, draft_id)
     issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
     if load_note(db, draft, issuer=issuer)["status"] not in ("rascunho", "pendente", "rejeitada"):
         _flash(request, "error", "Esta nota já foi enviada e não pode ser alterada.")
-        return _redirect(f"/notas-fiscais/{draft.id}")
-    op = db.query(NfeFiscalOperation).filter_by(id=operation_id, organization_id=user.organization_id, farm_id=farm.id,
-                                                status="ativa").first()
-    product = db.query(NfeFiscalProduct).filter_by(id=product_id, organization_id=user.organization_id, farm_id=farm.id).first() if product_id else None
-    if not op:
-        _flash(request, "error", "Escolha uma operação fiscal ativa.")
-        return _redirect(f"/producao/rascunhos-fiscais/{draft.id}")
-    snapshot = json.loads(draft.snapshot_json)
-    buyer = (db.query(CoffeeBuyer).filter_by(id=snapshot.get("comprador_id"), organization_id=user.organization_id).first()
-             if snapshot.get("comprador_id") else None)
-    try:
-        apply_setup_to_draft(db, draft=draft, product=product, operation=op, buyer=buyer,
-                             issuer_state=(issuer.state if issuer else "BA"), user_id=user.id)
-    except ValueError as exc:
-        db.rollback()
-        _flash(request, "error", str(exc))
-        return _redirect(f"/producao/rascunhos-fiscais/{draft.id}")
-    _flash(request, "success", f"Operação “{op.name}” aplicada à nota.")
-    return _redirect(f"/producao/rascunhos-fiscais/{draft.id}")
+        return None, None, None, _redirect(f"/notas-fiscais/{draft.id}")
+    return draft, issuer, farm, None
 
 
 @router.post("/producao/rascunhos-fiscais/{draft_id}/emitir")
@@ -27479,9 +27541,18 @@ async def fiscal_draft_save_all(draft_id: str, request: Request, db: Session = D
     if load_note(db, draft, issuer=issuer)["status"] not in ("rascunho", "pendente", "rejeitada"):
         _flash(request, "error", "Esta nota já foi enviada e não pode ser alterada.")
         return _redirect(f"/notas-fiscais/{draft.id}")
+    # Dados fiscais vêm só do cadastro (produto e operação): o formulário não os altera.
+    prev_details, prev_tech = _nf_saved_json(db, user, farm, draft)
+    data = {k: form.get(k) for k in form.keys()}
+    for key in ("product_description", "product_ncm", "operation_nature", "operation_cfop"):
+        data[key] = prev_details.get(key, "")
+    for row in prev_tech.get("items", []):
+        for key, value in row.items():
+            if key != "item_index":
+                data[f"item_{row.get('item_index')}_{key}"] = value
     try:
-        details_values = clean_draft_details(form)
-        tech_values = clean_technical_data(form, json.loads(draft.snapshot_json))
+        details_values = clean_draft_details(data)
+        tech_values = clean_technical_data(data, json.loads(draft.snapshot_json))
         extra_values = clean_extra_data(form)
     except (ValueError, TypeError) as exc:
         _flash(request, "error", str(exc))
@@ -27501,6 +27572,7 @@ async def fiscal_draft_save_all(draft_id: str, request: Request, db: Session = D
         db.rollback()
         _flash(request, "error", "O rascunho foi alterado ao mesmo tempo em outra tela. Reabra e tente novamente.")
         return _redirect(back)
+    _nf_resync(db, user, draft, issuer)
     if form.get("next") == "conferir":
         note = load_note(db, draft, issuer=issuer)
         if note["status"] == "pendente":

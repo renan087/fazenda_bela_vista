@@ -54,7 +54,7 @@ def test_operation_activation_requires_user_responsibility_and_versions():
     assert op.status == 'rascunho' and op.cfop_in == '5101'
     with pytest.raises(ValueError, match='confirmação'):
         setup.activate_operation(db, organization_id=ORG, farm_id=FARM, user_id=USER, operation_id=op.id, accepted=False)
-    with pytest.raises(ValueError, match='CST do ICMS'):
+    with pytest.raises(ValueError, match='situação do ICMS'):
         setup.activate_operation(db, organization_id=ORG, farm_id=FARM, user_id=USER, operation_id=op.id, accepted=True)
     op = setup.save_operation(db, organization_id=ORG, farm_id=FARM, user_id=USER, operation_id=op.id,
                               data={'name': 'Venda de produção', 'nature': 'Venda de produção do estabelecimento',
@@ -65,7 +65,7 @@ def test_operation_activation_requires_user_responsibility_and_versions():
     # Editar uma ativa cria a versão 2 em rascunho; a v1 continua valendo até ativar a v2.
     v2 = setup.save_operation(db, organization_id=ORG, farm_id=FARM, user_id=USER, operation_id=op.id,
                               data={'name': 'Venda de produção', 'nature': 'Venda de produção do estabelecimento',
-                                    'cfop_in': '5101', 'icms_cst': '51'})
+                                    'cfop_in': '5101', 'icms_cst': '90'})
     assert v2.id != op.id and v2.version == 2 and v2.status == 'rascunho' and op.icms_cst == '41'
     setup.activate_operation(db, organization_id=ORG, farm_id=FARM, user_id=USER, operation_id=v2.id, accepted=True)
     db.refresh(op)
@@ -331,7 +331,82 @@ def test_config_routes_create_activate_and_apply_to_draft(monkeypatch):
     assert op.status == 'ativa' and op.activated_by == user.id
     from app.models.nfe_draft import NfeFiscalProduct
     product = db.query(NfeFiscalProduct).first()
-    resp = routes.fiscal_apply_operation_action(draft.id, SimpleNamespace(query_params={}), 'x', op.id, product.id, db, user)
+    resp = routes.fiscal_draft_pick_product(draft.id, SimpleNamespace(query_params={}), 'x', product.id, '', db, user)
     assert resp.status_code == 303
-    assert setup.draft_sources(db, draft=draft)['operation'].id == op.id
+    sources = setup.draft_sources(db, draft=draft)
+    assert sources['operation'].id == op.id and sources['product'].id == product.id
+    db.close()
+
+
+def test_operation_rates_calculate_item_taxes_and_new_version_resyncs_draft():
+    db = _db()
+    draft = _seed(db)
+    product = setup.create_product_from_template(db, organization_id=ORG, farm_id=FARM, user_id=USER, key='arabica')
+    with pytest.raises(ValueError, match='alíquota de CBS'):
+        setup.clean_operation_input({'name': 'X', 'cbs_rate': '150'})
+    op = setup.save_operation(db, organization_id=ORG, farm_id=FARM, user_id=USER,
+                              data={'name': 'Venda', 'nature': 'Venda de produção', 'cfop_in': '5101', 'icms_cst': '00',
+                                    'icms_rate': '18', 'ibs_cbs_cst': '000', 'ibs_cbs_class': '000001',
+                                    'cbs_rate': '0,9', 'ibs_uf_rate': '0,1'})
+    assert op.cbs_rate == '0.9' and op.icms_rate == '18'
+    setup.activate_operation(db, organization_id=ORG, farm_id=FARM, user_id=USER, operation_id=op.id, accepted=True)
+    setup.apply_setup_to_draft(db, draft=draft, product=product, operation=op, buyer=None, issuer_state='BA', user_id=USER)
+    snapshot = json.loads(draft.snapshot_json)
+    gross = sum(float(i['valor_bruto']) for i in snapshot['itens'][:1])
+    item = json.loads(db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id).first().data_json)['items'][0]
+    assert item['icms_rate'] == '18' and float(item['icms_value']) == round(gross * 0.18, 2)
+    assert float(item['cbs_value']) == round(gross * 0.009, 2) and item['ibs_municipal_rate'] == '0'
+
+    # ICMS fora da situação 00 não guarda alíquota; nova versão ativa vale para o rascunho ao ressincronizar.
+    v2 = setup.save_operation(db, organization_id=ORG, farm_id=FARM, user_id=USER, operation_id=op.id,
+                              data={'name': 'Venda', 'nature': 'Venda de produção', 'cfop_in': '5101', 'icms_cst': '41',
+                                    'icms_rate': '18'})
+    assert v2.icms_rate == ''
+    setup.activate_operation(db, organization_id=ORG, farm_id=FARM, user_id=USER, operation_id=v2.id, accepted=True)
+    assert setup.resync_draft(db, draft=draft, buyer=None, issuer_state='BA', user_id=USER)
+    item = json.loads(db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id).first().data_json)['items'][0]
+    assert item['icms_cst'] == '41' and item['icms_value'] == '' and item['cbs_value'] == ''
+    assert setup.draft_sources(db, draft=draft)['operation'].id == v2.id
+    with pytest.raises(ValueError, match='situação do ICMS da lista'):
+        setup.clean_operation_input({'name': 'X', 'icms_cst': '51'})
+    db.close()
+
+
+def test_complete_product_and_always_use_for_lot_stage():
+    db = _db()
+    coco = setup.create_product_from_template(db, organization_id=ORG, farm_id=FARM, user_id=USER, key='coco')
+    arabica = setup.create_product_from_template(db, organization_id=ORG, farm_id=FARM, user_id=USER, key='arabica')
+    with pytest.raises(ValueError, match='8 dígitos'):
+        setup.complete_product(db, product=coco, data={'ncm': '0901'})
+    setup.complete_product(db, product=coco, data={'ncm': '0901.11.10'})
+    assert coco.ncm == '09011110' and setup.product_is_complete(coco)
+    setup.link_product_to_stage(db, product=arabica, stage='tulha')
+    assert 'tulha' in json.loads(arabica.lot_stages_json) and 'tulha' not in json.loads(coco.lot_stages_json)
+    assert setup.suggest_product(db, organization_id=ORG, farm_id=FARM, lot_stage='tulha').id == arabica.id
+    db.close()
+
+
+def test_save_route_keeps_fiscal_data_from_setup(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    routes, db, user, scope, draft, flashes = _routes_env(monkeypatch)
+    product = setup.create_product_from_template(db, organization_id=user.organization_id, farm_id=scope['active_farm_id'],
+                                                 user_id=user.id, key='arabica')
+    op = setup.save_operation(db, organization_id=user.organization_id, farm_id=scope['active_farm_id'], user_id=user.id,
+                              data={'name': 'Venda', 'nature': 'Venda de produção', 'cfop_in': '5101', 'icms_cst': '41'})
+    setup.activate_operation(db, organization_id=user.organization_id, farm_id=scope['active_farm_id'], user_id=user.id,
+                             operation_id=op.id, accepted=True)
+    setup.apply_setup_to_draft(db, draft=draft, product=product, operation=op, buyer=None, issuer_state='BA', user_id=user.id)
+
+    class R:
+        query_params = {}
+        async def form(self):
+            return {'csrf_token': 'x', 'recipient_name': 'Comprador', 'freight_mode': '9', 'emission_date': '2026-11-20',
+                    'product_ncm': '11111111', 'item_1_icms_cst': '00'}
+    resp = asyncio.run(routes.fiscal_draft_save_all(draft.id, R(), db, user))
+    assert resp.status_code == 303
+    details = json.loads(db.query(NfeDraftDetails).filter_by(draft_id=draft.id).first().data_json)
+    item = json.loads(db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id).first().data_json)['items'][0]
+    assert details['product_ncm'] == '09011110' and details['recipient_name'] == 'Comprador'
+    assert item['icms_cst'] == '41'
     db.close()

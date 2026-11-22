@@ -268,25 +268,74 @@
           {% elif o and op_group and op_group.active %}
           <div class="nx-box is-neutral"><p>Rascunho da versão {{ o.version }}.</p><p>A versão {{ op_group.active.version }} continua valendo até você ativar esta.</p></div>
           {% endif %}
-          <p class="nx-sec">Identificação</p>
-          <div class="nx-g">
-            <label class="nx-f">Nome da operação<input name="name" maxlength="120" required value="{{ o.name if o else '' }}" class="nx-in"></label>
-            <label class="nx-f">Tipo e finalidade<select name="finality" class="nx-in">{% for code, label in finalities %}<option value="{{ code }}" {% if (o.finality if o else '1') == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+          <div class="nx-optabs" role="tablist" aria-label="Partes da operação">
+            {% for key, label in [('id', 'Identificação'), ('tax', 'Tributos'), ('txt', 'Textos')] %}
+            <button type="button" role="tab" id="nx-optab-{{ key }}" aria-controls="nx-oppanel-{{ key }}" aria-selected="{{ 'true' if loop.first else 'false' }}" data-nx-optab="{{ key }}">{{ label }}{% if key == 'tax' and o and (not o.icms_cst or (o.icms_cst == '00' and not o.icms_rate)) %}<em aria-label="falta preencher">!</em>{% endif %}</button>
+            {% endfor %}
           </div>
-          <label class="nx-f">Natureza da operação<input id="nx-nature" name="nature" maxlength="60" data-nx-len value="{{ o.nature if o else '' }}" class="nx-in"><small data-nx-len-out="nx-nature"></small></label>
-          <p class="nx-sec">CFOP — o sistema escolhe pelo estado do comprador</p>
-          <div class="nx-g">
-            <label class="nx-f">Comprador do mesmo estado<input name="cfop_in" maxlength="5" inputmode="numeric" value="{{ o.cfop_in if o else '' }}" placeholder="5.xxx" class="nx-in"></label>
-            <label class="nx-f">Comprador de outro estado<input name="cfop_out" maxlength="5" inputmode="numeric" value="{{ o.cfop_out if o else '' }}" placeholder="6.xxx" class="nx-in"></label>
+
+          <div id="nx-oppanel-id" role="tabpanel" aria-labelledby="nx-optab-id" data-nx-oppanel="id" class="nx-oppanel">
+            <div class="nx-g">
+              <label class="nx-f">Nome da operação<input name="name" maxlength="120" required value="{{ o.name if o else '' }}" class="nx-in"></label>
+              <label class="nx-f">Tipo e finalidade<select name="finality" class="nx-in">{% for code, label in finalities %}<option value="{{ code }}" {% if (o.finality if o else '1') == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+            </div>
+            <label class="nx-f">Natureza da operação<input id="nx-nature" name="nature" maxlength="60" data-nx-len value="{{ o.nature if o else '' }}" class="nx-in"><small data-nx-len-out="nx-nature"></small></label>
+            <p class="nx-sec">CFOP — o sistema escolhe pelo estado do comprador</p>
+            <div class="nx-g">
+              <label class="nx-f">Comprador do mesmo estado<input name="cfop_in" maxlength="5" inputmode="numeric" value="{{ o.cfop_in if o else '' }}" placeholder="5.xxx" class="nx-in"></label>
+              <label class="nx-f">Comprador de outro estado<input name="cfop_out" maxlength="5" inputmode="numeric" value="{{ o.cfop_out if o else '' }}" placeholder="6.xxx" class="nx-in"></label>
+            </div>
           </div>
-          <p class="nx-sec">Tributos</p>
-          <div class="nx-g">
-            <label class="nx-f">CST do ICMS<input name="icms_cst" maxlength="2" inputmode="numeric" value="{{ o.icms_cst if o else '' }}" class="nx-in{% if not o or not o.icms_cst %} is-missing{% endif %}"></label>
-            <label class="nx-f">Funrural<select name="funrural" class="nx-in">{% for code, label in funrural_options %}<option value="{{ code }}" {% if (o.funrural if o else 'retido_comprador') == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-            <label class="nx-f">CST IBS/CBS (reforma)<input name="ibs_cbs_cst" maxlength="3" inputmode="numeric" value="{{ o.ibs_cbs_cst if o else '' }}" class="nx-in"><small>Quando a SEFAZ exigir</small></label>
-            <label class="nx-f">Classificação IBS/CBS<input name="ibs_cbs_class" maxlength="6" inputmode="numeric" value="{{ o.ibs_cbs_class if o else '' }}" class="nx-in"></label>
+
+          <div id="nx-oppanel-tax" role="tabpanel" aria-labelledby="nx-optab-tax" data-nx-oppanel="tax" class="nx-oppanel" hidden>
+            <div class="nx-taxwrap" data-nx-taxcalc>
+              <div class="nx-taxcol">
+                <div class="nx-taxbox">
+                  <div class="nx-taxbox-h"><b>ICMS</b><span class="nx-tag is-off">imposto estadual</span></div>
+                  <div class="nx-g">
+                    <label class="nx-f">Situação tributária
+                      <select name="icms_cst" class="nx-in{% if not o or not o.icms_cst %} is-missing{% endif %}" data-nx-tax="cst">
+                        <option value="">Selecione</option>
+                        {% for code, label in icms_csts %}<option value="{{ code }}" {% if o and o.icms_cst == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                      </select><small>Venda de café do produtor costuma ter ICMS diferido. Confira com seu contador.</small></label>
+                    <label class="nx-f">Alíquota do ICMS (%)<input name="icms_rate" inputmode="decimal" maxlength="8" value="{{ (o.icms_rate|replace('.', ',')) if o and o.icms_rate else '' }}" placeholder="0,00" class="nx-in" data-nx-tax="icms"><small data-nx-tax-help>Usada só na situação 00 (tributada)</small></label>
+                  </div>
+                </div>
+                <div class="nx-taxbox">
+                  <div class="nx-taxbox-h"><b>IBS e CBS</b><span class="nx-tag" style="background:var(--nx-blue-bg);color:var(--nx-blue)">reforma tributária</span></div>
+                  <div class="nx-g">
+                    <label class="nx-f">CST IBS/CBS<input name="ibs_cbs_cst" maxlength="3" inputmode="numeric" value="{{ o.ibs_cbs_cst if o else '' }}" class="nx-in"></label>
+                    <label class="nx-f">Classificação tributária<input name="ibs_cbs_class" maxlength="6" inputmode="numeric" value="{{ o.ibs_cbs_class if o else '' }}" class="nx-in"></label>
+                  </div>
+                  <div class="nx-g3">
+                    <label class="nx-f">CBS (%)<input name="cbs_rate" inputmode="decimal" maxlength="8" value="{{ (o.cbs_rate|replace('.', ',')) if o and o.cbs_rate else '' }}" placeholder="0,00" class="nx-in" data-nx-tax="cbs"></label>
+                    <label class="nx-f">IBS estadual (%)<input name="ibs_uf_rate" inputmode="decimal" maxlength="8" value="{{ (o.ibs_uf_rate|replace('.', ',')) if o and o.ibs_uf_rate else '' }}" placeholder="0,00" class="nx-in" data-nx-tax="ibsuf"></label>
+                    <label class="nx-f">IBS municipal (%)<input name="ibs_municipal_rate" inputmode="decimal" maxlength="8" value="{{ (o.ibs_municipal_rate|replace('.', ',')) if o and o.ibs_municipal_rate else '' }}" placeholder="0,00" class="nx-in" data-nx-tax="ibsmun"></label>
+                  </div>
+                  <p class="nx-desc" style="font-size:.75rem">Deixe em branco se seu contador disser que ainda não se aplica. As alíquotas mudam ano a ano: revise no começo de cada ano.</p>
+                </div>
+                <div class="nx-g" style="grid-template-columns:minmax(0,22rem)">
+                  <label class="nx-f">Funrural<select name="funrural" class="nx-in" data-nx-tax="fun">{% for code, label in funrural_options %}<option value="{{ code }}" {% if (o.funrural if o else 'retido_comprador') == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+                </div>
+              </div>
+              <aside class="nx-impact-card" aria-live="polite">
+                <h3>Como fica numa venda</h3>
+                <p class="nx-desc">Exemplo: 120 sacas a R$ 1.300,00 = R$ 156.000,00</p>
+                <div class="nx-impact-rows">
+                  <div><span>ICMS</span><b data-nx-out="icms">—</b></div>
+                  <div><span data-nx-out="cbsl">CBS</span><b data-nx-out="cbs">—</b></div>
+                  <div><span data-nx-out="ibsl">IBS</span><b data-nx-out="ibs">—</b></div>
+                  <div><span>Funrural</span><b data-nx-out="fun">—</b></div>
+                </div>
+                <p class="nx-desc" style="font-size:.75rem">Atualiza enquanto você digita. Na nota, cada lote é calculado do mesmo jeito.</p>
+              </aside>
+            </div>
           </div>
-          <label class="nx-f">Informações ao fisco<textarea name="info" rows="3" maxlength="1000" class="nx-in">{{ o.info if o else '' }}</textarea><small>Vai para “Informações complementares” da nota</small></label>
+
+          <div id="nx-oppanel-txt" role="tabpanel" aria-labelledby="nx-optab-txt" data-nx-oppanel="txt" class="nx-oppanel" hidden>
+            <label class="nx-f">Informações ao fisco<textarea name="info" rows="4" maxlength="1000" class="nx-in">{{ o.info if o else '' }}</textarea><small>Vai para “Informações complementares” da nota</small></label>
+          </div>
+
           <div class="nx-banner is-blue" style="font-size:.8125rem">{{ nxi('info', 18) }}<span>Dica: confira natureza, CFOP e tributos com seu contador <strong>antes</strong> de ativar. O SiSFarm confere só o formato dos códigos.</span></div>
           <label class="nx-agree is-top"><span class="dt-chk" style="margin-top:-.625rem"><input type="checkbox" class="dt-check" name="accept" value="1" data-nx-gate="activate"></span><span>Conferi estes dados. Entendo que <strong>a responsabilidade pelas informações fiscais é minha</strong> e que elas serão usadas nas próximas notas.</span></label>
           {% if can_write_page %}
@@ -349,5 +398,5 @@
     </div>
   </div>
 </div>
-<script src="/static/js/notas_fiscais.js?v=20261122nx1" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261122nx2" defer></script>
 {% endblock %}

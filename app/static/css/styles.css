@@ -11679,3 +11679,91 @@ textarea.nx-in { padding: .625rem .75rem; line-height: 1.5; min-height: 5rem; }
 .nx-pieces div { background: #fff; border: 1px solid #e3e8e2; border-radius: .875rem; padding: .875rem; }
 .nx-pieces strong { color: #16201a; }
 @media (prefers-reduced-motion: reduce) { .nx-kpi, .nx-row, .nx-tile, .nx-panel, .nx-it { transition: none; } .nx-kpi:hover { transform: none; } }
+
+/* Emitir NF · seção Produtos (sem preenchimento fiscal na nota) */
+.nx-lots { display: flex; flex-direction: column; }
+.nx-lot { display: flex; gap: .875rem; align-items: center; padding: 1rem 0; border-top: 1px solid #eef1ed; }
+.nx-lot:first-child { border-top: 0; padding-top: .25rem; }
+.nx-lot-ico { width: 2.625rem; height: 2.625rem; border-radius: .75rem; display: flex; align-items: center; justify-content: center; flex: none; background: #eef3eb; color: #446a36; }
+.nx-lot-ico.is-warn { background: var(--nx-amber-bg); color: #b87400; }
+.nx-lot-main { flex: 1 1 auto; min-width: 0; }
+.nx-lot-nm { margin: 0; font-size: .9375rem; font-weight: 600; }
+.nx-lot-meta { margin: .1875rem 0 0; font-size: .8125rem; color: #5b6660; line-height: 1.5; }
+.nx-lot-num { text-align: right; flex: none; }
+.nx-lot-num b { display: block; font-size: .9375rem; font-weight: 700; }
+.nx-lot-num span { font-size: .8125rem; color: #5b6660; white-space: nowrap; }
+.nx-dots { width: 2.75rem; height: 2.75rem; border-radius: .625rem; border: 1px solid transparent; background: transparent; display: grid; place-items: center; cursor: pointer; color: #46514a; padding: 0; }
+.nx-dots:hover, .nx-dots[aria-expanded="true"] { background: #f6f8f5; border-color: #e3e8e2; }
+.nx-dots:focus-visible { outline: 3px solid #9bcb6b; outline-offset: 2px; }
+.nx-lot-warn { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin-top: .75rem; padding: .75rem .875rem; border-radius: .75rem; background: var(--nx-amber-bg); border: 1px solid #f3ddb0; font-size: .8125rem; color: #6b4600; line-height: 1.5; }
+.nx-lot-warn svg { flex: none; }
+.nx-lot-warn span { flex: 1 1 16rem; }
+.nx-lot-warn .sf-btn { min-height: 2.25rem; background: #fff; }
+.nx-lot-total { display: flex; justify-content: space-between; margin-top: .875rem; padding-top: .75rem; border-top: 1px solid #e3e8e2; font-size: .9375rem; }
+.nx-lot-total span { color: #5b6660; }
+.nx-taxline { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin-top: .875rem; padding: .75rem .875rem; border-radius: .75rem; background: #f6f8f5; border: 1px solid #eef1ed; font-size: .8125rem; color: #46514a; line-height: 1.5; }
+.nx-taxline svg { flex: none; color: #446a36; }
+.nx-taxline span { flex: 1 1 18rem; }
+.nx-taxline b { color: #16201a; font-weight: 600; }
+.nx-dw, .nx-drawer form { display: flex; flex-direction: column; gap: 1rem; min-height: 100%; }
+.nx-dw-h { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+.nx-dw-h h2 { margin: 0; font-size: 1.25rem; }
+.nx-dw-h .sf-btn { min-height: 2.25rem; }
+.nx-dw-f { display: flex; gap: .625rem; justify-content: flex-end; margin-top: auto; padding-top: .75rem; border-top: 1px solid #eef1ed; }
+.nx-dw-list { display: flex; flex-direction: column; gap: .375rem; font-size: .8125rem; color: #46514a; line-height: 1.5; }
+.nx-dw-list b { color: #16201a; }
+.nx-ct { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+.nx-ct th { text-align: right; font-size: .75rem; color: #5b6660; font-weight: 600; padding: .5rem .375rem; border-bottom: 1px solid #e3e8e2; }
+.nx-ct td { text-align: right; padding: .5625rem .375rem; border-bottom: 1px solid #eef1ed; white-space: nowrap; }
+.nx-ct th:first-child, .nx-ct td:first-child { text-align: left; }
+.nx-pick { display: flex; justify-content: space-between; align-items: center; gap: .75rem; min-height: 3.5rem; padding: .625rem .875rem; border: 1px solid #e3e8e2; border-radius: .75rem; background: #fff; cursor: pointer; }
+.nx-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.nx-pick span { display: flex; flex-direction: column; gap: .125rem; min-width: 0; }
+.nx-pick b { font-size: .875rem; font-weight: 600; }
+.nx-pick small { font-size: .75rem; color: #5b6660; }
+.nx-pick i { color: #446a36; visibility: hidden; display: flex; }
+.nx-pick:has(input:checked) { border-color: #446a36; background: #eef3eb; }
+.nx-pick:has(input:checked) i { visibility: visible; }
+.nx-pick:has(input:focus-visible) { outline: 3px solid #9bcb6b; outline-offset: 2px; }
+@media (max-width: 639px) {
+  .nx-lot { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: .75rem; row-gap: .375rem; align-items: start; }
+  .nx-lot-ico { grid-column: 1; grid-row: 1 / span 2; }
+  .nx-lot-main { grid-column: 2; grid-row: 1; }
+  .nx-more { grid-column: 3; grid-row: 1; margin-top: -.375rem; }
+  .nx-lot-num { grid-column: 2 / span 2; grid-row: 2; text-align: left; }
+  .nx-lot-num b { display: inline; margin-right: .5rem; white-space: nowrap; }
+  .nx-lot-num span { white-space: normal; }
+  .nx-taxline > svg { display: none; }
+}
+/* Resumo da emissão fica visível ao rolar (para abaixo do cabeçalho) */
+@media (min-width: 1024px) {
+  .nx-page .nx-sticky { position: sticky; top: 5.375rem; align-self: flex-start; }
+}
+/* Foco: só o anel do SiSFarm (sem o anel azul do Tailwind forms) */
+.nx-page .nx-in:focus, .nx-page .nx-in:focus-visible, .nx-page input[type="date"].nx-in:focus { outline: none; border-color: #446a36; box-shadow: 0 0 0 3px rgba(68, 106, 54, .18); --tw-ring-shadow: 0 0 #0000; }
+/* Campo de data no visual SiSFarm */
+.nx-page input[type="date"].nx-in { border: 1px solid #d5dcd4; border-radius: .6875rem; background-color: #fff; box-shadow: none; -webkit-appearance: none; appearance: none; display: flex; align-items: center; height: 2.75rem; line-height: 2.75rem; padding: 0 .75rem; font: inherit; font-size: .875rem; color: #16201a; }
+.nx-page input[type="date"].nx-in::-webkit-date-and-time-value { text-align: left; margin: 0; }
+.nx-page input[type="date"].nx-in::-webkit-datetime-edit { padding: 0; }
+.nx-page input[type="date"].nx-in::-webkit-calendar-picker-indicator { opacity: .55; cursor: pointer; padding: .25rem; border-radius: .375rem; }
+.nx-page input[type="date"].nx-in::-webkit-calendar-picker-indicator:hover { opacity: .9; background: #eef3eb; }
+/* Operação fiscal: abas e tributos */
+.nx-optabs { display: inline-flex; flex-wrap: wrap; gap: .25rem; padding: .25rem; background: #fff; border: 1px solid #e3e8e2; border-radius: .75rem; align-self: flex-start; }
+.nx-optabs button { display: inline-flex; align-items: center; gap: .375rem; min-height: 2.25rem; padding: 0 .875rem; border: 0; border-radius: .5625rem; background: transparent; font-size: .8125rem; font-weight: 600; color: #5b6660; cursor: pointer; }
+.nx-optabs button[aria-selected="true"] { background: #eef3eb; color: #294127; }
+.nx-optabs button:focus-visible { outline: 3px solid #9bcb6b; outline-offset: 2px; }
+.nx-optabs em { font-style: normal; display: inline-grid; place-items: center; width: 1.125rem; height: 1.125rem; border-radius: 50%; background: var(--nx-amber-bg); color: var(--nx-amber); font-size: .6875rem; font-weight: 800; }
+.nx-oppanel { display: flex; flex-direction: column; gap: .875rem; }
+.nx-oppanel[hidden] { display: none; }
+.nx-taxwrap { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+.nx-taxcol { flex: 999 1 26rem; min-width: 0; display: flex; flex-direction: column; gap: .875rem; }
+.nx-taxbox { display: flex; flex-direction: column; gap: .75rem; padding: 1rem; border: 1px solid #e3e8e2; border-radius: .875rem; }
+.nx-taxbox-h { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+.nx-taxbox-h b { font-size: .9375rem; }
+.nx-g3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .875rem; }
+.nx-impact-card { flex: 1 1 15rem; min-width: 0; display: flex; flex-direction: column; gap: .5rem; padding: 1rem 1.125rem; border: 1px solid #e3e8e2; border-radius: .875rem; background: #f6f8f5; }
+.nx-impact-card h3 { margin: 0; font-size: .9375rem; font-weight: 700; }
+.nx-impact-rows > div { display: flex; justify-content: space-between; gap: .75rem; padding: .5625rem 0; border-top: 1px solid #e3e8e2; font-size: .875rem; }
+.nx-impact-rows span { color: #5b6660; }
+.nx-impact-rows b { font-weight: 600; text-align: right; }
+.nx-in:disabled.is-off { background: #f6f8f5; color: #7a857e; }

@@ -14,9 +14,10 @@
 {% set freight_code = technical.get('freight_mode') or (sale_meta.default_freight_mode if sale_meta else '9') %}
 {% set total_sacks = namespace(v=0) %}
 {% for item in snapshot.itens %}{% set total_sacks.v = total_sacks.v + (item.quantidade_sacas|float) %}{% endfor %}
-{% set edited = namespace(ncm=False, desc=False, nature=False, cfop=False) %}
-{% if prod %}{% set edited.ncm = details.get('product_ncm') and details.get('product_ncm') != prod.ncm %}{% set edited.desc = details.get('product_description') and details.get('product_description') != prod.description %}{% endif %}
-{% if op %}{% set edited.nature = details.get('operation_nature') and details.get('operation_nature') != op.nature %}{% set edited.cfop = details.get('operation_cfop') and details.get('operation_cfop') not in (op.cfop_in, op.cfop_out) %}{% endif %}
+{% set prod_ok = prod and prod.description and (prod.ncm or '')|length == 8 %}
+{% set prod_missing = [] %}{% if prod and not prod.description %}{% set _ = prod_missing.append('a descrição no DANFE') %}{% endif %}{% if prod and (prod.ncm or '')|length != 8 %}{% set _ = prod_missing.append('o NCM') %}{% endif %}
+{% set icms_labels = {'00': 'ICMS ' ~ ((op.icms_rate or '0')|replace('.', ',')) ~ '%' if op else '', '40': 'ICMS isento', '41': 'ICMS não tributado', '50': 'ICMS suspenso', '60': 'ICMS cobrado antes (ST)', '90': 'ICMS: outras situações'} %}
+{% set funrural_labels = {'retido_comprador': 'Funrural retido pelo comprador', 'recolhido_produtor': 'Funrural recolhido pelo produtor', 'nao_aplica': 'Funrural não se aplica'} %}
 {% set steps_list = [('preencher', 'Preencher'), ('conferir', 'Conferir'), ('enviada', 'Enviar')] %}
 {% set step_index = {'preencher': 0, 'conferir': 1, 'enviada': 2}[step] %}
 
@@ -43,28 +44,6 @@
   <div class="nx-split">
     <div style="flex:999 1 40rem;min-width:0;display:flex;flex-direction:column;gap:1.25rem">
 
-      <section class="nx-cardx" aria-labelledby="h-op">
-        <div class="nx-hd"><h2 id="h-op">Operação</h2>
-          {% if op %}<span class="nx-auto">Da operação: {{ op.name }} · v{{ op.version }}</span>{% else %}<span class="nx-auto is-amber">Escolha uma operação fiscal</span>{% endif %}
-        </div>
-        {% if operations %}
-        <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/aplicar-operacao" class="nx-g4" style="align-items:end">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <label class="nx-f">Operação fiscal
-            <select name="operation_id" class="nx-in">{% for o in operations %}<option value="{{ o.id }}" {% if op and op.root_id == o.root_id %}selected{% endif %}>{{ o.name }} — {{ o.nature }}</option>{% endfor %}</select></label>
-          <label class="nx-f">Produto fiscal
-            <select name="product_id" class="nx-in">{% for p in products %}<option value="{{ p.id }}" {% if prod and prod.id == p.id %}selected{% endif %}>{{ p.name }}{% if not p.ncm %} (sem NCM){% endif %}</option>{% endfor %}{% if not products %}<option value="">Nenhum cadastrado</option>{% endif %}</select></label>
-          <label class="nx-f">CFOP<input class="nx-in" value="{{ details.get('operation_cfop') or '—' }}" readonly></label>
-          {% if can_write_page %}<button type="submit" class="sf-btn sf-btn-secondary">Aplicar</button>{% endif %}
-        </form>
-        {% if op and details.get('operation_cfop') %}
-        <p class="nx-src">{{ nxi('info', 16) }}<span>CFOP <b>{{ details.get('operation_cfop') }}</b> escolhido pelo estado do comprador{% if op.cfop_out %} (comprador de outro estado: <b>{{ op.cfop_out }}</b>){% endif %}. Ao aplicar outra operação, natureza, CFOP e ICMS são preenchidos de novo.</span></p>
-        {% endif %}
-        {% else %}
-        <p class="nx-muted">Nenhuma operação fiscal ativa. <a href="/producao/nfe/configuracao?secao=oper" style="font-weight:600">Ative uma em Configurações fiscais</a> para preencher natureza, CFOP e ICMS sozinho.</p>
-        {% endif %}
-      </section>
-
       <form id="nx-draft-form" method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/salvar" style="display:flex;flex-direction:column;gap:1.25rem">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
@@ -79,73 +58,47 @@
           </div>
         </section>
 
-        <section class="nx-cardx" aria-labelledby="h-prod">
-          <div class="nx-hd"><h2 id="h-prod">Produtos</h2>
-            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center"><span class="nx-auto">Quantidade e preço: da venda</span>{% if prod %}<span class="nx-auto">Produto fiscal: {{ prod.name }}</span>{% endif %}</div>
+        <section class="nx-cardx nx-prods" aria-labelledby="h-prod">
+          <div class="nx-hd">
+            <div><h2 id="h-prod" style="margin:0">Produtos</h2><p class="nx-muted" style="margin-top:.125rem">Lotes, quantidade e preço vêm da venda {{ snapshot.venda }}.</p></div>
+            {% if prod_ok and op %}<span class="nx-tag is-ok">✓ {{ snapshot.itens|length }} lote{{ 's' if snapshot.itens|length != 1 }} pronto{{ 's' if snapshot.itens|length != 1 }}</span>
+            {% else %}<span class="nx-tag is-warn">Precisa de atenção</span>{% endif %}
           </div>
-          <div style="overflow-x:auto">
-            <table class="nx-mini">
-              <thead><tr><th>Lote</th><th style="text-align:right">Qtd.</th><th style="text-align:right">Preço</th><th style="text-align:right">Total</th></tr></thead>
-              <tbody>
-                {% for item in snapshot.itens %}
-                {% set saved = technical_items.get(loop.index, {}) %}
-                <tr><td><strong style="font-weight:600">{{ item.lote }}</strong>{% if saved.get('tax_unit') and saved.get('tax_unit') != saved.get('commercial_unit') %}<span class="nx-sub">tributável: {{ saved.get('tax_quantity') }} {{ saved.get('tax_unit') }}</span>{% endif %}</td>
-                  <td style="text-align:right;white-space:nowrap">{{ item.quantidade_sacas }} {{ saved.get('commercial_unit') or 'SC' }}</td>
-                  <td style="text-align:right;white-space:nowrap">{% if item.preco_unitario %}R$ {{ item.preco_unitario|decimal_br }}{% else %}—{% endif %}</td>
-                  <td style="text-align:right;white-space:nowrap;font-weight:600">R$ {{ item.valor_bruto|decimal_br }}</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          <div class="nx-g" style="margin-top:.875rem">
-            <label class="nx-f"><span>Descrição no DANFE{% if edited.desc %}<span class="nx-edited">Editado nesta nota</span>{% endif %}</span><input name="product_description" maxlength="180" value="{{ details.get('product_description', '') }}" class="nx-in{% if not details.get('product_description') %} is-missing{% endif %}"></label>
-            <label class="nx-f"><span>NCM{% if edited.ncm %}<span class="nx-edited">Editado nesta nota</span>{% endif %}</span><input name="product_ncm" maxlength="10" inputmode="numeric" value="{{ details.get('product_ncm', '') }}" placeholder="0000.00.00" class="nx-in{% if not details.get('product_ncm') %} is-missing{% endif %}"></label>
-            <label class="nx-f"><span>Natureza da operação{% if edited.nature %}<span class="nx-edited">Editado nesta nota</span>{% endif %}</span><input name="operation_nature" maxlength="120" value="{{ details.get('operation_nature', '') }}" class="nx-in{% if not details.get('operation_nature') %} is-missing{% endif %}"></label>
-            <label class="nx-f"><span>CFOP{% if edited.cfop %}<span class="nx-edited">Editado nesta nota</span>{% endif %}</span><input name="operation_cfop" maxlength="5" inputmode="numeric" value="{{ details.get('operation_cfop', '') }}" class="nx-in{% if not details.get('operation_cfop') %} is-missing{% endif %}"></label>
-          </div>
-          {% if prod and not prod.ncm %}
-          <p class="nx-src" style="color:#6b4600">{{ nxi('alert', 16) }}<span>O produto fiscal <b>{{ prod.name }}</b> está sem NCM. Preencha acima para esta nota ou <a href="/producao/nfe/configuracao?secao=prod&amp;item={{ prod.id }}" style="font-weight:600">complete o cadastro</a> para as próximas.</span></p>
-          {% endif %}
-
-          <button type="button" class="sf-btn sf-btn-secondary" style="margin-top:.875rem;width:100%;background:#f6f8f5" data-nx-toggle="nx-item-adv" aria-expanded="false" data-label-on="Ocultar detalhes fiscais dos lotes" data-label-off="Ver detalhes fiscais dos lotes (avançado)">Ver detalhes fiscais dos lotes (avançado)</button>
-          <div id="nx-item-adv" hidden style="margin-top:.75rem;display:flex;flex-direction:column;gap:.75rem">
-            <p class="nx-muted">Preenchidos pelo produto fiscal e pela operação. Mude só se souber o que está fazendo: a mudança vale só para esta nota.</p>
+          <div class="nx-lots">
             {% for item in snapshot.itens %}
-            {% set index = loop.index %}
-            {% set saved = technical_items.get(index, {}) %}
-            <fieldset style="border:1px solid #e3e8e2;border-radius:.875rem;padding:1rem;margin:0;display:flex;flex-direction:column;gap:.75rem;min-width:0">
-              <legend style="padding:0 .375rem;font-size:.8125rem;font-weight:700">Lote {{ item.lote }}</legend>
-              <div class="nx-g">
-                {% for field, label, maximum in [('origin','Origem',1),('icms_cst','CST ICMS',2),('ibs_cbs_cst','CST IBS/CBS',3),('ibs_cbs_class','Classificação IBS/CBS',6)] %}
-                <label class="nx-f">{{ label }}<input name="item_{{ index }}_{{ field }}" value="{{ saved.get(field, '') }}" maxlength="{{ maximum }}" inputmode="numeric" class="nx-in"></label>
-                {% endfor %}
+            {% set saved = technical_items.get(loop.index, {}) %}
+            <div class="nx-lot">
+              <span class="nx-lot-ico{% if not prod_ok %} is-warn{% endif %}">{{ nxi('bean', 20, 1.9) }}</span>
+              <div class="nx-lot-main">
+                <p class="nx-lot-nm">{{ prod.name if prod else 'Lote ' ~ item.lote }}</p>
+                <p class="nx-lot-meta">{% if prod %}Lote {{ item.lote }}{% endif %}{% if prod %} · {% if (prod.ncm or '')|length == 8 %}NCM {{ prod.ncm[:4] }}.{{ prod.ncm[4:6] }}.{{ prod.ncm[6:] }}{% else %}NCM não cadastrado{% endif %}{% else %}Sem produto fiscal{% endif %}{% if prod and saved.get('tax_quantity') and saved.get('tax_unit') != saved.get('commercial_unit') %} · {{ saved.get('tax_quantity')|decimal_br(0 if (saved.get('tax_quantity')|float) == (saved.get('tax_quantity')|float|int) else 2) }} {{ saved.get('tax_unit')|lower }} tributáveis{% endif %}</p>
               </div>
-              <div class="nx-g">
-                {% for field, label, maximum in [('commercial_unit','Unid. de venda',6),('commercial_quantity','Qtd. de venda',16),('commercial_unit_price','Valor unit. de venda',22),('tax_unit','Unid. tributável',6),('tax_quantity','Qtd. tributável',16),('tax_unit_price','Valor unit. tributável',22)] %}
-                <label class="nx-f">{{ label }}<input name="item_{{ index }}_{{ field }}" value="{{ saved.get(field, '') }}" maxlength="{{ maximum }}" class="nx-in"></label>
-                {% endfor %}
+              <div class="nx-lot-num"><b>R$ {{ item.valor_bruto|decimal_br }}</b><span>{{ item.quantidade_sacas }} {{ saved.get('commercial_unit') or 'SC' }}{% if item.preco_unitario %} × R$ {{ item.preco_unitario|decimal_br }}{% endif %}</span></div>
+              <div class="nx-more" data-nx-more>
+                <button type="button" class="nx-dots" data-nx-more-btn aria-haspopup="menu" aria-expanded="false" aria-label="Mais opções do lote {{ item.lote }}">{{ nxi('dotsh', 18, 2.6) }}</button>
+                <div class="nx-menu" role="menu" hidden style="width:16rem">
+                  {% if products %}<button type="button" class="nx-mi" role="menuitem" data-nx-dialog-open="nx-dw-pick">Trocar produto fiscal</button>{% endif %}
+                  <button type="button" class="nx-mi" role="menuitem" data-nx-dialog-open="nx-dw-calc">Ver dados fiscais deste lote</button>
+                  <a class="nx-mi" role="menuitem" href="/producao/nfe/configuracao?secao=prod{% if prod %}&amp;item={{ prod.id }}{% endif %}">Abrir o cadastro do produto {{ nxi('ext', 15) }}</a>
+                </div>
               </div>
-              <div class="nx-g">
-                {% for field, label in [('icms_base','Base ICMS'),('icms_value','Valor ICMS'),('ibs_cbs_base','Base IBS/CBS'),('ibs_uf_value','IBS estadual'),('ibs_municipal_value','IBS municipal'),('cbs_value','CBS')] %}
-                <label class="nx-f">{{ label }}<input name="item_{{ index }}_{{ field }}" value="{{ saved.get(field, '') }}" maxlength="16" inputmode="decimal" class="nx-in"></label>
-                {% endfor %}
-                {% for field, label in [('icms_rate','ICMS (%)'),('ibs_uf_rate','IBS estadual (%)'),('ibs_municipal_rate','IBS municipal (%)'),('cbs_rate','CBS (%)')] %}
-                <label class="nx-f">{{ label }}<input name="item_{{ index }}_{{ field }}" value="{{ saved.get(field, '') }}" maxlength="8" inputmode="decimal" class="nx-in"></label>
-                {% endfor %}
-              </div>
-              {% if tax_review and tax_review.get(index) %}
-              <div class="nx-muted" style="font-size:.75rem">
-                <p style="margin:0;font-weight:700;color:#16201a">Conferência dos valores informados</p>
-                <p style="margin:0">A aplicabilidade e obrigatoriedade dependem da operação; o SiSFarm confere só o formato.</p>
-                <ul style="margin:.25rem 0 0;padding-left:1rem">{% for group in tax_review[index] %}<li><strong>{{ group.label }}:</strong> {% if group.all_absent %}nenhum campo informado.{% elif group.missing %}não informados: {{ group.missing | join(', ') }}.{% else %}campos informados.{% endif %}</li>{% endfor %}</ul>
-              </div>
-              {% endif %}
-              {% if item_review and item_review.get(index) %}
-              <ul style="margin:0;padding-left:1.125rem;font-size:.75rem;color:#7a4f00">{% for issue in item_review[index] %}<li>{{ issue }}</li>{% endfor %}</ul>
-              {% endif %}
-            </fieldset>
+            </div>
             {% endfor %}
           </div>
+          {% if not prod %}
+          <div class="nx-lot-warn">{{ nxi('alert', 18, 2) }}<span>{% if products %}Escolha qual produto fiscal sai no DANFE para {{ 'estes lotes' if snapshot.itens|length > 1 else 'este lote' }}.{% else %}Nenhum produto fiscal cadastrado. Cadastre um para emitir a nota.{% endif %}</span>
+            {% if products %}<button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-open="nx-dw-pick">Escolher produto</button>{% else %}<a class="sf-btn sf-btn-secondary" href="/producao/nfe/configuracao?secao=prod">Cadastrar produto fiscal</a>{% endif %}</div>
+          {% elif not prod_ok %}
+          <div class="nx-lot-warn">{{ nxi('alert', 18, 2) }}<span>Falta {{ prod_missing|join(' e ') }} no cadastro deste produto fiscal. Sem {{ 'eles' if prod_missing|length > 1 else 'ele' }} a nota não pode ser enviada.</span>
+            {% if can_write_page %}<button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-open="nx-dw-fix">Completar cadastro</button>{% endif %}</div>
+          {% endif %}
+          <div class="nx-lot-total"><span>Total dos produtos</span><strong>R$ {{ snapshot.valor_bruto|decimal_br }}</strong></div>
+          {% if op %}
+          <div class="nx-taxline">{{ nxi('list', 18, 1.9) }}<span>Tributos calculados pela operação <b>{{ op.name }} v{{ op.version }}</b>{% if details.get('operation_cfop') %} · CFOP {{ details.get('operation_cfop')[:1] }}.{{ details.get('operation_cfop')[1:] }}{% endif %}: {{ icms_labels.get(op.icms_cst, 'ICMS sem situação') }} · {% if op.cbs_rate or op.ibs_uf_rate or op.ibs_municipal_rate %}CBS {{ '%g'|format((op.cbs_rate or '0')|float)|replace('.', ',') }}% · IBS {{ '%g'|format((op.ibs_uf_rate or '0')|float + (op.ibs_municipal_rate or '0')|float)|replace('.', ',') }}%{% else %}IBS/CBS sem alíquota{% endif %} · {{ funrural_labels.get(op.funrural, '') }}.</span>
+            <button type="button" class="nx-link-btn" data-nx-dialog-open="nx-dw-calc">Ver cálculo</button></div>
+          {% else %}
+          <div class="nx-lot-warn">{{ nxi('alert', 18, 2) }}<span>Nenhuma operação fiscal ativa. É ela que define natureza, CFOP e tributos da nota.</span><a class="sf-btn sf-btn-secondary" href="/producao/nfe/configuracao?secao=oper">Ativar operação</a></div>
+          {% endif %}
         </section>
 
         <section class="nx-cardx" aria-labelledby="h-ship">
@@ -173,7 +126,7 @@
       </form>
     </div>
 
-    <aside style="flex:1 1 21.25rem;min-width:0;display:flex;flex-direction:column;gap:1rem">
+    <aside class="nx-sticky" style="flex:1 1 21.25rem;min-width:0;display:flex;flex-direction:column;gap:1rem">
       <section class="nx-cardx" style="display:flex;flex-direction:column;gap:.875rem">
         <h2 style="margin:0">Resumo</h2>
         <div style="display:flex;justify-content:space-between;gap:.75rem;font-size:.875rem"><span style="color:#5b6660">Emitente</span><a href="/producao/nfe/configuracao?secao=emit" style="font-weight:600;color:#16201a;text-align:right">{{ seller_name }}</a></div>
@@ -187,7 +140,8 @@
           <div class="nx-ck">{% if has_active_cert %}<b aria-hidden="true">✓</b><span>Certificado A1 ativo</span>{% else %}<b class="is-warn" aria-hidden="true">!</b><span>Sem certificado A1 (não impede o teste)</span>{% endif %}</div>
         </div>
         {% if can_write_page %}
-        <button type="submit" form="nx-draft-form" name="next" value="conferir" class="sf-btn sf-btn-primary" style="min-height:3rem">Conferir nota</button>
+        {% if not (prod_ok and op) %}<p class="nx-muted" style="color:#8a5a00;text-align:center">Resolva o aviso em Produtos para continuar.</p>{% endif %}
+        <button type="submit" form="nx-draft-form" name="next" value="conferir" class="sf-btn sf-btn-primary" style="min-height:3rem"{% if not (prod_ok and op) %} disabled{% endif %}>Conferir nota</button>
         <button type="submit" form="nx-draft-form" name="next" value="sair" class="sf-btn sf-btn-secondary">Salvar e sair</button>
         {% endif %}
         <a class="nx-detail-link" href="/notas-fiscais/{{ draft.id }}/danfe.pdf" target="_blank" rel="noopener">Prévia do DANFE</a>
@@ -195,6 +149,65 @@
       <div class="nx-banner is-blue" style="font-size:.8125rem">Ambiente de teste: ao confirmar, a nota é simulada e não vai para a SEFAZ.</div>
     </aside>
   </div>
+
+  {% set tot = namespace(base=0, icms=0, cbs=0, ibs=0) %}
+  <dialog id="nx-dw-calc" class="nx-drawer" aria-labelledby="nx-dw-calc-t">
+    <div class="nx-dw">
+      <div class="nx-dw-h"><h2 id="nx-dw-calc-t">Dados fiscais calculados</h2><button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-close>Fechar</button></div>
+      <p class="nx-muted" style="font-size:.875rem">Somente leitura. {% if op %}Calculado com as alíquotas da operação <b style="color:#16201a">{{ op.name }} v{{ op.version }}</b>.{% endif %}</p>
+      <div style="overflow-x:auto"><table class="nx-ct">
+        <thead><tr><th>Lote</th><th>Base</th><th>ICMS</th><th>CBS</th><th>IBS</th></tr></thead>
+        <tbody>
+          {% for item in snapshot.itens %}{% set t = technical_items.get(loop.index, {}) %}
+          <tr><td><b>{{ item.lote }}</b></td><td>{{ (t.get('ibs_cbs_base') or t.get('icms_base') or item.valor_bruto)|decimal_br }}</td><td>{{ (t.get('icms_value') or 0)|decimal_br }}</td><td>{{ (t.get('cbs_value') or 0)|decimal_br }}</td><td>{{ ((t.get('ibs_uf_value') or 0)|float + (t.get('ibs_municipal_value') or 0)|float)|decimal_br }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table></div>
+      <div class="nx-dw-list">
+        {% if op %}<span><b>ICMS</b> · {{ icms_labels.get(op.icms_cst, 'sem situação') }}{% if op.icms_cst %} (CST {{ op.icms_cst }}){% endif %}</span>
+        <span><b>IBS/CBS</b> · {% if op.ibs_cbs_cst %}CST {{ op.ibs_cbs_cst }}{% if op.ibs_cbs_class %} · classificação {{ op.ibs_cbs_class }}{% endif %}{% else %}não informado{% endif %}{% if op.cbs_rate or op.ibs_uf_rate or op.ibs_municipal_rate %} · CBS {{ (op.cbs_rate or '0')|replace('.', ',') }}% · IBS estadual {{ (op.ibs_uf_rate or '0')|replace('.', ',') }}% · IBS municipal {{ (op.ibs_municipal_rate or '0')|replace('.', ',') }}%{% endif %}</span>{% endif %}
+        {% if prod %}<span><b>Produto</b> · {% if (prod.ncm or '')|length == 8 %}NCM {{ prod.ncm[:4] }}.{{ prod.ncm[4:6] }}.{{ prod.ncm[6:] }}{% else %}sem NCM{% endif %} · origem {{ prod.origin }} · tributável em {{ prod.tax_unit }}</span>{% endif %}
+      </div>
+      <div class="nx-banner is-blue" style="font-size:.8125rem"><span style="flex:1">Algo diferente? Mude na operação ou no produto. A nota recalcula sozinha.</span>{% if op %}<a href="/producao/nfe/configuracao?secao=oper&amp;item={{ op.id }}" style="white-space:nowrap">Abrir operação {{ nxi('ext', 14) }}</a>{% endif %}</div>
+    </div>
+  </dialog>
+  {% if products %}
+  <dialog id="nx-dw-pick" class="nx-drawer" aria-labelledby="nx-dw-pick-t">
+    <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/produto-fiscal">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="nx-dw-h"><h2 id="nx-dw-pick-t">Escolher produto fiscal</h2><button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-close>Fechar</button></div>
+      <p class="nx-muted" style="font-size:.875rem">Escolha qual produto fiscal sai no DANFE{{ ' para todos os lotes desta nota' if snapshot.itens|length > 1 }}. Os dados fiscais vêm do cadastro escolhido.</p>
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        {% for pv in products %}
+        <label class="nx-pick"><input type="radio" name="product_id" value="{{ pv.obj.id }}" {% if (prod and prod.id == pv.obj.id) or (not prod and loop.first) %}checked{% endif %}><span><b>{{ pv.obj.name }}</b><small>{{ pv.line }}</small></span><i aria-hidden="true">{{ nxi('check', 18, 2.4) }}</i></label>
+        {% endfor %}
+      </div>
+      {% if lot_stage_label %}
+      <label class="nx-agree"><span class="dt-chk"><input type="checkbox" class="dt-check" name="always" value="1" checked></span>Usar sempre este produto para lotes “{{ lot_stage_label|lower }}”</label>
+      {% endif %}
+      <a href="/producao/nfe/configuracao?secao=prod" style="font-size:.8125rem;font-weight:600">+ Cadastrar novo produto fiscal em Configurações</a>
+      <div class="nx-dw-f"><button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-close>Cancelar</button>{% if can_write_page %}<button type="submit" class="sf-btn sf-btn-primary">Usar nesta nota</button>{% endif %}</div>
+    </form>
+  </dialog>
+  {% endif %}
+  {% if prod and not prod_ok %}
+  <dialog id="nx-dw-fix" class="nx-drawer" aria-labelledby="nx-dw-fix-t">
+    <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/completar-produto">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="nx-dw-h"><h2 id="nx-dw-fix-t">Completar produto fiscal</h2><button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-close>Fechar</button></div>
+      <p class="nx-muted" style="font-size:.875rem">Isto altera o cadastro <b style="color:#16201a">{{ prod.name }}</b> em Configurações fiscais. Vale para esta nota e para as próximas.</p>
+      {% if not prod.description %}<label class="nx-f">Descrição no DANFE<input name="description" maxlength="120" class="nx-in" required placeholder="Ex.: CAFE ARABICA EM GRAO CRU"></label>{% endif %}
+      {% if (prod.ncm or '')|length != 8 %}<label class="nx-f">NCM<input name="ncm" maxlength="10" inputmode="numeric" class="nx-in" required placeholder="0000.00.00"><small>Café cru (não torrado) costuma ser 0901.11.10. Confira com seu contador.</small></label>{% endif %}
+      <div class="nx-dw-list" style="background:#f6f8f5;border:1px solid #eef1ed;border-radius:.75rem;padding:.75rem .875rem">
+        <span style="font-weight:700;color:#16201a">Já preenchido no cadastro</span>
+        {% if prod.description %}<span>Descrição: {{ prod.description }}</span>{% endif %}
+        <span>Origem: {{ prod.origin }}{{ ' · Nacional' if prod.origin == '0' }}</span>
+        <span>Unidade de venda: {{ prod.commercial_unit }} · tributável: {{ prod.tax_unit }}{% if prod.commercial_unit != prod.tax_unit %} (1 saca = {{ prod.kg_per_unit }} kg){% endif %}</span>
+      </div>
+      <div class="nx-dw-f"><button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-close>Cancelar</button><button type="submit" class="sf-btn sf-btn-primary">Salvar no cadastro</button></div>
+    </form>
+  </dialog>
+  {% endif %}
 
   {% elif step == 'conferir' %}
   <div class="nx-split">
@@ -238,7 +251,7 @@
         </section>
       </div>
     </div>
-    <aside style="flex:1 1 21.25rem;min-width:0;display:flex;flex-direction:column;gap:1rem">
+    <aside class="nx-sticky" style="flex:1 1 21.25rem;min-width:0;display:flex;flex-direction:column;gap:1rem">
       <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/emitir" class="nx-cardx" style="display:flex;flex-direction:column;gap:1rem">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="nx-total"><p class="nx-muted">Total da nota</p><p class="v">R$ {{ snapshot.valor_bruto|decimal_br }}</p><p class="nx-muted">{{ 'NF-e ' ~ ('%06d'|format(identification.number)) ~ ' · Série ' ~ identification.series if identification else 'Número reservado ao confirmar' }}</p></div>
@@ -278,5 +291,5 @@
   </section>
   {% endif %}
 </div>
-<script src="/static/js/notas_fiscais.js?v=20261122nx1" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261122nx2" defer></script>
 {% endblock %}

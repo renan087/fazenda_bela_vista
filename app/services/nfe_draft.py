@@ -379,7 +379,31 @@ def map_sale_payment_and_freight(snapshot: dict) -> dict:
     }
 
 
-def apply_tax_profile_to_draft(db, *, draft, profile, buyer, user_id: int, summary: str | None = None) -> None:
+def calculate_item_taxes(gross, rules) -> dict:
+    """Bases e valores de um lote a partir das alíquotas da operação fiscal (ninguém digita imposto)."""
+    from decimal import ROUND_HALF_UP
+    cents = Decimal('0.01')
+    gross = Decimal(str(gross or '0'))
+    base = format(gross.quantize(cents, rounding=ROUND_HALF_UP), 'f')
+
+    def value(rate):
+        return format((gross * Decimal(rate) / 100).quantize(cents, rounding=ROUND_HALF_UP), 'f')
+
+    out = {k: '' for k in ('icms_base', 'icms_rate', 'icms_value', 'ibs_cbs_base', 'cbs_rate', 'cbs_value',
+                           'ibs_uf_rate', 'ibs_uf_value', 'ibs_municipal_rate', 'ibs_municipal_value')}
+    if str(rules.get('icms_cst') or '') == '00' and str(rules.get('icms_rate') or '') != '':
+        out.update(icms_base=base, icms_rate=str(rules['icms_rate']), icms_value=value(rules['icms_rate']))
+    ibs_rates = [str(rules.get(k) or '') for k in ('cbs_rate', 'ibs_uf_rate', 'ibs_municipal_rate')]
+    if any(ibs_rates):
+        out['ibs_cbs_base'] = base
+        for key, rate in zip(('cbs', 'ibs_uf', 'ibs_municipal'), ibs_rates):
+            rate = rate or '0'
+            out[f'{key}_rate'], out[f'{key}_value'] = rate, value(rate)
+    return out
+
+
+def apply_tax_profile_to_draft(db, *, draft, profile, buyer, user_id: int, summary: str | None = None,
+                               record_event: bool = True) -> None:
     """Aplica regras aprovadas de um NfeTaxProfile aos dados salvos do rascunho (1 clique)."""
     from app.models.nfe_draft import NfeDraftDetails, NfeDraftTechnicalData
     from app.services.nfe_snapshots import record_draft_event
@@ -443,6 +467,9 @@ def apply_tax_profile_to_draft(db, *, draft, profile, buyer, user_id: int, summa
             form_like[f'item_{idx}_tax_quantity'] = format(tax_qty.quantize(Decimal('0.0001')), 'f')
             form_like[f'item_{idx}_commercial_unit_price'] = price_str
             form_like[f'item_{idx}_tax_unit_price'] = format((gross / tax_qty).quantize(Decimal('0.0000000001')), 'f')
+        if rules.get('auto_tax'):
+            form_like.update({f'item_{idx}_{k}': v for k, v in calculate_item_taxes(gross, rules).items()})
+            continue
         for carry in ('icms_base', 'icms_value', 'icms_rate', 'ibs_cbs_base', 'ibs_uf_value',
                       'ibs_uf_rate', 'ibs_municipal_value', 'ibs_municipal_rate', 'cbs_value', 'cbs_rate'):
             if prev.get(carry) is not None and str(prev.get(carry)) != '':
@@ -458,6 +485,8 @@ def apply_tax_profile_to_draft(db, *, draft, profile, buyer, user_id: int, summa
     tech_row.schema_version = 1
     tech_row.updated_by = user_id
 
+    if not record_event:
+        return
     record_draft_event(
         db,
         draft_id=draft.id,

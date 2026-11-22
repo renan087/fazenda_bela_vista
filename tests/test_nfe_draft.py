@@ -187,10 +187,11 @@ def test_technical_fields_render_for_the_correct_snapshot_line():
     page = env.get_template('nfe_draft.html').render(draft=SimpleNamespace(id='x'), issuer=None, details={},
         technical={'freight_mode': '9'}, technical_items={1: {'icms_cst': '20', 'icms_rate': '0'}, 2: {'icms_cst': '40', 'cbs_rate': '1.2345'}},
         snapshot=snapshot, csrf_token='x', can_write_page=True)
-    assert 'name="item_1_icms_cst" value="20"' in page
-    assert 'name="item_2_icms_cst" value="40"' in page
-    assert 'name="item_1_icms_rate" value="0"' in page
-    assert 'name="item_2_cbs_rate" value="1.2345"' in page
+    # Dados fiscais por lote não são digitados na nota: vêm do cadastro (produto e operação).
+    assert 'name="item_1_icms_cst"' not in page and 'name="item_2_cbs_rate"' not in page
+    assert 'name="product_ncm"' not in page and 'name="operation_cfop"' not in page
+    assert 'Lote Primeiro' in page and 'Lote Segundo' in page
+    assert 'Mais opções do lote Segundo' in page
 
 
 def test_technical_route_saves_test_data_for_authorized_farm(monkeypatch):
@@ -293,6 +294,6 @@ def test_tax_review_renders_saved_missing_values_with_conditional_disclaimer():
     page = env.get_template('nfe_draft.html').render(draft=SimpleNamespace(id='x'), issuer=None, details={},
         technical=technical, technical_items={1: technical['items'][0]}, snapshot=snapshot,
         tax_review=review_test_tax_fields(snapshot, technical), csrf_token='x', can_write_page=True)
-    assert 'não informados: origem, base, alíquota, valor' in page
-    assert 'nenhum campo informado' in page
-    assert 'aplicabilidade e obrigatoriedade dependem da operação' in page
+    # Sem campos fiscais na nota: a conferência dos tributos fica no cálculo somente leitura.
+    assert 'Dados fiscais calculados' in page and 'Somente leitura' in page
+    assert 'name="item_1_origin"' not in page

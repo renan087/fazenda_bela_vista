@@ -33,6 +33,16 @@ FUNRURAL_OPTIONS = (
 )
 FUNRURAL_LABELS = dict(FUNRURAL_OPTIONS)
 LOT_STAGE_CHOICES = tuple(LOT_STAGES)
+# Situações do ICMS que o motor de simulação já monta.
+ICMS_CSTS = (
+    ('00', '00 · Tributada integralmente'),
+    ('40', '40 · Isenta'),
+    ('41', '41 · Não tributada'),
+    ('50', '50 · Suspensão'),
+    ('60', '60 · Cobrado antes por substituição'),
+    ('90', '90 · Outras (ex.: diferimento)'),
+)
+RATE_FIELDS = (('icms_rate', 'ICMS'), ('cbs_rate', 'CBS'), ('ibs_uf_rate', 'IBS estadual'), ('ibs_municipal_rate', 'IBS municipal'))
 STATUS_LABELS = {'ativa': 'Ativa', 'rascunho': 'Rascunho', 'substituida': 'Substituída'}
 
 PRODUCT_TEMPLATES = (
@@ -220,6 +230,11 @@ def clean_operation_input(data) -> dict:
         raise ValueError('Selecione como fica o Funrural.')
     ibs_cbs_cst = _digits(data, 'ibs_cbs_cst', 3, 'O CST do IBS/CBS')
     ibs_cbs_class = _digits(data, 'ibs_cbs_class', 6, 'A classificação do IBS/CBS')
+    if icms_cst and icms_cst not in dict(ICMS_CSTS):
+        raise ValueError('Escolha uma situação do ICMS da lista.')
+    rates = {key: _rate(data, key, label) for key, label in RATE_FIELDS}
+    if icms_cst != '00':
+        rates['icms_rate'] = ''
     info = str(data.get('info') or '').strip()
     if len(info) > 1000:
         raise ValueError('As informações ao fisco podem ter no máximo 1000 caracteres.')
@@ -227,7 +242,19 @@ def clean_operation_input(data) -> dict:
         raise ValueError('As informações ao fisco têm caracteres não permitidos (< > &).')
     return {'name': name, 'nature': nature, 'finality': finality, 'cfop_in': cfop_in, 'cfop_out': cfop_out,
             'icms_cst': icms_cst, 'funrural': funrural, 'ibs_cbs_cst': ibs_cbs_cst, 'ibs_cbs_class': ibs_cbs_class,
-            'info': info}
+            'info': info, **rates}
+
+
+def _rate(data, key: str, label: str) -> str:
+    raw = str(data.get(key) or '').strip().replace('%', '').replace(' ', '')
+    if not raw:
+        return ''
+    if raw.count(',') == 1 and '.' in raw:
+        raw = raw.replace('.', '')
+    raw = raw.replace(',', '.')
+    if not re.fullmatch(r'[0-9]{1,3}(?:\.[0-9]{1,4})?', raw) or Decimal(raw) > 100:
+        raise ValueError(f'Confira a alíquota de {label}: use um percentual entre 0 e 100.')
+    return format(Decimal(raw).normalize(), 'f') if Decimal(raw) else '0'
 
 
 def operation_missing(op) -> list[str]:
@@ -237,7 +264,9 @@ def operation_missing(op) -> list[str]:
     if not op.cfop_in:
         missing.append('CFOP para comprador do estado')
     if not op.icms_cst:
-        missing.append('CST do ICMS')
+        missing.append('situação do ICMS')
+    elif op.icms_cst == '00' and not op.icms_rate:
+        missing.append('alíquota do ICMS')
     return missing
 
 
@@ -340,7 +369,8 @@ def choose_cfop(op, *, buyer_state: str, issuer_state: str) -> str:
 
 # ---------------------------------------------------------------- aplicar no rascunho
 
-def apply_setup_to_draft(db, *, draft, product, operation, buyer, issuer_state: str, user_id: int) -> None:
+def apply_setup_to_draft(db, *, draft, product, operation, buyer, issuer_state: str, user_id: int,
+                         record_event: bool = True) -> None:
     """Preenche o rascunho a partir do produto fiscal e da operação ativa (só pré-preenchimento)."""
     from app.services.nfe_draft import apply_tax_profile_to_draft
     from app.services.nfe_snapshots import record_draft_event
@@ -351,7 +381,8 @@ def apply_setup_to_draft(db, *, draft, product, operation, buyer, issuer_state: 
     buyer_state = (getattr(buyer, 'state', '') or '').upper() if buyer else ''
     cfop = choose_cfop(operation, buyer_state=buyer_state, issuer_state=issuer_state)
     rules = {'operation_nature': operation.nature, 'operation_cfop': cfop, 'icms_cst': operation.icms_cst,
-             'ibs_cbs_cst': operation.ibs_cbs_cst, 'ibs_cbs_class': operation.ibs_cbs_class}
+             'ibs_cbs_cst': operation.ibs_cbs_cst, 'ibs_cbs_class': operation.ibs_cbs_class,
+             'auto_tax': True, **{key: getattr(operation, key, '') or '' for key, _ in RATE_FIELDS}}
     if product:
         rules.update({'product_description': product.description, 'product_ncm': product.ncm, 'origin': product.origin,
                       'unit': product.commercial_unit, 'tax_unit': product.tax_unit})
@@ -361,7 +392,8 @@ def apply_setup_to_draft(db, *, draft, product, operation, buyer, issuer_state: 
             rules['tax_factor'] = str(Decimal('1') / Decimal(product.kg_per_unit))
     holder = SimpleNamespace(id=operation.id, name=operation.name, version=operation.version, rules_json=json.dumps(rules))
     apply_tax_profile_to_draft(db, draft=draft, profile=holder, buyer=buyer, user_id=user_id,
-                               summary=f'Operação fiscal “{operation.name}” (v{operation.version}) aplicada.')
+                               summary=f'Operação fiscal “{operation.name}” (v{operation.version}) aplicada.',
+                               record_event=record_event)
 
     extra_row = db.query(NfeDraftExtraData).filter_by(draft_id=draft.id, organization_id=draft.organization_id,
                                                       farm_id=draft.farm_id).first()
@@ -381,6 +413,9 @@ def apply_setup_to_draft(db, *, draft, product, operation, buyer, issuer_state: 
             db.add(extra_row)
         extra_row.data_json = json.dumps(cleaned, ensure_ascii=False)
         extra_row.updated_by = user_id
+    if not record_event:
+        db.commit()
+        return
     record_draft_event(
         db, draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id,
         event_type='detalhes_salvos',
@@ -398,8 +433,10 @@ def draft_sources(db, *, draft) -> dict:
     events = (db.query(NfeDraftEvent).filter_by(draft_id=draft.id, organization_id=draft.organization_id,
                                                  farm_id=draft.farm_id, event_type='detalhes_salvos')
               .order_by(NfeDraftEvent.created_at.desc()).limit(20).all())
-    for ev in events:
-        meta = json.loads(ev.metadata_json or '{}')
+    parsed = [(ev, json.loads(ev.metadata_json or '{}')) for ev in events]
+    # Empate no mesmo segundo: vale a versão de operação mais nova.
+    parsed.sort(key=lambda pair: (pair[0].created_at, int(pair[1].get('fiscal_operation_version') or 0)), reverse=True)
+    for ev, meta in parsed:
         if meta.get('fiscal_operation_id'):
             op = db.query(NfeFiscalOperation).filter_by(id=meta['fiscal_operation_id'], organization_id=draft.organization_id,
                                                         farm_id=draft.farm_id).first()
@@ -409,6 +446,56 @@ def draft_sources(db, *, draft) -> dict:
                                                                farm_id=draft.farm_id).first()
             return {'operation': op, 'product': product, 'cfop': meta.get('cfop', '')}
     return {'operation': None, 'product': None, 'cfop': ''}
+
+
+def current_operation_version(db, op):
+    """Versão ativa da mesma operação (rascunhos não enviados seguem a versão nova)."""
+    if op is None or op.status == 'ativa':
+        return op
+    return db.query(NfeFiscalOperation).filter_by(root_id=op.root_id, organization_id=op.organization_id,
+                                                  farm_id=op.farm_id, status='ativa').first()
+
+
+def resync_draft(db, *, draft, buyer, issuer_state: str, user_id: int, product=None, operation=None) -> bool:
+    """Reaplica o cadastro atual (produto + operação) ao rascunho. Registra histórico só se algo mudou."""
+    sources = draft_sources(db, draft=draft)
+    op = operation or current_operation_version(db, sources['operation'])
+    if op is None:
+        op = suggest_operation(db, organization_id=draft.organization_id, farm_id=draft.farm_id)
+    if op is None:
+        return False
+    prod = product if product is not None else sources['product']
+    cfop = choose_cfop(op, buyer_state=(getattr(buyer, 'state', '') or '').upper() if buyer else '', issuer_state=issuer_state)
+    changed = (sources['operation'] is None or sources['operation'].id != op.id or sources['cfop'] != cfop
+               or (sources['product'].id if sources['product'] else None) != (prod.id if prod else None))
+    apply_setup_to_draft(db, draft=draft, product=prod, operation=op, buyer=buyer, issuer_state=issuer_state,
+                         user_id=user_id, record_event=changed)
+    return True
+
+
+def link_product_to_stage(db, *, product, stage: str | None) -> None:
+    """“Usar sempre este produto”: liga a situação do lote só a este produto fiscal."""
+    if not stage or stage not in dict(LOT_STAGE_CHOICES):
+        return
+    for other in list_products(db, organization_id=product.organization_id, farm_id=product.farm_id):
+        stages = json.loads(other.lot_stages_json or '[]')
+        if other.id == product.id and stage not in stages:
+            other.lot_stages_json = json.dumps(stages + [stage])
+        elif other.id != product.id and stage in stages:
+            other.lot_stages_json = json.dumps([x for x in stages if x != stage])
+    db.commit()
+
+
+def complete_product(db, *, product, data) -> None:
+    """Completa no cadastro o que falta para emitir (descrição e NCM)."""
+    description = _text(data, 'description', 120, 'a descrição no DANFE', upper=True) or product.description
+    ncm = _digits(data, 'ncm', 8, 'O NCM') or product.ncm
+    if not description:
+        raise ValueError('Informe a descrição no DANFE.')
+    if len(ncm or '') != 8:
+        raise ValueError('Informe o NCM com 8 números.')
+    product.description, product.ncm = description, ncm
+    db.commit()
 
 
 # ---------------------------------------------------------------- preferências e logotipo

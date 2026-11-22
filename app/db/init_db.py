@@ -1165,6 +1165,10 @@ def _sync_schema() -> None:
         """,
         "CREATE INDEX IF NOT EXISTS ix_automated_test_suite_results_run_id ON automated_test_suite_results (run_id)",
         "CREATE INDEX IF NOT EXISTS ix_automated_test_suite_results_suite_id ON automated_test_suite_results (suite_id)",
+        "ALTER TABLE nfe_fiscal_operations ADD COLUMN IF NOT EXISTS icms_rate VARCHAR(10) NOT NULL DEFAULT ''",
+        "ALTER TABLE nfe_fiscal_operations ADD COLUMN IF NOT EXISTS cbs_rate VARCHAR(10) NOT NULL DEFAULT ''",
+        "ALTER TABLE nfe_fiscal_operations ADD COLUMN IF NOT EXISTS ibs_uf_rate VARCHAR(10) NOT NULL DEFAULT ''",
+        "ALTER TABLE nfe_fiscal_operations ADD COLUMN IF NOT EXISTS ibs_municipal_rate VARCHAR(10) NOT NULL DEFAULT ''",
         """
         CREATE TABLE IF NOT EXISTS one_time_data_migrations (
             migration_key VARCHAR(120) PRIMARY KEY,
