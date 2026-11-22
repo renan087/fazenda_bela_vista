@@ -114,3 +114,9 @@ O serviço `app/services/nfe_snapshots.py` e as tabelas `nfe_draft_snapshots` e 
 
 - **Eventos offline (`app/services/nfe_events.py`):** monta envelopes `envEvento` / SOAP 1.2 (`NFeRecepcaoEvento4`) em `tpAmb=2` para **Cancelamento (`110111`)** e **Carta de Correção (`110110`)**, validando justificativa/texto (mínimo de 15 caracteres), protocolo de 15 dígitos, sequência e autor (CPF ou CNPJ), além do parser endurecido `parse_event_response` (`retEnvEvento`). Não assina nem transmite eventos à SEFAZ.
 - **Prévia de DANFE em PDF (`app/services/nfe_danfe_preview.py`):** disponível em `/producao/rascunhos-fiscais/{draft_id}/previa-danfe.pdf`, gera um documento A4 de conferência com marca d'água diagonal `SEM VALOR FISCAL · SIMULAÇÃO`, faixa de aviso, dados salvos do produtor, destinatário, lotes e chave simulada (com código de barras Code128 quando disponível). Não substitui DANFE oficial de nota autorizada.
+
+
+## Repositório imutável de documentos simulados e estrutura opcional IBSCBS
+
+- **Guarda imutável e `nfeProc` simulado (`app/services/nfe_document_store.py`, `nfe_stored_documents`):** combina `<NFe>` e `<protNFe>` em `<nfeProc versao="4.00">` somente em `tpAmb=2`, conferindo correspondência exata da chave de acesso e bloqueando DTD/XXE. Armazena XMLs de simulação no ambiente `teste_ficticio` com hash SHA-256, deduplicação idempotente, verificação em tempo constante (`verify_stored_document`) e política de bloqueio de exclusão (`is_locked=True`).
+- **Suporte estrutural opcional a `IBSCBS` / `IBSCBSTot`:** o motor de simulação (`app/services/nfe_xml_builder.py`) aceita `include_ibscbs=True` para montar os blocos `det/imposto/IBSCBS` e `total/IBSCBSTot` conforme o leiaute do pacote recebido, exigindo todos os códigos/valores explicitamente informados (sem presunção fiscal) e validado em teste contra cópia temporária do XSD.

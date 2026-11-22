@@ -156,6 +156,47 @@ def _build_icms_group(imposto_node, tech_row: dict) -> tuple[Decimal, Decimal]:
     return Decimal('0.00'), Decimal('0.00')
 
 
+def _build_ibscbs_group(imposto_node, tech_row: dict) -> dict | None:
+    """Monta <IBSCBS> somente quando solicitado explicitamente e com campos preenchidos."""
+    cst = str(tech_row.get('ibs_cbs_cst') or '').strip()
+    c_class = str(tech_row.get('ibs_cbs_class') or '').strip()
+    if not cst or not c_class:
+        raise ValueError('Para incluir IBSCBS na simulação, informe CST IBS/CBS e cClassTrib em todos os lotes.')
+    ibscbs = _sub(imposto_node, 'IBSCBS')
+    _sub(ibscbs, 'CST', cst)
+    _sub(ibscbs, 'cClassTrib', c_class)
+
+    has_values = all(
+        str(tech_row.get(k) if tech_row.get(k) is not None else '').strip() != ''
+        for k in ('ibs_cbs_base', 'ibs_uf_rate', 'ibs_uf_value', 'ibs_municipal_rate', 'ibs_municipal_value', 'cbs_rate', 'cbs_value')
+    )
+    if not has_values:
+        return None
+
+    v_bc = Decimal(_fmt_decimal(tech_row['ibs_cbs_base'], 2))
+    p_uf = _fmt_decimal(tech_row['ibs_uf_rate'], 4)
+    v_uf = Decimal(_fmt_decimal(tech_row['ibs_uf_value'], 2))
+    p_mun = _fmt_decimal(tech_row['ibs_municipal_rate'], 4)
+    v_mun = Decimal(_fmt_decimal(tech_row['ibs_municipal_value'], 2))
+    v_ibs = (v_uf + v_mun).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    p_cbs = _fmt_decimal(tech_row['cbs_rate'], 4)
+    v_cbs = Decimal(_fmt_decimal(tech_row['cbs_value'], 2))
+
+    g_ibscbs = _sub(ibscbs, 'gIBSCBS')
+    _sub(g_ibscbs, 'vBC', format(v_bc, '.2f'))
+    g_uf = _sub(g_ibscbs, 'gIBSUF')
+    _sub(g_uf, 'pIBSUF', p_uf)
+    _sub(g_uf, 'vIBSUF', format(v_uf, '.2f'))
+    g_mun = _sub(g_ibscbs, 'gIBSMun')
+    _sub(g_mun, 'pIBSMun', p_mun)
+    _sub(g_mun, 'vIBSMun', format(v_mun, '.2f'))
+    _sub(g_ibscbs, 'vIBS', format(v_ibs, '.2f'))
+    g_cbs = _sub(g_ibscbs, 'gCBS')
+    _sub(g_cbs, 'pCBS', p_cbs)
+    _sub(g_cbs, 'vCBS', format(v_cbs, '.2f'))
+    return {'vBC': v_bc, 'vIBSUF': v_uf, 'vIBSMun': v_mun, 'vIBS': v_ibs, 'vCBS': v_cbs}
+
+
 def build_simulation_xml(
     *,
     snapshot: dict,
@@ -167,6 +208,7 @@ def build_simulation_xml(
     extra_data: dict | None = None,
     emission_time: str = '12:00:00',
     timezone_offset: str = '-03:00',
+    include_ibscbs: bool = False,
     simulation_only: bool = True,
 ) -> dict:
     """Monta XML estrutural NF-e 4.00 sem assinatura, exclusivamente para simulação offline."""
@@ -272,6 +314,8 @@ def build_simulation_xml(
     total_vprod = Decimal('0.00')
     total_vbc = Decimal('0.00')
     total_vicms = Decimal('0.00')
+    ibscbs_totals = {'vBC': Decimal('0.00'), 'vIBSUF': Decimal('0.00'), 'vIBSMun': Decimal('0.00'), 'vIBS': Decimal('0.00'), 'vCBS': Decimal('0.00')}
+    has_ibscbs_totals = False
 
     for idx, item in enumerate(items, 1):
         tech = tech_by_index[idx]
@@ -298,6 +342,12 @@ def build_simulation_xml(
         item_vbc, item_vicms = _build_icms_group(imposto, tech)
         total_vbc += item_vbc
         total_vicms += item_vicms
+        if include_ibscbs:
+            ibscbs_part = _build_ibscbs_group(imposto, tech)
+            if ibscbs_part:
+                has_ibscbs_totals = True
+                for k, val in ibscbs_part.items():
+                    ibscbs_totals[k] += val
 
     # 5. total
     total_node = _sub(inf, 'total')
@@ -310,6 +360,27 @@ def build_simulation_xml(
     for zero_tag in ('vFrete', 'vSeg', 'vDesc', 'vII', 'vIPI', 'vIPIDevol', 'vPIS', 'vCOFINS', 'vOutro'):
         _sub(icms_tot, zero_tag, '0.00')
     _sub(icms_tot, 'vNF', format(total_vprod, '.2f'))
+    if include_ibscbs and has_ibscbs_totals:
+        ibscbs_tot = _sub(total_node, 'IBSCBSTot')
+        _sub(ibscbs_tot, 'vBCIBSCBS', format(ibscbs_totals['vBC'], '.2f'))
+        g_ibs = _sub(ibscbs_tot, 'gIBS')
+        g_ibs_uf = _sub(g_ibs, 'gIBSUF')
+        _sub(g_ibs_uf, 'vDif', '0.00')
+        _sub(g_ibs_uf, 'vDevTrib', '0.00')
+        _sub(g_ibs_uf, 'vIBSUF', format(ibscbs_totals['vIBSUF'], '.2f'))
+        g_ibs_mun = _sub(g_ibs, 'gIBSMun')
+        _sub(g_ibs_mun, 'vDif', '0.00')
+        _sub(g_ibs_mun, 'vDevTrib', '0.00')
+        _sub(g_ibs_mun, 'vIBSMun', format(ibscbs_totals['vIBSMun'], '.2f'))
+        _sub(g_ibs, 'vIBS', format(ibscbs_totals['vIBS'], '.2f'))
+        _sub(g_ibs, 'vCredPres', '0.00')
+        _sub(g_ibs, 'vCredPresCondSus', '0.00')
+        g_cbs = _sub(ibscbs_tot, 'gCBS')
+        _sub(g_cbs, 'vDif', '0.00')
+        _sub(g_cbs, 'vDevTrib', '0.00')
+        _sub(g_cbs, 'vCBS', format(ibscbs_totals['vCBS'], '.2f'))
+        _sub(g_cbs, 'vCredPres', '0.00')
+        _sub(g_cbs, 'vCredPresCondSus', '0.00')
 
     # 6. transp
     extra = extra_data or {}

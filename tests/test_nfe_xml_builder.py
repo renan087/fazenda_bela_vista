@@ -172,3 +172,42 @@ def test_simulation_xml_builder_sums_icms_and_validates_against_temp_xsd_copy(tm
         with_dummy_sig = _attach_dummy_signature_for_xsd_test(result['xml_bytes'], 'NFe' + result['access_key'])
         validation = validate_xml(with_dummy_sig, schema_directory=temp_schema)
         assert validation['valid'] is True, f'Erros XSD para CST {cst}: {validation["errors"]}'
+
+
+def test_simulation_xml_builder_supports_optional_ibscbs_validated_by_temp_xsd(tmp_path):
+    temp_schema = tmp_path / 'schemas'
+    shutil.copytree(SCHEMA_DIRECTORY, temp_schema)
+    manifest_path = temp_schema / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    manifest['reviewed'] = True
+    manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+
+    snapshot, issuer, details, technical, identification, extra_data = _sample_inputs(cst='40')
+    technical['items'][0].update({
+        'ibs_cbs_cst': '000', 'ibs_cbs_class': '000001', 'ibs_cbs_base': '100.00',
+        'ibs_uf_rate': '0.1000', 'ibs_uf_value': '0.10',
+        'ibs_municipal_rate': '0.0000', 'ibs_municipal_value': '0.00',
+        'cbs_rate': '0.9000', 'cbs_value': '0.90',
+    })
+    technical['items'][1].update({
+        'ibs_cbs_cst': '000', 'ibs_cbs_class': '000001', 'ibs_cbs_base': '150.00',
+        'ibs_uf_rate': '0.1000', 'ibs_uf_value': '0.15',
+        'ibs_municipal_rate': '0.0000', 'ibs_municipal_value': '0.00',
+        'cbs_rate': '0.9000', 'cbs_value': '1.35',
+    })
+
+    result = build_simulation_xml(
+        snapshot=snapshot, issuer=issuer, details=details, technical=technical,
+        identification=identification, issuer_crt='3', extra_data=extra_data,
+        include_ibscbs=True,
+    )
+    assert result['ready'] is True
+    root = ET.fromstring(result['xml_bytes'])
+    ns = {'nfe': NFE_NS}
+    assert root.findtext('nfe:infNFe/nfe:total/nfe:IBSCBSTot/nfe:vBCIBSCBS', namespaces=ns) == '250.00'
+    assert root.findtext('nfe:infNFe/nfe:total/nfe:IBSCBSTot/nfe:gIBS/nfe:vIBS', namespaces=ns) == '0.25'
+    assert root.findtext('nfe:infNFe/nfe:total/nfe:IBSCBSTot/nfe:gCBS/nfe:vCBS', namespaces=ns) == '2.25'
+
+    with_dummy_sig = _attach_dummy_signature_for_xsd_test(result['xml_bytes'], 'NFe' + result['access_key'])
+    validation = validate_xml(with_dummy_sig, schema_directory=temp_schema)
+    assert validation['valid'] is True, f'Erros XSD para IBSCBS: {validation["errors"]}'

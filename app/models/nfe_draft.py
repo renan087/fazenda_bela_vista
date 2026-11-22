@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -194,5 +194,29 @@ class NfeTransmissionAttempt(Base):
     access_key: Mapped[str] = mapped_column(String(44), nullable=False, default='')
     request_sha256: Mapped[str] = mapped_column(String(64), nullable=False, default='')
     response_sha256: Mapped[str] = mapped_column(String(64), nullable=False, default='')
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class NfeStoredDocument(Base):
+    """Guarda imutável local de XMLs de simulação/teste com SHA-256; sem validade fiscal."""
+    __tablename__ = 'nfe_stored_documents'
+    __table_args__ = (
+        UniqueConstraint(
+            'organization_id', 'farm_id', 'environment', 'document_type', 'access_key', 'xml_sha256',
+            name='uq_nfe_stored_doc_dedup',
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    draft_id: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    farm_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    environment: Mapped[str] = mapped_column(String(20), nullable=False, default='teste_ficticio')
+    document_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    access_key: Mapped[str] = mapped_column(String(44), index=True, nullable=False)
+    protocol_number: Mapped[str] = mapped_column(String(40), nullable=False, default='')
+    xml_content: Mapped[str] = mapped_column(Text, nullable=False)
+    xml_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
