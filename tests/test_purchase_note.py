@@ -6,6 +6,7 @@ from app.models.farm import Farm
 from app.models.finance_account import FinanceAccount
 from app.models.finance_transaction import FinanceTransaction
 from app.models.purchased_input import PurchasedInput
+from app.models.stock_output import StockOutput
 from app.services.forms import update_purchased_input
 from tests.test_inputs_hub import env, hub  # noqa: F401
 
@@ -111,3 +112,121 @@ def test_wizard_page_lists_catalog_suppliers_and_done_screen(wiz):
     assert any(c["name"] == "Cloreto de potássio" and c["available"] == 48 for c in data["catalog"])
     assert {t["key"] for t in data["types"]} == {"def", "fert", "comb", "sup", "outros"}
     assert 'data-cw-step="4"' in html
+
+
+def _note(env):
+    return env.db.query(PurchasedInput).filter(PurchasedInput.notes.like("Nota fiscal 18.322%")).order_by(PurchasedInput.id).all()
+
+
+def test_movement_detail_shows_note_items_parcels_and_delete_modal(wiz):
+    env, x, account = wiz
+    _post(env, _payload(account))
+    first = _note(env)[0]
+    html = env.routes.stock_page(env.request("/insumos/estoque"), aba="movimentacoes", periodo="safra", tipo="compra",
+                                 db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert f'data-io-mov="c-{first.id}"' in html and "Parcelas no Financeiro" in html and "A pagar" in html
+    assert f"/insumos/comprados/nova?editar={first.id}" in html and "Excluir esta compra?" in html
+    assert f'data-io-upload-open="{first.id}"' in html and "Relatório de compras em PDF" in html
+
+
+def test_delete_note_blocked_when_used_and_allowed_otherwise(wiz):
+    env, x, account = wiz
+    _post(env, _payload(account))
+    entries = _note(env)
+    repo = env.routes._repository(env.db)
+    from app.services import inputs_hub as ih
+    ih.register_uses(repo, [{"input_id": entries[1].input_id, "quantity": "5"}], farm_id=env.scope["active_farm_id"],
+                     season_id=env.scope["active_season_id"], plots={})
+    env.routes.delete_purchase_note_action(entries[0].id, env.request("/x"), csrf_token="x", db=env.db, user=env.user)
+    assert env.session["flash"]["kind"] == "error" and len(_note(env)) == 3
+    html = env.routes.stock_page(env.request("/insumos/estoque"), aba="movimentacoes", periodo="safra", tipo="compra",
+                                 db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert "Esta compra ainda não pode ser excluída" in html and "5 L de Fungicida Novo XR" in html
+    # desfaz o uso e aí pode excluir: itens e lançamento somem
+    out = env.db.query(StockOutput).filter(StockOutput.reference_type == "manual_stock_output").one()
+    ih.undo_movement(repo, env.db, out, env.scope["active_farm_id"])
+    tx_id = _note(env)[0].finance_transaction_id
+    env.routes.delete_purchase_note_action(_note(env)[0].id, env.request("/x"), csrf_token="x", db=env.db, user=env.user)
+    assert env.session["flash"]["kind"] == "success" and _note(env) == []
+    assert env.db.get(FinanceTransaction, tx_id) is None
+
+
+def test_correct_note_keeps_used_amounts_and_rebuilds_parcels(wiz):
+    env, x, account = wiz
+    _post(env, _payload(account))
+    entries = _note(env)
+    repo = env.routes._repository(env.db)
+    from app.services import inputs_hub as ih
+    ih.register_uses(repo, [{"input_id": entries[0].input_id, "quantity": "30"}], farm_id=env.scope["active_farm_id"],
+                     season_id=env.scope["active_season_id"], plots={})
+    state = env.routes._purchase_edit_state(repo, entries[0])
+    # 8 sacos saíram de uma compra mais antiga (usa primeiro o que chegou antes) e 22 desta nota
+    assert [i["used"] for i in state["state"]["items"]] == [22.0, 0, 0]
+    payload = _payload(account)
+    payload["edit_of"] = entries[0].id
+    payload["payment"]["installments"] = None
+    for item, e in zip(payload["items"], entries):
+        item["entry_id"] = e.id
+    payload["items"][0]["packs"] = "20"  # menos do que já saiu (22): não pode
+    _post(env, payload)
+    assert "não pode ficar menor" in env.session["flash"]["message"]
+    payload["items"][0]["packs"] = "35"
+    payload["items"].pop()  # tira a bota (nunca usada)
+    _post(env, payload)
+    assert env.session["flash"]["message"].startswith("Compra corrigida")
+    env.db.expire_all()
+    entries = _note(env)
+    assert len(entries) == 2 and float(entries[0].available_quantity) == 13.0
+    tx = env.db.get(FinanceTransaction, entries[0].finance_transaction_id)
+    assert float(tx.amount) == 35 * 190 + 6600 and len(tx.installments) == 3
+    assert round(sum(float(i.amount) for i in tx.installments), 2) == float(tx.amount)
+
+
+def test_correct_note_with_paid_parcel_cannot_change_total(wiz):
+    env, x, account = wiz
+    _post(env, _payload(account))
+    entries = _note(env)
+    tx = env.db.get(FinanceTransaction, entries[0].finance_transaction_id)
+    tx.installments[0].status = "pago"
+    env.db.commit()
+    payload = _payload(account)
+    payload["edit_of"] = entries[0].id
+    for item, e in zip(payload["items"], entries):
+        item["entry_id"] = e.id
+    payload["items"][2]["packs"] = "30"
+    _post(env, payload)
+    assert "parcela paga" in env.session["flash"]["message"]
+
+
+def test_attachments_upload_dedupe_and_remove(wiz):
+    import asyncio as aio
+    from io import BytesIO
+    from starlette.datastructures import UploadFile, Headers
+    from app.models.purchased_input_attachment import PurchasedInputAttachment
+    env, x, account = wiz
+    _post(env, _payload(account))
+    first = _note(env)[0]
+    upload = UploadFile(file=BytesIO(b"%PDF-1.4 nota"), filename="nota-18322.pdf", headers=Headers({"content-type": "application/pdf"}))
+    req = env.request("/x", form=[("attachments", upload)])
+    aio.run(env.routes.upload_purchase_note_attachments_action(first.id, req, db=env.db, user=env.user))
+    assert env.session["flash"]["message"] == "1 anexo salvo na compra."
+    att = env.db.query(PurchasedInputAttachment).one()
+    env.routes.delete_purchase_note_attachment_action(first.id, att.id, env.request("/x"), csrf_token="x", db=env.db, user=env.user)
+    assert env.db.query(PurchasedInputAttachment).count() == 0
+
+
+def test_old_pages_redirect_to_stock_and_purchase_export_still_works(wiz):
+    env, x, account = wiz
+    for fn in (env.routes.purchased_inputs_page, env.routes.supplies_page):
+        assert fn(env.request("/insumos/comprados")).headers["location"] == "/insumos/estoque?aba=movimentacoes&tipo=compra&periodo=safra"
+    from pathlib import Path
+    block = Path("app/templates/partials/sidebar.html").read_text()
+    assert "'label': 'Compras'" not in block
+
+
+def test_purchase_report_export_still_works(wiz):
+    env, x, account = wiz
+    _post(env, _payload(account))
+    resp = env.routes.export_purchased_inputs_xlsx(env.request("/insumos/comprados/exportar.xlsx"), farm_id=None, item_type=None, input_id=None,
+                                                   start_date=None, end_date=None, db=env.db, user=env.user)
+    assert resp.status_code == 200 and "spreadsheet" in resp.media_type

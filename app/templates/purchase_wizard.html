@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io5">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io6">{% endblock %}
 {% block content %}
 <div class="sf-page io-page cw-page" data-cw-page{% if done %} data-cw-done{% endif %}>
     <header class="io-head">
         <div>
-            <a class="io-crumb" href="/insumos/comprados">Insumos e máquinas › Compras ›</a>
+            <a class="io-crumb" href="/insumos/estoque">Insumos e máquinas › Estoque ›</a>
             <h1 class="io-title">Lançar compra</h1>
             <p class="io-sub" data-cw-sub>Uma nota pode ter adubo, diesel e EPI juntos. Cada item vai para o lugar certo do estoque.</p>
         </div>
         {% if not done %}
         <div class="io-actions">
             <button type="button" class="io-btn is-ghost" data-cw-draft>Salvar rascunho</button>
-            <a class="io-btn" href="/insumos/comprados">Cancelar</a>
+            <a class="io-btn" href="/insumos/estoque">Cancelar</a>
         </div>
         {% endif %}
     </header>
@@ -135,7 +135,7 @@
         <aside class="io-card cw-side io-side" aria-label="Resumo da nota" data-cw-summary></aside>
     </form>
     <script type="application/json" data-cw-data>{{ wizard|tojson }}</script>
-    <script src="{{ url_for('static', path='js/purchase_wizard.js') }}?v=20261121cw1" defer></script>
+    <script src="{{ url_for('static', path='js/purchase_wizard.js') }}?v=20261121cw4" defer></script>
     {% endif %}
 </div>
 {% if done %}<script>try { localStorage.removeItem('sisfarm.compra.rascunho'); } catch (e) {}</script>{% endif %}

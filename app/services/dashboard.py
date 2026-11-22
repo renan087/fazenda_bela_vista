@@ -1204,7 +1204,7 @@ def build_dashboard_overview(
             "tone": "danger" if item["stock_level"] == "critical" else "warning",
             "title": f"{item['name']}: estoque {item['stock_level_label'].lower()}",
             "text": f"Restam {item['available_quantity']:g} {item['unit'] or ''} · mínimo {item['low_stock_threshold']:g}".strip(),
-            "action": "Comprar", "link": "/insumos/comprados",
+            "action": "Comprar", "link": "/insumos/comprados/nova",
         })
     recent_pests = [i for i in incidents if i.occurrence_date and (today - i.occurrence_date).days <= 15 and (i.severity or 0) >= 3]
     for incident in sorted(recent_pests, key=lambda i: (-(i.severity or 0), i.occurrence_date)):

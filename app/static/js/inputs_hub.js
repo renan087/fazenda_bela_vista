@@ -615,6 +615,78 @@
   document.querySelectorAll('[data-io-autosubmit]').forEach((el) => el.addEventListener('change', () => el.form && el.form.submit()));
   document.querySelectorAll('[data-io-print]').forEach((b) => b.addEventListener('click', () => window.print()));
 
+  // ---------- Compra: modal de exclusão, anexos (arrastar e soltar) e confirmações
+  const noteModal = document.querySelector('[data-io-modal]');
+  const uploadModal = document.querySelector('[data-io-upload-modal]');
+  document.addEventListener('click', (e) => {
+    const del = e.target.closest('[data-io-note-delete]');
+    if (del && noteModal) {
+      const sheet = del.closest('[data-io-mov-body]') || document;
+      const tpl = sheet.querySelector('template[data-io-note-modal]');
+      if (!tpl) return;
+      const body = noteModal.querySelector('[data-io-modal-body]');
+      body.innerHTML = '';
+      body.appendChild(tpl.content.cloneNode(true));
+      noteModal.showModal();
+      const focus = body.querySelector('[data-io-modal-close]');
+      if (focus) focus.focus();
+      return;
+    }
+    const closeBtn = e.target.closest('[data-io-modal-close]');
+    if (closeBtn) { const d = closeBtn.closest('dialog'); if (d) d.close(); return; }
+    if (e.target.matches && e.target.matches('dialog.io-modal')) e.target.close();
+    const up = e.target.closest('[data-io-upload-open]');
+    if (up && uploadModal) {
+      const form = uploadModal.querySelector('[data-io-upload-form]');
+      form.action = `/insumos/estoque/compras/${up.dataset.ioUploadOpen}/anexos`;
+      uploadModal.querySelector('[data-io-upload-sub]').textContent = up.dataset.ioUploadTitle || '';
+      form.querySelector('[data-io-upload-input]').value = '';
+      renderUploads([]);
+      uploadModal.showModal();
+    }
+  });
+  document.addEventListener('submit', (e) => {
+    const form = e.target.closest('form[data-io-confirm]');
+    if (form && !window.confirm(form.dataset.ioConfirm)) e.preventDefault();
+  });
+  const MAX_FILE = 10 * 1024 * 1024;
+  const fileOk = (f) => (f.type.startsWith('image/') || f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) && f.size <= MAX_FILE;
+  const sizeLabel = (n) => (n >= 1024 * 1024 ? `${fmt(n / 1024 / 1024, 1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+  function renderUploads(files) {
+    if (!uploadModal) return;
+    const list = uploadModal.querySelector('[data-io-upload-list]');
+    const good = files.filter(fileOk);
+    list.innerHTML = files.map((f) => {
+      const ok = fileOk(f);
+      const ext = (f.name.split('.').pop() || '').slice(0, 4).toUpperCase();
+      const why = f.size > MAX_FILE ? 'Arquivo maior que 10 MB.' : 'Este tipo de arquivo não é aceito. Envie foto ou PDF.';
+      return `<div class="io-upload-item${ok ? '' : ' is-bad'}"><span class="io-upload-kind">${esc(ext)}</span><span class="io-upload-name"><strong>${esc(f.name)}</strong><span>${ok ? sizeLabel(f.size) + ' · pronto para anexar' : why}</span></span></div>`;
+    }).join('');
+    const btn = uploadModal.querySelector('[data-io-upload-submit]');
+    btn.disabled = !good.length;
+    btn.textContent = good.length > 1 ? `Anexar ${good.length} arquivos` : 'Anexar 1 arquivo';
+    if (!good.length) btn.textContent = 'Anexar';
+  }
+  if (uploadModal) {
+    const input = uploadModal.querySelector('[data-io-upload-input]');
+    const drop = uploadModal.querySelector('[data-io-drop]');
+    const setFiles = (fileList) => {
+      const good = Array.from(fileList).filter(fileOk);
+      try { const dt = new DataTransfer(); good.forEach((f) => dt.items.add(f)); input.files = dt.files; } catch (err) { /* navegador antigo: envia como veio */ }
+      renderUploads(Array.from(fileList));
+    };
+    input.addEventListener('change', () => setFiles(input.files));
+    ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('is-over'); }));
+    ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('is-over'); }));
+    drop.addEventListener('drop', (e) => { if (e.dataTransfer && e.dataTransfer.files.length) setFiles(e.dataTransfer.files); });
+    uploadModal.querySelector('[data-io-upload-form]').addEventListener('submit', (e) => {
+      if (!input.files.length) { e.preventDefault(); return; }
+      const btn = uploadModal.querySelector('[data-io-upload-submit]');
+      btn.disabled = true;
+      btn.textContent = 'Enviando…';
+    });
+  }
+
   const drawers = {};
   document.querySelectorAll('[data-io-drawer]').forEach((dlg) => { drawers[dlg.dataset.ioDrawer] = setupDrawer(dlg, dlg.dataset.ioDrawer); });
   document.addEventListener('click', (e) => {

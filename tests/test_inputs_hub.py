@@ -202,9 +202,9 @@ def test_assets_page_shows_cards_agenda_and_fuel_drawer(hub):
     assert 'data-io-drawer="fuel"' in html
 
 
-def test_sidebar_groups_inputs_in_four_items():
+def test_sidebar_groups_inputs_in_three_items():
     from pathlib import Path
     html = Path("app/templates/partials/sidebar.html").read_text()
     block = html[html.index("'id': 'insumos'"):html.index("'id': 'financeiro'")]
-    assert [label for label in ("Visão geral", "Estoque", "Compras", "Máquinas e bens") if label in block] == ["Visão geral", "Estoque", "Compras", "Máquinas e bens"]
-    assert "Suprimentos" not in block and "Manutenções" not in block
+    assert [label for label in ("Visão geral", "Estoque", "Máquinas e bens") if label in block] == ["Visão geral", "Estoque", "Máquinas e bens"]
+    assert "'Compras'" not in block and "Suprimentos" not in block and "Manutenções" not in block

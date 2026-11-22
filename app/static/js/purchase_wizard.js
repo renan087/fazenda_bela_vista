@@ -51,9 +51,19 @@
     payment: { mode: 'vista', account_id: String((D.accounts.find((a) => a.default) || D.accounts[0] || {}).id || ''), method: (D.methods || [])[0] || 'PIX', count: '3', first_due: addMonths(D.today, 1), card_id: String((D.cards[0] || {}).id || ''), card_count: '1', installments: null },
     open: null,
   });
+  const EDIT = D.edit || null;
   let S = blank();
   let fileName = '';
-  try {
+  if (EDIT) {
+    S = { ...blank(), ...EDIT.state, note: { ...blank().note, ...EDIT.state.note }, payment: { ...blank().payment, ...EDIT.state.payment } };
+    S.items.forEach((it) => { it.old_total = (num(it.packs) || 0) * (num(it.size) || 0); });
+    const title = page.querySelector('.io-title');
+    if (title) title.textContent = 'Corrigir compra';
+    const sub = page.querySelector('[data-cw-sub]');
+    if (sub) sub.textContent = 'Mude o que estiver errado. O que já foi usado do estoque fica como está.';
+    const submit = page.querySelector('[data-cw-submit]');
+    if (submit) submit.textContent = 'Salvar correção';
+  } else try {
     const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
     if (saved && saved.items && (saved.items.length || saved.note.supplier)) {
       S = { ...blank(), ...saved, note: { ...blank().note, ...saved.note }, payment: { ...blank().payment, ...saved.payment } };
@@ -61,7 +71,7 @@
       if (restored) restored.classList.remove('io-hidden');
     }
   } catch (e) { /* sem armazenamento: começa do zero */ }
-  const save = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(S)); } catch (e) { /* ignora */ } };
+  const save = () => { if (EDIT) return; try { localStorage.setItem(DRAFT_KEY, JSON.stringify(S)); } catch (e) { /* ignora */ } };
 
   const itemTotal = (it) => (num(it.packs) || 0) * (num(it.price) || 0);
   const total = () => Math.round(S.items.reduce((s, it) => s + itemTotal(it), 0) * 100) / 100;
@@ -98,6 +108,7 @@
         if (!(num(it.size) > 0)) return [2, tag + 'informe quanto tem cada embalagem.', i];
         if (!(num(it.price) >= 0) || it.price === '') return [2, tag + 'informe o preço por embalagem.', i];
         if (it.manufacture_date && it.expiration_date && it.manufacture_date > it.expiration_date) return [2, tag + 'a fabricação não pode ser depois da validade.', i];
+        if (it.used && (num(it.packs) || 0) * (num(it.size) || 0) + 1e-9 < it.used) return [2, tag + `já saíram ${it.used_label} desta compra; a quantidade não pode ficar menor.`, i];
       }
     }
     if (step >= 3) {
@@ -149,10 +160,10 @@
         </div>
         <span class="cw-calc" data-cw-calc>${packs && size ? `= ${fmt(packs * size)} ${esc(it.unit)} no estoque${num(it.price) ? ` · ${money((num(it.price) || 0) / size)} por ${esc(it.unit)}` : ''}` : ''}</span>
         ${lot}
-        <div style="display:flex;justify-content:flex-end"><button type="button" class="io-btn is-ghost is-sm" style="color:#B42318" data-cw-remove>Remover item</button></div>
+        <div style="display:flex;justify-content:flex-end">${it.used ? `<span class="io-sub" style="margin:0;font-size:12px">Já usado: ${esc(it.used_label)}. Este item não pode sair da nota.</span>` : '<button type="button" class="io-btn is-ghost is-sm" style="color:#B42318" data-cw-remove>Remover item</button>'}</div>
       </div>`;
     }
-    const stock = known ? `tem ${esc(known.stock)}` : '<span class="io-pill io-tone-blue">item novo</span>';
+    const stock = (known ? `tem ${esc(known.stock)}` : '<span class="io-pill io-tone-blue">item novo</span>') + (it.used ? ` · <span class="io-pill io-tone-amber">já usado ${esc(it.used_label)}</span>` : '');
     return `<div class="cw-item${open ? ' is-open' : ''}" data-cw-index="${i}">
       <button type="button" class="cw-ihead" data-cw-toggle aria-expanded="${open}">
         <span class="cw-iname"><strong>${esc(it.name)}</strong><span class="cw-imeta"><span class="io-pill io-tone-green">vai para: ${esc(groupLabel(it))}</span>${stock}</span></span>
@@ -183,10 +194,16 @@
 
   function renderPayment() {
     const p = S.payment;
+    if (EDIT && EDIT.paid) {
+      $$('[data-cw-mode], [data-cw-p], [data-cw-parc]').forEach((el) => { el.disabled = true; });
+      const nofin = $('[data-cw-nofin]');
+      nofin.textContent = `Esta nota já tem ${EDIT.paid} ${EDIT.paid === 1 ? 'parcela paga' : 'parcelas pagas'}: o pagamento e o total não podem mudar aqui. Para isso, estorne o pagamento no Financeiro.`;
+      nofin.classList.remove('io-hidden');
+    }
     $$('[data-cw-mode]').forEach((b) => { const on = b.dataset.cwMode === p.mode; b.classList.toggle('is-on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
     $$('[data-cw-pay]').forEach((el) => el.classList.toggle('io-hidden', !el.dataset.cwPay.split(' ').includes(p.mode)));
     $$('[data-cw-p]').forEach((el) => { if (p[el.dataset.cwP] != null && el.value !== String(p[el.dataset.cwP])) el.value = p[el.dataset.cwP]; });
-    $('[data-cw-nofin]').classList.toggle('io-hidden', !(p.mode === 'vista' && !p.account_id));
+    if (!(EDIT && EDIT.paid)) $('[data-cw-nofin]').classList.toggle('io-hidden', !(p.mode === 'vista' && !p.account_id));
     if (p.mode === 'prazo') {
       const rows = parcels();
       const diff = Math.abs(parcelSum() - total()) <= 0.01;
@@ -225,12 +242,12 @@
     $('[data-cw-review]').innerHTML = '<div class="cw-rrow is-head"><span>Item</span><span>Estoque</span><span>Custo</span><span style="text-align:right">Subtotal</span></div>' +
       S.items.map((it) => {
         const known = byName(it.name);
-        const added = (num(it.packs) || 0) * (num(it.size) || 0);
+        const added = (num(it.packs) || 0) * (num(it.size) || 0) - (it.old_total || 0);
         const before = known ? known.available : 0;
         const unit = it.unit;
         const lot = [it.batch && `lote ${it.batch}`, it.expiration_date && `vence ${dateBr(it.expiration_date)}`].filter(Boolean).join(' · ');
         return `<div class="cw-rrow"><span><strong>${esc(it.name)}</strong><small>${fmt(num(it.packs))} × ${fmt(num(it.size))} ${esc(unit)}${lot ? ' · ' + esc(lot) : ''}${known ? '' : ' · item novo'}</small></span>
-          <span><span class="io-txt-muted">${fmt(before)} ${esc(unit)}</span> → <strong class="io-txt-green">${fmt(before + added)} ${esc(unit)}</strong></span>
+          <span><span class="io-txt-muted">${fmt(before)} ${esc(unit)}</span> → <strong class="${added < 0 ? 'io-txt-amber' : 'io-txt-green'}">${fmt(before + added)} ${esc(unit)}</strong></span>
           <span class="io-txt-muted">${num(it.size) ? money((num(it.price) || 0) / num(it.size)) + ' por ' + esc(unit) : '—'}</span>
           <strong style="text-align:right">${money(itemTotal(it))}</strong></div>`;
       }).join('');
@@ -416,7 +433,7 @@
 
   $$('[data-cw-goto]').forEach((b) => b.addEventListener('click', () => go(Number(b.dataset.cwGoto))));
   $('[data-cw-next]').addEventListener('click', () => go(S.step + 1));
-  $('[data-cw-prev]').addEventListener('click', () => { if (S.step === 1) window.location.href = '/insumos/comprados'; else go(S.step - 1); });
+  $('[data-cw-prev]').addEventListener('click', () => { if (S.step === 1) window.location.href = EDIT ? `/insumos/estoque?aba=movimentacoes&tipo=compra&periodo=safra&mov=c-${EDIT.entry_id}` : '/insumos/estoque'; else go(S.step - 1); });
   $('[data-cw-draft]') && $('[data-cw-draft]').addEventListener('click', (e) => { save(); e.currentTarget.textContent = 'Rascunho salvo'; setTimeout(() => { e.currentTarget && (e.currentTarget.textContent = 'Salvar rascunho'); }, 1600); });
   const discard = $('[data-cw-discard]');
   if (discard) discard.addEventListener('click', () => { try { localStorage.removeItem(DRAFT_KEY); } catch (err) { /* ignora */ } S = blank(); fileName = ''; $('[data-cw-restored]').classList.add('io-hidden'); renderStep(); });
@@ -427,9 +444,10 @@
     const pay = { ...S.payment, count: S.payment.mode === 'cartao' ? S.payment.card_count : (S.payment.mode === 'prazo' ? S.payment.count : '1') };
     if (pay.mode !== 'prazo') delete pay.installments; else pay.installments = parcels().map((x) => ({ due_date: x.due_date, amount: x.amount }));
     $('[data-cw-payload]').value = JSON.stringify({
+      edit_of: EDIT ? EDIT.entry_id : null,
       note: S.note,
       payment: pay,
-      items: S.items.map((it) => ({ name: it.name, item_type: it.item_type, category: it.category, unit: it.unit, packs: it.packs, size: it.size, price: it.price, batch: it.batch, manufacture_date: it.manufacture_date, expiration_date: it.expiration_date, minimum: it.minimum })),
+      items: S.items.map((it) => ({ entry_id: it.entry_id || null, name: it.name, item_type: it.item_type, category: it.category, unit: it.unit, packs: it.packs, size: it.size, price: it.price, batch: it.batch, manufacture_date: it.manufacture_date, expiration_date: it.expiration_date, minimum: it.minimum })),
     });
     const btn = $('[data-cw-submit]');
     btn.disabled = true;

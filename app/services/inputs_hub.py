@@ -746,6 +746,7 @@ def build_movements(repo, db, farm_id, *, today: date, start: date | None, end: 
         else:
             groups[e.finance_transaction_id or f"e{e.id}"].append(e)
     for key, items in groups.items():
+        items.sort(key=lambda i: i.id)
         first = items[0]
         total = sum(_f(i.total_cost) for i in items)
         marker = next((part.strip() for part in (first.notes or "").split("·") if part.strip().startswith("Nota fiscal")), None)
@@ -765,7 +766,7 @@ def build_movements(repo, db, farm_id, *, today: date, start: date | None, end: 
             "after": item_after, "value": br_money(total), "value_num": total,
             "rows": [("Fornecedor", supplier)] + ([("Nota", marker.replace("Nota fiscal ", ""))] if marker else [])
                     + [(i.name, f"{br_qty(i.total_quantity, i.package_unit)} · {br_money(i.total_cost)}" + (f" · lote {i.batch_number}" if i.batch_number else "")) for i in items],
-            "undo": None, "fix": None, "link": "/insumos/comprados",
+            "undo": None, "fix": None, "link": None, "_entries": items,
         })
     for o in outputs:
         name = o.input_catalog.name if o.input_catalog else "item"
@@ -821,6 +822,9 @@ def build_movements(repo, db, farm_id, *, today: date, start: date | None, end: 
             page = index // per_page + 1
     page = min(max(1, int(page or 1)), pages)
     chunk = shown[(page - 1) * per_page: page * per_page]
+    for m in chunk:
+        if m["kind"] == "compra":
+            m["note"] = purchase_note_detail(db, m.pop("_entries"))
     days, by_day = [], defaultdict(list)
     for m in chunk:
         by_day[m["date"]].append(m)
@@ -865,4 +869,58 @@ def count_sheet(items: list[dict], counts: dict) -> dict:
         "diff": sum(1 for r in rows if r["status"] == "diff"),
         "missing_value": br_money(sum(-r["diff_value"] for r in rows if r["status"] == "diff" and r["diff_value"] < 0)),
         "extra_value": br_money(sum(r["diff_value"] for r in rows if r["status"] == "diff" and r["diff_value"] > 0)),
+    }
+
+
+def purchase_note_detail(db, entries) -> dict:
+    """Dados do painel de uma compra: itens, o que já foi usado, parcelas, anexos e se dá para excluir."""
+    from app.services import purchase_note as pn
+
+    first = entries[0]
+    tx = first.finance_transaction if first.finance_transaction_id else None
+    blockers = pn.delete_blockers(db, entries)
+    items = []
+    for e in entries:
+        used = pn.consumed(e)
+        lot = " · ".join(p for p in (f"lote {e.batch_number}" if e.batch_number else None,
+                                     f"vence {e.expiration_date.strftime('%m/%Y')}" if e.expiration_date else None) if p)
+        items.append({
+            "name": e.name, "total": br_money(e.total_cost),
+            "detail": " · ".join(p for p in (
+                f"{br_qty(e.quantity_purchased)} × {br_qty(e.package_size, e.package_unit)}" if _f(e.package_size) != 1 else br_qty(e.total_quantity, e.package_unit),
+                f"{br_money(e.unit_price)} cada", lot or None, f"já usados {br_qty(used, e.package_unit)}" if used else None) if p),
+        })
+    installments = []
+    for i in sorted(tx.installments, key=lambda i: i.installment_number) if tx is not None else []:
+        paid = (i.status or "").strip().lower() == "pago"
+        installments.append({"n": f"{i.installment_number}ª", "due": i.due_date.strftime("%d/%m/%Y"), "amount": br_money(i.amount),
+                             "paid": paid, "method": tx.payment_method or ""})
+    seen, attachments = set(), []
+    for e in entries:
+        for a in sorted(e.attachments or [], key=lambda a: a.id):
+            if a.filename not in seen:
+                seen.add(a.filename)
+                attachments.append({"id": a.id, "filename": a.filename})
+    if installments:
+        paid_count = sum(1 for i in installments if i["paid"])
+        total_count = len(installments)
+        if paid_count == 0:
+            pay_label = f"{total_count} {'parcela' if total_count == 1 else 'parcelas'} a pagar"
+        elif paid_count == total_count:
+            pay_label = "tudo pago"
+        else:
+            pay_label = f"{paid_count} de {total_count} {'paga' if paid_count == 1 else 'pagas'}"
+    elif tx is not None:
+        pay_label = "à vista" if not tx.credit_card_id else "no cartão"
+    else:
+        pay_label = "fora do Financeiro"
+    uses = [{**u, "label": f"{br_qty(u['quantity'], u['unit'])} de {u['name']}",
+             "where": " · ".join(p for p in (u["plot"] or ("Ajuste de contagem" if u["adjustment"] else "Uso geral"),
+                                             u["date"].strftime("%d/%m") if u["date"] else None) if p)} for u in blockers["uses"][:6]]
+    return {
+        "entry_id": first.id, "items": items, "installments": installments, "attachments": attachments,
+        "pay_label": pay_label, "total": br_money(sum(_f(e.total_cost) for e in entries)),
+        "blocked": blockers["blocked"], "uses": uses, "more_uses": max(0, len(blockers["uses"]) - 6),
+        "linked": blockers["linked"], "paid": blockers["paid"], "count": len(entries),
+        "finance": tx is not None,
     }

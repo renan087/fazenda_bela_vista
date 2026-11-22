@@ -13429,148 +13429,9 @@ async def cancel_own_password_change_action(
 
 
 @router.get("/insumos/comprados")
-def purchased_inputs_page(
-    request: Request,
-    edit_id: int | None = None,
-    item_type: str | None = None,
-    farm_id: int | None = None,
-    input_id: str | None = None,
-    purchased_tab: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_web),
-    csrf_token: str = Depends(get_csrf_token),
-):
-    repo = _repository(db)
-    scope = _global_scope_context(request, repo)
-    effective_farm_id = farm_id or scope["active_farm_id"]
-    finance_accounts = repo.list_finance_accounts(farm_id=effective_farm_id) if effective_farm_id else []
-    finance_credit_cards = repo.list_finance_credit_cards(farm_id=effective_farm_id) if effective_farm_id else []
-    edit_input = repo.get_purchased_input(edit_id) if edit_id else None
-    selected_item_type = item_type if item_type in {"insumo_agricola", "combustivel", "all"} else None
-    normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
-    selected_input_id = _int_or_none(input_id)
-    start = _date_or_none(start_date)
-    end = _date_or_none(end_date)
-    purchased_inputs_filters_active = (
-        selected_input_id is not None
-        or (selected_item_type is not None and selected_item_type != "all")
-        or (effective_farm_id is not None and request.query_params.get("farm_id") is not None)
-        or start is not None
-        or end is not None
-        or edit_id is not None
-    )
-    if not normalized_item_type and edit_input and edit_input.input_catalog:
-        normalized_item_type = edit_input.input_catalog.item_type
-    if not normalized_item_type and selected_item_type != "all":
-        normalized_item_type = "insumo_agricola"
-    stock_context = _build_stock_context(repo, farm_id=effective_farm_id, item_type=normalized_item_type, input_id=selected_input_id, start_date=start, end_date=end)
-    input_catalog_suggestions = _input_catalog_suggestions_for_purchase_form(
-        repo,
-        farm_id=effective_farm_id,
-        context_farm_ids=[farm.id for farm in scope.get("context_farms", [])],
-    )
-
-    def _catalog_form_package_unit(item) -> str:
-        # Unidade primaria da identidade do produto. Usa o default_unit salvo
-        # e repara dados antigos olhando a primeira entrada vinculada.
-        entries = [
-            entry
-            for entry in (getattr(item, "purchase_entries", []) or [])
-            if entry.package_unit
-        ]
-        if entries:
-            entries.sort(key=lambda entry: (entry.purchase_date or date.max, entry.id or 0))
-            return (entries[0].package_unit or item.default_unit or "").strip() or "kg"
-        return (item.default_unit or "").strip() or "kg"
-
-    input_catalog_form_options = [
-        {
-            "id": item.id,
-            "value": item.name or "",
-            "itemType": item.item_type or "insumo_agricola",
-            "category": _normalize_purchase_input_category_label(item.category or ""),
-            "packageUnit": _catalog_form_package_unit(item),
-            "lowStockThreshold": float(item.low_stock_threshold) if item.low_stock_threshold is not None else "",
-        }
-        for item in input_catalog_suggestions
-    ]
-    purchase_entries = _sort_collection_desc(
-        stock_context["purchase_entries"],
-        lambda item: item.purchase_date,
-        lambda item: item.id,
-    )
-    stock_outputs = _sort_collection_desc(
-        stock_context["stock_outputs"],
-        lambda item: item.movement_date,
-        lambda item: item.id,
-    )
-    purchase_entries_pagination = _paginate_collection(request, purchase_entries, "entries_page")
-    stock_outputs_pagination = _paginate_collection(request, stock_outputs, "outputs_page")
-    extract_rows = _sort_collection_desc(
-        stock_context["extract_rows"],
-        lambda row: row.get("date"),
-        lambda row: row.get("reference"),
-    )
-    extract_rows_pagination = _paginate_collection(request, extract_rows, "extract_page")
-    selected_purchased_tab = str(request.query_params.get("purchased_tab") or purchased_tab or "entries")
-    if selected_purchased_tab not in {"entries", "outputs", "extract"}:
-        selected_purchased_tab = "entries"
-    return templates.TemplateResponse(
-        "purchased_inputs.html",
-        _base_context(
-            request,
-            user,
-            csrf_token,
-            "purchased_inputs",
-            _repo=repo,
-            title="Compras de Insumos",
-            farms=scope["context_farms"],
-            selected_item_type=selected_item_type or normalized_item_type or "insumo_agricola",
-            selected_farm_id=effective_farm_id,
-            purchase_input_category_options_by_type=PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE,
-            purchase_input_category_profiles=PURCHASE_INPUT_CATEGORY_PROFILES,
-            purchase_traceability_categories={
-                kind: [category for category in categories if purchase_traceability_enabled(kind, category)]
-                for kind, categories in PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE.items()
-            },
-            inputs=purchase_entries_pagination["items"],
-            inputs_pagination=purchase_entries_pagination,
-            inputs_catalog=stock_context["catalog_inputs"],
-            inputs_catalog_all=input_catalog_suggestions,
-            purchased_input_catalog_options=input_catalog_form_options,
-            selected_input_id=selected_input_id,
-            finance_account_options=finance_accounts,
-            finance_account_default=next((item for item in finance_accounts if item.is_default), None),
-            finance_credit_card_options=finance_credit_cards,
-            finance_credit_card_default=next((item for item in finance_credit_cards if item.is_default), None),
-            input_stock=stock_context["input_stock"],
-            stock_outputs=stock_outputs_pagination["items"],
-            stock_outputs_pagination=stock_outputs_pagination,
-            extract_rows=extract_rows_pagination["items"],
-            extract_rows_pagination=extract_rows_pagination,
-            selected_start_date=start_date,
-            selected_end_date=end_date,
-            purchased_inputs_export_query=_purchased_inputs_export_query(
-                farm_id=effective_farm_id,
-                item_type=selected_item_type if selected_item_type in {"insumo_agricola", "combustivel"} else None,
-                purchased_tab=selected_purchased_tab,
-                input_id=selected_input_id,
-                start_date=start,
-                end_date=end,
-            ),
-            edit_input=edit_input,
-            today=today_in_app_timezone(),
-            purchased_inputs_filters_active=purchased_inputs_filters_active,
-            selected_purchased_tab=selected_purchased_tab,
-            purchased_tab_urls={
-                "entries": _url_with_query(request, purchased_tab="entries"),
-                "outputs": _url_with_query(request, purchased_tab="outputs"),
-                "extract": _url_with_query(request, purchased_tab="extract"),
-            },
-        ),
-    )
+def purchased_inputs_page(request: Request):
+    """Compras e Suprimentos agora vivem no Estoque (aba Movimentações, filtro Entradas)."""
+    return _redirect("/insumos/estoque?aba=movimentacoes&tipo=compra&periodo=safra")
 
 
 @router.post("/insumos/comprados")
@@ -16153,147 +16014,9 @@ def delete_equipment_maintenance_attachment_action(
 
 
 @router.get("/insumos/suprimentos")
-def supplies_page(
-    request: Request,
-    edit_id: int | None = None,
-    edit_output_id: int | None = None,
-    farm_id: int | None = None,
-    input_id: int | None = None,
-    category: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    movement_type: str = "all",
-    supplies_tab: str | None = None,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_web),
-    csrf_token: str = Depends(get_csrf_token),
-):
-    repo = _repository(db)
-    scope = _global_scope_context(request, repo)
-    effective_farm_id = farm_id or scope["active_farm_id"]
-    finance_accounts = repo.list_finance_accounts(farm_id=effective_farm_id) if effective_farm_id else []
-    selected_input_id = input_id
-    start = _date_or_none(start_date)
-    end = _date_or_none(end_date)
-    stock_context = _build_stock_context(
-        repo,
-        farm_id=effective_farm_id,
-        input_id=selected_input_id,
-        start_date=start,
-        end_date=end,
-        movement_type=movement_type,
-        item_type="suprimento",
-    )
-    purchase_entries = _sort_collection_desc(
-        stock_context["purchase_entries"],
-        lambda item: item.purchase_date,
-        lambda item: item.id,
-    )
-    stock_outputs = _sort_collection_desc(
-        stock_context["stock_outputs"],
-        lambda item: item.movement_date,
-        lambda item: item.id,
-    )
-    extract_rows = _sort_collection_desc(
-        stock_context["extract_rows"],
-        lambda row: row.get("date"),
-        lambda row: row.get("reference"),
-    )
-    selected_category = (category or "").strip()
-    if selected_category:
-        purchase_entries = [item for item in purchase_entries if (item.input_catalog.category if item.input_catalog and item.input_catalog.category else "Geral") == selected_category]
-        stock_outputs = [item for item in stock_outputs if (item.input_catalog.category if item.input_catalog and item.input_catalog.category else "Geral") == selected_category]
-        allowed_input_ids = {
-            item.id
-            for item in stock_context["catalog_inputs"]
-            if ((item.category if getattr(item, "category", None) else "Geral") == selected_category)
-        }
-        extract_rows = [row for row in extract_rows if row.get("input_id") in allowed_input_ids]
-        stock_context["catalog_inputs"] = [item for item in stock_context["catalog_inputs"] if item.id in allowed_input_ids]
-        stock_context["stock_catalog_rows"] = [row for row in stock_context["stock_catalog_rows"] if row.get("id") in allowed_input_ids]
-    purchase_entries_pagination = _paginate_collection(request, purchase_entries, "entries_page")
-    stock_outputs_pagination = _paginate_collection(request, stock_outputs, "outputs_page")
-    extract_rows_pagination = _paginate_collection(request, extract_rows, "extract_page")
-    edit_supply = repo.get_purchased_input(edit_id) if edit_id else None
-    edit_output = repo.get_stock_output(edit_output_id) if edit_output_id else None
-    if edit_output and (
-        edit_output.reference_type != "manual_stock_output"
-        or not edit_output.input_catalog
-        or edit_output.input_catalog.item_type != "suprimento"
-    ):
-        edit_output = None
-    selected_supplies_tab = supplies_tab if supplies_tab in {"entries", "outputs", "extract"} else "entries"
-    if edit_output:
-        selected_supplies_tab = "outputs"
-    supplies_edit_urls = {
-        item.id: _url_with_query(request, edit_id=item.id)
-        for item in purchase_entries_pagination["items"]
-    }
-    supplies_after_edit_close_url = _url_with_query(request, edit_id=None)
-    output_edit_urls = {
-        item.id: _url_with_query(request, edit_output_id=item.id)
-        for item in stock_outputs_pagination["items"]
-    }
-    supplies_after_output_edit_close_url = _url_with_query(request, edit_output_id=None)
-    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
-    finance_credit_cards = repo.list_finance_credit_cards(farm_id=effective_farm_id) if effective_farm_id else []
-    return templates.TemplateResponse(
-        "supplies.html",
-        _base_context(
-            request,
-            user,
-            csrf_token,
-            "supplies",
-            _repo=repo,
-            title="Suprimentos",
-            farms=scope["context_farms"],
-            plots=repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
-            selected_farm_id=effective_farm_id,
-            selected_input_id=selected_input_id,
-            selected_category=selected_category,
-            selected_start_date=start_date,
-            selected_end_date=end_date,
-            selected_movement_type=movement_type,
-            selected_supplies_tab=selected_supplies_tab,
-            supplies_tab_urls={
-                "entries": _url_with_query(request, supplies_tab="entries"),
-                "outputs": _url_with_query(request, supplies_tab="outputs"),
-                "extract": _url_with_query(request, supplies_tab="extract"),
-            },
-            supplies_export_query=_stock_export_query(
-                farm_id=effective_farm_id,
-                input_id=selected_input_id,
-                start_date=start,
-                end_date=end,
-                movement_type=movement_type,
-                item_type="suprimento",
-                stock_tab=selected_supplies_tab,
-            ),
-            supply_category_options=SUPPLY_CATEGORY_OPTIONS,
-            finance_account_options=finance_accounts,
-            finance_account_default=next((item for item in finance_accounts if item.is_default), None),
-            finance_credit_card_options=finance_credit_cards,
-            finance_credit_card_default=next((item for item in finance_credit_cards if item.is_default), None),
-            supplies=purchase_entries_pagination["items"],
-            supplies_pagination=purchase_entries_pagination,
-            purchase_entries=purchase_entries_pagination["items"],
-            purchase_entries_pagination=purchase_entries_pagination,
-            stock_outputs=stock_outputs_pagination["items"],
-            stock_outputs_pagination=stock_outputs_pagination,
-            extract_rows=extract_rows_pagination["items"],
-            extract_rows_pagination=extract_rows_pagination,
-            inputs_catalog=stock_context["consumption_catalog_inputs"],
-            input_stock=stock_context["input_stock"],
-            stock_catalog_rows=stock_context["stock_catalog_rows"],
-            edit_supply=edit_supply,
-            edit_output=edit_output,
-            supplies_edit_urls=supplies_edit_urls,
-            supplies_after_edit_close_url=supplies_after_edit_close_url,
-            output_edit_urls=output_edit_urls,
-            supplies_after_output_edit_close_url=supplies_after_output_edit_close_url,
-            current_supplies_url=_url_with_query(request),
-        ),
-    )
+def supplies_page(request: Request):
+    """Compras e Suprimentos agora vivem no Estoque (aba Movimentações, filtro Entradas)."""
+    return _redirect("/insumos/estoque?aba=movimentacoes&tipo=compra&periodo=safra")
 
 
 @router.post("/insumos/suprimentos")
@@ -26065,11 +25788,23 @@ def purchase_wizard_page(
     repo = _repository(db)
     scope = _global_scope_context(request, repo, user)
     done = request.session.pop("purchase_note_done", None) if request.query_params.get("registrada") == "1" else None
+    wizard = _purchase_wizard_data(repo, scope)
+    edit_id = _int_or_none(request.query_params.get("editar"))
+    if edit_id and not done:
+        try:
+            wizard["edit"] = _purchase_edit_state(repo, _scoped_note_entry(repo, scope, edit_id))
+        except ValueError as exc:
+            _flash(request, "error", str(exc))
+            return _redirect(_note_back())
     return templates.TemplateResponse(
         "purchase_wizard.html",
-        _base_context(request, user, csrf_token, "purchased_inputs", _repo=repo, title="Lançar compra",
-                      wizard=_purchase_wizard_data(repo, scope), done=done),
+        _base_context(request, user, csrf_token, "stock", _repo=repo, title="Corrigir compra" if wizard.get("edit") else "Lançar compra",
+                      wizard=wizard, done=done),
     )
+
+
+def edit_of_safe(payload) -> bool:
+    return bool(_int_or_none((payload or {}).get("edit_of")))
 
 
 def _resolve_wizard_item(repo: FarmRepository, raw: dict, number: int, many: bool) -> dict:
@@ -26127,6 +25862,8 @@ async def register_purchase_note_action(
     note = payload.get("note") or {}
     payment = payload.get("payment") or {}
     raw_items = [i for i in (payload.get("items") or []) if isinstance(i, dict)]
+    if edit_of_safe(payload):
+        back = f"/insumos/comprados/nova?editar={_int_or_none(payload.get('edit_of'))}"
     try:
         purchase_date = _pn._date(note.get("date"), "data da compra") or today_in_app_timezone()
         items = [_resolve_wizard_item(repo, raw, n, len(raw_items) > 1) for n, raw in enumerate(raw_items, start=1)]
@@ -26138,20 +25875,27 @@ async def register_purchase_note_action(
         else:
             finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=payment.get("account_id"))
         attachments = _read_attachments(await _request_attachments(request))
-        created, tx = _pn.register_purchase_note(
-            repo, farm_id=scope["active_farm_id"], supplier=note.get("supplier"), invoice=note.get("invoice"),
-            purchase_date=purchase_date, items=items, payment=payment, finance_account=finance_account,
-            credit_card=credit_card, notes=note.get("notes"),
-        )
+        edit_of = _int_or_none(payload.get("edit_of"))
+        common = dict(farm_id=scope["active_farm_id"], supplier=note.get("supplier"), invoice=note.get("invoice"),
+                      purchase_date=purchase_date, items=items, payment=payment, finance_account=finance_account,
+                      credit_card=credit_card, notes=note.get("notes"))
+        if edit_of:
+            back = f"/insumos/comprados/nova?editar={edit_of}"
+            created, tx = _pn.update_purchase_note(repo, _scoped_note_entry(repo, scope, edit_of), **common)
+        else:
+            created, tx = _pn.register_purchase_note(repo, **common)
     except ValueError as exc:
-        _flash(request, "error", f"{exc} Seu rascunho continua salvo.")
+        _flash(request, "error", f"{exc}" if edit_of_safe(payload) else f"{exc} Seu rascunho continua salvo.")
         return _redirect(back)
     saved = 0
     try:
-        for entry in created:
-            saved = _save_purchased_input_attachments(repo, entry, attachments) or saved
+        if attachments and created:
+            saved = _save_purchased_input_attachments(repo, min(created, key=lambda e: e.id), attachments)
     except Exception:
         _flash(request, "error", "A compra foi registrada, mas não foi possível guardar a nota anexada agora.")
+    if edit_of:
+        _flash(request, "success", "Compra corrigida. Estoque e Financeiro já foram atualizados.")
+        return _redirect(_note_back(min(e.id for e in created)))
     installments = len(tx.installments or []) if tx is not None else 0
     request.session["purchase_note_done"] = {
         "count": len(created),
@@ -26326,3 +26070,150 @@ async def stock_count_action(
     else:
         _flash(request, "success", "Contagem aplicada. Tudo bateu com o sistema.")
     return _redirect(back)
+
+
+# ---------------------------------------------------------------------------
+# Compra (nota) dentro do Estoque: excluir, anexos e corrigir
+# ---------------------------------------------------------------------------
+def _note_back(entry_id: int | None = None) -> str:
+    base = "/insumos/estoque?aba=movimentacoes&tipo=compra&periodo=safra"
+    return f"{base}&mov=c-{entry_id}" if entry_id else base
+
+
+def _scoped_note_entry(repo: FarmRepository, scope: dict, entry_id: int):
+    entry = repo.get_purchased_input(entry_id)
+    if not entry or entry.farm_id not in (None, scope.get("active_farm_id")):
+        raise ValueError("Compra não encontrada nesta fazenda.")
+    return entry
+
+
+@router.post("/insumos/estoque/compras/{entry_id}/excluir")
+def delete_purchase_note_action(
+    entry_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, _note_back(), require_season=False)
+    if denied:
+        return denied
+    try:
+        count = _pn.delete_purchase_note(repo, _scoped_note_entry(repo, scope, entry_id))
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(_note_back(entry_id))
+    _flash(request, "success", f"Compra excluída: {count} {'item saiu' if count == 1 else 'itens saíram'} do estoque e as parcelas saíram do Financeiro.")
+    return _redirect(_note_back())
+
+
+@router.post("/insumos/estoque/compras/{entry_id}/anexos")
+async def upload_purchase_note_attachments_action(
+    entry_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, _note_back(), require_season=False)
+    if denied:
+        return denied
+    try:
+        entries = _pn.note_entries(repo, _scoped_note_entry(repo, scope, entry_id))
+        attachments = _read_attachments(await _request_attachments(request))
+        if not attachments:
+            raise ValueError("Escolha ao menos um arquivo para anexar.")
+        saved = _save_purchased_input_attachments(repo, entries[0], attachments)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(_note_back(entry_id))
+    _flash(request, "success", f"{saved} {'anexo salvo' if saved == 1 else 'anexos salvos'} na compra.")
+    return _redirect(_note_back(entry_id))
+
+
+@router.post("/insumos/estoque/compras/{entry_id}/anexos/{attachment_id}/excluir")
+def delete_purchase_note_attachment_action(
+    entry_id: int,
+    attachment_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, _note_back(), require_season=False)
+    if denied:
+        return denied
+    try:
+        entries = _pn.note_entries(repo, _scoped_note_entry(repo, scope, entry_id))
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(_note_back())
+    target = next((a for e in entries for a in e.attachments if a.id == attachment_id), None)
+    if not target:
+        _flash(request, "error", "Anexo não encontrado nesta compra.")
+        return _redirect(_note_back(entry_id))
+    # a mesma nota pode ter sido anexada em cada item: remove todas as cópias com o mesmo nome
+    for e in entries:
+        for a in list(e.attachments):
+            if a.filename == target.filename:
+                db.delete(a)
+    db.commit()
+    _flash(request, "success", "Anexo removido.")
+    return _redirect(_note_back(entry_id))
+
+
+def _purchase_edit_state(repo: FarmRepository, entry) -> dict:
+    entries = _pn.note_entries(repo, entry)
+    first = entries[0]
+    tx = first.finance_transaction if first.finance_transaction_id else None
+    notes_parts = [part.strip() for part in (first.notes or "").split("·") if part.strip()]
+    invoice = next((p.replace(_pn.NOTE_PREFIX, "").strip() for p in notes_parts if p.startswith(_pn.NOTE_PREFIX)), "")
+    extra = " · ".join(p for p in notes_parts if not p.startswith(_pn.NOTE_PREFIX))
+    if first.credit_card_id:
+        mode = "cartao"
+    elif (first.payment_condition or "") == "a_prazo":
+        mode = "prazo"
+    else:
+        mode = "vista"
+    fmt = lambda v: _ih.br_number(v, 2).rstrip("0").rstrip(",") if v is not None else ""  # noqa: E731
+    installments = sorted(tx.installments, key=lambda i: i.installment_number) if tx is not None else []
+    items = []
+    for e in entries:
+        catalog = e.input_catalog
+        used = _pn.consumed(e)
+        items.append({
+            "entry_id": e.id, "name": e.name, "item_type": catalog.item_type if catalog else "insumo_agricola",
+            "category": catalog.category if catalog else "", "unit": e.package_unit, "packs": fmt(e.quantity_purchased),
+            "size": fmt(e.package_size), "price": _ih.br_number(e.unit_price, 2), "batch": e.batch_number or "",
+            "manufacture_date": e.manufacture_date.isoformat() if e.manufacture_date else "",
+            "expiration_date": e.expiration_date.isoformat() if e.expiration_date else "",
+            "minimum": fmt(e.low_stock_threshold) if e.low_stock_threshold else "", "used": used,
+            "used_label": _ih.br_qty(used, e.package_unit) if used else "", "type_key": "",
+        })
+    return {
+        "entry_id": first.id,
+        "paid": len(_pn._paid(tx)),
+        "state": {
+            "step": 1,
+            "note": {"supplier": first.supplier_name or "", "invoice": invoice,
+                     "date": first.purchase_date.isoformat() if first.purchase_date else "", "notes": extra},
+            "items": items,
+            "payment": {
+                "mode": mode, "account_id": str(first.finance_account_id or ""), "method": first.payment_method or "PIX",
+                "count": str(first.installment_count or 1) if mode == "prazo" else "3",
+                "first_due": first.first_installment_date.isoformat() if first.first_installment_date else "",
+                "card_id": str(first.credit_card_id or ""), "card_count": str(first.installment_count or 1) if mode == "cartao" else "1",
+                "installments": [{"due_date": i.due_date.isoformat(), "amount": _ih.br_number(i.amount, 2)} for i in installments] if mode == "prazo" else None,
+            },
+            "open": None,
+        },
+    }

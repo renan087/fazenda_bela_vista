@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io5">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io6">{% endblock %}
 {% block content %}
 {%- set io_items = hub['items'] -%}
 {%- set io_sel = selected_stock_item if selected_stock_item in io_items|map(attribute='id')|list else (io_items[0].id if io_items else None) -%}
@@ -23,9 +23,14 @@
             <details class="io-menu">
                 <summary class="io-btn">Exportar</summary>
                 <div class="io-menu-panel" role="menu">
-                    <a role="menuitem" href="/insumos/estoque/exportar.pdf{% if export_query %}?{{ export_query }}{% endif %}">Em PDF</a>
-                    <a role="menuitem" href="/insumos/estoque/exportar.xlsx{% if export_query %}?{{ export_query }}{% endif %}">Em planilha</a>
-                    <a role="menuitem" href="/insumos/comprados">Ver todas as compras</a>
+                    {% if tab == 'movimentacoes' and mov_filters.tipo == 'compra' %}
+                    <a role="menuitem" href="/insumos/comprados/exportar.pdf{% if export_query %}?{{ export_query }}{% endif %}">Relatório de compras em PDF</a>
+                    <a role="menuitem" href="/insumos/comprados/exportar.xlsx{% if export_query %}?{{ export_query }}{% endif %}">Relatório de compras em planilha</a>
+                    {% else %}
+                    <a role="menuitem" href="/insumos/estoque/exportar.pdf{% if export_query %}?{{ export_query }}{% endif %}">Estoque em PDF</a>
+                    <a role="menuitem" href="/insumos/estoque/exportar.xlsx{% if export_query %}?{{ export_query }}{% endif %}">Estoque em planilha</a>
+                    <a role="menuitem" href="/insumos/estoque?aba=movimentacoes&amp;tipo=compra&amp;periodo=safra">Relatório de compras…</a>
+                    {% endif %}
                 </div>
             </details>
             {% endif %}
@@ -181,6 +186,87 @@
                 <div><span class="io-mv-kind io-txt-{{ k.tone if k.tone != 'blue' else 'muted' }}">{{ k.label }}</span><strong>{{ m.title }}</strong><span>{{ m.date.strftime('%d/%m/%Y') }}</span></div>
                 <button type="button" class="io-btn" data-io-mov-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
+            {% if m.note %}{% set n = m.note %}
+            <div class="io-dw-body">
+                <div class="io-panel-stats">
+                    <div class="io-stat"><span>Total da nota</span><strong>{{ n.total }}</strong></div>
+                    <div class="io-stat"><span>Pagamento</span><strong>{{ n.pay_label }}</strong></div>
+                </div>
+                <div>
+                    <strong style="font-size:14px">Itens</strong>
+                    {% for it in n['items'] %}<div class="io-note-item"><span><strong>{{ it.name }}</strong><small>{{ it.detail }}</small></span><strong>{{ it.total }}</strong></div>{% endfor %}
+                </div>
+                {% if n.installments %}
+                <div>
+                    <strong style="font-size:14px">Parcelas no Financeiro</strong>
+                    {% for i in n.installments %}<div class="io-note-parc"><strong>{{ i.n }}</strong><span>{{ i.due }}{% if i.method %} · {{ i.method }}{% endif %}</span><span class="io-pill io-tone-{{ 'green' if i.paid else 'amber' }}">{{ 'Paga' if i.paid else 'A pagar' }}</span><strong>{{ i.amount }}</strong></div>{% endfor %}
+                    <a href="/gestao-financeira/contas" class="io-link">Ver no Financeiro</a>
+                </div>
+                {% endif %}
+                <div class="io-list" style="gap:8px">
+                    <strong style="font-size:14px">Nota anexada</strong>
+                    <div class="io-attach-list">
+                        {% for a in n.attachments %}
+                        <span class="io-attach">
+                            <a href="/insumos/comprados/anexos/{{ a.id }}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>{{ a.filename }}</a>
+                            <form method="post" action="/insumos/estoque/compras/{{ n.entry_id }}/anexos/{{ a.id }}/excluir" data-io-confirm="Remover o anexo {{ a.filename }}?">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="io-x" aria-label="Remover {{ a.filename }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                            </form>
+                        </span>
+                        {% else %}<span class="io-sub" style="margin:0">Nenhum arquivo anexado.</span>{% endfor %}
+                        <button type="button" class="io-btn is-sm io-attach-add" data-io-upload-open="{{ n.entry_id }}" data-io-upload-title="{{ m.title }}">+ Anexar</button>
+                    </div>
+                </div>
+            </div>
+            <div class="io-dw-foot">
+                <button type="button" class="io-btn io-btn-danger" data-io-note-delete>Excluir compra</button>
+                <div><a class="io-btn is-primary" href="/insumos/comprados/nova?editar={{ n.entry_id }}">Corrigir compra</a></div>
+            </div>
+            <template data-io-note-modal>
+                {% if n.blocked %}
+                <div class="io-modal-head is-center">
+                    <span class="io-modal-ico io-tone-amber" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.01"/></svg></span>
+                    <strong id="io-modal-title">Esta compra ainda não pode ser excluída</strong>
+                    <span>{% if n.paid %}Esta nota já tem parcela paga no Financeiro.{% else %}Parte do que veio nesta nota já foi usado. Excluir agora deixaria o estoque e o custo dos setores errados.{% endif %}</span>
+                </div>
+                {% if n.uses %}
+                <div class="io-modal-box">
+                    <div class="io-modal-box-title">O que já foi usado</div>
+                    {% for u in n.uses %}<div class="io-modal-row"><span><strong>{{ u.label }}</strong><small>{{ u.where }}</small></span>{% if not u.adjustment %}<a href="/insumos/estoque?aba=movimentacoes&amp;periodo=safra&amp;mov=o-{{ u.output_id }}">Ver uso</a>{% endif %}</div>{% endfor %}
+                    {% if n.more_uses %}<div class="io-modal-row"><span class="io-sub" style="margin:0">e mais {{ n.more_uses }}</span></div>{% endif %}
+                </div>
+                {% endif %}
+                <div class="io-modal-steps">
+                    <strong>Como resolver</strong>
+                    <span><b>1</b><span>Se a compra foi lançada errada, use <strong>Corrigir compra</strong>: dá para mudar preço, quantidade e pagamento sem perder os usos.</span></span>
+                    {% if n.paid %}<span><b>2</b><span>Para excluir, estorne antes a parcela paga em Contas a pagar e receber.</span></span>
+                    {% else %}<span><b>2</b><span>Se a compra não aconteceu, desfaça os usos acima em Movimentações e depois exclua.</span></span>{% endif %}
+                    <small>Ao excluir, os itens saem do estoque e as parcelas saem do Financeiro.</small>
+                </div>
+                <div class="io-modal-foot">
+                    <a class="io-btn" href="/insumos/comprados/nova?editar={{ n.entry_id }}">Corrigir compra</a>
+                    <button type="button" class="io-btn is-primary" data-io-modal-close>Entendi</button>
+                </div>
+                {% else %}
+                <div class="io-modal-head is-center">
+                    <span class="io-modal-ico io-tone-red" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></span>
+                    <strong id="io-modal-title">Excluir esta compra?</strong>
+                    <span>{{ m.title }} · {{ n.total }}</span>
+                </div>
+                <div class="io-modal-steps">
+                    <span><b>1</b><span>{{ 'O item sai' if n.count == 1 else ('Os ' ~ n.count ~ ' itens saem') }} do estoque.</span></span>
+                    {% if n.finance %}<span><b>2</b><span>O lançamento e as parcelas saem do Financeiro.</span></span>{% endif %}
+                    <small>Não dá para desfazer. Se só um valor está errado, prefira Corrigir compra.</small>
+                </div>
+                <form class="io-modal-foot" method="post" action="/insumos/estoque/compras/{{ n.entry_id }}/excluir">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="button" class="io-btn" data-io-modal-close>Manter</button>
+                    <button type="submit" class="io-btn io-btn-danger-solid">Sim, excluir compra</button>
+                </form>
+                {% endif %}
+            </template>
+            {% else %}
             <div class="io-dw-body">
                 <div class="io-panel-stats">
                     <div class="io-stat"><span>Movimento</span><strong>{{ m.qty }}</strong></div>
@@ -209,6 +295,7 @@
                     {% if m.fix %}<button type="button" class="io-btn is-primary" data-io-open="use" data-io-fix='{{ m.fix|tojson }}'>Corrigir</button>{% endif %}
                 </div>
             </div>
+            {% endif %}
         </template>
         {% endfor %}
         {% else %}
@@ -233,6 +320,31 @@
         {% endif %}
     </section>
     <dialog class="io-drawer" data-io-mov-dialog aria-label="Detalhe da movimentação"><div class="io-mv-sheet" data-io-mov-body></div></dialog>
+    <dialog class="io-modal" data-io-modal aria-labelledby="io-modal-title"><div data-io-modal-body></div></dialog>
+    <dialog class="io-modal is-wide" data-io-upload-modal aria-labelledby="io-up-title">
+        <form method="post" enctype="multipart/form-data" data-io-upload-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="io-modal-head">
+                <div><strong id="io-up-title">Anexar nota</strong><span data-io-upload-sub></span></div>
+                <button type="button" class="io-btn" data-io-modal-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <div class="io-modal-body">
+                <label class="io-drop" data-io-drop>
+                    <span class="io-drop-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></span>
+                    <strong>Arraste a nota para cá</strong>
+                    <span class="io-sub" style="margin:0">ou</span>
+                    <span class="io-btn is-primary">Escolher arquivo</span>
+                    <small>Foto ou PDF · até 10 MB por arquivo<span class="io-only-phone"> · no celular, dá para tirar a foto na hora</span></small>
+                    <input type="file" name="attachments" accept="image/*,.pdf" multiple class="sr-only" data-io-upload-input>
+                </label>
+                <div class="io-upload-list" data-io-upload-list></div>
+            </div>
+            <div class="io-modal-foot">
+                <button type="button" class="io-btn" data-io-modal-close>Cancelar</button>
+                <button type="submit" class="io-btn is-primary" data-io-upload-submit disabled>Anexar</button>
+            </div>
+        </form>
+    </dialog>
     {% if mf.open %}<span hidden data-io-mov-autoopen="{{ mf.open }}"></span>{% endif %}
     {% else %}
     {%- set c = count -%}
