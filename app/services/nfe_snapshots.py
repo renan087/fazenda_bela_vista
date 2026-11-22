@@ -24,6 +24,7 @@ ALLOWED_EVENT_TYPES = frozenset({
     'identificacao_teste_salva',
     'complementos_salvos',
     'snapshot_congelado',
+    'simulacao_ciclo_offline',
 })
 
 
