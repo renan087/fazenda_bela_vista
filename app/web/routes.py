@@ -22153,17 +22153,34 @@ def commercialization_page(
     if focus.isdigit():
         legacy = next((item for item in sales if item.id == int(focus)), None)
         focus = legacy.sale_code if legacy and legacy.sale_code else focus
-    per_page = 20
+    # 10, 20 ou 50 por página; a escolha fica lembrada na sessão.
+    chosen = str(request.query_params.get("por_pagina") or "")
+    if chosen in ("10", "20", "50"):
+        request.session["sales_per_page"] = int(chosen)
+    per_page = request.session.get("sales_per_page") if request.session.get("sales_per_page") in (10, 20, 50) else 10
     total_pages = max(1, (len(groups) + per_page - 1) // per_page)
     page = min(_positive_int(request.query_params.get("commercialization_page"), 1), total_pages)
     focus_index = next((i for i, g in enumerate(groups) if g["code"] == focus), None)
     if focus_index is not None:
         page = focus_index // per_page + 1
     page_groups = groups[(page - 1) * per_page: page * per_page]
+
+    def page_url(number):
+        return _url_with_query(request, commercialization_page=number if number > 1 else None, venda=None, nova=None)
+
+    window = sorted({1, total_pages, *range(max(1, page - 1), min(total_pages, page + 1) + 1)})
+    numbers, last = [], 0
+    for number in window:
+        if number - last > 1:
+            numbers.append({"gap": True})
+        numbers.append({"n": number, "url": page_url(number), "current": number == page})
+        last = number
     pagination = {
         "page": page, "total_pages": total_pages, "has_prev": page > 1, "has_next": page < total_pages,
-        "prev_url": _url_with_query(request, commercialization_page=page - 1 if page > 2 else None, venda=None),
-        "next_url": _url_with_query(request, commercialization_page=page + 1, venda=None),
+        "prev_url": page_url(page - 1), "next_url": page_url(page + 1), "numbers": numbers,
+        "from": (page - 1) * per_page + 1 if groups else 0, "to": min(page * per_page, len(groups)), "total": len(groups),
+        "per_page": per_page,
+        "per_page_urls": [(n, _url_with_query(request, por_pagina=n, commercialization_page=None, venda=None, nova=None)) for n in (10, 20, 50)],
     }
     sold_sacks = sum(g["sacks"] for g in all_groups)
     gross = sum(g["gross"] for g in all_groups)
@@ -23610,7 +23627,7 @@ def sale_status_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    from app.services.coffee_sales import SALE_STATUS_LABELS, sale_records, set_status
+    from app.services.coffee_sales import SALE_STATUS_LABELS, group_sales, sale_records, set_status
 
     del user
     validate_csrf(request, csrf_token)
@@ -23627,7 +23644,15 @@ def sale_status_action(
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_with_query("/producao/comercializacao", venda=sale_code)
-    _flash(request, "success", f"Venda {sale_code}: {SALE_STATUS_LABELS[status.strip().lower()].lower()}.")
+    new_status = (status or "").strip().lower()
+    if new_status == "negociado":  # desfazer entrega: se a nota está autorizada, a venda volta a ser Faturada
+        groups = group_sales(records)
+        notes = _nf_notes_by_sale(db, user, scope["active_farm_id"], _nf_drafts_by_sale(db, user, scope["active_farm_id"], groups))
+        if (notes.get(sale_code) or {}).get("status") == "autorizada":
+            from app.services.coffee_sales import sync_status_with_invoice
+            sync_status_with_invoice(db, farm_id=scope["active_farm_id"], sale_code=sale_code, authorized=True)
+            new_status = "faturado"
+    _flash(request, "success", f"Venda {sale_code}: {SALE_STATUS_LABELS[new_status].lower()}.")
     if isinstance(voltar, str) and re.fullmatch(r"/producao/lotes/\d+", voltar):
         return _redirect(voltar)
     return _redirect_with_query("/producao/comercializacao", venda=sale_code)

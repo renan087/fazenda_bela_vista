@@ -96,27 +96,46 @@
                     <strong>R$ {{ g.net|decimal_br }}</strong>
                     <span>{{ g.sacks|decimal_br }} sc × R$ {{ g.unit_price|decimal_br }}{% if g.discount %} · descontos R$ {{ g.discount|decimal_br }}{% endif %}</span>
                 </div>
+                {% set nf = (fiscal_note_by_sale or {}).get(g.code) %}
+                {% set nf_live = nf and nf.status != 'cancelada' %}
+                {% set nf_open = nf_live and nf.status in ('rascunho', 'pendente', 'rejeitada') %}
+                {% set primary = 'entrega' if g.step == 0 else ('recebimento' if g.step == 1 else ('nf' if can_write_page and not (nf_live and nf.status in ('autorizada', 'enviando')) else 'ver')) %}
                 <div class="sl-actions">
-                    {% if g.step < 2 %}
+                    {% if primary in ('entrega', 'recebimento') and can_write_page %}
                     <form method="post" action="/producao/vendas/{{ g.code }}/situacao">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <input type="hidden" name="status" value="{{ 'entregue' if g.step == 0 else 'recebido' }}">
+                        <input type="hidden" name="status" value="{{ 'entregue' if primary == 'entrega' else 'recebido' }}">
                         <input type="hidden" name="status_date" value="{{ today.isoformat() }}">
-                        <button class="sf-btn sf-btn-primary" type="submit">{{ 'Registrar entrega' if g.step == 0 else 'Registrar recebimento' }}</button>
+                        <button class="sf-btn sf-btn-primary" type="submit">{{ 'Registrar entrega' if primary == 'entrega' else 'Registrar recebimento' }}</button>
                     </form>
-                    {% endif %}
-                    {% set nf = (fiscal_note_by_sale or {}).get(g.code) %}
-                    {% if nf and nf.status in ('autorizada', 'enviando') %}<a class="sf-btn sf-btn-secondary" href="/notas-fiscais/{{ nf.id }}">Ver nota</a>
-                    {% elif nf and nf.status == 'rejeitada' and can_write_page %}<a class="sf-btn sf-btn-primary" href="/producao/rascunhos-fiscais/{{ nf.id }}">Corrigir NF</a>
-                    {% elif nf and nf.status in ('rascunho', 'pendente') and can_write_page %}<a class="sf-btn sf-btn-primary" href="/producao/rascunhos-fiscais/{{ nf.id }}">Continuar NF</a>
-                    {% elif can_write_page %}<form method="post" action="/producao/vendas/{{ g.code }}/rascunho-fiscal"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="sf-btn sf-btn-primary" type="submit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>Emitir NF</button></form>{% endif %}
-                    <a class="sf-btn sf-btn-secondary" href="/producao/vendas/{{ g.code }}/editar">Editar</a>
-                    <form method="post" action="/producao/vendas/{{ g.code }}/excluir" onsubmit="return confirm('Excluir a venda {{ g.code }}? O saldo volta para os lotes{{ ' e o lançamento do Financeiro também é excluído' if g.finance_transaction_id }}.')">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button class="sf-icon-btn" type="submit" aria-label="Excluir venda {{ g.code }}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
-                        </button>
-                    </form>
+                    {% elif primary == 'nf' %}
+                    {% if nf_open %}<a class="sf-btn sf-btn-primary" href="/producao/rascunhos-fiscais/{{ nf.id }}">{{ 'Corrigir NF' if nf.status == 'rejeitada' else 'Continuar NF' }}</a>
+                    {% else %}<form method="post" action="/producao/vendas/{{ g.code }}/rascunho-fiscal"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="sf-btn sf-btn-primary" type="submit">Emitir NF</button></form>{% endif %}
+                    {% elif nf_live %}<a class="sf-btn sf-btn-secondary" href="/notas-fiscais/{{ nf.id }}">Ver nota</a>
+                    {% else %}<a class="sf-btn sf-btn-secondary" href="/producao/vendas/{{ g.code }}/editar">Ver venda</a>{% endif %}
+                    <div class="sl-more" data-sl-more>
+                        <button type="button" class="sl-more-btn" data-sl-more-btn aria-haspopup="menu" aria-expanded="false" aria-label="Mais ações da venda {{ g.code }}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></button>
+                        <div class="sl-menu" role="menu" hidden>
+                            <p class="sl-menu-h">Venda {{ g.code }}</p>
+                            {% if primary != 'nf' %}
+                            {% if nf_live and nf.status in ('autorizada', 'enviando') %}{% if primary != 'ver' %}<a class="sl-mi" role="menuitem" href="/notas-fiscais/{{ nf.id }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>Ver nota</a>{% endif %}
+                            {% elif nf_open and can_write_page %}<a class="sl-mi" role="menuitem" href="/producao/rascunhos-fiscais/{{ nf.id }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6zM9 9h6M9 13h6M9 17h4"/></svg>{{ 'Corrigir NF' if nf.status == 'rejeitada' else 'Continuar NF' }}</a>
+                            {% elif can_write_page %}<form method="post" action="/producao/vendas/{{ g.code }}/rascunho-fiscal"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="sl-mi" role="menuitem" type="submit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6zM9 9h6M9 13h6M9 17h4"/></svg>Emitir NF</button></form>{% endif %}
+                            {% endif %}
+                            <a class="sl-mi" role="menuitem" href="/producao/vendas/{{ g.code }}/editar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg>{{ 'Editar venda' if can_write_page else 'Ver venda' }}</a>
+                            {% if g.finance_transaction_id %}<a class="sl-mi" role="menuitem" href="/gestao-financeira/contas?transaction_edit_id={{ g.finance_transaction_id }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18v12H3zM12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>Ver no Financeiro</a>{% endif %}
+                            {% if can_write_page and g.step > 0 %}
+                            <form method="post" action="/producao/vendas/{{ g.code }}/situacao"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="status" value="{{ 'negociado' if g.step == 1 else 'entregue' }}"><button class="sl-mi" role="menuitem" type="submit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-2"/></svg>{{ 'Desfazer entrega' if g.step == 1 else 'Desfazer recebimento' }}</button></form>
+                            {% endif %}
+                            {% if can_write_page %}
+                            <div class="sl-menu-sep" role="separator"></div>
+                            <form method="post" action="/producao/vendas/{{ g.code }}/excluir" onsubmit="return confirm('Excluir a venda {{ g.code }}? O saldo volta para os lotes{{ ' e o lançamento do Financeiro também é excluído' if g.finance_transaction_id }}.')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button class="sl-mi is-danger" role="menuitem" type="submit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Excluir venda</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </div>
         </article>
@@ -133,14 +152,25 @@
         </div>
         {% endfor %}
 
-        {% if sale_pagination.total_pages > 1 %}
-        <nav class="sl-pages" aria-label="Páginas">
-            {% if sale_pagination.has_prev %}<a class="sf-btn sf-btn-secondary" href="{{ sale_pagination.prev_url }}">Anteriores</a>{% endif %}
-            <span>Página {{ sale_pagination.page }} de {{ sale_pagination.total_pages }}</span>
-            {% if sale_pagination.has_next %}<a class="sf-btn sf-btn-secondary" href="{{ sale_pagination.next_url }}">Próximas</a>{% endif %}
+        {% if sale_pagination.total %}
+        <nav class="sl-pages" aria-label="Páginas de vendas">
+            <span class="sl-pages-info">Mostrando <b>{{ sale_pagination['from'] }}–{{ sale_pagination.to }}</b> de <b>{{ sale_pagination.total }} venda{{ 's' if sale_pagination.total != 1 }}</b></span>
+            {% if sale_pagination.total_pages > 1 %}
+            <div class="sl-pages-nums">
+                {% if sale_pagination.has_prev %}<a href="{{ sale_pagination.prev_url }}" aria-label="Página anterior">‹</a>{% else %}<span class="is-off" aria-hidden="true">‹</span>{% endif %}
+                {% for p in sale_pagination.numbers %}
+                {% if p.gap %}<span class="is-gap" aria-hidden="true">…</span>
+                {% elif p.current %}<span class="is-on" aria-current="page">{{ p.n }}</span>
+                {% else %}<a href="{{ p.url }}" aria-label="Página {{ p.n }}">{{ p.n }}</a>{% endif %}
+                {% endfor %}
+                {% if sale_pagination.has_next %}<a href="{{ sale_pagination.next_url }}" aria-label="Próxima página">›</a>{% else %}<span class="is-off" aria-hidden="true">›</span>{% endif %}
+            </div>
+            {% endif %}
+            <div class="sl-pages-per" role="group" aria-label="Vendas por página"><span>Por página</span>{% for n, url in sale_pagination.per_page_urls %}<a href="{{ url }}"{% if n == sale_pagination.per_page %} class="is-on" aria-current="true"{% endif %}>{{ n }}</a>{% endfor %}</div>
         </nav>
         {% endif %}
     </section>
 </div>
+<script src="/static/js/commercialization.js?v=20261122sl1" defer></script>
 {% if sale_focus %}<script>document.getElementById({{ ('venda-' ~ sale_focus)|tojson }})?.scrollIntoView({ block: 'center' });</script>{% endif %}
 {% endblock %}

@@ -7759,10 +7759,10 @@ a.pf-logout:hover { background: #fdecea; color: #b42318; }
 .sl-values span { font-size:13px; color:var(--pd-muted); }
 .sl-actions { display:flex; flex-wrap:nowrap; justify-content:flex-end; gap:8px; }
 .sl-actions form { margin:0; }
-.sl-pages { display:flex; align-items:center; justify-content:center; gap:12px; padding:16px; border-top:1px solid var(--pd-line2); font-size:14px; color:var(--pd-muted); }
+.sl-pages { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:14px 16px; border-top:1px solid var(--pd-line2); font-size:13px; color:var(--pd-muted); }
 @media (max-width:639px) {
   .sl-sale-side { align-items:stretch; } .sl-values { text-align:left; }
-  .sl-actions { justify-content:stretch; flex-wrap:wrap; } .sl-actions form:first-child { flex:1 1 100%; } .sl-actions form:first-child .sf-btn { width:100%; justify-content:center; }
+  .sl-actions { justify-content:stretch; } .sl-actions > form, .sl-actions > a { flex:1 1 auto; } .sl-actions > form .sf-btn, .sl-actions > a { width:100%; justify-content:center; }
   .sl-search { min-width:0; flex:1 1 100%; }
 }
 .vw-block .bp-label { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
@@ -12150,3 +12150,32 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .lt-trail-dot { width: .5rem; height: .5rem; border-radius: 50%; background: #446a36; animation: lt-pulse 1.6s ease-in-out infinite; }
 @keyframes lt-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .lt-trail-dot { animation: none; } }
+
+/* Comercialização: um botão principal + menu ⋯, e páginas */
+.sl-actions { align-items:center; }
+.sl-more { position:relative; flex:none; }
+.sl-more-btn { width:44px; height:44px; border-radius:12px; border:1px solid #e3e8e2; background:#fff; display:grid; place-items:center; cursor:pointer; color:#46514a; padding:0; }
+.sl-more-btn svg { width:18px; height:18px; }
+.sl-more-btn:hover, .sl-more-btn[aria-expanded="true"] { background:#f6f8f5; border-color:#c9d6c3; }
+.sl-more-btn:focus-visible { outline:3px solid #9bcb6b; outline-offset:2px; }
+.sl-sale.is-menu { position:relative; z-index:5; }
+.sl-menu { position:absolute; right:0; top:calc(100% + 8px); z-index:40; width:16.25rem; max-width:calc(100vw - 2rem); padding:6px; background:#fff; border:1px solid #e3e8e2; border-radius:14px; box-shadow:0 18px 40px rgba(15,21,19,.16); text-align:left; }
+.sl-menu[hidden] { display:none; }
+.sl-menu form { margin:0; }
+.sl-menu-h { margin:0; padding:8px 12px 6px; font-size:11px; font-weight:700; color:#7a857e; text-transform:uppercase; letter-spacing:.05em; }
+.sl-mi { box-sizing:border-box; display:flex; align-items:center; gap:10px; width:100%; min-height:42px; padding:0 12px; border:0; border-radius:10px; background:transparent; font:inherit; font-size:14px; color:#16201a; text-decoration:none; cursor:pointer; text-align:left; }
+.sl-mi svg { width:18px; height:18px; flex:none; color:#5b6660; }
+.sl-mi:hover, .sl-mi:focus-visible { background:#f3f5f2; color:#16201a; outline:none; }
+.sl-mi.is-danger, .sl-mi.is-danger svg { color:#b42318; }
+.sl-mi.is-danger:hover { background:#fdecea; }
+.sl-menu-sep { height:1px; background:#eef1ed; margin:6px 4px; }
+.sl-pages-info b { color:#16201a; }
+.sl-pages-nums, .sl-pages-per { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.sl-pages-nums a, .sl-pages-nums span, .sl-pages-per a { min-width:40px; height:40px; padding:0 10px; box-sizing:border-box; border-radius:10px; display:inline-grid; place-items:center; font-weight:600; font-size:13px; text-decoration:none; color:#46514a; border:1px solid #e3e8e2; background:#fff; }
+.sl-pages-nums a:hover, .sl-pages-per a:hover { background:#f6f8f5; }
+.sl-pages-nums .is-on, .sl-pages-per .is-on { background:#446a36; border-color:#446a36; color:#fff; }
+.sl-pages-nums .is-off { opacity:.45; }
+.sl-pages-nums .is-gap { border:0; background:transparent; min-width:20px; }
+.sl-pages-per span { margin-right:4px; }
+.sl-pages-nums a:focus-visible, .sl-pages-per a:focus-visible { outline:3px solid #9bcb6b; outline-offset:2px; }
+@media (max-width: 639px) { .sl-pages { justify-content:center; } .sl-menu { right:0; } }
