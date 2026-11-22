@@ -12130,3 +12130,4 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .nx-return svg { width: 1.25rem; height: 1.25rem; flex: none; }
 .nx-return span { flex: 1 1 16rem; }
 .nx-return a { font-weight: 600; color: #17487f; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; min-height: 2.75rem; display: inline-flex; align-items: center; }
+.nx-agree-sm { min-height: 2.75rem; padding: .25rem .75rem .25rem 1rem; font-size: .8125rem; background: transparent; flex: 1 1 18rem; }

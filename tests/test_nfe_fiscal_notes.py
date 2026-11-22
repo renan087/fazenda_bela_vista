@@ -493,3 +493,40 @@ def test_authorized_note_invoices_sale_and_cancel_returns_it(monkeypatch):
     notes.cancel_note(db, draft=draft, user_id=user.id, reason='Quantidade informada errada')
     assert all(r.status == 'negociado' for r in sale_records(db, draft.farm_id, draft.sale_code))
     db.close()
+
+
+def test_note_buyer_modal_can_update_buyer_register_and_production_lists_nf_pending(monkeypatch):
+    import asyncio
+    from datetime import date
+    from app.models.coffee_buyer import CoffeeBuyer
+    from app.models.coffee_commercialization import CoffeeCommercializationRecord
+    from app.services.coffee_sales import group_sales, sale_records
+    routes, db, user, scope, draft, flashes = _routes_env(monkeypatch)
+    buyer = CoffeeBuyer(organization_id=user.organization_id, person_type='pf', name='Ana', document='52998224725')
+    db.add(buyer)
+    db.commit()
+    snap = json.loads(draft.snapshot_json)
+    snap['comprador_id'] = buyer.id
+    draft.snapshot_json = json.dumps(snap)
+    db.commit()
+
+    class R:
+        query_params = {}
+        async def form(self):
+            return {'csrf_token': 'x', 'recipient_name': 'Ana Souza', 'recipient_cpf': '52998224725', 'recipient_postal_code': '45020560',
+                    'recipient_street': 'Rua Lourival Cairo', 'recipient_number': '80', 'recipient_district': 'Recreio',
+                    'recipient_city': 'Vitória da Conquista', 'recipient_state': 'BA', 'save_to_buyer': '1', 'next': ''}
+    asyncio.run(routes.fiscal_draft_save_all(draft.id, R(), db, user))
+    db.refresh(buyer)
+    assert buyer.street == 'Rua Lourival Cairo' and buyer.district == 'Recreio' and buyer.postal_code == '45020560'
+    assert 'cadastro de Ana Souza' in flashes[-1][1]
+
+    # Venda entregue sem nota aparece no "Precisa de atenção"
+    db.add(CoffeeCommercializationRecord(farm_id=scope['active_farm_id'], sale_code='V-9', sale_date=date(2026, 11, 20),
+                                         buyer_name='Ana', lot_label='L1', quantity_sold=2, equivalent_sacks=2,
+                                         unit_price=100, total_value=200, status='entregue'))
+    db.commit()
+    groups = group_sales(sale_records(db, scope['active_farm_id'], 'V-9'))
+    items = routes._nf_attention(db, user, scope['active_farm_id'], groups)
+    assert items and items[0]['title'] == '1 venda entregue sem nota' and 'V-9' in items[0]['detail']
+    db.close()

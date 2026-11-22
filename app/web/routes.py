@@ -20961,6 +20961,7 @@ def production_page(
         attention.append({"tone": "info", "icon": "scale", "href": f"/producao/lotes/{lot['id']}",
                           "title": f"Informar o benefício do {lot['code']}",
                           "detail": "O volume ainda é estimado. Registre as sacas reais."})
+    attention = _nf_attention(db, user, scope.get("active_farm_id"), groups) + attention
     return templates.TemplateResponse(
         "production.html",
         _base_context(
@@ -27282,6 +27283,50 @@ def _nf_notes_by_sale(db: Session, user: User, farm_id: int, draft_by_sale: dict
     return out
 
 
+def _nf_update_buyer_from_note(db: Session, user: User, draft, details: dict) -> str | None:
+    """Leva para o cadastro do comprador o que foi preenchido na nota (só campos preenchidos)."""
+    buyer = _nf_buyer(db, user, draft)
+    if buyer is None:
+        return None
+    mapping = {"recipient_name": "name", "recipient_ie": "state_registration", "recipient_ie_indicator": "ie_indicator",
+               "recipient_postal_code": "postal_code", "recipient_street": "street", "recipient_number": "number",
+               "recipient_complement": "complement", "recipient_district": "district", "recipient_city": "city",
+               "recipient_municipality_code": "municipality_code", "recipient_state": "state"}
+    if (buyer.person_type or "pf") == "pf":
+        mapping["recipient_cpf"] = "document"
+    for src, dst in mapping.items():
+        value = str(details.get(src) or "").strip()
+        if value:
+            setattr(buyer, dst, value[: getattr(type(buyer), dst).property.columns[0].type.length or len(value)])
+    return buyer.name
+
+
+def _nf_attention(db: Session, user: User, farm_id: int | None, groups: list[dict]) -> list[dict]:
+    """Pendências de nota fiscal para o quadro "Precisa de atenção" da Produção."""
+    from app.models.nfe_draft import NfeClientFiscalConfig
+    if not farm_id or not groups:
+        return []
+    notes_by_sale = _nf_notes_by_sale(db, user, farm_id, _nf_drafts_by_sale(db, user, farm_id, groups))
+    items = []
+    for code, nf in notes_by_sale.items():
+        if nf["status"] == "rejeitada":
+            items.append({"tone": "error", "icon": "nf", "href": f"/producao/rascunhos-fiscais/{nf['id']}",
+                          "title": f"NF da {code} rejeitada", "detail": "Corrigir e enviar de novo"})
+    for code, nf in notes_by_sale.items():
+        if nf["status"] == "pendente":
+            items.append({"tone": "warn", "icon": "nf", "href": f"/producao/rascunhos-fiscais/{nf['id']}",
+                          "title": f"NF da {code} com pendências", "detail": f"{nf['issues']} dado{'s' if nf['issues'] != 1 else ''} para completar"})
+    configured = db.query(NfeClientFiscalConfig).filter_by(organization_id=user.organization_id, farm_id=farm_id).first()
+    without = [g for g in groups if g["status"] in ("entregue", "recebido")
+               and (notes_by_sale.get(g["code"]) or {}).get("status") in (None, "cancelada")]
+    if configured and without:
+        codes = " e ".join(g["code"] for g in without[:2]) + (f" e mais {len(without) - 2}" if len(without) > 2 else "")
+        items.append({"tone": "warn", "icon": "nf", "href": f"/producao/comercializacao?venda={without[0]['code']}",
+                      "title": f"{len(without)} venda{'s' if len(without) > 1 else ''} entregue{'s' if len(without) > 1 else ''} sem nota",
+                      "detail": f"{codes} · Emitir NF"})
+    return items[:2]
+
+
 def _nf_saved_json(db: Session, user: User, farm: Farm, draft) -> tuple[dict, dict]:
     from app.models.nfe_draft import NfeDraftDetails, NfeDraftTechnicalData
     rows = [db.query(m).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
@@ -27726,6 +27771,7 @@ async def fiscal_draft_save_all(draft_id: str, request: Request, db: Session = D
             db.add(row)
         row.data_json = json.dumps(values, ensure_ascii=False)
         row.updated_by = user.id
+    saved_buyer = _nf_update_buyer_from_note(db, user, draft, details_values) if form.get("save_to_buyer") == "1" else None
     record_draft_event(db, draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id,
                        event_type="complementos_salvos", summary="Rascunho salvo na tela de emissão.", user_id=user.id)
     try:
@@ -27735,6 +27781,8 @@ async def fiscal_draft_save_all(draft_id: str, request: Request, db: Session = D
         _flash(request, "error", "O rascunho foi alterado ao mesmo tempo em outra tela. Reabra e tente novamente.")
         return _redirect(back)
     _nf_resync(db, user, draft, issuer)
+    if saved_buyer:
+        _flash(request, "success", f"Dados salvos na nota e no cadastro de {saved_buyer}.")
     if form.get("next") == "conferir":
         note = load_note(db, draft, issuer=issuer)
         if note["status"] == "pendente":
@@ -27744,5 +27792,6 @@ async def fiscal_draft_save_all(draft_id: str, request: Request, db: Session = D
     if form.get("next") == "sair":
         _flash(request, "success", "Rascunho salvo. Você pode continuar depois em Notas Fiscais.")
         return _redirect("/notas-fiscais")
-    _flash(request, "success", "Rascunho salvo.")
+    if not saved_buyer:
+        _flash(request, "success", "Rascunho salvo.")
     return _redirect(back)

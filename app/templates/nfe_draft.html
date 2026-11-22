@@ -126,7 +126,8 @@
               </div>
             </div>
             <div class="nx-modal-f">
-              <span class="nx-muted">O cadastro do comprador não muda.</span>
+              {% if buyer %}<label class="nx-agree nx-agree-sm"><span class="dt-chk"><input type="checkbox" class="dt-check" name="save_to_buyer" value="1" checked></span>Salvar também no cadastro do comprador, para as próximas notas e vendas</label>
+              {% else %}<span class="nx-muted">Comprador sem cadastro: os dados valem só para esta nota.</span>{% endif %}
               <div style="display:flex;gap:.625rem"><button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-close>Cancelar</button>{% if can_write_page %}<button type="submit" name="next" value="" class="sf-btn sf-btn-primary">Salvar dados</button>{% endif %}</div>
             </div>
           </dialog>
@@ -398,5 +399,5 @@
   </section>
   {% endif %}
 </div>
-<script src="/static/js/notas_fiscais.js?v=20261122nx8" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261122nx9" defer></script>
 {% endblock %}
