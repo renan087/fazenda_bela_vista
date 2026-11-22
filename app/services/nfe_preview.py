@@ -24,7 +24,7 @@ def _element(parent, name, value):
     return node
 
 
-def build_preview(snapshot, issuer, details, technical):
+def build_preview(snapshot, issuer, details, technical, identification=None):
     """Serializa somente campos conhecidos; dados omitidos continuam vazios."""
     items = snapshot.get('itens')
     if not isinstance(items, list) or not 1 <= len(items) <= 500 or not all(isinstance(i, dict) for i in items):
@@ -56,6 +56,21 @@ def build_preview(snapshot, issuer, details, technical):
         _element(operation, field, details.get(field))
     _element(operation, 'emission_date', technical.get('emission_date'))
     _element(operation, 'freight_mode', technical.get('freight_mode'))
+    if identification is not None:
+        from app.services.nfe_numbering import build_simulated_access_key_summary
+        key_summary = build_simulated_access_key_summary(issuer, technical, identification)
+        ident_node = ET.SubElement(root, 'identificacao_teste')
+        _element(ident_node, 'ambiente', getattr(identification, 'environment', 'teste_ficticio'))
+        _element(ident_node, 'modelo', getattr(identification, 'model', ''))
+        _element(ident_node, 'serie', getattr(identification, 'series', ''))
+        _element(ident_node, 'numero', getattr(identification, 'number', ''))
+        _element(ident_node, 'codigo_numerico', getattr(identification, 'numeric_code', ''))
+        _element(ident_node, 'tipo_emissao', getattr(identification, 'emission_type', ''))
+        _element(ident_node, 'finalidade', getattr(identification, 'finality', ''))
+        _element(ident_node, 'ind_final', getattr(identification, 'consumer_indicator', ''))
+        _element(ident_node, 'ind_pres', getattr(identification, 'presence_indicator', ''))
+        _element(ident_node, 'forma_pagamento', getattr(identification, 'payment_method', ''))
+        _element(ident_node, 'chave_simulada', key_summary.get('key', ''))
     lines = ET.SubElement(root, 'lotes')
     for index, item in enumerate(items, 1):
         line = ET.SubElement(lines, 'lote', {'posicao': str(index)})

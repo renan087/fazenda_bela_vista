@@ -69,3 +69,13 @@ Cada lote aceita percentuais fictícios de ICMS, IBS estadual, IBS municipal e C
 ### Conferência dos dados salvos
 
 A tela apresenta, por lote, um inventário dos campos de teste preenchidos e ausentes nos grupos ICMS e IBS/CBS. Zero explícito conta como informado. A lista não determina quais campos são obrigatórios, nem indica que os dados estejam corretos ou que o XML esteja pronto: essas decisões dependem do enquadramento, da operação e das regras fiscais aplicáveis. A conferência usa exclusivamente os dados já salvos.
+
+
+## Identificação, numeração fictícia e chave simulada
+
+Foram implementados os componentes locais de identificação e numeração para testes (`app/services/nfe_access_key.py`, `app/services/nfe_numbering.py` e modelos `NfeTestSequence` / `NfeDraftIdentification`):
+
+- **Ambiente isolado (`teste_ficticio`):** o contador sequencial (`nfe_test_sequences`) e o vínculo com o rascunho (`nfe_draft_identifications`) operam exclusivamente em ambiente fictício, separados por organização, fazenda, modelo (`55`) e série. Essa numeração nunca é usada em produção nem reservada na SEFAZ, e não substitui a coordenação de séries com outros emissores do produtor.
+- **Faixa de séries para produtor rural PF:** segue a faixa `920`–`969` (referência NT 2018.001). O algoritmo de chave já aceita `document_type='cnpj'` (séries `0`–`889`) e todas as 27 UFs do IBGE para expansão futura, mantendo o fluxo da interface restrito à Bahia e a CPF nesta etapa.
+- **Chave de acesso simulada (44 dígitos):** composta com `cUF`, `AAMM`, documento com 14 posições (`000` + CPF para pessoa física), `mod`, `serie`, `nNF`, `tpEmis`, `cNF` aleatório (evitando padrões proibidos pela NT 2019.001 e igualdade com `nNF`) e dígito verificador `cDV` calculado pelo Módulo 11.
+- **Limites preservados:** a chave simulada aparece apenas na tela de revisão e na simulação interna (`preparacao_sisfarm/identificacao_teste`). O arquivo `estrutura-incompleta-nao-transmitir.xml` continua deliberadamente sem `Id`, assinatura ou tributação e segue rejeitado pelo XSD. Nenhuma emissão real ou transmissão à SEFAZ foi habilitada.

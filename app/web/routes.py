@@ -22626,8 +22626,14 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
                                           farm_id=scope["active_farm_id"]).first()
     if not draft:
         raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
-    from app.models.nfe_draft import NfeIssuerProfile, NfeDraftDetails, NfeDraftTechnicalData
+    from app.models.nfe_draft import NfeIssuerProfile, NfeDraftDetails, NfeDraftTechnicalData, NfeDraftIdentification
     from app.services.nfe_draft import buyer_prefill, review_preparation, review_item_values, summarize_test_tax_values, review_test_tax_fields
+    from app.services.nfe_numbering import (
+        CONSUMER_INDICATORS,
+        PAYMENT_METHODS,
+        PRESENCE_INDICATORS,
+        build_simulated_access_key_summary,
+    )
     issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id,
                                                   farm_id=scope["active_farm_id"]).first()
     snapshot = json.loads(draft.snapshot_json)
@@ -22639,9 +22645,15 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
                                                               farm_id=scope["active_farm_id"]).first()
     technical = json.loads(technical_row.data_json) if technical_row else {}
     technical_items = {item["item_index"]: item for item in technical.get("items", [])}
+    identification = db.query(NfeDraftIdentification).filter_by(
+        draft_id=draft.id, organization_id=user.organization_id, farm_id=scope["active_farm_id"]
+    ).first()
+    key_summary = build_simulated_access_key_summary(issuer, technical, identification)
     return templates.TemplateResponse("nfe_draft.html", _base_context(
         request, user, csrf_token, "commercialization", title="Rascunho fiscal", draft=draft,
         issuer=issuer, details=prepared, snapshot=snapshot, technical=technical, technical_items=technical_items,
+        identification=identification, key_summary=key_summary,
+        consumer_indicators=CONSUMER_INDICATORS, presence_indicators=PRESENCE_INDICATORS, payment_methods=PAYMENT_METHODS,
         item_review={r['item_index']: r['issues'] for r in review_item_values(snapshot, technical)},
         tax_summaries=summarize_test_tax_values(snapshot, technical),
         tax_review=review_test_tax_fields(snapshot, technical),
@@ -22651,7 +22663,7 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
 @router.get("/producao/rascunhos-fiscais/{draft_id}/previa-xml")
 def fiscal_preview_xml(draft_id: str, request: Request, db: Session = Depends(get_db),
                        user: User = Depends(get_current_user_web)):
-    from app.models.nfe_draft import NfeDraft, NfeIssuerProfile, NfeDraftDetails, NfeDraftTechnicalData
+    from app.models.nfe_draft import NfeDraft, NfeIssuerProfile, NfeDraftDetails, NfeDraftTechnicalData, NfeDraftIdentification
     from app.services.nfe_preview import build_preview
     repo = _repository(db)
     scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
@@ -22664,10 +22676,12 @@ def fiscal_preview_xml(draft_id: str, request: Request, db: Session = Depends(ge
     issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
     details = db.query(NfeDraftDetails).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
     technical = db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    identification = db.query(NfeDraftIdentification).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
     try:
         content = build_preview(json.loads(draft.snapshot_json), issuer,
                                 json.loads(details.data_json) if details else {},
-                                json.loads(technical.data_json) if technical else {})
+                                json.loads(technical.data_json) if technical else {},
+                                identification=identification)
     except (ValueError, TypeError):
         raise HTTPException(status_code=422, detail="Não foi possível gerar a prévia deste rascunho.") from None
     return Response(content, media_type="application/xml", headers={"Content-Disposition": 'attachment; filename="simulacao-sisfarm.xml"',
@@ -22809,6 +22823,42 @@ async def fiscal_issuer_save(draft_id: str, request: Request, db: Session = Depe
         _flash(request, "error", "O cadastro foi alterado simultaneamente. Reabra e tente novamente.")
         return _redirect("/producao/rascunhos-fiscais/" + draft_id)
     _flash(request, "success", "Dados do emitente salvos para preparação. A emissão ainda não está disponível.")
+    return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+
+
+@router.post("/producao/rascunhos-fiscais/{draft_id}/identificacao")
+async def fiscal_identification_save(draft_id: str, request: Request, db: Session = Depends(get_db),
+                                     user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import NfeDraft
+    from app.services.nfe_numbering import reserve_or_update_test_identification
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    draft = db.query(NfeDraft).filter_by(id=draft_id, organization_id=user.organization_id,
+                                          farm_id=scope["active_farm_id"]).first()
+    if not draft or not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
+    try:
+        reserve_or_update_test_identification(
+            db,
+            organization_id=user.organization_id,
+            farm_id=farm.id,
+            draft_id=draft.id,
+            user_id=user.id,
+            data=form,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+    except IntegrityError:
+        db.rollback()
+        _flash(request, "error", "A numeração de teste foi atualizada simultaneamente. Tente novamente.")
+        return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+    _flash(request, "success", "Identificação e numeração fictícia salvas para teste. Nenhuma nota foi emitida ou transmitida.")
     return _redirect("/producao/rascunhos-fiscais/" + draft_id)
 
 

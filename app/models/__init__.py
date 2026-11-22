@@ -155,4 +155,11 @@ __all__ = [
 ]
 
 from app.models.assistant_capability import AssistantCapability
-from app.models.nfe_draft import NfeDraft
+from app.models.nfe_draft import (
+    NfeDraft,
+    NfeDraftDetails,
+    NfeDraftIdentification,
+    NfeDraftTechnicalData,
+    NfeIssuerProfile,
+    NfeTestSequence,
+)
