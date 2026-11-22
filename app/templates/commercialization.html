@@ -100,6 +100,8 @@
                         <button class="sf-btn sf-btn-primary" type="submit">{{ 'Registrar entrega' if g.step == 0 else 'Registrar recebimento' }}</button>
                     </form>
                     {% endif %}
+                    {% if fiscal_draft_by_sale.get(g.code) %}<a class="sf-btn sf-btn-secondary" href="/producao/rascunhos-fiscais/{{ fiscal_draft_by_sale[g.code] }}">Ver último rascunho fiscal</a>{% endif %}
+                    {% if can_write_page %}<form method="post" action="/producao/vendas/{{ g.code }}/rascunho-fiscal"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="sf-btn sf-btn-secondary" type="submit">Preparar rascunho fiscal</button></form>{% endif %}
                     <a class="sf-btn sf-btn-secondary" href="/producao/vendas/{{ g.code }}/editar">Editar</a>
                     <form method="post" action="/producao/vendas/{{ g.code }}/excluir" onsubmit="return confirm('Excluir a venda {{ g.code }}? O saldo volta para os lotes{{ ' e o lançamento do Financeiro também é excluído' if g.finance_transaction_id }}.')">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

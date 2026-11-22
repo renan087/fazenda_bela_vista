@@ -22380,11 +22380,26 @@ def commercialization_page(
     to_receive = sum(g["net"] for g in all_groups if g["status"] != "recebido")
     status_counts = {value: sum(1 for g in all_groups if g["status"] == value) for value, _ in SALE_STATUS_OPTIONS}
     lots_with_balance = [lot for lot in lots if lot["available"] > 0]
+    from app.models.nfe_draft import NfeDraft
+    draft_by_sale = {}
+    if scope.get("active_farm_id") and user.organization_id and page_groups:
+        drafts = (db.query(NfeDraft).filter(NfeDraft.organization_id == user.organization_id,
+                 NfeDraft.farm_id == scope["active_farm_id"],
+                 NfeDraft.sale_code.in_([group["code"] for group in page_groups]))
+                 .order_by(NfeDraft.created_at.desc(), NfeDraft.id.desc()).all())
+        current_ids = {group["code"]: sorted(row.id for row in group["records"]) for group in page_groups}
+        for item in drafts:
+            try:
+                origin_ids = json.loads(item.snapshot_json).get("origem_ids")
+            except (ValueError, TypeError, AttributeError):
+                continue
+            if origin_ids == current_ids.get(item.sale_code):
+                draft_by_sale.setdefault(item.sale_code, item.id)
     return templates.TemplateResponse(
         "commercialization.html",
         _base_context(
             request, user, csrf_token, "commercialization", _repo=repo,
-            sale_groups=page_groups, sale_pagination=pagination, sale_focus=focus,
+            sale_groups=page_groups, fiscal_draft_by_sale=draft_by_sale, sale_pagination=pagination, sale_focus=focus,
             sale_status_options=SALE_STATUS_OPTIONS, sale_status_counts=status_counts, sale_total_count=len(all_groups),
             sale_selected_status=normalized_status, sale_search=search or "", sale_harvest_id=harvest_id,
             sale_filters_active=bool(normalized_status or search_term or harvest_id),
@@ -22850,6 +22865,47 @@ async def sale_update_action(
     user: User = Depends(get_current_user_web),
 ):
     return await _sale_save(request, db, user, "", sale_code)
+
+
+@router.post("/producao/vendas/{sale_code}/rascunho-fiscal")
+def create_fiscal_draft_action(sale_code: str, request: Request, csrf_token: str = Form(...),
+                               db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.coffee_sales import sale_records
+    from app.services.nfe_draft import create_draft
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    records = sale_records(db, scope["active_farm_id"], sale_code)
+    if not records or not all(_commercialization_record_matches_scope(row, scope) for row in records):
+        raise HTTPException(status_code=404, detail="Venda não encontrada.")
+    farm = db.get(Farm, scope["active_farm_id"])
+    if not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=403, detail="Fazenda indisponível.")
+    try:
+        draft = create_draft(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id, records=records)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/comercializacao")
+    return _redirect("/producao/rascunhos-fiscais/" + draft.id)
+
+
+@router.get("/producao/rascunhos-fiscais/{draft_id}")
+def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token)):
+    from app.models.nfe_draft import NfeDraft
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    draft = db.query(NfeDraft).filter_by(id=draft_id, organization_id=user.organization_id,
+                                          farm_id=scope["active_farm_id"]).first()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
+    return templates.TemplateResponse("nfe_draft.html", _base_context(
+        request, user, csrf_token, "commercialization", title="Rascunho fiscal", draft=draft,
+        snapshot=json.loads(draft.snapshot_json), _repo=repo))
 
 
 @router.post("/producao/vendas/{sale_code}/situacao")
