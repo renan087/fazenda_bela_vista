@@ -23322,6 +23322,10 @@ async def nfe_farm_config_save(request: Request, db: Session = Depends(get_db),
             db.add(issuer)
         for key, value in issuer_values.items():
             setattr(issuer, key, value)
+        if "default_info" in form:
+            from app.services.nfe_fiscal_setup import save_prefs
+            save_prefs(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id,
+                       data={"default_info": str(form.get("default_info") or "")})
         db.commit()
     except ValueError as exc:
         db.rollback()

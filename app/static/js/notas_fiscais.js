@@ -362,34 +362,92 @@
       if (sn && num) sn.addEventListener('change', function () {
         num.readOnly = sn.checked; num.value = sn.checked ? 'S/N' : ''; if (!sn.checked) num.focus(); mirror(num);
       });
-      var btn = emit.querySelector('[data-fc-cep]'); var cep = emit.querySelector('[name="postal_code"]'); var msg = emit.querySelector('[data-fc-cep-msg]');
+      var docIn = emit.querySelector('[data-fc-doc]');
+      function personType() { var r = emit.querySelector('[data-fc-person]:checked'); return r ? r.value : 'pf'; }
+      function docMask() {
+        if (!docIn) return;
+        var cnpj = personType() === 'cnpj'; var d = docIn.value.replace(/\D/g, '').slice(0, cnpj ? 14 : 11);
+        docIn.value = cnpj
+          ? d.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2')
+          : d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+        docIn.placeholder = cnpj ? '00.000.000/0000-00' : '000.000.000-00';
+        mirror(docIn);
+      }
+      if (docIn) {
+        docIn.addEventListener('input', docMask);
+        emit.querySelectorAll('[data-fc-person]').forEach(function (r) { r.addEventListener('change', docMask); });
+        docMask();
+      }
+      var btn = emit.querySelector('[data-fc-cep]'); var cep = emit.querySelector('[name="postal_code"]');
+      var msg = emit.querySelector('[data-fc-cep-msg]'); var help = emit.querySelector('[data-fc-cep-help]');
       var tag = emit.querySelector('[data-fc-af]'); var ibgeOut = root.querySelector('[data-fc-ibge-out]');
+      function say(text) { if (!msg) return; msg.textContent = text || ''; msg.hidden = !text; if (help) help.hidden = !!text; }
+      function flash(el) { el.classList.remove('fc-filled'); void el.offsetWidth; el.classList.add('fc-filled'); }
+      if (cep) cep.addEventListener('input', function () {
+        var d = cep.value.replace(/\D/g, '').slice(0, 8); cep.value = d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d; say('');
+      });
       function lookup() {
         var digits = cep.value.replace(/\D/g, '');
-        if (digits.length !== 8) { msg.textContent = 'O CEP precisa ter 8 números.'; cep.focus(); return; }
-        btn.disabled = true; msg.textContent = 'Buscando o endereço…';
+        if (digits.length !== 8) { say('O CEP precisa ter 8 números.'); cep.focus(); return; }
+        btn.disabled = true; btn.classList.add('is-loading'); say('');
         fetch('/producao/compradores/consulta/cep/' + digits, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
           .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
           .then(function (res) {
-            if (!res.ok || !res.j.data) { msg.textContent = (res.j && res.j.error) || 'CEP não encontrado. Preencha o endereço à mão.'; return; }
-            var d = res.j.data;
+            if (!res.ok || !res.j.data) { say((res.j && res.j.error) || 'CEP não encontrado. Preencha o endereço à mão.'); return; }
+            var d = res.j.data; var delay = 0;
             cep.value = d.postal_code || cep.value; mirror(cep);
             emit.querySelectorAll('[data-fc-fill]').forEach(function (el) {
-              var k = el.getAttribute('data-fc-fill'); if (d[k]) { el.value = d[k]; if (el.hasAttribute('data-fc-mirror')) mirror(el); }
+              var k = el.getAttribute('data-fc-fill'); if (!d[k]) return;
+              setTimeout(function () { el.value = d[k]; flash(el); if (el.hasAttribute('data-fc-mirror')) mirror(el); }, delay); delay += 90;
             });
-            if (ibgeOut && d.municipality_code) ibgeOut.textContent = d.municipality_code;
+            if (ibgeOut && d.municipality_code) setTimeout(function () { ibgeOut.textContent = d.municipality_code; flash(ibgeOut); }, delay);
             if (tag) tag.hidden = false;
-            msg.textContent = 'Endereço preenchido. Confira e complete o número.';
-            if (num && !num.readOnly) num.focus();
+            setTimeout(function () { if (num && !num.readOnly) num.focus(); }, delay + 120);
           })
-          .catch(function () { msg.textContent = 'Não foi possível buscar agora. Preencha o endereço à mão.'; })
-          .then(function () { btn.disabled = false; });
+          .catch(function () { say('Não foi possível buscar agora. Preencha o endereço à mão.'); })
+          .then(function () { btn.disabled = false; btn.classList.remove('is-loading'); });
       }
-      if (btn && cep && msg) {
+      if (btn && cep) {
         btn.addEventListener('click', lookup);
         cep.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); lookup(); } });
       }
+      var ib = root.querySelector('[data-fc-ibge]');
+      if (ib) {
+        var ibBtn = ib.querySelector('[data-fc-ibge-btn]'); var view = ib.querySelector('[data-fc-ibge-view]');
+        var edit = ib.querySelector('[data-fc-ibge-edit]'); var ibIn = ib.querySelector('[data-fc-ibge-in]');
+        ibIn.addEventListener('input', function () { ibIn.value = ibIn.value.replace(/\D/g, '').slice(0, 7); });
+        ibBtn.addEventListener('click', function () {
+          var open = edit.hidden; edit.hidden = !open; view.hidden = open;
+          ibBtn.textContent = open ? 'Pronto' : 'Corrigir'; ibBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          if (open) ibIn.focus(); else if (ibgeOut) ibgeOut.textContent = ibIn.value || 'preenchido ao salvar';
+        });
+      }
     }
+    root.querySelectorAll('[data-fc-drop]').forEach(function (zone) {
+      var input = zone.querySelector('[data-fc-file]'); var name = zone.querySelector('[data-fc-drop-name]');
+      var hint = zone.querySelector('[data-fc-drop-hint]'); var prev = zone.querySelector('[data-fc-drop-preview]');
+      var form = zone.closest('form'); var go = form && form.querySelector('[data-fc-upload-go]');
+      var original = { name: name.textContent, hint: hint.textContent, prev: prev ? prev.innerHTML : '' };
+      function show() {
+        var f = input.files && input.files[0];
+        zone.classList.toggle('has-file', !!f);
+        if (!f) { name.textContent = original.name; hint.textContent = original.hint; if (prev) prev.innerHTML = original.prev; if (go) go.hidden = true; return; }
+        name.textContent = f.name; hint.textContent = (f.size / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' KB · pronto para enviar';
+        if (prev && /^image\//.test(f.type)) { var img = document.createElement('img'); img.alt = ''; img.src = URL.createObjectURL(f); prev.innerHTML = ''; prev.appendChild(img); }
+        if (go) go.hidden = false;
+      }
+      input.addEventListener('change', show);
+      ['dragenter', 'dragover'].forEach(function (t) { zone.addEventListener(t, function (e) { e.preventDefault(); zone.classList.add('is-over'); }); });
+      ['dragleave', 'dragend'].forEach(function (t) { zone.addEventListener(t, function (e) { if (!zone.contains(e.relatedTarget)) zone.classList.remove('is-over'); }); });
+      zone.addEventListener('drop', function (e) {
+        e.preventDefault(); zone.classList.remove('is-over');
+        var files = e.dataTransfer && e.dataTransfer.files; if (!files || !files.length) return;
+        try { var dt = new DataTransfer(); dt.items.add(files[0]); input.files = dt.files; } catch (err) { input.files = files; }
+        show();
+      });
+      var cancel = form && form.querySelector('[data-fc-upload-cancel]');
+      if (cancel) cancel.addEventListener('click', function () { input.value = ''; show(); });
+    });
     root.querySelectorAll('[data-fc-eye]').forEach(function (b) {
       var input = document.getElementById(b.getAttribute('data-fc-eye'));
       b.addEventListener('click', function () {
@@ -400,8 +458,17 @@
     var prod = root.querySelector('[data-fc-product]');
     if (prod) {
       var ncm = prod.querySelector('[data-fc-ncm]');
+      var ncmMsg = prod.querySelector('[data-fc-ncm-msg]');
+      function ncmMask() {
+        if (!ncm) return;
+        var d = ncm.value.replace(/\D/g, '').slice(0, 8);
+        ncm.value = d.replace(/^(\d{4})(\d)/, '$1.$2').replace(/^(\d{4})\.(\d{2})(\d)/, '$1.$2.$3');
+        var ok = d.length === 8; ncm.classList.toggle('is-missing', !ok);
+        if (ncmMsg) { ncmMsg.textContent = ok ? '' : (d ? 'O NCM tem 8 números.' : 'Falta o NCM. Sem ele a nota não pode ser emitida.'); ncmMsg.classList.toggle('fc-warn', !ok); }
+      }
+      if (ncm) { ncm.addEventListener('input', ncmMask); if (ncm.value) ncmMask(); }
       prod.querySelectorAll('[data-fc-ncm-pick]').forEach(function (b) {
-        b.addEventListener('click', function () { if (ncm) { ncm.value = b.getAttribute('data-fc-ncm-pick'); ncm.classList.remove('is-missing'); ncm.focus(); } });
+        b.addEventListener('click', function () { if (ncm) { ncm.value = b.getAttribute('data-fc-ncm-pick'); ncmMask(); ncm.focus(); } });
       });
       var conv = prod.querySelector('[data-fc-conv]');
       function convText() {

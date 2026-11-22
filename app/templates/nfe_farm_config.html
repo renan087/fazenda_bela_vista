@@ -28,14 +28,27 @@
 {% set op_group = ns.op_group %}
 {% set step_order = ['inicio', 'emit', 'cert', 'prod', 'oper', 'num'] %}
 
-{% macro foot(back, back_label, next=None, next_label=None, submit_form=None) %}
+{% macro foot(back, back_label, next=None, next_label=None, submit_form=None, hint='', hint_ok=False, save_form=None, save_label='') %}
 <div class="fc-foot">
-  <a class="sf-btn sf-btn-secondary" href="?secao={{ back }}" data-nx-sec="{{ back }}">{{ back_label }}</a>
-  {% if submit_form and can_write_page %}
-  <button type="submit" form="{{ submit_form }}" name="next_section" value="{{ next }}" class="sf-btn sf-btn-primary">{{ next_label }}</button>
-  {% elif next %}
-  <a class="sf-btn sf-btn-primary" href="?secao={{ next }}" data-nx-sec="{{ next }}">{{ next_label }}</a>
-  {% endif %}
+  <span class="fc-foot-hint">{% if hint_ok %}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1f7a3a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>{% endif %}{{ hint }}</span>
+  <div class="fc-foot-btns">
+    <a class="sf-btn sf-btn-secondary" href="?secao={{ back }}" data-nx-sec="{{ back }}">{{ back_label }}</a>
+    {% if save_form and can_write_page %}<button type="submit" form="{{ save_form }}" class="sf-btn sf-btn-secondary">{{ save_label }}</button>{% endif %}
+    {% if submit_form and can_write_page %}
+    <button type="submit" form="{{ submit_form }}" name="next_section" value="{{ next }}" class="sf-btn sf-btn-primary">{{ next_label }}</button>
+    {% elif next %}
+    <a class="sf-btn sf-btn-primary" href="?secao={{ next }}" data-nx-sec="{{ next }}">{{ next_label }}</a>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro dropzone(input_name, accept, title, hint, button, preview=None, required=True) %}
+<div class="fc-drop" data-fc-drop>
+  {% if preview %}<div class="fc-logo" data-fc-drop-preview>{{ preview }}</div>
+  {% else %}<span class="fc-drop-ico" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg></span>{% endif %}
+  <div class="fc-drop-t"><b data-fc-drop-name>{{ title }}</b><span class="fc-hint" data-fc-drop-hint>{{ hint }}</span></div>
+  <label class="sf-btn sf-btn-secondary fc-drop-btn">{{ button }}<input type="file" name="{{ input_name }}" accept="{{ accept }}" {% if required %}required{% endif %} class="fc-file" data-fc-file></label>
 </div>
 {% endmacro %}
 
@@ -137,7 +150,7 @@
               </fieldset>
 
               <div class="fc-grid">
-                <label class="nx-f fc-c2"><span data-fc-doc-label>{{ 'CNPJ' if pt == 'cnpj' else 'CPF' }}</span><input name="document" maxlength="18" inputmode="numeric" autocomplete="off" value="{{ (cfg.document if cfg and cfg.document else (issuer.cpf if issuer else '')) }}" class="nx-in" data-fc-mirror="document"><small>Só números ou com pontos, como preferir.</small></label>
+                <label class="nx-f fc-c2"><span data-fc-doc-label>{{ 'CNPJ' if pt == 'cnpj' else 'CPF' }}</span><input name="document" maxlength="18" inputmode="numeric" autocomplete="off" value="{{ (cfg.document if cfg and cfg.document else (issuer.cpf if issuer else '')) }}" placeholder="{{ '00.000.000/0000-00' if pt == 'cnpj' else '000.000.000-00' }}" class="nx-in" data-fc-mirror="document" data-fc-doc><small>Digite só os números.</small></label>
                 <label class="nx-f fc-c4">Nome que aparece na nota<input name="name" maxlength="180" value="{{ issuer.name if issuer else '' }}" class="nx-in" data-fc-mirror="name"><small>Igual ao cadastro na SEFAZ.</small></label>
                 <label class="nx-f fc-c3">Inscrição estadual<input name="state_registration" maxlength="30" inputmode="numeric" value="{{ (cfg.state_registration if cfg and cfg.state_registration else (issuer.state_registration if issuer else '')) }}" class="nx-in" data-fc-mirror="ie"><small>Está no cartão ou na ficha de produtor rural.</small></label>
                 <label class="nx-f fc-c3">Regime tributário<select name="crt" class="nx-in"><option value="">Não informado</option>{% for code, label in allowed_crts %}<option value="{{ code }}" {% if cfg and cfg.crt == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><small>Na dúvida, pergunte ao seu contador.</small></label>
@@ -148,10 +161,11 @@
               <div class="fc-grid" data-fc-address>
                 <div class="nx-f fc-c2"><label for="fc-cep">CEP</label>
                   <div class="fc-inrow"><input id="fc-cep" name="postal_code" maxlength="9" inputmode="numeric" autocomplete="postal-code" value="{{ issuer.postal_code if issuer else '' }}" class="nx-in" data-fc-mirror="cep"><button type="button" class="sf-btn sf-btn-secondary" data-fc-cep>Buscar</button></div>
-                  <small data-fc-cep-msg aria-live="polite"><a href="https://buscacepinter.correios.com.br/" target="_blank" rel="noopener">Não sei o CEP</a></small>
+                  <small><span class="fc-err" data-fc-cep-msg role="status" hidden></span><a href="https://buscacepinter.correios.com.br/" target="_blank" rel="noopener" data-fc-cep-help>Não sei o CEP</a></small>
                 </div>
-                <label class="nx-f fc-c3">Município<span class="fc-af" data-fc-af hidden>preenchido pelo CEP</span><input name="city" maxlength="120" value="{{ issuer.city if issuer else '' }}" class="nx-in" data-fc-mirror="city" data-fc-fill="city"></label>
-                <label class="nx-f fc-c1">UF<input name="state" maxlength="2" value="{{ uf }}" class="nx-in" data-fc-mirror="uf" data-fc-fill="state" style="text-transform:uppercase"></label>
+                <div class="nx-f fc-c4"><span class="fc-lblrow"><label for="fc-city">Município e UF</label><span class="fc-af" data-fc-af hidden>preenchido pelo CEP</span></span>
+                  <div class="fc-inrow"><input id="fc-city" name="city" maxlength="120" value="{{ issuer.city if issuer else '' }}" class="nx-in" data-fc-mirror="city" data-fc-fill="city"><input name="state" maxlength="2" value="{{ uf }}" class="nx-in fc-uf" aria-label="UF" data-fc-mirror="uf" data-fc-fill="state"></div>
+                </div>
                 <label class="nx-f fc-c4">Estrada, rodovia ou rua<input name="street" maxlength="180" value="{{ issuer.street if issuer else '' }}" placeholder="Ex.: Estrada Municipal, km 14" class="nx-in" data-fc-mirror="street" data-fc-fill="street"></label>
                 {% set sn = issuer and issuer.number and issuer.number|upper in ['S/N', 'SN'] %}
                 <div class="nx-f fc-c2"><label for="fc-num">Número</label>
@@ -162,30 +176,33 @@
                 <label class="nx-f fc-c3"><span>Complemento <span class="fc-opt">(opcional)</span></span><input name="complement" maxlength="120" value="{{ issuer.complement if issuer else '' }}" placeholder="Ex.: Sede da fazenda" class="nx-in"></label>
                 <div class="fc-c6">
                   {% set mun = issuer.municipality_code if issuer and issuer.municipality_code else '' %}
-                  <div class="fc-ibge"><span>Código do município (IBGE): <b data-fc-ibge-out>{{ mun or 'preenchido ao salvar' }}</b> · automático</span><button type="button" class="nx-link-btn" data-nx-toggle="fc-ibge-box" aria-expanded="false" aria-controls="fc-ibge-box">Corrigir</button></div>
-                  <label class="nx-f" id="fc-ibge-box" hidden style="margin-top:.75rem;max-width:14rem">Código IBGE<input name="municipality_code" maxlength="7" inputmode="numeric" value="{{ mun }}" class="nx-in" data-fc-fill="municipality_code"><small>7 números. Só mude se o automático estiver errado.</small></label>
+                  <div class="fc-ibge" data-fc-ibge>
+                    <span data-fc-ibge-view>Código do município (IBGE): <b data-fc-ibge-out>{{ mun or 'preenchido ao salvar' }}</b> · automático</span>
+                    <label class="fc-ibge-edit" data-fc-ibge-edit hidden><span>Código do município (IBGE)</span><input name="municipality_code" maxlength="7" inputmode="numeric" value="{{ mun }}" class="nx-in" data-fc-fill="municipality_code" data-fc-ibge-in></label>
+                    <button type="button" class="nx-link-btn" data-fc-ibge-btn aria-expanded="false">Corrigir</button>
+                  </div>
                 </div>
               </div>
             </form>
 
             <section class="nx-cfg-card">
               <div><h2>Logotipo na nota <span class="fc-opt">(opcional)</span></h2><p class="nx-desc">Aparece no canto da DANFE impressa. Use o logotipo da sua fazenda: o SiSFarm nunca coloca a própria marca na nota.</p></div>
-              <div class="fc-drop">
-                <div class="fc-logo">{% if has_logo %}<img src="/producao/nfe/configuracao/logo.png" alt="Logotipo atual da fazenda">{% else %}<span>Sem<br>logotipo</span>{% endif %}</div>
-                {% if can_write_page %}
-                <form method="post" action="/producao/nfe/configuracao/logo" enctype="multipart/form-data" class="fc-drop-f">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                  <label class="nx-f" style="flex:1 1 14rem">{{ 'Trocar a imagem' if has_logo else 'Escolha a imagem' }}<input type="file" name="logo_file" accept="image/png,image/jpeg" required class="nx-in" style="padding:.5rem"><small>PNG ou JPG, até 600 KB. Fundo branco fica melhor.</small></label>
-                  <button type="submit" class="sf-btn sf-btn-secondary">{{ 'Trocar logotipo' if has_logo else 'Enviar logotipo' }}</button>
-                </form>
-                {% if has_logo %}
-                <form method="post" action="/producao/nfe/configuracao/logo"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="remove" value="1"><button type="submit" class="nx-link-btn" style="color:#b42318">Remover</button></form>
-                {% endif %}
-                {% endif %}
-              </div>
+              {% set logo_prev %}{% if has_logo %}<img src="/producao/nfe/configuracao/logo.png" alt="Logotipo atual da fazenda">{% else %}<span>Sem<br>logotipo</span>{% endif %}{% endset %}
+              {% if can_write_page %}
+              <form method="post" action="/producao/nfe/configuracao/logo" enctype="multipart/form-data" data-fc-upload>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {{ dropzone('logo_file', 'image/png,image/jpeg', 'Arraste a imagem aqui ou escolha um arquivo', 'PNG ou JPG até 600 KB · ideal 520 × 400 px, fundo branco', 'Escolher arquivo', logo_prev) }}
+                <div class="fc-upload-go" data-fc-upload-go hidden><button type="submit" class="sf-btn sf-btn-primary">{{ 'Trocar logotipo' if has_logo else 'Enviar logotipo' }}</button><button type="button" class="sf-btn sf-btn-secondary" data-fc-upload-cancel>Cancelar</button></div>
+              </form>
+              {% if has_logo %}
+              <form method="post" action="/producao/nfe/configuracao/logo"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="remove" value="1"><button type="submit" class="nx-link-btn" style="color:#b42318">Remover logotipo</button></form>
+              {% endif %}
+              {% else %}
+              <div class="fc-drop"><div class="fc-logo">{{ logo_prev }}</div></div>
+              {% endif %}
             </section>
 
-            {{ foot('inicio', 'Voltar', 'cert', 'Salvar e continuar →', 'nx-emit-form') }}
+            {{ foot('inicio', 'Voltar', 'cert', 'Salvar e continuar →', 'nx-emit-form', hint='Notas já emitidas não mudam.', hint_ok=True) }}
           </div>
 
           <aside class="fc-aside" aria-label="Prévia na nota">
@@ -240,7 +257,8 @@
               <input type="hidden" name="environment" value="homologacao">
               <div><h2>{{ 'Trocar o certificado' if active_cert else 'Enviar o certificado' }}</h2><p class="nx-desc">{{ 'Use quando renovar ou comprar um novo. O atual continua valendo até o novo ser conferido.' if active_cert else 'Leva um minuto. Você só precisa do arquivo e da senha.' }}</p></div>
               <ol class="fc-steps">
-                <li><span class="fc-n">1</span><div><label class="nx-f">Arquivo do certificado<input type="file" name="certificate_file" accept=".pfx,.p12" required class="nx-in" style="padding:.5rem"><small>Termina em .pfx ou .p12. Você recebeu da certificadora, por e-mail ou pendrive.</small></label></div></li>
+                <li><span class="fc-n">1</span><div><span class="fc-lbl">Escolha o arquivo do certificado</span>
+                  {{ dropzone('certificate_file', '.pfx,.p12', 'Arraste o arquivo aqui', 'Termina em .pfx ou .p12. Você recebeu da certificadora, por e-mail ou pendrive.', 'Escolher arquivo') }}</div></li>
                 <li><span class="fc-n">2</span><div><label class="nx-f" for="fc-pw">Senha do certificado</label>
                   <div class="fc-inrow" style="max-width:26rem"><input id="fc-pw" type="password" name="certificate_password" autocomplete="new-password" required class="nx-in"><button type="button" class="sf-btn sf-btn-secondary fc-eye" data-fc-eye="fc-pw" aria-label="Mostrar senha" aria-pressed="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg></button></div>
                   <small class="fc-hint">A senha definida na compra do certificado. Fica guardada criptografada e nunca aparece na tela.</small></div></li>
@@ -269,7 +287,7 @@
             </section>
             {% endif %}
 
-            {{ foot('emit', 'Voltar', 'prod', 'Continuar →') }}
+            {{ foot('emit', 'Voltar', 'prod', 'Continuar →', hint='Só o administrador da organização pode trocar o certificado.') }}
           </div>
           <aside class="fc-aside" aria-label="Ajuda">
             <section class="nx-cfg-card fc-sm" style="background:#f6f8f5">
@@ -289,7 +307,7 @@
           <div class="fc-plist">
             {% for v in product_views %}
             <a class="fc-pi{% if item == v.obj.id %} is-on{% endif %}" href="?secao=prod&amp;item={{ v.obj.id }}" {% if item == v.obj.id %}aria-current="true"{% endif %}>
-              <span class="nx-tag {{ 'is-ok' if v.complete else 'is-warn' }}">{{ 'Completo' if v.complete else 'Incompleto' }}{% if v.obj.is_default %} · padrão{% endif %}</span>
+              <span class="nx-tag {{ 'is-ok' if v.complete else 'is-warn' }}">{{ 'Completo' if v.complete else 'Falta completar' }}{% if v.obj.is_default %} · padrão{% endif %}</span>
               <b>{{ v.obj.name }}</b><span>{{ v.line }}</span>
             </a>
             {% endfor %}
@@ -308,10 +326,10 @@
         {% if item and (item == 'novo' or prod_edit) %}
         {% set p = prod_edit.obj if prod_edit else None %}
         {% set p_stages = prod_edit.stages if prod_edit else [] %}
-        <form method="post" action="/producao/nfe/configuracao/produtos" class="nx-cfg-card is-edit" aria-label="Editar produto fiscal" data-fc-product>
+        <form id="fc-prod-form" method="post" action="/producao/nfe/configuracao/produtos" class="nx-cfg-card" aria-label="Editar produto fiscal" data-fc-product>
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           {% if p %}<input type="hidden" name="product_id" value="{{ p.id }}">{% endif %}
-          <div class="fc-ch"><div><h2>{{ p.name if p else 'Novo produto fiscal' }}</h2><p class="nx-desc">Preencha os 4 blocos. O que estiver em amarelo falta para usar nas notas.</p></div><a class="sf-btn sf-btn-secondary" href="?secao=prod">Fechar</a></div>
+          <div class="fc-ch"><div><h2>{{ p.name if p else 'Novo produto fiscal' }}</h2><p class="nx-desc">Preencha os 4 blocos. O que estiver em amarelo falta para usar nas notas.</p></div></div>
 
           <div class="fc-grp"><span class="fc-gi">1</span><div class="fc-gb">
             <h3 class="fc-h3">Como aparece na nota</h3><p class="nx-desc">O que o comprador e o fiscal vão ler.</p>
@@ -326,8 +344,8 @@
           <div class="fc-grp"><span class="fc-gi{% if no_ncm %} is-warn{% endif %}">2</span><div class="fc-gb">
             <h3 class="fc-h3">Classificação fiscal</h3><p class="nx-desc">Diz à SEFAZ que tipo de mercadoria é.</p>
             <div class="fc-grid">
-              <label class="nx-f fc-c4">NCM<input name="ncm" maxlength="10" inputmode="numeric" value="{{ p.ncm if p else '' }}" placeholder="0000.00.00" class="nx-in{% if no_ncm %} is-missing{% endif %}" data-fc-ncm><small class="{{ 'fc-warn' if no_ncm else '' }}">{{ 'Falta o NCM. Sem ele a nota não pode ser emitida.' if no_ncm else '8 números · formato conferido' }}</small>
-                <span class="fc-ncm">Mais usado para café em grão: <button type="button" class="nx-link-btn" data-fc-ncm-pick="0901.11.10">0901.11.10 · café não torrado, não descafeinado</button> Confira com seu contador.</span></label>
+              <div class="nx-f fc-c4"><label for="fc-ncm">NCM</label><input id="fc-ncm" name="ncm" maxlength="10" inputmode="numeric" value="{{ p.ncm if p else '' }}" placeholder="0000.00.00" class="nx-in{% if no_ncm %} is-missing{% endif %}" data-fc-ncm><small class="{{ 'fc-warn' if no_ncm else '' }}" data-fc-ncm-msg>{{ 'Falta o NCM. Sem ele a nota não pode ser emitida.' if no_ncm else '' }}</small>
+                <span class="fc-ncm"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span>Mais usado para café: <button type="button" class="fc-ncm-pick" data-fc-ncm-pick="0901.11.10">0901.11.10 · café não torrado, não descafeinado</button>. Confira com seu contador qual vale para o seu produto.</span></span></div>
               <label class="nx-f fc-c2">Origem<select name="origin" class="nx-in">{% for code, label in origins %}<option value="{{ code }}" {% if (p.origin if p else '0') == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><small>Café da fazenda é “Nacional”.</small></label>
             </div>
           </div></div>
@@ -336,8 +354,8 @@
             <h3 class="fc-h3">Unidades</h3><p class="nx-desc">Como você vende e como o imposto é calculado.</p>
             <div class="fc-grid">
               <label class="nx-f fc-c2">Vende em<select name="commercial_unit" class="nx-in" data-fc-unit="sale">{% for code, label in units %}<option value="{{ code }}" {% if (p.commercial_unit if p else 'SC') == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-              <label class="nx-f fc-c2">Imposto calculado em<select name="tax_unit" class="nx-in" data-fc-unit="tax">{% for code, label in units %}<option value="{{ code }}" {% if (p.tax_unit if p else 'SC') == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><small>Pergunte ao seu contador qual usar.</small></label>
-              <label class="nx-f fc-c2">Quilos em 1 saca<input name="kg_per_unit" inputmode="numeric" maxlength="9" value="{{ p.kg_per_unit if p else '60' }}" class="nx-in" data-fc-mask="dec" data-fc-unit="kg"><small>Só números: 6000 vira 60,00.</small></label>
+              <label class="nx-f fc-c2">Imposto calculado em<select name="tax_unit" class="nx-in" data-fc-unit="tax">{% for code, label in units %}<option value="{{ code }}" {% if (p.tax_unit if p else 'SC') == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+              <label class="nx-f fc-c2">Quilos em 1 saca<input name="kg_per_unit" inputmode="numeric" maxlength="9" value="{{ p.kg_per_unit if p else '60' }}" class="nx-in" data-fc-mask="dec" data-fc-unit="kg"></label>
               <div class="fc-c6"><div class="fc-conv" data-fc-conv aria-live="polite"></div></div>
             </div>
           </div></div>
@@ -349,14 +367,12 @@
               <label class="fc-chk"><span class="dt-chk"><input type="checkbox" class="dt-check" name="lot_stages" value="{{ code }}" {% if code in p_stages %}checked{% endif %}></span>{{ label }}</label>
               {% endfor %}
             </div>
-            <label class="nx-agree" style="background:#fff;margin-top:.75rem"><span class="dt-chk"><input type="checkbox" class="dt-check" name="is_default" value="1" {% if p and p.is_default %}checked{% endif %}></span><span><b>Produto padrão</b> · sugerido quando o lote não estiver ligado a nenhum produto</span></label>
+            <label class="fc-sw"><span><b>Produto padrão</b><span class="fc-hint">Sugerido primeiro quando o lote não indicar outro.</span></span><input type="checkbox" class="fc-tg" name="is_default" value="1" role="switch" {% if p and p.is_default %}checked{% endif %}></label>
           </div></div>
-
-          {% if can_write_page %}<div class="nx-actions"><a class="sf-btn sf-btn-secondary" href="?secao=prod">Cancelar</a><button type="submit" class="sf-btn sf-btn-primary">Salvar produto</button></div>{% endif %}
         </form>
         {% endif %}
 
-        {{ foot('cert', 'Voltar', 'oper', 'Continuar: Operações →') }}
+        {{ foot('cert', 'Voltar', 'oper', 'Continuar: Operações →', save_form=('fc-prod-form' if item and (item == 'novo' or prod_edit) else None), save_label='Salvar produto') }}
       </div>
 
       {# ============================================================ 4. Operações #}
@@ -397,7 +413,7 @@
               <section class="nx-cfg-card is-edit">
                 <div class="fc-ch">
                   <div><h2>{{ o.name if o else 'Nova operação' }}</h2><p class="nx-desc">Confira cada bloco e ative no final.</p></div>
-                  <div style="display:flex;gap:.5rem;align-items:center">{% if o %}<span class="nx-tag {{ 'is-ok' if o.status == 'ativa' else 'is-warn' }}">{{ ('Ativa · v' ~ o.version) if o.status == 'ativa' else ('Rascunho · v' ~ o.version) }}</span>{% endif %}<a class="sf-btn sf-btn-secondary" href="?secao=oper">Fechar</a></div>
+                  {% if o %}<span class="nx-tag {{ 'is-ok' if o.status == 'ativa' else 'is-warn' }}">{{ ('Ativa · v' ~ o.version) if o.status == 'ativa' else ('Rascunho · v' ~ o.version) }}</span>{% endif %}
                 </div>
                 {% if editing_active %}
                 <div class="nx-box is-neutral"><p>Esta operação está ativa.</p><p>Ao salvar, nasce a versão {{ o.version + 1 }} e ela passa a valer nas próximas notas depois de ativada. Notas já emitidas não mudam.</p></div>
@@ -501,8 +517,6 @@
           </div>
         </form>
         {% endif %}
-
-        {{ foot('prod', 'Voltar', 'num', 'Continuar →') }}
       </div>
 
       {# ============================================================ 5. Numeração e textos #}
@@ -512,25 +526,20 @@
           <div><h2>Numeração das notas</h2><p class="nx-desc">Só mude se você já emitia notas em outro sistema e quer continuar a sequência.</p></div>
           <div class="fc-grid" data-fc-numbering>
             <label class="nx-f fc-c2">Série<input form="nx-emit-form" type="number" inputmode="numeric" name="default_series" min="0" max="969" step="1" value="{{ cfg.default_series if cfg else 920 }}" class="nx-in" data-fc-series><small>Produtor pessoa física: 920 a 969.</small></label>
-            <label class="nx-f fc-c2">Próximo número<input form="nx-emit-form" type="number" inputmode="numeric" name="next_number" min="1" max="999999999" step="1" value="{{ cfg.next_number if cfg else 1 }}" class="nx-in" data-fc-next><small>Número inteiro da próxima nota.</small></label>
+            <label class="nx-f fc-c2">Próximo número<input form="nx-emit-form" type="number" inputmode="numeric" name="next_number" min="1" max="999999999" step="1" value="{{ cfg.next_number if cfg else 1 }}" class="nx-in" data-fc-next><small>Número da próxima nota. Mudar pode pular ou repetir notas.</small></label>
             <div class="fc-c6"><div class="fc-nxt"><span>A próxima nota sai como</span><b data-fc-nxt-out>Série {{ cfg.default_series if cfg else 920 }} · Nº {{ '{:,}'.format(cfg.next_number if cfg else 1).replace(',', '.') }}</b></div></div>
           </div>
-          <div class="nx-banner is-amber" style="font-size:.8125rem">{{ nxi('alert', 18) }}<span>Mudar o próximo número pode pular ou repetir notas. Só mude se tiver certeza.</span></div>
-          {% if can_write_page %}<div class="nx-actions"><button type="submit" form="nx-emit-form" name="next_section" value="num" class="sf-btn sf-btn-primary">Salvar numeração</button></div>{% endif %}
           <div class="fc-rowline">
-            <div><b>Pulou algum número?</b><p class="nx-desc">Para quando números ficarem sem nota (ex.: falha antes do envio). A inutilização é informada à SEFAZ e não pode ser desfeita.</p></div>
-            <span class="nx-soon" style="margin-left:0">Em breve</span>
+            <div><b>Pulou algum número?</b><p class="nx-desc">Se uma faixa de números não vai ser usada, avise a SEFAZ inutilizando essa faixa.</p></div>
+            <span class="fc-soon-btn"><button type="button" class="sf-btn sf-btn-secondary" disabled>Inutilizar números</button><span class="nx-soon" style="margin-left:0">Em breve</span></span>
           </div>
         </section>
 
-        <form method="post" action="/producao/nfe/configuracao/textos" class="nx-cfg-card">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <div><h2>Texto em todas as notas <span class="fc-opt">(opcional)</span></h2><p class="nx-desc">Somado ao texto da operação nas informações complementares. Bom para avisos fixos da fazenda.</p></div>
-          <label class="nx-f">Texto padrão<textarea id="fc-info" name="default_info" rows="3" maxlength="1000" data-nx-len class="nx-in" style="padding:.625rem .75rem" placeholder="Ex.: Safra 2026/27.">{{ prefs.default_info if prefs else '' }}</textarea><small data-nx-len-out="fc-info"></small></label>
+        <section class="nx-cfg-card">
+          <div><h2>Texto em todas as notas <span class="fc-opt">(opcional)</span></h2><p class="nx-desc">Somado às informações complementares de cada nota. Bom para avisos fixos da fazenda.</p></div>
+          <label class="nx-f">Texto padrão<textarea id="fc-info" form="nx-emit-form" name="default_info" rows="3" maxlength="1000" data-nx-len class="nx-in" placeholder="Ex.: Safra 2026/27.">{{ prefs.default_info if prefs else '' }}</textarea><small data-nx-len-out="fc-info"></small></label>
           <div class="fc-where"><small>Informações complementares</small>Texto da operação · <span>seu texto padrão aparece aqui</span> · observações da venda</div>
-          <div class="nx-agree" aria-disabled="true" style="cursor:default;color:#7a857e">Enviar DANFE e XML por e-mail ao comprador quando a nota for autorizada<span class="nx-soon">Em breve</span></div>
-          {% if can_write_page %}<div class="nx-actions"><button type="submit" class="sf-btn sf-btn-primary">Salvar texto</button></div>{% endif %}
-        </form>
+        </section>
 
         <details class="nx-cfg-card fc-env-box" id="fc-env" {% if open_env %}open{% endif %}>
           <summary><span><b>Ambiente de emissão</b><span class="nx-desc" style="display:block">Avançado · hoje as notas são {{ 'enviadas à homologação da SEFAZ' if cfg and cfg.environment == 'homologacao' else 'simuladas dentro do SiSFarm' }}</span></span><span class="nx-tag is-info">{{ 'Homologação' if cfg and cfg.environment == 'homologacao' else 'Teste' }}</span></summary>
@@ -543,7 +552,6 @@
             <label class="nx-f fc-c3">Credenciamento na SEFAZ<select form="nx-emit-form" name="sefaz_credential_status" class="nx-in">{% for code, label in allowed_credential_statuses %}<option value="{{ code }}" {% if cfg and cfg.sefaz_credential_status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><small>Pedido feito por você ou pelo contador no site da SEFAZ.</small></label>
           </div>
           <label class="nx-agree" style="background:#fff"><span class="dt-chk"><input form="nx-emit-form" type="checkbox" class="dt-check" name="pilot_homologacao_enabled" value="1" {% if cfg and cfg.pilot_homologacao_enabled %}checked{% endif %}></span>Produtor piloto de homologação (a transmissão real segue bloqueada)</label>
-          {% if can_write_page %}<div class="nx-actions"><button type="submit" form="nx-emit-form" name="next_section" value="num" class="sf-btn sf-btn-secondary">Salvar ajustes</button></div>{% endif %}
         </details>
 
         {% if not pending %}
@@ -553,10 +561,10 @@
         </section>
         {% endif %}
 
-        {{ foot('oper', 'Voltar', 'inicio', 'Ir para a visão geral') }}
+        {{ foot('oper', 'Voltar', 'inicio', 'Salvar e concluir', 'nx-emit-form', hint='Mudanças valem só para as próximas notas.') }}
       </div>
     </div>
   </div>
 </div>
-<script src="/static/js/notas_fiscais.js?v=20261122nx6" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261122nx7" defer></script>
 {% endblock %}
