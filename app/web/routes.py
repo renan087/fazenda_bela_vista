@@ -22671,6 +22671,32 @@ def fiscal_preview_xml(draft_id: str, request: Request, db: Session = Depends(ge
                                                                     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 
+@router.get("/producao/rascunhos-fiscais/{draft_id}/estrutura-xml")
+def fiscal_candidate_xml(draft_id: str, request: Request, db: Session = Depends(get_db),
+                       user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import NfeDraft, NfeIssuerProfile, NfeDraftDetails, NfeDraftTechnicalData
+    from app.services.nfe_candidate import build_incomplete_candidate
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    draft = db.query(NfeDraft).filter_by(id=draft_id, organization_id=user.organization_id, farm_id=scope["active_farm_id"]).first()
+    if not draft or not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    details = db.query(NfeDraftDetails).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    technical = db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    try:
+        content = build_incomplete_candidate(json.loads(draft.snapshot_json), issuer,
+                                json.loads(details.data_json) if details else {},
+                                json.loads(technical.data_json) if technical else {})
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="Não foi possível gerar a prévia deste rascunho.") from None
+    return Response(content, media_type="application/xml", headers={"Content-Disposition": 'attachment; filename="estrutura-incompleta-nao-transmitir.xml"',
+                                                                    "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
 @router.post("/producao/rascunhos-fiscais/{draft_id}/dados-tecnicos")
 async def fiscal_technical_save(draft_id: str, request: Request, db: Session = Depends(get_db),
                                 user: User = Depends(get_current_user_web)):
