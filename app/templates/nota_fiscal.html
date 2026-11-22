@@ -147,12 +147,25 @@
         </a>
       </section>
       <section class="nx-cardx">
-        <h2>Histórico</h2>
+        {% set grouped = events|selectattr('count', 'gt', 1)|list if events else [] %}
+        <div class="nx-tl-head"><h2>Histórico</h2>{% if grouped %}<button type="button" class="nx-link-btn" data-nx-tl-all data-label-on="Recolher tudo" data-label-off="Mostrar tudo">Mostrar tudo</button>{% endif %}</div>
         {% if events %}
-        <ol class="nx-tl">
+        <ol class="nx-tl2">
           {% for ev in events %}
-          <li><div class="nx-tl-mark"><span class="nx-tl-dot is-{{ ev.tone }}"></span><span class="nx-tl-line"></span></div>
-            <div class="nx-tl-body"><p class="t">{{ ev.title }}</p><p class="x">{{ ev.text }}</p><p class="w">{{ ev.when }}</p></div></li>
+          <li class="nx-tl2-ev">
+            <span class="nx-tl2-dot is-{{ ev.tone }}" aria-hidden="true">{{ nxi(ev.icon, 15, 2.2) }}</span>
+            <div class="nx-tl2-b">
+              <p class="t">{{ ev.title }}{% if ev.count > 1 %}<span class="nx-tl2-cnt">{{ ev.count }} vezes</span>{% endif %}</p>
+              <p class="x">{{ ev.text }}</p>
+              <p class="w">{{ ev.when }}{% if ev.count > 1 and ev.first %} · primeira {{ 'às ' if ':' in ev.first and ev.first|length == 5 }}{{ ev.first }}{% endif %}</p>
+              {% if ev.count > 1 %}
+              <details class="nx-tl2-more">
+                <summary><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg><span class="off">Ver as {{ ev.count }} alterações</span><span class="on">Ocultar</span></summary>
+                <ul>{% for it in ev['items'] %}<li><b>{{ it.title }}</b> · {{ it.when }}</li>{% endfor %}</ul>
+              </details>
+              {% endif %}
+            </div>
+          </li>
           {% endfor %}
         </ol>
         {% else %}<p class="nx-muted">Nenhum evento registrado ainda.</p>{% endif %}
@@ -184,5 +197,5 @@
   </dialog>
   {% endif %}
 </div>
-<script src="/static/js/notas_fiscais.js?v=20261122nx5" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261122nx6" defer></script>
 {% endblock %}

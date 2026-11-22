@@ -602,6 +602,13 @@
     var kind = root.getAttribute('data-nx-page');
     if (kind === 'list') initList(root);
     initMoreMenus(root);
+    root.querySelectorAll('[data-nx-tl-all]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var all = root.querySelectorAll('.nx-tl2-more'); var open = Array.prototype.some.call(all, function (d) { return !d.open; });
+        all.forEach(function (d) { d.open = open; });
+        b.textContent = b.getAttribute(open ? 'data-label-on' : 'data-label-off');
+      });
+    });
     initCounters(root);
     if (kind === 'config') { initConfig(root); initFiscalForms(root); initOperationEditor(root); }
     if (kind === 'emit') initEmit(root);

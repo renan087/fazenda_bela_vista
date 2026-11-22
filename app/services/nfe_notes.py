@@ -282,21 +282,33 @@ def delete_draft(db, *, draft: NfeDraft) -> None:
     db.commit()
 
 
+# Ações que se repetem em sequência viram um único item na linha do tempo (os registros continuam no banco).
+_HISTORY_GROUPS = {'complementos_salvos': 'edit', 'dados_tecnicos_salvos': 'edit', 'emitente_salvo': 'edit',
+                   'detalhes_salvos': 'fisc'}
+_HISTORY_ICONS = {'rascunho_criado': 'plus', 'snapshot_congelado': 'cce', 'simulacao_ciclo_offline': 'ok',
+                  'cancelamento_simulado': 'ban', 'identificacao_teste_salva': 'list', 'detalhes_salvos': 'list'}
+
+
 def history(db, *, draft: NfeDraft) -> list[dict]:
-    """Linha do tempo amigável (mais recente primeiro)."""
-    tone = {'rascunho_criado': 'base', 'detalhes_salvos': 'base', 'snapshot_congelado': 'base',
+    """Linha do tempo amigável (mais recente primeiro), com ações repetidas em sequência agrupadas."""
+    tone = {'rascunho_criado': 'base', 'detalhes_salvos': 'base', 'snapshot_congelado': 'info',
             'simulacao_ciclo_offline': 'ok', 'cancelamento_simulado': 'bad', 'complementos_salvos': 'base',
             'dados_tecnicos_salvos': 'base', 'identificacao_teste_salva': 'base', 'emitente_salvo': 'base'}
-    titles = {'rascunho_criado': 'Rascunho criado', 'detalhes_salvos': 'Dados preenchidos',
+    titles = {'rascunho_criado': 'Rascunho criado', 'detalhes_salvos': 'Dados fiscais aplicados',
               'snapshot_congelado': 'Conferida e confirmada', 'simulacao_ciclo_offline': 'Enviada e autorizada (teste)',
               'cancelamento_simulado': 'Nota cancelada', 'complementos_salvos': 'Transporte e pagamento salvos',
               'dados_tecnicos_salvos': 'Detalhes fiscais do item salvos', 'identificacao_teste_salva': 'Número reservado',
               'emitente_salvo': 'Dados do produtor salvos'}
     events = (db.query(NfeDraftEvent).filter_by(draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id)
-              .order_by(NfeDraftEvent.created_at.desc()).limit(40).all())
+              .order_by(NfeDraftEvent.created_at.desc()).limit(300).all())
     rank = {'rascunho_criado': 0, 'snapshot_congelado': 3, 'simulacao_ciclo_offline': 4, 'cancelamento_simulado': 5}
     events.sort(key=lambda ev: (_aware(ev.created_at) or datetime.min.replace(tzinfo=timezone.utc), rank.get(ev.event_type, 1)),
                 reverse=True)
+    local = timezone(timedelta(hours=-3))
+
+    def fmt(when, short=False):
+        return when.astimezone(local).strftime('%H:%M' if short else '%d/%m/%Y %H:%M') if when else ''
+
     out = []
     for ev in events:
         meta = json.loads(ev.metadata_json or '{}')
@@ -307,9 +319,27 @@ def history(db, *, draft: NfeDraft) -> list[dict]:
             text = f"Dados travados para o envio (versão {meta.get('version', '')})."
         elif ev.event_type == 'simulacao_ciclo_offline':
             text = 'Autorizada no ambiente de teste, sem envio à SEFAZ.' if meta.get('c_stat') == '100' else f"Retorno {meta.get('c_stat', '')} no ambiente de teste."
-
+        elif ev.event_type == 'complementos_salvos' and text.startswith('Rascunho salvo'):
+            text = 'Dados salvos na tela de emissão.'
         when = _aware(ev.created_at)
-        out.append({'title': titles.get(ev.event_type, 'Atualização'), 'text': text,
-                    'when': when.astimezone(timezone(timedelta(hours=-3))).strftime('%d/%m/%Y %H:%M') if when else '',
-                    'tone': tone.get(ev.event_type, 'base')})
+        group = _HISTORY_GROUPS.get(ev.event_type)
+        entry = {'title': titles.get(ev.event_type, 'Atualização'), 'text': text, 'when': fmt(when),
+                 'when_short': fmt(when, short=True), 'day': fmt(when)[:10]}
+        last = out[-1] if out else None
+        if group and last and last.get('group') == group:
+            last['items'].append(entry)
+            last['count'] += 1
+            last['first'] = entry['when_short'] if entry['day'] == last['day'] else entry['when']
+            if group == 'fisc' and text not in last['texts']:
+                last['texts'].append(text)
+            continue
+        out.append({**entry, 'tone': tone.get(ev.event_type, 'base'), 'group': group, 'count': 1, 'items': [entry],
+                    'icon': _HISTORY_ICONS.get(ev.event_type, 'edit'), 'texts': [text], 'first': ''})
+    for item in out:
+        if item['count'] > 1:
+            if item['group'] == 'edit':
+                item['title'] = 'Rascunho editado'
+                item['text'] = 'Última alteração: ' + item['items'][0]['title'][:1].lower() + item['items'][0]['title'][1:] + '.'
+            else:
+                item['text'] = ' '.join(item['texts'][:3])
     return out

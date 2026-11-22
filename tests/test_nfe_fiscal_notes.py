@@ -447,3 +447,30 @@ def test_emit_template_shows_buyer_card_modal_and_freight_cards():
     assert 'value="transp" checked' in html and 'Quem paga o frete?' in html
     assert 'value="120"' in html and 'Restaurar valores calculados' in html
     assert 'Tributos calculados pela operação' not in html
+
+
+def test_history_groups_repeated_saves_and_keeps_milestones_apart():
+    from datetime import datetime, timedelta, timezone
+    from app.models.nfe_draft import NfeDraftEvent
+    from app.services.nfe_snapshots import record_draft_event
+    db = _db()
+    draft = _seed(db)
+    db.query(NfeDraftEvent).delete()
+    base = datetime(2026, 11, 22, 16, 0, tzinfo=timezone.utc)
+    plan = [('rascunho_criado', 'Rascunho criado.'), ('detalhes_salvos', 'Produto fiscal “A” aplicado.'),
+            ('detalhes_salvos', 'Operação fiscal “B” (v1) aplicada.'), ('complementos_salvos', 'Rascunho salvo na tela de emissão.'),
+            ('complementos_salvos', 'Rascunho salvo na tela de emissão.'), ('snapshot_congelado', 'Congelado.'),
+            ('complementos_salvos', 'Rascunho salvo na tela de emissão.')]
+    for kind, summary in plan:
+        record_draft_event(db, draft_id=draft.id, organization_id=ORG, farm_id=FARM, event_type=kind,
+                           summary=summary, user_id=USER, commit=True)
+    for minute, row in enumerate(db.query(NfeDraftEvent).filter_by(draft_id=draft.id).all()):  # ordem de inserção
+        row.created_at = base + timedelta(minutes=minute)
+    db.commit()
+    items = notes.history(db, draft=draft)
+    assert [i['title'] for i in items] == ['Transporte e pagamento salvos', 'Conferida e confirmada', 'Rascunho editado',
+                                           'Dados fiscais aplicados', 'Rascunho criado']
+    edit = items[2]
+    assert edit['count'] == 2 and len(edit['items']) == 2 and edit['first'] == '13:03'
+    assert items[3]['count'] == 2 and 'Produto fiscal “A”' in items[3]['text'] and 'Operação fiscal “B”' in items[3]['text']
+    db.close()
