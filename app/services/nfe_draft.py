@@ -171,3 +171,37 @@ def review_preparation(snapshot, issuer, details, *, details_saved):
         issues.append('Revise data, lotes, quantidades e valores comerciais')
     groups.append({'title': 'Dados comerciais', 'issues': issues, 'target': 'dados-comerciais'})
     return {'groups': groups, 'pending_count': sum(len(g['issues']) for g in groups)}
+
+
+def clean_technical_data(data, snapshot):
+    """Somente formato e vínculo com o snapshot; não valida enquadramento fiscal."""
+    import re
+    from datetime import date
+    raw_date = str(data.get('emission_date') or '').strip()
+    if raw_date:
+        try:
+            if date.fromisoformat(raw_date).isoformat() != raw_date:
+                raise ValueError
+        except ValueError:
+            raise ValueError('Informe uma data de emissão válida.') from None
+    modality = str(data.get('freight_mode') or '').strip()
+    if modality not in ('', '0', '1', '2', '3', '4', '9'):
+        raise ValueError('Selecione uma modalidade de frete válida.')
+    ids = snapshot.get('origem_ids')
+    items = snapshot.get('itens')
+    if not isinstance(ids, list) or not isinstance(items, list) or len(ids) != len(items) or not ids or len(set(ids)) != len(ids):
+        raise ValueError('Os lotes do rascunho estão inconsistentes.')
+    codes = [('origin', 1), ('icms_cst', 2), ('ibs_cbs_cst', 3), ('ibs_cbs_class', 6)]
+    result = []
+    for item_id in ids:
+        if not isinstance(item_id, int) or isinstance(item_id, bool) or item_id <= 0:
+            raise ValueError('Identificação inválida do lote.')
+    for index in range(1, len(items) + 1):
+        row = {'item_index': index}
+        for field, size in codes:
+            value = str(data.get(f'item_{index}_{field}') or '').strip()
+            if value and not re.fullmatch(r'[0-9]{' + str(size) + '}', value):
+                raise ValueError('Confira o formato dos códigos tributários de cada lote.')
+            row[field] = value
+        result.append(row)
+    return {'version': 1, 'emission_date': raw_date, 'freight_mode': modality, 'items': result}

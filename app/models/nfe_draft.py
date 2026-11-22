@@ -49,3 +49,15 @@ class NfeDraftDetails(Base):
     data_json: Mapped[str] = mapped_column(Text, nullable=False, default='{}')
     updated_by: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class NfeDraftTechnicalData(Base):
+    """Entradas versionadas para futura montagem, sem cálculo nem XML fiscal."""
+    __tablename__ = 'nfe_draft_technical_data'
+    draft_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    farm_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    data_json: Mapped[str] = mapped_column(Text, nullable=False, default='{}')
+    updated_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

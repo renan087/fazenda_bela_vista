@@ -22903,7 +22903,7 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
                                           farm_id=scope["active_farm_id"]).first()
     if not draft:
         raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
-    from app.models.nfe_draft import NfeIssuerProfile, NfeDraftDetails
+    from app.models.nfe_draft import NfeIssuerProfile, NfeDraftDetails, NfeDraftTechnicalData
     from app.services.nfe_draft import buyer_prefill, review_preparation
     issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id,
                                                   farm_id=scope["active_farm_id"]).first()
@@ -22912,10 +22912,52 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
                                                   farm_id=scope["active_farm_id"]).first()
     buyer = db.query(CoffeeBuyer).filter_by(id=snapshot.get("comprador_id"), organization_id=user.organization_id).first() if snapshot.get("comprador_id") else None
     prepared = json.loads(details.data_json) if details else buyer_prefill(buyer)
+    technical_row = db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id, organization_id=user.organization_id,
+                                                              farm_id=scope["active_farm_id"]).first()
+    technical = json.loads(technical_row.data_json) if technical_row else {}
+    technical_items = {item["item_index"]: item for item in technical.get("items", [])}
     return templates.TemplateResponse("nfe_draft.html", _base_context(
         request, user, csrf_token, "commercialization", title="Rascunho fiscal", draft=draft,
-        issuer=issuer, details=prepared, snapshot=snapshot,
+        issuer=issuer, details=prepared, snapshot=snapshot, technical=technical, technical_items=technical_items,
         review=review_preparation(snapshot, issuer, prepared, details_saved=bool(details)), _repo=repo))
+
+
+@router.post("/producao/rascunhos-fiscais/{draft_id}/dados-tecnicos")
+async def fiscal_technical_save(draft_id: str, request: Request, db: Session = Depends(get_db),
+                                user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import NfeDraft, NfeDraftTechnicalData
+    from app.services.nfe_draft import clean_technical_data
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    draft = db.query(NfeDraft).filter_by(id=draft_id, organization_id=user.organization_id,
+                                          farm_id=scope["active_farm_id"]).first()
+    if not draft or not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
+    try:
+        values = clean_technical_data(form, json.loads(draft.snapshot_json))
+    except (ValueError, TypeError) as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+    row = db.query(NfeDraftTechnicalData).filter_by(draft_id=draft_id, organization_id=user.organization_id, farm_id=farm.id).first()
+    if not row:
+        row = NfeDraftTechnicalData(draft_id=draft_id, organization_id=user.organization_id, farm_id=farm.id, updated_by=user.id)
+        db.add(row)
+    row.data_json = json.dumps(values, ensure_ascii=False)
+    row.schema_version = 1
+    row.updated_by = user.id
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        _flash(request, "error", "O rascunho foi alterado simultaneamente. Reabra e tente novamente.")
+        return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+    _flash(request, "success", "Dados preparatórios salvos. Nenhuma nota foi gerada ou transmitida.")
+    return _redirect("/producao/rascunhos-fiscais/" + draft_id)
 
 
 @router.post("/producao/rascunhos-fiscais/{draft_id}/detalhes")
