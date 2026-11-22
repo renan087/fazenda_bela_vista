@@ -71,6 +71,9 @@
                 <div class="sl-sale-title">
                     <strong>{{ g.code }}</strong>
                     <span class="pd-chip {{ 'is-done' if g.status == 'recebido' else ('is-info' if g.status in ['entregue', 'faturado'] else 'is-ok') }}">{{ g.status_label }}</span>
+                    {% set nfc = (fiscal_note_by_sale or {}).get(g.code) %}
+                    {% if nfc and nfc.status != 'cancelada' %}<a class="nx-chip is-{{ nfc.tone }}" style="text-decoration:none" href="{{ '/notas-fiscais/' ~ nfc.id }}">{% if nfc.number %}NF-e {{ nfc.number }} · {{ nfc.label }}{% elif nfc.status == 'pendente' %}NF em rascunho · {{ nfc.issues }} pendência{{ 's' if nfc.issues != 1 }}{% else %}NF em rascunho{% endif %}</a>
+                    {% else %}<span class="nx-chip is-neutral">Sem nota fiscal</span>{% endif %}
                     <span class="sl-date">{{ g.sale_date.strftime('%d/%m/%Y') }}</span>
                 </div>
                 <p class="sl-buyer">{{ g.buyer_name }}</p>
@@ -100,8 +103,11 @@
                         <button class="sf-btn sf-btn-primary" type="submit">{{ 'Registrar entrega' if g.step == 0 else 'Registrar recebimento' }}</button>
                     </form>
                     {% endif %}
-                    {% if fiscal_draft_by_sale.get(g.code) %}<a class="sf-btn sf-btn-secondary" href="/producao/rascunhos-fiscais/{{ fiscal_draft_by_sale[g.code] }}">Ver último rascunho fiscal</a>{% endif %}
-                    {% if can_write_page %}<form method="post" action="/producao/vendas/{{ g.code }}/rascunho-fiscal"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="sf-btn sf-btn-secondary" type="submit">Preparar rascunho fiscal</button></form>{% endif %}
+                    {% set nf = (fiscal_note_by_sale or {}).get(g.code) %}
+                    {% if nf and nf.status in ('autorizada', 'enviando') %}<a class="sf-btn sf-btn-secondary" href="/notas-fiscais/{{ nf.id }}">Ver nota</a>
+                    {% elif nf and nf.status == 'rejeitada' and can_write_page %}<a class="sf-btn sf-btn-primary" href="/producao/rascunhos-fiscais/{{ nf.id }}">Corrigir NF</a>
+                    {% elif nf and nf.status in ('rascunho', 'pendente') and can_write_page %}<a class="sf-btn sf-btn-primary" href="/producao/rascunhos-fiscais/{{ nf.id }}">Continuar NF</a>
+                    {% elif can_write_page %}<form method="post" action="/producao/vendas/{{ g.code }}/rascunho-fiscal"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="sf-btn sf-btn-primary" type="submit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>Emitir NF</button></form>{% endif %}
                     <a class="sf-btn sf-btn-secondary" href="/producao/vendas/{{ g.code }}/editar">Editar</a>
                     <form method="post" action="/producao/vendas/{{ g.code }}/excluir" onsubmit="return confirm('Excluir a venda {{ g.code }}? O saldo volta para os lotes{{ ' e o lançamento do Financeiro também é excluído' if g.finance_transaction_id }}.')">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

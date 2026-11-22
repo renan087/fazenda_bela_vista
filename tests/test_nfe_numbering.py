@@ -176,8 +176,8 @@ def test_draft_template_renders_identification_and_simulated_key():
     html = env.get_template('nfe_draft.html').render(
         draft=SimpleNamespace(id='id'), issuer=issuer, snapshot=snapshot, details={},
         technical={}, technical_items={}, identification=ident, key_summary=key_summary,
-        csrf_token='x', can_write_page=True,
+        csrf_token='x', can_write_page=True, step='conferir',
     )
-    assert 'Identificação e numeração fictícia (teste)' in html
-    assert 'Isolado de produção' in html
-    assert '29261100052998224725559200000000011246813570' in html
+    # Na conferência, a tela mostra o número de teste reservado e o aviso de ambiente de teste.
+    assert 'NF-e 000001 · Série 920' in html
+    assert 'Ambiente de teste' in html

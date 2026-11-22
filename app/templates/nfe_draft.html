@@ -1,434 +1,282 @@
 {% extends "base.html" %}
+{% from "partials/nx_icons.html" import nxi %}
 {% block content %}
 {% set extra = extra_data or {} %}
+{% set step = step | default('preencher') %}
+{% set src = sources or {} %}
+{% set op = src.get('operation') %}
+{% set prod = src.get('product') %}
+{% set products = fiscal_products or [] %}
+{% set operations = fiscal_operations or [] %}
+{% set pending = review.pending_count if review else 0 %}
 {% set seller_name = (issuer.name if issuer and issuer.name else (farm_name or 'Sua fazenda')) %}
-{% set seller_city_uf = ((issuer.city ~ ' · ' ~ issuer.state) if issuer and issuer.city else (issuer.state if issuer and issuer.state else 'Endereço não informado')) %}
 {% set buyer_name = (details.get('recipient_name') or snapshot.comprador or 'Comprador não informado') %}
-{% set buyer_city_uf = ((details.get('recipient_city') ~ ' · ' ~ details.get('recipient_state')) if details.get('recipient_city') else 'Endereço não informado') %}
-{% set seller_ok = review and review.groups and (review.groups[0].issues | length == 0) %}
-{% set buyer_ok = review and review.groups and (review.groups[1].issues | length == 0) %}
-{% set product_ok = review and review.groups and (review.groups[2].issues | length == 0) %}
-{% set freight_labels = {'0': 'Frete pago pela fazenda', '1': 'Frete pago pelo comprador', '2': 'Frete por terceiros', '3': 'Caminhão da fazenda', '4': 'Transporte do comprador', '9': 'Retirada na fazenda'} %}
-{% set current_freight_code = technical.get('freight_mode') or (sale_meta.default_freight_mode if sale_meta else '9') %}
-{% set current_freight_label = freight_labels.get(current_freight_code, 'Retirada na fazenda') %}
+{% set freight_code = technical.get('freight_mode') or (sale_meta.default_freight_mode if sale_meta else '9') %}
+{% set total_sacks = namespace(v=0) %}
+{% for item in snapshot.itens %}{% set total_sacks.v = total_sacks.v + (item.quantidade_sacas|float) %}{% endfor %}
+{% set edited = namespace(ncm=False, desc=False, nature=False, cfop=False) %}
+{% if prod %}{% set edited.ncm = details.get('product_ncm') and details.get('product_ncm') != prod.ncm %}{% set edited.desc = details.get('product_description') and details.get('product_description') != prod.description %}{% endif %}
+{% if op %}{% set edited.nature = details.get('operation_nature') and details.get('operation_nature') != op.nature %}{% set edited.cfop = details.get('operation_cfop') and details.get('operation_cfop') not in (op.cfop_in, op.cfop_out) %}{% endif %}
+{% set steps_list = [('preencher', 'Preencher'), ('conferir', 'Conferir'), ('enviada', 'Enviar')] %}
+{% set step_index = {'preencher': 0, 'conferir': 1, 'enviada': 2}[step] %}
 
-<div class="sf-page nf-page">
-  <header class="pd-head">
+<div class="sf-page nx-page" data-nx-page="emit" style="max-width:82.5rem;margin:0 auto;width:100%">
+  <nav class="nx-crumbs" aria-label="Caminho"><a href="/producao/comercializacao">Comercialização</a> / Venda {{ snapshot.venda }} / Emitir NF</nav>
+
+  <header class="nx-head">
     <div>
-      <nav class="pd-crumbs" aria-label="Caminho da página">
-        <a href="/producao/comercializacao">Comercialização</a>
-        <span aria-hidden="true">›</span>
-        <span aria-current="page">Venda {{ snapshot.venda }}</span>
-      </nav>
-      <div class="flex flex-wrap items-center gap-2 mt-1">
-        <h1 class="sf-page-title">Emitir nota fiscal</h1>
-        <span class="nf-pill is-warn">Modo teste</span>
-      </div>
-      <p class="sf-page-subtitle">Confira os dados abaixo antes de emitir.</p>
+      <h1 class="sf-page-title">Emitir NF-e</h1>
+      <p class="sf-page-subtitle">Dados trazidos da venda {{ snapshot.venda }}. Confira, ajuste se precisar e confirme. Este rascunho não foi transmitido à SEFAZ.</p>
     </div>
-    <div class="pd-head-actions flex flex-wrap gap-2">
-      <a class="sf-btn sf-btn-secondary" href="/producao/comercializacao">Voltar às vendas</a>
-    </div>
+    <ol class="nx-steps" aria-label="Etapas">
+      {% for key, label in steps_list %}
+      <li class="{{ 'is-on' if loop.index0 == step_index else ('is-done' if loop.index0 < step_index else '') }}"{% if loop.index0 == step_index %} aria-current="step"{% endif %}><b>{{ '✓' if loop.index0 < step_index else loop.index }}</b>{{ label }}</li>
+      {% endfor %}
+    </ol>
   </header>
 
-  <div class="nf-layout">
-    <main class="nf-main">
-      {% if review and review.pending_count > 0 %}
-      <div class="nf-banner" role="alert">
-        <span class="nf-dot is-warn" aria-hidden="true">!</span>
-        <div class="flex-1">
-          <strong>Faltam {{ review.pending_count }} dado(s) para completar o preparo.</strong>
-          Clique no cartão do vendedor ou do comprador abaixo para conferir, ou abra os ajustes manuais no final da página.
+  {% if step == 'preencher' %}
+  {% if pending %}
+  <div class="nx-banner is-amber" role="alert">{{ nxi('alert', 20) }}<span><strong>Faltam {{ pending }} dado{{ 's' if pending != 1 }} para conferir a nota.</strong> Veja a lista de verificações ao lado.</span><a href="/producao/nfe/configuracao">Configurações fiscais</a></div>
+  {% endif %}
+
+  <div class="nx-split">
+    <div style="flex:999 1 40rem;min-width:0;display:flex;flex-direction:column;gap:1.25rem">
+
+      <section class="nx-cardx" aria-labelledby="h-op">
+        <div class="nx-hd"><h2 id="h-op">Operação</h2>
+          {% if op %}<span class="nx-auto">Da operação: {{ op.name }} · v{{ op.version }}</span>{% else %}<span class="nx-auto is-amber">Escolha uma operação fiscal</span>{% endif %}
         </div>
-        <a class="sf-btn sf-btn-secondary shrink-0" href="/producao/nfe/configuracao">Configurar fazenda</a>
-      </div>
-      {% endif %}
-
-      <!-- Vendedor → Comprador (cards clicáveis abrem modal) -->
-      <section class="nf-card" aria-label="Quem vende e quem compra">
-        <div class="nf-party-grid">
-          <button type="button" class="nf-party-card" data-nf-open-modal="dlg-seller">
-            <div class="flex items-start justify-between gap-2">
-              <span class="nf-kpi-label">Vendedor</span>
-              <span class="text-xs font-semibold text-[#446A36]">Ver dados →</span>
-            </div>
-            <p class="mt-1 font-bold text-[#16201A]">{{ seller_name }}</p>
-            <p class="text-xs text-[#5B6660] mt-0.5">{{ seller_city_uf }}</p>
-          </button>
-
-          <div class="nf-party-arrow" aria-hidden="true">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-          </div>
-
-          <button type="button" class="nf-party-card" data-nf-open-modal="dlg-buyer">
-            <div class="flex items-start justify-between gap-2">
-              <span class="nf-kpi-label">Comprador</span>
-              {% if review and not buyer_ok %}
-              <span class="nf-pill is-warn">Cadastro incompleto</span>
-              {% else %}
-              <span class="text-xs font-semibold text-[#446A36]">Ver dados →</span>
-              {% endif %}
-            </div>
-            <p class="mt-1 font-bold text-[#16201A]">{{ buyer_name }}</p>
-            <p class="text-xs text-[#5B6660] mt-0.5">{{ buyer_city_uf }}</p>
-          </button>
-        </div>
-      </section>
-
-      <!-- O que está sendo vendido -->
-      <section id="dados-comerciais" class="nf-card" aria-labelledby="h-items">
-        <div class="nf-card-head">
-          <h2 id="h-items" class="nf-card-title">O que está sendo vendido</h2>
-          <span class="text-xs text-[#7A857E]">Da venda {{ snapshot.venda }}</span>
-        </div>
-
-        <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
-          <span class="text-[#5B6660]">Produto na nota:</span>
-          <strong>{{ details.get('product_description') or 'Não definido ainda' }}</strong>
-          {% if tax_profiles and can_write_page %}
-          <button type="button" class="nf-link-btn" data-nf-toggle="profile-picker-box" aria-expanded="false">Alterar</button>
-          {% elif can_write_page %}
-          <a class="nf-link-btn" href="/producao/nfe/configuracao#perfis-fiscais">Cadastrar perfil fiscal</a>
-          {% endif %}
-        </div>
-
-        {% if tax_profiles and can_write_page %}
-        <div id="profile-picker-box" class="hidden mt-3 flex flex-wrap gap-2">
-          {% for prof in tax_profiles %}
-          <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/aplicar-perfil">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="profile_id" value="{{ prof.id }}">
-            <button type="submit" class="nf-chip">{{ prof.name }}</button>
-          </form>
-          {% endfor %}
-        </div>
-        {% endif %}
-
-        <ul class="mt-4 divide-y divide-[#EEF1ED] border border-[#EEF1ED] rounded-xl overflow-hidden">
-          {% for item in snapshot.itens %}
-          <li class="flex items-center justify-between gap-3 px-4 py-3">
-            <div class="min-w-0">
-              <p class="font-semibold text-sm text-[#16201A]">Lote {{ item.lote }}</p>
-              <p class="text-xs text-[#5B6660] tabular-nums">{{ item.quantidade_sacas }} sacas{% if item.preco_unitario %} × R$ {{ item.preco_unitario }}{% endif %}</p>
-            </div>
-            <p class="font-semibold text-sm text-[#16201A] tabular-nums shrink-0">R$ {{ item.valor_bruto }}</p>
-          </li>
-          {% endfor %}
-        </ul>
-      </section>
-
-      <!-- Pagamento e entrega (vindo da venda, sem redundância) -->
-      <section class="nf-card" aria-labelledby="h-cond">
-        <h2 id="h-cond" class="nf-card-title">Pagamento e entrega</h2>
-        <div class="mt-3 nf-grid-3">
-          <div class="nf-subblock">
-            <span class="nf-kpi-label">Pagamento</span>
-            <p class="mt-1 font-semibold text-sm text-[#16201A]">{{ sale_meta.payment_label if sale_meta else 'Da venda' }}</p>
-          </div>
-          <div class="nf-subblock">
-            <span class="nf-kpi-label">Entrega</span>
-            <p class="mt-1 font-semibold text-sm text-[#16201A]">{{ current_freight_label }}</p>
-          </div>
-          <div class="nf-subblock">
-            <span class="nf-kpi-label">Data da nota</span>
-            <p class="mt-1 font-semibold text-sm text-[#16201A] tabular-nums">{{ technical.get('emission_date') or snapshot.data_venda }}</p>
-          </div>
-        </div>
-
-        <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/complementos" class="mt-4 flex flex-col sm:flex-row sm:items-end gap-3">
+        {% if operations %}
+        <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/aplicar-operacao" class="nx-g4" style="align-items:end">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <input type="hidden" name="carrier_name" value="{{ extra.get('carrier_name', '') }}">
-          <input type="hidden" name="vehicle_plate" value="{{ extra.get('vehicle_plate', '') }}">
-          <input type="hidden" name="vehicle_uf" value="{{ extra.get('vehicle_uf', '') }}">
-          <input type="hidden" name="volume_quantity" value="{{ extra.get('volume_quantity', '') }}">
-          <input type="hidden" name="volume_species" value="{{ extra.get('volume_species', '') }}">
-          <input type="hidden" name="net_weight_kg" value="{{ extra.get('net_weight_kg', '') }}">
-          <input type="hidden" name="gross_weight_kg" value="{{ extra.get('gross_weight_kg', '') }}">
-          <input type="hidden" name="payment_indicator" value="{{ extra.get('payment_indicator', '') }}">
-          <input type="hidden" name="payment_amount" value="{{ extra.get('payment_amount', '') }}">
-          <label class="nf-field flex-1">
-            <span class="nf-field-label">Observação na nota <span class="font-normal text-[#7A857E]">(opcional)</span></span>
-            <input type="text" name="additional_info" maxlength="2000" value="{{ extra.get('additional_info', '') }}" placeholder="Ex.: Safra atual, informação complementar para o comprador" class="nf-input">
-          </label>
-          {% if can_write_page %}
-          <button type="submit" class="sf-btn sf-btn-secondary shrink-0">Salvar observação</button>
-          {% endif %}
+          <label class="nx-f">Operação fiscal
+            <select name="operation_id" class="nx-in">{% for o in operations %}<option value="{{ o.id }}" {% if op and op.root_id == o.root_id %}selected{% endif %}>{{ o.name }} — {{ o.nature }}</option>{% endfor %}</select></label>
+          <label class="nx-f">Produto fiscal
+            <select name="product_id" class="nx-in">{% for p in products %}<option value="{{ p.id }}" {% if prod and prod.id == p.id %}selected{% endif %}>{{ p.name }}{% if not p.ncm %} (sem NCM){% endif %}</option>{% endfor %}{% if not products %}<option value="">Nenhum cadastrado</option>{% endif %}</select></label>
+          <label class="nx-f">CFOP<input class="nx-in" value="{{ details.get('operation_cfop') or '—' }}" readonly></label>
+          {% if can_write_page %}<button type="submit" class="sf-btn sf-btn-secondary">Aplicar</button>{% endif %}
         </form>
+        {% if op and details.get('operation_cfop') %}
+        <p class="nx-src">{{ nxi('info', 16) }}<span>CFOP <b>{{ details.get('operation_cfop') }}</b> escolhido pelo estado do comprador{% if op.cfop_out %} (comprador de outro estado: <b>{{ op.cfop_out }}</b>){% endif %}. Ao aplicar outra operação, natureza, CFOP e ICMS são preenchidos de novo.</span></p>
+        {% endif %}
+        {% else %}
+        <p class="nx-muted">Nenhuma operação fiscal ativa. <a href="/producao/nfe/configuracao?secao=oper" style="font-weight:600">Ative uma em Configurações fiscais</a> para preencher natureza, CFOP e ICMS sozinho.</p>
+        {% endif %}
       </section>
 
-      <!-- Acordeão discreto: Conferência técnica e ajustes manuais (fechado por padrão para o produtor) -->
-      <details class="nf-advanced">
-        <summary>
-          <span>Conferência técnica e ajustes manuais (uso do contador)</span>
-          <span class="nf-pill is-neutral">Opcional</span>
-        </summary>
-        <div class="nf-advanced-body">
-          <p class="text-xs text-[#5B6660]">Este documento não é uma nota fiscal, não tem validade fiscal e não foi transmitido. Use os blocos abaixo apenas para ajustes manuais ou conferência contábil.</p>
+      <form id="nx-draft-form" method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/salvar" style="display:flex;flex-direction:column;gap:1.25rem">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-          {% if review %}
-          <section id="revisao" class="nf-subblock">
-            <p class="nf-subblock-title">Revisão do preparo ({{ review.pending_count }} pendência(s))</p>
-            <div class="nf-grid-2">
-              {% for group in review.groups %}
-              <div class="bg-white border border-[#EEF1ED] rounded-xl p-3">
-                <a class="text-xs font-bold text-[#294127]" href="#{{ group.target }}">{{ group.title }} →</a>
-                {% if group.issues %}
-                <ul class="mt-1.5 list-disc pl-4 text-xs text-[#5B6660] space-y-0.5">{% for issue in group.issues %}<li>{{ issue }}</li>{% endfor %}</ul>
-                {% else %}
-                <p class="mt-1 text-xs text-[#1F7A3A]">Campos básicos preenchidos.</p>
-                {% endif %}
-              </div>
-              {% endfor %}
-            </div>
-          </section>
+        <section class="nx-cardx" aria-labelledby="h-buyer">
+          <div class="nx-hd"><h2 id="h-buyer">Comprador</h2><span class="nx-auto">Da venda</span></div>
+          <div class="nx-g">
+            {% for field, label, maximum, hint in [('recipient_name','Nome / razão social',180,'Nome'),('recipient_cpf','CPF',14,'000.000.000-00'),('recipient_ie','Inscrição estadual',30,'Opcional'),('recipient_postal_code','CEP',9,'00000-000'),('recipient_street','Endereço',180,'Rua, estrada'),('recipient_number','Número',30,'S/N'),('recipient_complement','Complemento',120,'Opcional'),('recipient_district','Bairro',120,'Bairro'),('recipient_city','Município',120,'Município'),('recipient_municipality_code','Código IBGE',7,'7 dígitos')] %}
+            <label class="nx-f">{{ label }}<input name="{{ field }}" maxlength="{{ maximum }}" value="{{ details.get(field, '') }}" placeholder="{{ hint }}" class="nx-in{% if not details.get(field) and field not in ('recipient_ie', 'recipient_complement') %} is-missing{% endif %}"></label>
+            {% endfor %}
+            <label class="nx-f">UF<select name="recipient_state" class="nx-in"><option value="">Selecione</option><option value="BA" {% if details.get('recipient_state') == 'BA' %}selected{% endif %}>Bahia (BA)</option></select></label>
+            <label class="nx-f">Indicador de IE<select name="recipient_ie_indicator" class="nx-in"><option value="">Não informado</option>{% for value, label in [('contribuinte','Contribuinte do ICMS'),('isento','Isento'),('nao_contribuinte','Não contribuinte')] %}<option value="{{ value }}" {% if details.get('recipient_ie_indicator') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+          </div>
+        </section>
+
+        <section class="nx-cardx" aria-labelledby="h-prod">
+          <div class="nx-hd"><h2 id="h-prod">Produtos</h2>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center"><span class="nx-auto">Quantidade e preço: da venda</span>{% if prod %}<span class="nx-auto">Produto fiscal: {{ prod.name }}</span>{% endif %}</div>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="nx-mini">
+              <thead><tr><th>Lote</th><th style="text-align:right">Qtd.</th><th style="text-align:right">Preço</th><th style="text-align:right">Total</th></tr></thead>
+              <tbody>
+                {% for item in snapshot.itens %}
+                {% set saved = technical_items.get(loop.index, {}) %}
+                <tr><td><strong style="font-weight:600">{{ item.lote }}</strong>{% if saved.get('tax_unit') and saved.get('tax_unit') != saved.get('commercial_unit') %}<span class="nx-sub">tributável: {{ saved.get('tax_quantity') }} {{ saved.get('tax_unit') }}</span>{% endif %}</td>
+                  <td style="text-align:right;white-space:nowrap">{{ item.quantidade_sacas }} {{ saved.get('commercial_unit') or 'SC' }}</td>
+                  <td style="text-align:right;white-space:nowrap">{% if item.preco_unitario %}R$ {{ item.preco_unitario|decimal_br }}{% else %}—{% endif %}</td>
+                  <td style="text-align:right;white-space:nowrap;font-weight:600">R$ {{ item.valor_bruto|decimal_br }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="nx-g" style="margin-top:.875rem">
+            <label class="nx-f"><span>Descrição no DANFE{% if edited.desc %}<span class="nx-edited">Editado nesta nota</span>{% endif %}</span><input name="product_description" maxlength="180" value="{{ details.get('product_description', '') }}" class="nx-in{% if not details.get('product_description') %} is-missing{% endif %}"></label>
+            <label class="nx-f"><span>NCM{% if edited.ncm %}<span class="nx-edited">Editado nesta nota</span>{% endif %}</span><input name="product_ncm" maxlength="10" inputmode="numeric" value="{{ details.get('product_ncm', '') }}" placeholder="0000.00.00" class="nx-in{% if not details.get('product_ncm') %} is-missing{% endif %}"></label>
+            <label class="nx-f"><span>Natureza da operação{% if edited.nature %}<span class="nx-edited">Editado nesta nota</span>{% endif %}</span><input name="operation_nature" maxlength="120" value="{{ details.get('operation_nature', '') }}" class="nx-in{% if not details.get('operation_nature') %} is-missing{% endif %}"></label>
+            <label class="nx-f"><span>CFOP{% if edited.cfop %}<span class="nx-edited">Editado nesta nota</span>{% endif %}</span><input name="operation_cfop" maxlength="5" inputmode="numeric" value="{{ details.get('operation_cfop', '') }}" class="nx-in{% if not details.get('operation_cfop') %} is-missing{% endif %}"></label>
+          </div>
+          {% if prod and not prod.ncm %}
+          <p class="nx-src" style="color:#6b4600">{{ nxi('alert', 16) }}<span>O produto fiscal <b>{{ prod.name }}</b> está sem NCM. Preencha acima para esta nota ou <a href="/producao/nfe/configuracao?secao=prod&amp;item={{ prod.id }}" style="font-weight:600">complete o cadastro</a> para as próximas.</span></p>
           {% endif %}
 
-          <section id="produtor" class="nf-subblock">
-            <p class="nf-subblock-title">Produtor e estabelecimento</p>
-            <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/emitente" class="space-y-3">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <div class="nf-grid-3">
-                {% for field, label, maximum, hint in [('name','Nome do produtor',180,'Nome completo'),('cpf','CPF',14,'000.000.000-00'),('state_registration','Inscrição estadual',30,'IE'),('postal_code','CEP',9,'00000-000'),('street','Logradouro',180,'Endereço'),('number','Número',30,'Número'),('complement','Complemento',120,'Opcional'),('district','Bairro',120,'Localidade'),('city','Município',120,'Município'),('municipality_code','Código IBGE',7,'Sete dígitos')] %}
-                <label class="nf-field"><span class="nf-field-label">{{ label }}</span><input name="{{ field }}" maxlength="{{ maximum }}" value="{{ issuer|attr(field) if issuer else '' }}" placeholder="{{ hint }}" class="nf-input"></label>
+          <button type="button" class="sf-btn sf-btn-secondary" style="margin-top:.875rem;width:100%;background:#f6f8f5" data-nx-toggle="nx-item-adv" aria-expanded="false" data-label-on="Ocultar detalhes fiscais dos lotes" data-label-off="Ver detalhes fiscais dos lotes (avançado)">Ver detalhes fiscais dos lotes (avançado)</button>
+          <div id="nx-item-adv" hidden style="margin-top:.75rem;display:flex;flex-direction:column;gap:.75rem">
+            <p class="nx-muted">Preenchidos pelo produto fiscal e pela operação. Mude só se souber o que está fazendo: a mudança vale só para esta nota.</p>
+            {% for item in snapshot.itens %}
+            {% set index = loop.index %}
+            {% set saved = technical_items.get(index, {}) %}
+            <fieldset style="border:1px solid #e3e8e2;border-radius:.875rem;padding:1rem;margin:0;display:flex;flex-direction:column;gap:.75rem;min-width:0">
+              <legend style="padding:0 .375rem;font-size:.8125rem;font-weight:700">Lote {{ item.lote }}</legend>
+              <div class="nx-g">
+                {% for field, label, maximum in [('origin','Origem',1),('icms_cst','CST ICMS',2),('ibs_cbs_cst','CST IBS/CBS',3),('ibs_cbs_class','Classificação IBS/CBS',6)] %}
+                <label class="nx-f">{{ label }}<input name="item_{{ index }}_{{ field }}" value="{{ saved.get(field, '') }}" maxlength="{{ maximum }}" inputmode="numeric" class="nx-in"></label>
                 {% endfor %}
-                <label class="nf-field"><span class="nf-field-label">Estado</span><select name="state" class="nf-select"><option value="BA">Bahia (BA)</option></select></label>
               </div>
-              {% if can_write_page %}<button class="sf-btn sf-btn-secondary" type="submit">Salvar dados do produtor</button>{% endif %}
-            </form>
-          </section>
-
-          <section id="destinatario" class="nf-subblock">
-            <p class="nf-subblock-title">Destinatário, produto e operação</p>
-            <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/detalhes" class="space-y-3">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <div class="nf-grid-3">
-                {% for field, label, maximum, hint in [('recipient_name','Nome do destinatário',180,'Nome'),('recipient_cpf','CPF',14,'000.000.000-00'),('recipient_ie','IE',30,'Opcional'),('recipient_postal_code','CEP',9,'00000-000'),('recipient_street','Logradouro',180,'Endereço'),('recipient_number','Número',30,'Número'),('recipient_complement','Complemento',120,'Opcional'),('recipient_district','Bairro',120,'Bairro'),('recipient_city','Município',120,'Município'),('recipient_municipality_code','Código IBGE',7,'Sete dígitos'),('product_description','Descrição fiscal do produto',180,'Produto'),('product_ncm','NCM',10,'8 dígitos'),('operation_nature','Natureza da operação',120,'Natureza'),('operation_cfop','CFOP',5,'4 dígitos')] %}
-                <label class="nf-field"><span class="nf-field-label">{{ label }}</span><input name="{{ field }}" maxlength="{{ maximum }}" value="{{ details.get(field, '') }}" placeholder="{{ hint }}" class="nf-input"></label>
+              <div class="nx-g">
+                {% for field, label, maximum in [('commercial_unit','Unid. de venda',6),('commercial_quantity','Qtd. de venda',16),('commercial_unit_price','Valor unit. de venda',22),('tax_unit','Unid. tributável',6),('tax_quantity','Qtd. tributável',16),('tax_unit_price','Valor unit. tributável',22)] %}
+                <label class="nx-f">{{ label }}<input name="item_{{ index }}_{{ field }}" value="{{ saved.get(field, '') }}" maxlength="{{ maximum }}" class="nx-in"></label>
                 {% endfor %}
-                <label class="nf-field"><span class="nf-field-label">UF</span><select name="recipient_state" class="nf-select"><option value="">Selecione</option><option value="BA" {% if details.get('recipient_state') == 'BA' %}selected{% endif %}>Bahia (BA)</option></select></label>
-                <label class="nf-field"><span class="nf-field-label">Indicador de IE</span><select name="recipient_ie_indicator" class="nf-select"><option value="">Não informado</option>{% for value, label in [('contribuinte','Contribuinte'),('isento','Isento'),('nao_contribuinte','Não contribuinte')] %}<option value="{{ value }}" {% if details.get('recipient_ie_indicator') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
               </div>
-              {% if can_write_page %}<button class="sf-btn sf-btn-secondary" type="submit">Salvar dados do rascunho</button>{% endif %}
-            </form>
-          </section>
-
-          <section id="dados-tecnicos" class="nf-subblock">
-            <p class="nf-subblock-title">Dados fiscais e transporte por lote</p>
-            <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/dados-tecnicos" class="space-y-3">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <div class="nf-grid-2">
-                <label class="nf-field"><span class="nf-field-label">Data de emissão</span><input type="date" name="emission_date" value="{{ technical.get('emission_date', '') }}" class="nf-input"></label>
-                <label class="nf-field"><span class="nf-field-label">Modalidade do frete</span><select name="freight_mode" class="nf-select"><option value="">Não informada</option>{% for value, label in [('0','Por conta do emitente'),('1','Por conta do destinatário'),('2','Por conta de terceiros'),('3','Transporte próprio pelo emitente'),('4','Transporte próprio pelo destinatário'),('9','Sem frete')] %}<option value="{{ value }}" {% if technical.get('freight_mode') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+              <div class="nx-g">
+                {% for field, label in [('icms_base','Base ICMS'),('icms_value','Valor ICMS'),('ibs_cbs_base','Base IBS/CBS'),('ibs_uf_value','IBS estadual'),('ibs_municipal_value','IBS municipal'),('cbs_value','CBS')] %}
+                <label class="nx-f">{{ label }}<input name="item_{{ index }}_{{ field }}" value="{{ saved.get(field, '') }}" maxlength="16" inputmode="decimal" class="nx-in"></label>
+                {% endfor %}
+                {% for field, label in [('icms_rate','ICMS (%)'),('ibs_uf_rate','IBS estadual (%)'),('ibs_municipal_rate','IBS municipal (%)'),('cbs_rate','CBS (%)')] %}
+                <label class="nx-f">{{ label }}<input name="item_{{ index }}_{{ field }}" value="{{ saved.get(field, '') }}" maxlength="8" inputmode="decimal" class="nx-in"></label>
+                {% endfor %}
               </div>
-              {% for item in snapshot.itens %}
-              {% set index = loop.index %}
-              {% set saved = technical_items.get(index, {}) %}
-              <details class="nf-lot" data-nf-lot {% if loop.first %}open{% endif %}>
-                <summary class="nf-lot-summary"><span>Lote {{ item.lote }}</span></summary>
-                <div class="nf-lot-body">
-                  <div class="nf-grid-4">
-                    {% for field, label, maximum in [('origin','Origem',1),('icms_cst','CST ICMS',2),('ibs_cbs_cst','CST IBS/CBS',3),('ibs_cbs_class','Classificação IBS/CBS',6)] %}
-                    <label class="nf-field"><span class="nf-field-label">{{ label }}</span><input name="item_{{ index }}_{{ field }}" value="{{ saved.get(field, '') }}" maxlength="{{ maximum }}" inputmode="numeric" class="nf-input"></label>
-                    {% endfor %}
-                  </div>
-                  <div class="nf-grid-3">
-                    {% for field, label, maximum in [('commercial_unit','Unid. com.',6),('commercial_quantity','Qtd. com.',16),('commercial_unit_price','Vlr. unit. com.',22),('tax_unit','Unid. trib.',6),('tax_quantity','Qtd. trib.',16),('tax_unit_price','Vlr. unit. trib.',22)] %}
-                    <label class="nf-field"><span class="nf-field-label">{{ label }}</span><input name="item_{{ index }}_{{ field }}" value="{{ saved.get(field, '') }}" maxlength="{{ maximum }}" class="nf-input"></label>
-                    {% endfor %}
-                  </div>
-                  <div class="nf-grid-3">
-                    {% for field, label in [('icms_base','Base ICMS'),('icms_value','Valor ICMS'),('ibs_cbs_base','Base IBS/CBS'),('ibs_uf_value','IBS estadual'),('ibs_municipal_value','IBS municipal'),('cbs_value','CBS')] %}
-                    <label class="nf-field"><span class="nf-field-label">{{ label }}</span><input name="item_{{ index }}_{{ field }}" value="{{ saved.get(field, '') }}" maxlength="16" inputmode="decimal" class="nf-input"></label>
-                    {% endfor %}
-                  </div>
-                  <div class="nf-grid-4">
-                    {% for field, label in [('icms_rate','ICMS (%)'),('ibs_uf_rate','IBS estadual (%)'),('ibs_municipal_rate','IBS municipal (%)'),('cbs_rate','CBS (%)')] %}
-                    <label class="nf-field"><span class="nf-field-label">{{ label }}</span><input name="item_{{ index }}_{{ field }}" value="{{ saved.get(field, '') }}" maxlength="8" inputmode="decimal" class="nf-input"></label>
-                    {% endfor %}
-                  </div>
-                  {% if tax_review and tax_review.get(index) %}
-                  <div class="text-xs text-[#5B6660]">
-                    <p class="font-bold text-[#16201A]">Conferência dos dados de teste salvos</p>
-                    <p>A aplicabilidade e obrigatoriedade dependem da operação e ainda precisam de revisão fiscal.</p>
-                    <ul class="mt-1 space-y-0.5">{% for group in tax_review[index] %}<li><strong>{{ group.label }}:</strong> {% if group.all_absent %}nenhum campo informado.{% elif group.missing %}não informados: {{ group.missing | join(', ') }}.{% else %}campos de teste informados; sem validação fiscal.{% endif %}</li>{% endfor %}</ul>
-                  </div>
-                  {% endif %}
-                  {% if item_review and item_review.get(index) %}
-                  <ul class="list-disc pl-5 text-xs text-[#7A4F00]">{% for issue in item_review[index] %}<li>{{ issue }}</li>{% endfor %}</ul>
-                  {% endif %}
-                </div>
-              </details>
-              {% endfor %}
-              {% if tax_summaries %}
-              <div class="bg-white border border-[#EEF1ED] rounded-xl p-3">
-                <p class="nf-subblock-title">Soma dos valores de teste salvos</p>
-                <dl class="nf-grid-3 text-xs">{% for item in tax_summaries %}<div><dt class="text-[#5B6660]">{{ item.label }}</dt><dd class="font-bold tabular-nums">{% if item.total is not none %}R$ {{ item.total }}{% else %}Não informado em todos{% endif %}</dd></div>{% endfor %}</dl>
+              {% if tax_review and tax_review.get(index) %}
+              <div class="nx-muted" style="font-size:.75rem">
+                <p style="margin:0;font-weight:700;color:#16201a">Conferência dos valores informados</p>
+                <p style="margin:0">A aplicabilidade e obrigatoriedade dependem da operação; o SiSFarm confere só o formato.</p>
+                <ul style="margin:.25rem 0 0;padding-left:1rem">{% for group in tax_review[index] %}<li><strong>{{ group.label }}:</strong> {% if group.all_absent %}nenhum campo informado.{% elif group.missing %}não informados: {{ group.missing | join(', ') }}.{% else %}campos informados.{% endif %}</li>{% endfor %}</ul>
               </div>
               {% endif %}
-              {% if can_write_page %}<button class="sf-btn sf-btn-secondary" type="submit">Salvar dados de teste</button>{% endif %}
-            </form>
-          </section>
+              {% if item_review and item_review.get(index) %}
+              <ul style="margin:0;padding-left:1.125rem;font-size:.75rem;color:#7a4f00">{% for issue in item_review[index] %}<li>{{ issue }}</li>{% endfor %}</ul>
+              {% endif %}
+            </fieldset>
+            {% endfor %}
+          </div>
+        </section>
 
-          <section id="identificacao-teste" class="nf-subblock space-y-3">
-            <div class="flex items-center justify-between gap-2">
-              <p class="nf-subblock-title m-0">Identificação e numeração fictícia (teste)</p>
-              <span class="nf-pill is-warn">Isolado de produção</span>
-            </div>
-            <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/identificacao" class="space-y-3">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <div class="nf-grid-4">
-                <label class="nf-field"><span class="nf-field-label">Série (920–969)</span><input type="number" name="series" min="920" max="969" value="{{ identification.series if identification else 920 }}" class="nf-input"></label>
-                <label class="nf-field"><span class="nf-field-label">Consumidor final</span><select name="consumer_indicator" class="nf-select"><option value="">Não informado</option>{% for value, label in (consumer_indicators or [('0','Normal'),('1','Consumidor final')]) %}<option value="{{ value }}" {% if identification and identification.consumer_indicator == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-                <label class="nf-field"><span class="nf-field-label">Presença</span><select name="presence_indicator" class="nf-select"><option value="">Não informado</option>{% for value, label in (presence_indicators or []) %}<option value="{{ value }}" {% if identification and identification.presence_indicator == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-                <label class="nf-field"><span class="nf-field-label">Pagamento (tPag)</span><select name="payment_method" class="nf-select"><option value="">Não informada</option>{% for value, label in (payment_methods or []) %}<option value="{{ value }}" {% if identification and identification.payment_method == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-              </div>
-              {% if can_write_page %}<button class="sf-btn sf-btn-secondary" type="submit">{% if identification %}Salvar identificação de teste{% else %}Reservar número fictício e salvar{% endif %}</button>{% endif %}
-            </form>
-            {% if identification and key_summary and key_summary.key %}
-            <div class="nf-key-box">
-              <span class="nf-kpi-label">Chave simulada (44 dígitos)</span>
-              <p class="nf-key-code">{{ key_summary.key }}</p>
-              <button type="button" class="sf-btn sf-btn-secondary self-start" data-nf-copy="{{ key_summary.key }}">Copiar chave</button>
-            </div>
-            {% endif %}
-          </section>
+        <section class="nx-cardx" aria-labelledby="h-ship">
+          <h2 id="h-ship">Transporte e pagamento</h2>
+          <div class="nx-g">
+            <label class="nx-f">Data de emissão<input type="date" name="emission_date" value="{{ technical.get('emission_date') or snapshot.data_venda }}" class="nx-in"></label>
+            <label class="nx-f">Frete<select name="freight_mode" class="nx-in">{% for value, label in (freight_options or [('9','Sem transporte (retirada)'),('0','Por conta da fazenda (CIF)'),('1','Por conta do comprador (FOB)'),('2','Por conta de terceiros'),('3','Transporte próprio da fazenda'),('4','Transporte próprio do comprador')]) %}<option value="{{ value }}" {% if freight_code == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+            <label class="nx-f">Transportadora<input name="carrier_name" maxlength="120" value="{{ extra.get('carrier_name', '') }}" placeholder="Opcional" class="nx-in"></label>
+            <label class="nx-f">Placa<input name="vehicle_plate" maxlength="8" value="{{ extra.get('vehicle_plate', '') }}" placeholder="ABC1D23" class="nx-in"></label>
+            <label class="nx-f">UF da placa<input name="vehicle_uf" maxlength="2" value="{{ extra.get('vehicle_uf', '') }}" placeholder="BA" class="nx-in"></label>
+            <label class="nx-f">Volumes<input name="volume_quantity" inputmode="numeric" value="{{ extra.get('volume_quantity', '') or ((total_sacks.v|int) if total_sacks.v == (total_sacks.v|int) else '') }}" class="nx-in"></label>
+            <label class="nx-f">Espécie<input name="volume_species" maxlength="60" value="{{ extra.get('volume_species', '') or 'Sacas' }}" class="nx-in"></label>
+            <label class="nx-f">Peso líquido (kg)<input name="net_weight_kg" inputmode="decimal" value="{{ extra.get('net_weight_kg', '') }}" class="nx-in"></label>
+            <label class="nx-f">Peso bruto (kg)<input name="gross_weight_kg" inputmode="decimal" value="{{ extra.get('gross_weight_kg', '') }}" class="nx-in"></label>
+            <label class="nx-f">Pagamento<select name="payment_indicator" class="nx-in">{% for value, label in (payment_indicators or []) %}<option value="{{ value }}" {% if (extra.get('payment_indicator') or (sale_meta.ind_pag if sale_meta else '')) == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><small>{{ sale_meta.payment_label if sale_meta else 'Da venda' }}</small></label>
+            <input type="hidden" name="payment_amount" value="{{ extra.get('payment_amount', '') }}">
+          </div>
+        </section>
 
-          <section id="versoes-e-historico" class="nf-subblock space-y-3">
-            <p class="nf-subblock-title">Versões congeladas e histórico local (teste)</p>
-            {% if snapshots %}
-            <div class="space-y-2">
-              {% for snap in snapshots %}
-              <div class="bg-white border border-[#EEF1ED] rounded-xl p-3 text-xs flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <strong class="tabular-nums">v{{ snap.version }}</strong> · SHA-256 {{ snap.short_hash }}…
-                  {% if snap.note %} · {{ snap.note }}{% endif %}
-                </div>
-                {% if snap.integrity_ok %}<a class="nf-link-btn" href="/producao/rascunhos-fiscais/{{ draft.id }}/versoes/{{ snap.version }}/json">Baixar JSON</a>{% endif %}
-              </div>
-              {% endfor %}
-            </div>
-            {% endif %}
-            {% if draft_events %}
-            <ul class="space-y-1 text-xs text-[#5B6660]">{% for ev in draft_events %}<li>{{ ev.summary }}</li>{% endfor %}</ul>
-            {% endif %}
-            <div class="flex flex-wrap gap-2 pt-2">
-              <a class="sf-btn sf-btn-secondary" href="/producao/rascunhos-fiscais/{{ draft.id }}/previa-xml">Simulação XML</a>
-              <a class="sf-btn sf-btn-secondary" href="/producao/rascunhos-fiscais/{{ draft.id }}/estrutura-xml">Estrutura parcial XML</a>
-              <a class="sf-btn sf-btn-secondary" href="/producao/nfe/painel-tecnico">Painel técnico NF-e</a>
-            </div>
-          </section>
-        </div>
-      </details>
-    </main>
+        <section class="nx-cardx" aria-labelledby="h-info">
+          <h2 id="h-info">Informações complementares</h2>
+          <textarea name="additional_info" maxlength="2000" rows="3" class="nx-in" aria-labelledby="h-info">{{ extra.get('additional_info', '') }}</textarea>
+          <p class="nx-muted" style="margin-top:.5rem;font-size:.75rem">Vem do texto da operação e do texto padrão das Configurações fiscais. Mudar aqui vale só para esta nota.</p>
+        </section>
+      </form>
+    </div>
 
-    <!-- Resumo lateral sticky -->
-    <aside class="nf-aside" aria-label="Resumo da nota">
-      <section class="nf-card space-y-4">
+    <aside style="flex:1 1 21.25rem;min-width:0;display:flex;flex-direction:column;gap:1rem">
+      <section class="nx-cardx" style="display:flex;flex-direction:column;gap:.875rem">
+        <h2 style="margin:0">Resumo</h2>
+        <div style="display:flex;justify-content:space-between;gap:.75rem;font-size:.875rem"><span style="color:#5b6660">Emitente</span><a href="/producao/nfe/configuracao?secao=emit" style="font-weight:600;color:#16201a;text-align:right">{{ seller_name }}</a></div>
+        <div style="display:flex;justify-content:space-between;font-size:.875rem"><span style="color:#5b6660">Produtos</span><span>R$ {{ snapshot.valor_bruto|decimal_br }}</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding-top:.75rem;border-top:1px solid #eef1ed"><strong>Total da nota</strong><strong style="font-size:1.375rem">R$ {{ snapshot.valor_bruto|decimal_br }}</strong></div>
         <div>
-          <span class="nf-kpi-label">Valor da nota</span>
-          <p class="mt-1 text-[28px] font-bold tracking-[-0.02em] text-[#16201A] tabular-nums leading-none">R$ {{ snapshot.valor_bruto }}</p>
-          <p class="mt-1.5 text-xs text-[#5B6660] tabular-nums">{{ snapshot.itens | length }} lote(s) · Venda {{ snapshot.venda }}</p>
+          <p class="nx-label" style="margin-bottom:.25rem">Verificações</p>
+          {% for group in (review.groups if review else []) %}
+          <div class="nx-ck">{% if group.issues %}<b class="is-warn" aria-hidden="true">!</b><span><strong style="font-weight:600">{{ group.title }}:</strong> {{ group.issues[:3]|join('; ') }}{% if group.issues|length > 3 %} e mais {{ group.issues|length - 3 }}{% endif %}</span>{% else %}<b aria-hidden="true">✓</b><span>{{ group.title }}</span>{% endif %}</div>
+          {% endfor %}
+          <div class="nx-ck">{% if has_active_cert %}<b aria-hidden="true">✓</b><span>Certificado A1 ativo</span>{% else %}<b class="is-warn" aria-hidden="true">!</b><span>Sem certificado A1 (não impede o teste)</span>{% endif %}</div>
         </div>
-
-        <ul class="space-y-2.5 pt-4 border-t border-[#EEF1ED] text-sm">
-          <li class="flex items-center gap-2.5 {% if seller_ok %}text-[#1F7A3A]{% else %}text-[#7A4F00]{% endif %}">
-            <span class="nf-dot {% if seller_ok %}is-ok{% else %}is-warn{% endif %}" aria-hidden="true">{% if seller_ok %}✓{% else %}!{% endif %}</span>Dados da fazenda
-          </li>
-          <li class="flex items-center gap-2.5 {% if buyer_ok %}text-[#1F7A3A]{% else %}text-[#7A4F00]{% endif %}">
-            <span class="nf-dot {% if buyer_ok %}is-ok{% else %}is-warn{% endif %}" aria-hidden="true">{% if buyer_ok %}✓{% else %}!{% endif %}</span>Cadastro do comprador
-          </li>
-          <li class="flex items-center gap-2.5 {% if product_ok %}text-[#1F7A3A]{% else %}text-[#7A4F00]{% endif %}">
-            <span class="nf-dot {% if product_ok %}is-ok{% else %}is-warn{% endif %}" aria-hidden="true">{% if product_ok %}✓{% else %}!{% endif %}</span>Produto e impostos
-          </li>
-          <li class="flex items-center gap-2.5 {% if has_active_cert %}text-[#1F7A3A]{% else %}text-[#7A4F00]{% endif %}">
-            <span class="nf-dot {% if has_active_cert %}is-ok{% else %}is-warn{% endif %}" aria-hidden="true">{% if has_active_cert %}✓{% else %}!{% endif %}</span>Certificado digital
-          </li>
-        </ul>
-
-        <div class="nf-actions-stack pt-1">
-          {% if can_write_page %}
-          <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/congelar-versao">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="note" value="Conferência da nota de teste">
-            <button type="submit" class="sf-btn sf-btn-primary w-full">Gerar nota de teste</button>
-          </form>
-          {% endif %}
-          <a class="sf-btn sf-btn-secondary" href="/producao/rascunhos-fiscais/{{ draft.id }}/previa-danfe.pdf">Ver como vai ficar (PDF)</a>
-        </div>
-
-        <p class="text-xs text-[#7A857E] text-center">No modo teste nada é enviado à Receita.</p>
+        {% if can_write_page %}
+        <button type="submit" form="nx-draft-form" name="next" value="conferir" class="sf-btn sf-btn-primary" style="min-height:3rem">Conferir nota</button>
+        <button type="submit" form="nx-draft-form" name="next" value="sair" class="sf-btn sf-btn-secondary">Salvar e sair</button>
+        {% endif %}
+        <a class="nx-detail-link" href="/notas-fiscais/{{ draft.id }}/danfe.pdf" target="_blank" rel="noopener">Prévia do DANFE</a>
       </section>
+      <div class="nx-banner is-blue" style="font-size:.8125rem">Ambiente de teste: ao confirmar, a nota é simulada e não vai para a SEFAZ.</div>
     </aside>
   </div>
+
+  {% elif step == 'conferir' %}
+  <div class="nx-split">
+    <div style="flex:999 1 38.75rem;min-width:0;display:flex;flex-direction:column;gap:.875rem">
+      <div class="nx-banner is-green">
+        <span style="width:2.25rem;height:2.25rem;border-radius:50%;background:#1f7a3a;color:#fff;display:flex;align-items:center;justify-content:center;flex:none">{{ nxi('check', 18, 2.4) }}</span>
+        <span><strong style="font-size:.9375rem">Tudo certo para emitir</strong><br>Todas as verificações estão ok.</span>
+      </div>
+      <div class="nx-flow">
+        <section class="nx-rv">
+          <div class="nx-rv-h"><span class="nx-rv-t"><span class="nx-rv-i">{{ nxi('farm') }}</span>De</span></div>
+          <strong>{{ seller_name }}</strong>
+          <span class="s">CPF {{ issuer.cpf if issuer else '—' }} · IE {{ issuer.state_registration if issuer else '—' }}</span>
+          <span class="s">{{ issuer.city if issuer else '' }}/{{ issuer.state if issuer else '' }}</span>
+        </section>
+        <div class="nx-flow-arrow" aria-hidden="true">{{ nxi('arrow', 22, 2) }}</div>
+        <section class="nx-rv">
+          <div class="nx-rv-h"><span class="nx-rv-t"><span class="nx-rv-i">{{ nxi('user') }}</span>Para</span><a class="nx-link-btn" href="/producao/rascunhos-fiscais/{{ draft.id }}">Editar</a></div>
+          <strong>{{ buyer_name }}</strong>
+          <span class="s">{{ note.buyer_doc if note else '' }}{% if details.get('recipient_ie') %} · IE {{ details.get('recipient_ie') }}{% endif %}</span>
+          <span class="s">{{ details.get('recipient_city') }}/{{ details.get('recipient_state') }}</span>
+        </section>
+      </div>
+      <section class="nx-rv">
+        <div class="nx-rv-h"><span class="nx-rv-t"><span class="nx-rv-i">{{ nxi('bag') }}</span>O que está sendo vendido</span><a class="nx-link-btn" href="/producao/rascunhos-fiscais/{{ draft.id }}">Editar</a></div>
+        <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:.625rem">
+          <div><strong>{{ details.get('product_description') }}</strong><div class="s">NCM {{ details.get('product_ncm') }} · {{ snapshot.itens|length }} lote{{ 's' if snapshot.itens|length != 1 }}</div></div>
+          <div style="text-align:right"><strong>{{ total_sacks.v|decimal_br(0 if total_sacks.v == (total_sacks.v|int) else 2) }} sc</strong><div class="s">R$ {{ snapshot.valor_bruto|decimal_br }}</div></div>
+        </div>
+      </section>
+      <div class="nx-g">
+        <section class="nx-rv">
+          <div class="nx-rv-h"><span class="nx-rv-t"><span class="nx-rv-i">{{ nxi('list') }}</span>Operação</span><a class="nx-link-btn" href="/producao/rascunhos-fiscais/{{ draft.id }}">Editar</a></div>
+          <strong>{{ (op.name ~ ' v' ~ op.version ~ ' · ') if op }}CFOP {{ details.get('operation_cfop') }}</strong>
+          <span class="s">{{ details.get('operation_nature') }}{% if technical_items.get(1) %} · CST {{ technical_items.get(1).get('icms_cst') }}{% endif %}</span>
+        </section>
+        <section class="nx-rv">
+          <div class="nx-rv-h"><span class="nx-rv-t"><span class="nx-rv-i">{{ nxi('truck') }}</span>Entrega e pagamento</span><a class="nx-link-btn" href="/producao/rascunhos-fiscais/{{ draft.id }}">Editar</a></div>
+          <strong>{{ extra.get('carrier_name') or {'9': 'Sem transporte', '0': 'Frete da fazenda', '1': 'Frete do comprador'}.get(freight_code, 'Transporte informado') }}{% if extra.get('vehicle_plate') %} · {{ extra.get('vehicle_plate') }}{% endif %}</strong>
+          <span class="s">{{ sale_meta.payment_label if sale_meta else '' }} · emissão {{ technical.get('emission_date') }}</span>
+        </section>
+      </div>
+    </div>
+    <aside style="flex:1 1 21.25rem;min-width:0;display:flex;flex-direction:column;gap:1rem">
+      <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/emitir" class="nx-cardx" style="display:flex;flex-direction:column;gap:1rem">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="nx-total"><p class="nx-muted">Total da nota</p><p class="v">R$ {{ snapshot.valor_bruto|decimal_br }}</p><p class="nx-muted">{{ 'NF-e ' ~ ('%06d'|format(identification.number)) ~ ' · Série ' ~ identification.series if identification else 'Número reservado ao confirmar' }}</p></div>
+        <div>
+          <p class="nx-label">Ao confirmar</p>
+          <div class="nx-impact2">
+            <span>Venda {{ snapshot.venda }}</span><strong>sem nota → com NF-e</strong>
+            <span>Numeração</span><strong>avança 1 número</strong>
+            <span>Estoque e Financeiro</span><strong>sem mudança</strong>
+          </div>
+        </div>
+        <label class="nx-agree"><span class="dt-chk"><input type="checkbox" class="dt-check" name="confirm" value="1" data-nx-gate="emit"></span>Conferi os dados e quero emitir</label>
+        {% if can_write_page %}<button type="submit" class="sf-btn sf-btn-primary" style="min-height:3.125rem;font-size:.9375rem" data-nx-gated="emit" disabled>Confirmar emissão</button>{% endif %}
+        <a class="sf-btn sf-btn-secondary" href="/producao/rascunhos-fiscais/{{ draft.id }}">Voltar e editar</a>
+      </form>
+      <div class="nx-banner is-blue" style="font-size:.8125rem">Ambiente de teste: a nota é simulada e não vai para a SEFAZ.</div>
+    </aside>
+  </div>
+
+  {% else %}
+  <section class="nx-cardx" style="max-width:40rem;margin:1.5rem auto 0;text-align:center;display:flex;flex-direction:column;gap:.875rem;align-items:center;padding:2.25rem 1.75rem">
+    {% if note and note.status == 'autorizada' %}
+    <span style="width:3.5rem;height:3.5rem;border-radius:50%;background:#e6f4e2;color:#1f7a3a;display:flex;align-items:center;justify-content:center">{{ nxi('check', 28, 2.2) }}</span>
+    <h2 style="margin:0;font-size:1.375rem">NF-e {{ note.title }} autorizada</h2>
+    <p class="nx-muted" style="font-size:.9375rem;color:#46514a">A nota foi emitida no ambiente de teste. O DANFE e o XML já estão disponíveis.</p>
+    {% else %}
+    <span style="width:3.5rem;height:3.5rem;border-radius:50%;background:#e8f1fb;color:#1f5fa8;display:flex;align-items:center;justify-content:center">{{ nxi('clock', 28, 2) }}</span>
+    <h2 style="margin:0;font-size:1.375rem">Nota enviada</h2>
+    <p class="nx-muted" style="font-size:.9375rem;color:#46514a">Aguardando o retorno. Você pode sair desta tela: a situação aparece em Notas Fiscais.</p>
+    {% endif %}
+    <p style="margin:0;font-size:.8125rem;color:#17487f;background:#e8f1fb;border-radius:.625rem;padding:.5rem .75rem">Simulação do ambiente de teste — sem valor fiscal.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:.625rem;justify-content:center;margin-top:.375rem">
+      {% if note and note.status == 'autorizada' %}<a class="sf-btn sf-btn-secondary" href="/notas-fiscais/{{ draft.id }}/danfe.pdf" target="_blank" rel="noopener">{{ nxi('download') }}Baixar DANFE</a>{% endif %}
+      <a class="sf-btn sf-btn-primary" href="/notas-fiscais/{{ draft.id }}">Ver a nota</a>
+      <a class="sf-btn sf-btn-secondary" href="/producao/comercializacao">Voltar à Comercialização</a>
+    </div>
+  </section>
+  {% endif %}
 </div>
-
-<!-- Modal do Vendedor (Fazenda) -->
-<dialog id="dlg-seller" class="nf-dialog" aria-labelledby="dlg-seller-title">
-  <div class="nf-dialog-shell">
-    <div class="nf-dialog-head">
-      <div>
-        <span class="nf-kpi-label">Vendedor · Sua fazenda</span>
-        <h3 id="dlg-seller-title" class="mt-0.5 text-lg font-bold text-[#16201A]">{{ seller_name }}</h3>
-      </div>
-      <button type="button" class="nf-dialog-close" data-nf-close-modal aria-label="Fechar">×</button>
-    </div>
-    <div class="nf-dialog-body">
-      <div class="nf-grid-2">
-        <div class="nf-subblock"><span class="nf-kpi-label">CPF</span><p class="mt-0.5 text-sm font-semibold tabular-nums">{{ issuer.cpf if issuer and issuer.cpf else 'Não informado' }}</p></div>
-        <div class="nf-subblock"><span class="nf-kpi-label">Inscrição Estadual</span><p class="mt-0.5 text-sm font-semibold tabular-nums">{{ issuer.state_registration if issuer and issuer.state_registration else 'Não informada' }}</p></div>
-        <div class="nf-subblock"><span class="nf-kpi-label">Município / UF</span><p class="mt-0.5 text-sm font-semibold">{{ seller_city_uf }}</p></div>
-        <div class="nf-subblock"><span class="nf-kpi-label">CEP</span><p class="mt-0.5 text-sm font-semibold tabular-nums">{{ issuer.postal_code if issuer and issuer.postal_code else 'Não informado' }}</p></div>
-      </div>
-      <div class="nf-subblock">
-        <span class="nf-kpi-label">Endereço do estabelecimento</span>
-        <p class="mt-0.5 text-sm font-semibold">
-          {% if issuer and issuer.street %}{{ issuer.street }}, {{ issuer.number or 'S/N' }}{% if issuer.district %} · {{ issuer.district }}{% endif %}{% else %}Endereço não informado{% endif %}
-        </p>
-      </div>
-    </div>
-    <div class="nf-dialog-foot">
-      <a href="/producao/nfe/configuracao" class="sf-btn sf-btn-secondary">Configurar fazenda</a>
-      <button type="button" class="sf-btn sf-btn-primary" data-nf-close-modal>Fechar</button>
-    </div>
-  </div>
-</dialog>
-
-<!-- Modal do Comprador (Destinatário) -->
-<dialog id="dlg-buyer" class="nf-dialog" aria-labelledby="dlg-buyer-title">
-  <div class="nf-dialog-shell">
-    <div class="nf-dialog-head">
-      <div>
-        <span class="nf-kpi-label">Comprador · Destinatário</span>
-        <h3 id="dlg-buyer-title" class="mt-0.5 text-lg font-bold text-[#16201A]">{{ buyer_name }}</h3>
-      </div>
-      <button type="button" class="nf-dialog-close" data-nf-close-modal aria-label="Fechar">×</button>
-    </div>
-    <div class="nf-dialog-body">
-      <div class="nf-grid-2">
-        <div class="nf-subblock"><span class="nf-kpi-label">CPF</span><p class="mt-0.5 text-sm font-semibold tabular-nums">{{ details.get('recipient_cpf') or 'Não informado' }}</p></div>
-        <div class="nf-subblock"><span class="nf-kpi-label">Situação estadual</span><p class="mt-0.5 text-sm font-semibold">{{ details.get('recipient_ie_indicator') or 'Não informada' }}</p></div>
-        <div class="nf-subblock"><span class="nf-kpi-label">Município / UF</span><p class="mt-0.5 text-sm font-semibold">{{ buyer_city_uf }}</p></div>
-        <div class="nf-subblock"><span class="nf-kpi-label">CEP</span><p class="mt-0.5 text-sm font-semibold tabular-nums">{{ details.get('recipient_postal_code') or 'Não informado' }}</p></div>
-      </div>
-      <div class="nf-subblock">
-        <span class="nf-kpi-label">Endereço</span>
-        <p class="mt-0.5 text-sm font-semibold">
-          {% if details.get('recipient_street') %}{{ details.get('recipient_street') }}, {{ details.get('recipient_number') or 'S/N' }}{% if details.get('recipient_district') %} · {{ details.get('recipient_district') }}{% endif %}{% else %}Endereço não informado{% endif %}
-        </p>
-      </div>
-      {% if buyer and (buyer.phone or buyer.email) %}
-      <div class="nf-grid-2">
-        <div class="nf-subblock"><span class="nf-kpi-label">Telefone / WhatsApp</span><p class="mt-0.5 text-sm font-semibold tabular-nums">{{ buyer.phone or '-' }}</p></div>
-        <div class="nf-subblock"><span class="nf-kpi-label">E-mail para a nota</span><p class="mt-0.5 text-sm font-semibold">{{ buyer.email or '-' }}</p></div>
-      </div>
-      {% endif %}
-    </div>
-    <div class="nf-dialog-foot">
-      <a href="/producao/comercializacao" class="sf-btn sf-btn-secondary">Ver vendas</a>
-      <button type="button" class="sf-btn sf-btn-primary" data-nf-close-modal>Fechar</button>
-    </div>
-  </div>
-</dialog>
-
-<script src="/static/js/nfe_draft.js?v=20261122nf2" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261122nx1" defer></script>
 {% endblock %}

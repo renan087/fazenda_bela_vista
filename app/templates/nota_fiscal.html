@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% from "partials/nx_icons.html" import nxi %}
+{% block content %}
+{% set n = note %}
+{% set d = note.details %}
+{% set t = note.technical %}
+{% set x = note.extra %}
+{% set acts = pub.actions %}
+{% set tech_items = {} %}
+{% for row in (t.get('items') or []) %}{% set _ = tech_items.update({row.item_index: row}) %}{% endfor %}
+<div class="sf-page nx-page" data-nx-page="detail" style="max-width:82.5rem;margin:0 auto;width:100%">
+  <nav class="nx-crumbs" aria-label="Caminho"><a href="/notas-fiscais">Notas Fiscais</a> / {{ 'NF-e ' ~ n.title if n.number else 'Rascunho · venda ' ~ n.sale_code }}</nav>
+
+  <header class="nx-head" style="align-items:flex-start">
+    <div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:.75rem">
+        <h1 class="sf-page-title">{{ 'NF-e ' ~ n.title if n.number else 'Rascunho de NF-e' }}</h1>
+        <span class="nx-chip is-{{ n.meta.tone }}" style="height:1.75rem;font-size:.8125rem">{{ n.meta.label }}</span>
+        <span class="nx-auto" style="background:#e8f1fb;color:#17487f">Ambiente de teste</span>
+      </div>
+      <p class="sf-page-subtitle">{% if n.number %}Série {{ n.series }} · {% endif %}{% if n.emission_br %}Emissão {{ n.emission_br }} · {% endif %}{{ d.get('operation_nature') or 'Natureza da operação a definir' }}</p>
+    </div>
+    <div class="nx-head-actions" style="align-items:center">
+      {% if n.status in ('autorizada', 'cancelada') %}
+      <div class="nx-seg" role="group" aria-label="Baixar documentos">
+        <a href="/notas-fiscais/{{ n.id }}/danfe.pdf" target="_blank" rel="noopener">{{ nxi('download') }}DANFE</a>
+        <a href="/notas-fiscais/{{ n.id }}/xml{% if n.status == 'cancelada' %}?tipo=cancelamento{% endif %}">{{ nxi('code') }}XML</a>
+      </div>
+      {% elif can_write_page %}
+      <a class="sf-btn sf-btn-primary" href="{{ acts.primary.href }}">{{ nxi(acts.primary.icon) }}{{ acts.primary.label }}</a>
+      {% endif %}
+      <div class="nx-more" data-nx-more>
+        <button type="button" class="sf-icon-btn" data-nx-more-btn aria-label="Mais ações" aria-haspopup="menu" aria-expanded="false">{{ nxi('dotsh', 18, 3) }}</button>
+        <div class="nx-menu" role="menu" aria-label="Mais ações" hidden>
+          {% if n.status == 'autorizada' %}
+          <button type="button" class="nx-mi" role="menuitem" disabled>{{ nxi('send') }}<span>Enviar ao comprador</span><span class="nx-soon">Em breve</span></button>
+          <button type="button" class="nx-mi" role="menuitem" disabled>{{ nxi('cce') }}<span>Carta de correção</span><span class="nx-soon">Em breve</span></button>
+          <a class="nx-mi" role="menuitem" href="/notas-fiscais/{{ n.id }}/danfe.pdf" target="_blank" rel="noopener">{{ nxi('print') }}<span>Imprimir DANFE</span></a>
+          {% elif n.status in ('rascunho', 'pendente') %}
+          <a class="nx-mi" role="menuitem" href="/notas-fiscais/{{ n.id }}/danfe.pdf" target="_blank" rel="noopener">{{ nxi('eye') }}<span>Prévia do DANFE</span></a>
+          {% endif %}
+          {% if can_write_page %}
+          <form method="post" action="/notas-fiscais/{{ n.id }}/duplicar"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="nx-mi" role="menuitem">{{ nxi('copy') }}<span>Duplicar como novo rascunho</span></button></form>
+          {% if n.status == 'autorizada' %}
+          <div class="nx-sep"></div>
+          {% if n.can_cancel %}
+          <button type="button" class="nx-mi is-danger" role="menuitem" data-nx-dialog-open="nx-cancel">{{ nxi('x') }}<span>Cancelar nota</span><em>até {{ pub.actions.danger.hint[4:] if pub.actions.danger else '' }}</em></button>
+          {% else %}
+          <button type="button" class="nx-mi" role="menuitem" disabled>{{ nxi('x') }}<span>Cancelar nota</span><em>prazo encerrado</em></button>
+          {% endif %}
+          {% elif n.can_delete %}
+          <div class="nx-sep"></div>
+          <form method="post" action="/notas-fiscais/{{ n.id }}/excluir" onsubmit="return confirm('Excluir este rascunho? Isso não pode ser desfeito.')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="nx-mi is-danger" role="menuitem">{{ nxi('trash') }}<span>Excluir rascunho</span></button></form>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </header>
+
+  {% if n.status == 'autorizada' and n.can_cancel %}
+  <div class="nx-banner is-amber">{{ nxi('clock', 20) }}<span>Esta nota ainda pode ser cancelada até <strong>{{ n.cancel_deadline_br }}</strong> (24 h após a autorização). Depois disso, use carta de correção ou nota de devolução.</span></div>
+  {% elif n.status == 'pendente' %}
+  <div class="nx-banner is-amber">{{ nxi('alert', 20) }}<span><strong>{{ n.issues|length }} pendência{{ 's' if n.issues|length != 1 }}:</strong> {{ n.issues[:4]|join('; ') }}.</span>{% if can_write_page %}<a href="/producao/rascunhos-fiscais/{{ n.id }}">Resolver</a>{% endif %}</div>
+  {% elif n.status == 'rejeitada' %}
+  <div class="nx-banner is-red">{{ nxi('alert', 20) }}<span><strong>{{ n.reject_reason }}</strong> Corrija e reenvie: o número da nota é mantido.</span>{% if can_write_page %}<a href="/producao/rascunhos-fiscais/{{ n.id }}">Corrigir</a>{% endif %}</div>
+  {% elif n.status == 'cancelada' %}
+  <div class="nx-banner is-red">{{ nxi('ban', 20) }}<span><strong>Nota cancelada.</strong> {% if n.cancel_reason %}Motivo: {{ n.cancel_reason }}{% endif %} A venda {{ n.sale_code }} voltou a ficar sem nota.</span></div>
+  {% elif n.status == 'rascunho' %}
+  <div class="nx-banner is-blue">{{ nxi('info', 20) }}<span>Rascunho salvo. Este rascunho não foi transmitido à SEFAZ.</span></div>
+  {% endif %}
+
+  <div class="nx-split">
+    <div style="flex:999 1 38.75rem;min-width:0;display:flex;flex-direction:column;gap:1.25rem">
+      {% if n.access_key %}
+      <section class="nx-cardx">
+        <h2>Chave de acesso</h2>
+        <div class="nx-key"><code>{{ n.access_key|batch(4)|map('join')|join(' ') }}</code><button type="button" class="sf-btn sf-btn-secondary" onclick="navigator.clipboard && navigator.clipboard.writeText('{{ n.access_key }}');this.textContent='Copiada'">Copiar</button></div>
+        {% if n.protocol %}<p class="nx-muted" style="margin-top:.625rem">Protocolo de autorização {{ n.protocol }} · {{ n.authorized_br }}</p>{% endif %}
+      </section>
+      {% endif %}
+
+      <section class="nx-grid2">
+        <div class="nx-cardx">
+          <h2>Emitente</h2>
+          <p style="margin:0;font-weight:600">{{ issuer.name if issuer and issuer.name else 'Produtor não informado' }}</p>
+          <p class="nx-muted">Produtor rural{% if issuer and issuer.cpf %} · CPF {{ issuer.cpf[:3] }}.{{ issuer.cpf[3:6] }}.{{ issuer.cpf[6:9] }}-{{ issuer.cpf[9:] }}{% endif %}<br>{% if issuer %}IE {{ issuer.state_registration or '—' }} · {{ issuer.city }}/{{ issuer.state }}{% endif %}</p>
+        </div>
+        <div class="nx-cardx">
+          <h2>Comprador</h2>
+          <p style="margin:0;font-weight:600">{{ n.buyer }}</p>
+          <p class="nx-muted">{{ n.buyer_doc or 'Documento não informado' }}{% if d.get('recipient_ie') %} · IE {{ d.get('recipient_ie') }}{% endif %}<br>{{ d.get('recipient_city') or '' }}{% if d.get('recipient_state') %}/{{ d.get('recipient_state') }}{% endif %}{% if buyer and buyer.email %} · {{ buyer.email }}{% endif %}</p>
+        </div>
+      </section>
+
+      <section class="nx-cardx">
+        <h2>Produtos</h2>
+        <div style="overflow-x:auto">
+          <table class="nx-mini">
+            <thead><tr><th>Produto</th><th>NCM</th><th>CFOP</th><th class="is-num" style="text-align:right">Qtd.</th><th style="text-align:right">Preço</th><th style="text-align:right">Total</th></tr></thead>
+            <tbody>
+              {% for item in n.snapshot.itens %}
+              {% set row = tech_items.get(loop.index, {}) %}
+              <tr>
+                <td><strong style="font-weight:600">{{ d.get('product_description') or 'Café' }}</strong><span class="nx-sub">Lote {{ item.lote }}{% if row.get('tax_unit') and row.get('tax_unit') != row.get('commercial_unit') %} · tributável {{ row.get('tax_quantity') }} {{ row.get('tax_unit') }}{% endif %}</span></td>
+                <td>{{ d.get('product_ncm') or '—' }}</td>
+                <td>{{ d.get('operation_cfop') or '—' }}</td>
+                <td style="text-align:right;white-space:nowrap">{{ item.quantidade_sacas }} {{ row.get('commercial_unit') or 'SC' }}</td>
+                <td style="text-align:right;white-space:nowrap">R$ {{ (row.get('commercial_unit_price') or item.get('preco_unitario') or 0)|decimal_br }}</td>
+                <td style="text-align:right;white-space:nowrap;font-weight:600">R$ {{ item.valor_bruto|decimal_br }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="nx-totals">
+          <div><span>Produtos</span><strong>{{ n.value_br }}</strong></div>
+          <div><span>ICMS (CST)</span><strong>{{ (tech_items.get(1, {}).get('icms_cst') or '—') }}</strong></div>
+          <div><span>Operação</span><strong>{{ sources.operation.name ~ ' · v' ~ sources.operation.version if sources.operation else '—' }}</strong></div>
+          <div><span>Total da nota</span><strong style="font-size:1.125rem">{{ n.value_br }}</strong></div>
+        </div>
+      </section>
+
+      <section class="nx-grid2">
+        <div class="nx-cardx">
+          <h2>Transporte</h2>
+          <p class="nx-muted" style="color:#46514a;line-height:1.7">{{ freight_labels.get(t.get('freight_mode') or '', 'Não informado') }}{% if x.get('carrier_name') %}<br>{{ x.get('carrier_name') }}{% if x.get('vehicle_plate') %} · placa {{ x.get('vehicle_plate') }}{% endif %}{% endif %}{% if x.get('volume_quantity') %}<br>{{ x.get('volume_quantity') }} {{ x.get('volume_species') or 'volumes' }}{% endif %}{% if x.get('gross_weight_kg') %} · peso bruto {{ x.get('gross_weight_kg') }} kg{% endif %}</p>
+        </div>
+        <div class="nx-cardx">
+          <h2>Pagamento</h2>
+          <p class="nx-muted" style="color:#46514a;line-height:1.7">{{ n.snapshot.get('payment_method') or 'A definir' }} · {{ 'a prazo' if n.snapshot.get('payment_condition') == 'a_prazo' else 'à vista' }}<br>Lançado pela venda em Comercialização</p>
+        </div>
+      </section>
+
+      <section class="nx-cardx">
+        <h2>Informações complementares</h2>
+        <p class="nx-muted" style="color:#46514a">{{ x.get('additional_info') or 'Nenhuma informação complementar.' }}</p>
+      </section>
+    </div>
+
+    <aside style="flex:1 1 21.25rem;min-width:0;display:flex;flex-direction:column;gap:1.25rem">
+      <section class="nx-cardx">
+        <h2>Venda vinculada</h2>
+        <a class="nx-linked" href="/producao/comercializacao?search={{ n.sale_code }}">
+          <span><strong>{{ n.sale_code }}</strong><span class="nx-sub">{{ n.product_line }}</span></span>
+          <span style="font-size:.8125rem;font-weight:600;color:#446a36">Abrir venda</span>
+        </a>
+      </section>
+      <section class="nx-cardx">
+        <h2>Histórico</h2>
+        {% if events %}
+        <ol class="nx-tl">
+          {% for ev in events %}
+          <li><div class="nx-tl-mark"><span class="nx-tl-dot is-{{ ev.tone }}"></span><span class="nx-tl-line"></span></div>
+            <div class="nx-tl-body"><p class="t">{{ ev.title }}</p><p class="x">{{ ev.text }}</p><p class="w">{{ ev.when }}</p></div></li>
+          {% endfor %}
+        </ol>
+        {% else %}<p class="nx-muted">Nenhum evento registrado ainda.</p>{% endif %}
+      </section>
+    </aside>
+  </div>
+
+  {% if n.status == 'autorizada' and n.can_cancel and can_write_page %}
+  <dialog class="nx-dialog" id="nx-cancel" aria-labelledby="nx-cancel-title" {% if open_cancel %}data-nx-autoopen{% endif %}>
+    <form method="post" action="/notas-fiscais/{{ n.id }}/cancelar">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <h2 id="nx-cancel-title">Cancelar a NF-e {{ n.title }}?</h2>
+      <p class="nx-muted" style="color:#46514a;font-size:.875rem;line-height:1.55">O cancelamento não pode ser desfeito. A nota continua no histórico como <strong>Cancelada</strong> e a venda {{ n.sale_code }} volta a ficar sem nota.</p>
+      <div class="nx-impact">
+        <div><span>Hoje</span><strong>Autorizada · {{ n.value_br }}</strong></div>
+        <span aria-hidden="true" style="color:#7a857e">→</span>
+        <div><span>Depois</span><strong style="color:#b42318">Cancelada · R$ 0,00</strong></div>
+      </div>
+      <label class="nx-f" for="nx-reason">Motivo do cancelamento
+        <textarea id="nx-reason" name="reason" rows="3" maxlength="255" class="nx-textarea" data-nx-min="15" placeholder="Ex.: quantidade informada errada na nota" required></textarea>
+        <span class="nx-counter" data-nx-counter="nx-reason"></span>
+      </label>
+      <div style="display:flex;flex-wrap:wrap;gap:.625rem;justify-content:flex-end">
+        <button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-close>Voltar</button>
+        <button type="submit" class="sf-btn nx-btn-danger" data-nx-enable="nx-reason" disabled>Confirmar cancelamento</button>
+      </div>
+      <p class="nx-muted" style="font-size:.75rem">Ambiente de teste: o pedido não é enviado à SEFAZ.</p>
+    </form>
+  </dialog>
+  {% endif %}
+</div>
+<script src="/static/js/notas_fiscais.js?v=20261122nx1" defer></script>
+{% endblock %}

@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -262,5 +262,82 @@ class NfeClientFiscalConfig(Base):
     next_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     sefaz_credential_status: Mapped[str] = mapped_column(String(30), nullable=False, default='nao_credenciado')
     pilot_homologacao_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class NfeFiscalProduct(Base):
+    """Produto fiscal da fazenda: o que sai escrito no DANFE (descrição, NCM, unidades)."""
+    __tablename__ = 'nfe_fiscal_products'
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    farm_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(String(120), nullable=False, default='')
+    code: Mapped[str] = mapped_column(String(60), nullable=False, default='')
+    ncm: Mapped[str] = mapped_column(String(8), nullable=False, default='')
+    origin: Mapped[str] = mapped_column(String(1), nullable=False, default='0')
+    commercial_unit: Mapped[str] = mapped_column(String(6), nullable=False, default='SC')
+    tax_unit: Mapped[str] = mapped_column(String(6), nullable=False, default='SC')
+    kg_per_unit: Mapped[str] = mapped_column(String(12), nullable=False, default='60')
+    lot_stages_json: Mapped[str] = mapped_column(Text, nullable=False, default='[]')
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class NfeFiscalOperation(Base):
+    """Operação fiscal versionada (natureza, CFOP, ICMS, Funrural). Ativada pelo próprio usuário."""
+    __tablename__ = 'nfe_fiscal_operations'
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    root_id: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    farm_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default='rascunho')
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    nature: Mapped[str] = mapped_column(String(60), nullable=False, default='')
+    finality: Mapped[str] = mapped_column(String(1), nullable=False, default='1')
+    cfop_in: Mapped[str] = mapped_column(String(4), nullable=False, default='')
+    cfop_out: Mapped[str] = mapped_column(String(4), nullable=False, default='')
+    icms_cst: Mapped[str] = mapped_column(String(2), nullable=False, default='')
+    funrural: Mapped[str] = mapped_column(String(20), nullable=False, default='retido_comprador')
+    ibs_cbs_cst: Mapped[str] = mapped_column(String(3), nullable=False, default='')
+    ibs_cbs_class: Mapped[str] = mapped_column(String(6), nullable=False, default='')
+    info: Mapped[str] = mapped_column(Text, nullable=False, default='')
+    activated_by: Mapped[int] = mapped_column(Integer, nullable=True)
+    activated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class NfeIssuerLogo(Base):
+    """Logotipo do produtor para o DANFE (opcional; nunca o logo do SiSFarm)."""
+    __tablename__ = 'nfe_issuer_logos'
+    __table_args__ = (UniqueConstraint('organization_id', 'farm_id', name='uq_nfe_issuer_logo_farm'),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    farm_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class NfeFarmFiscalPrefs(Base):
+    """Preferências de texto da fazenda para as notas (texto padrão nas informações complementares)."""
+    __tablename__ = 'nfe_farm_fiscal_prefs'
+    __table_args__ = (UniqueConstraint('organization_id', 'farm_id', name='uq_nfe_farm_fiscal_prefs'),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    farm_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    default_info: Mapped[str] = mapped_column(Text, nullable=False, default='')
     updated_by: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

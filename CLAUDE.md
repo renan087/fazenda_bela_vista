@@ -33,6 +33,11 @@ ERP agrícola para fazendas de café (pt-BR). Usuários: produtores e equipe de 
 - Estados vazios com mensagem útil; erros em linguagem clara com o próximo passo. Respeitar `prefers-reduced-motion`.
 - Acessibilidade: `aria-label` em botões só com ícone, foco visível, contraste adequado.
 
+## NF-e
+- Página `/notas-fiscais` (lista, detalhe, emissão em 3 etapas) e Configurações fiscais (`/producao/nfe/configuracao`): produto fiscal e operação fiscal são cadastros separados (`app/services/nfe_fiscal_setup.py`); situação de cada nota em `app/services/nfe_notes.py`.
+- Sem validação de contador: o usuário ativa a operação marcando que conferiu os dados e assume a responsabilidade. Emissão e cancelamento só simulados no ambiente de teste; não habilitar transmissão real sem pedido.
+- DANFE (`nfe_danfe_preview.py`) no padrão retrato; nunca usar o logo do SiSFarm — só o logotipo enviado pelo produtor.
+
 ## Assistente Pezinho (IA)
 - Agente em `app/services/stock_assistant.py` (formato chat.completions). Provedor por env: `ASSISTANT_PROVIDER=anthropic|openai`; Anthropic via `app/services/anthropic_adapter.py` (`ANTHROPIC_API_KEY`, `ANTHROPIC_ASSISTANT_MODEL`, padrão `claude-opus-5-5`, `ANTHROPIC_ASSISTANT_EFFORT`). Transcrição de áudio e recomendação de adubação seguem na OpenAI.
 - Mascote: desenho e animações em `app/services/mascot.py`; regerar os SVGs com `python -m app.services.mascot` (há teste que compara). Widget do canto: `partials/pezinho.html` + `static/js/pezinho.js`; estados: acenando, pronto, falando, pensando, alerta (bate na tela), comemorando, dormindo, zangado e espiando (escondido).

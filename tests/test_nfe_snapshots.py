@@ -192,24 +192,24 @@ def test_snapshot_routes_reject_other_organization(monkeypatch):
 
 
 def test_draft_template_renders_snapshots_and_local_history():
-    from jinja2 import ChoiceLoader, DictLoader
-    from app.web import routes
-    env = routes.templates.env.overlay(loader=ChoiceLoader([
-        DictLoader({'base.html': '{% block content %}{% endblock %}'}),
-        routes.templates.env.loader,
-    ]))
-    snapshot = {'venda': 'V-0001', 'comprador': 'Teste', 'data_venda': '2026-11-21', 'itens': [], 'valor_bruto': '0'}
-    html = env.get_template('nfe_draft.html').render(
-        draft=SimpleNamespace(id='id'), issuer=None, snapshot=snapshot, details={},
-        technical={}, technical_items={},
-        snapshots=[{
-            'version': 1, 'integrity_ok': True, 'short_hash': 'abcdef123456',
-            'pending_count': 2, 'note': 'Conferência inicial', 'simulated_key': '',
-        }],
-        draft_events=[SimpleNamespace(summary='Versão de teste v1 congelada (SHA-256 abcdef123456…).', created_at=None)],
-        csrf_token='x', can_write_page=True,
-    )
-    assert 'Versões congeladas e histórico local (teste)' in html
-    assert 'abcdef123456' in html
-    assert 'Conferência inicial' in html
-    assert 'Versão de teste v1 congelada' in html
+    """O histórico da nota (detalhe em Notas Fiscais) traduz os marcos locais para linguagem simples."""
+    import json
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from app.db.base import Base
+    from app.models.nfe_draft import NfeDraft
+    from app.services.nfe_notes import history
+    from app.services.nfe_snapshots import record_draft_event
+    engine = create_engine('sqlite://')
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    draft = NfeDraft(id='h' * 32, organization_id=1, farm_id=2, sale_code='V-0001', created_by=3,
+                     snapshot_json=json.dumps({'itens': []}))
+    db.add(draft)
+    record_draft_event(db, draft_id=draft.id, organization_id=1, farm_id=2, event_type='snapshot_congelado',
+                       summary='Versão de teste v1 congelada (SHA-256 abcdef123456…).', user_id=3, commit=True)
+    items = history(db, draft=draft)
+    assert items[0]['title'] == 'Conferida e confirmada'
+    assert items[0]['text'].startswith('Dados travados para o envio')
+    assert history(db, draft=NfeDraft(id='o' * 32, organization_id=9, farm_id=2, sale_code='x', created_by=3, snapshot_json='{}')) == []
+    db.close()

@@ -112,7 +112,7 @@ def test_certificate_upload_enforces_permission_and_encrypts_in_vault(monkeypatc
         allowed_credential_statuses=ALLOWED_CREDENTIAL_STATUSES,
         allowed_crts=ALLOWED_CRTS,
     )
-    assert 'Configuração fiscal da fazenda' in html
+    assert 'Configurações fiscais' in html and 'Certificado digital A1' in html
     assert cert.subject_cn in html
     assert cert.ciphertext_b64 not in html
     assert 'senha-piloto-123' not in html

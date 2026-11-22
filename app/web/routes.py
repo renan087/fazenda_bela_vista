@@ -22118,11 +22118,22 @@ def commercialization_page(
                 continue
             if origin_ids == current_ids.get(item.sale_code):
                 draft_by_sale.setdefault(item.sale_code, item.id)
+    note_by_sale = {}
+    if draft_by_sale:
+        from app.models.nfe_draft import NfeIssuerProfile
+        from app.services.nfe_notes import load_note
+        _issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=scope["active_farm_id"]).first()
+        for _code, _did in draft_by_sale.items():
+            _d = db.get(NfeDraft, _did)
+            if _d is not None:
+                _n = load_note(db, _d, issuer=_issuer)
+                note_by_sale[_code] = {"id": _d.id, "status": _n["status"], "label": _n["meta"]["label"], "tone": _n["meta"]["tone"],
+                                       "number": _n["number"], "issues": len(_n["issues"])}
     return templates.TemplateResponse(
         "commercialization.html",
         _base_context(
             request, user, csrf_token, "commercialization", _repo=repo,
-            sale_groups=page_groups, fiscal_draft_by_sale=draft_by_sale, sale_pagination=pagination, sale_focus=focus,
+            sale_groups=page_groups, fiscal_draft_by_sale=draft_by_sale, fiscal_note_by_sale=note_by_sale, sale_pagination=pagination, sale_focus=focus,
             sale_status_options=SALE_STATUS_OPTIONS, sale_status_counts=status_counts, sale_total_count=len(all_groups),
             sale_selected_status=normalized_status, sale_search=search or "", sale_harvest_id=harvest_id,
             sale_filters_active=bool(normalized_status or search_term or harvest_id),
@@ -22606,8 +22617,19 @@ def create_fiscal_draft_action(sale_code: str, request: Request, csrf_token: str
     farm = db.get(Farm, scope["active_farm_id"])
     if not farm or farm.organization_id != user.organization_id:
         raise HTTPException(status_code=403, detail="Fazenda indisponível.")
+    from app.models.nfe_draft import NfeDraft, NfeIssuerProfile
+    from app.services.nfe_notes import load_note
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    for existing in (db.query(NfeDraft).filter_by(organization_id=user.organization_id, farm_id=farm.id, sale_code=sale_code)
+                     .order_by(NfeDraft.created_at.desc()).limit(5).all()):
+        status_now = load_note(db, existing, issuer=issuer)["status"]
+        if status_now in ("rascunho", "pendente", "rejeitada"):
+            return _redirect("/producao/rascunhos-fiscais/" + existing.id)
+        if status_now in ("enviando", "autorizada"):
+            return _redirect("/notas-fiscais/" + existing.id)
+        break
     try:
-        draft = create_draft(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id, records=records)
+        draft = _nf_create_draft_for_sale(db, user, farm, sale_code, scope)
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect("/producao/comercializacao")
@@ -22685,6 +22707,17 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
     key_summary = build_simulated_access_key_summary(issuer, technical, identification)
     snapshots = list_draft_snapshots(db, draft_id=draft.id, organization_id=user.organization_id, farm_id=scope["active_farm_id"])
     draft_events = list_draft_events(db, draft_id=draft.id, organization_id=user.organization_id, farm_id=scope["active_farm_id"])
+    from app.services.nfe_fiscal_setup import active_operations, draft_sources, list_products
+    from app.services.nfe_notes import load_note
+    note = load_note(db, draft, issuer=issuer)
+    step = request.query_params.get("etapa") or ""
+    if note["status"] in ("enviando", "autorizada", "cancelada") and step != "enviada":
+        return _redirect(f"/notas-fiscais/{draft.id}")
+    if step not in ("conferir", "enviada"):
+        step = "preencher"
+    if step == "conferir" and note["status"] == "pendente":
+        _flash(request, "error", "Resolva as pendências antes de conferir.")
+        step = "preencher"
     return templates.TemplateResponse("nfe_draft.html", _base_context(
         request, user, csrf_token, "commercialization", title="Emitir nota fiscal", draft=draft,
         farm_name=farm.name if farm else "", buyer=buyer, has_active_cert=has_active_cert,
@@ -22696,7 +22729,12 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
         item_review={r['item_index']: r['issues'] for r in review_item_values(snapshot, technical)},
         tax_summaries=summarize_test_tax_values(snapshot, technical),
         tax_review=review_test_tax_fields(snapshot, technical),
-        review=review_preparation(snapshot, issuer, prepared, details_saved=bool(details)), _repo=repo))
+        review=review_preparation(snapshot, issuer, prepared, details_saved=bool(details)), _repo=repo,
+        step=step, note=note, sources=draft_sources(db, draft=draft),
+        fiscal_products=list_products(db, organization_id=user.organization_id, farm_id=scope["active_farm_id"]),
+        fiscal_operations=active_operations(db, organization_id=user.organization_id, farm_id=scope["active_farm_id"]),
+        freight_options=[("9", "Sem transporte (retirada)"), ("0", "Por conta da fazenda (CIF)"), ("1", "Por conta do comprador (FOB)"),
+                         ("2", "Por conta de terceiros"), ("3", "Transporte próprio da fazenda"), ("4", "Transporte próprio do comprador")]))
 
 
 @router.get("/producao/rascunhos-fiscais/{draft_id}/previa-xml")
@@ -22755,14 +22793,7 @@ def fiscal_preview_danfe_pdf(draft_id: str, request: Request, db: Session = Depe
     identification = db.query(NfeDraftIdentification).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
     extra_row = db.query(NfeDraftExtraData).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
     try:
-        pdf_bytes = build_danfe_preview_pdf(
-            snapshot=json.loads(draft.snapshot_json),
-            issuer=issuer,
-            details=json.loads(details.data_json) if details else {},
-            technical=json.loads(technical.data_json) if technical else {},
-            identification=identification,
-            extra_data=json.loads(extra_row.data_json) if extra_row else {},
-        )
+        pdf_bytes = _nf_danfe_bytes(db, user, farm, draft)
     except (ValueError, TypeError):
         raise HTTPException(status_code=422, detail="Não foi possível gerar a prévia de DANFE deste rascunho.") from None
     return Response(
@@ -23161,9 +23192,40 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
         .all()
     )
     master_key_configured = len(os.environ.get("NFE_CERT_MASTER_KEY", "").strip()) >= 32
+    from datetime import datetime as _dt, timezone as _tz
+    from app.services import nfe_fiscal_setup as fs
+    fs.convert_legacy_profiles(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id)
+    products = fs.list_products(db, organization_id=user.organization_id, farm_id=farm.id)
+    operations = fs.list_operations(db, organization_id=user.organization_id, farm_id=farm.id)
+    logo = fs.get_logo(db, organization_id=user.organization_id, farm_id=farm.id)
+    prefs = fs.get_prefs(db, organization_id=user.organization_id, farm_id=farm.id)
+    active_cert = next((c for c in certificates if c.is_active), None)
+    cert_days = None
+    if active_cert and active_cert.valid_until:
+        until = active_cert.valid_until if active_cert.valid_until.tzinfo else active_cert.valid_until.replace(tzinfo=_tz.utc)
+        cert_days = (until - _dt.now(_tz.utc)).days
+    issuer_ok = bool(issuer and issuer.name and issuer.cpf and issuer.state_registration and issuer.municipality_code)
+    product_views = [fs.product_view(p) for p in products]
+    active_ops = [g for g in operations if g["active"]]
+    setup_steps = [
+        {"key": "emit", "title": "Emitente e certificado", "ok": issuer_ok and cert_days is not None and cert_days >= 0,
+         "text": ("CPF, IE e endereço preenchidos" if issuer_ok else "Faltam dados do produtor") + " · " +
+                 (f"certificado válido por {cert_days} dias" if cert_days is not None and cert_days >= 0 else "sem certificado A1 ativo")},
+        {"key": "prod", "title": "Produtos fiscais", "ok": any(v["complete"] for v in product_views),
+         "text": (f"{len(products)} produto(s) · {sum(1 for v in product_views if v['complete'])} completo(s)" if products else "Nenhum produto cadastrado")},
+        {"key": "oper", "title": "Operações fiscais", "ok": bool(active_ops),
+         "text": (f"{len(active_ops)} ativa(s)" + (f" e {sum(1 for g in operations if not g['active'] or g['draft'])} rascunho(s)" if any((not g['active']) or g['draft'] for g in operations) else "")) if operations else "Nenhuma operação cadastrada"},
+        {"key": "num", "title": "Série e numeração", "ok": True,
+         "text": f"Série {readiness['config'].default_series if readiness.get('config') else 920} · próxima nota {readiness['config'].next_number if readiness.get('config') else 1}"},
+        {"key": "txt", "title": "Textos padrão", "ok": True, "text": "Texto somado às informações complementares" if prefs and prefs.default_info else "Opcional"},
+    ]
+    section = request.query_params.get("secao") or ("oper" if products and not active_ops else "inicio")
+    if section not in ("inicio", "emit", "prod", "oper", "num", "txt", "amb"):
+        section = "inicio"
+    item = request.query_params.get("item") or ""
     return templates.TemplateResponse("nfe_farm_config.html", _base_context(
-        request, user, csrf_token, "commercialization",
-        title="Configuração fiscal da fazenda",
+        request, user, csrf_token, "fiscal_notes",
+        title="Configurações fiscais",
         issuer=issuer,
         cfg=readiness["config"],
         readiness=readiness,
@@ -23175,6 +23237,10 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
         allowed_credential_statuses=ALLOWED_CREDENTIAL_STATUSES,
         allowed_crts=ALLOWED_CRTS,
         _repo=repo,
+        section=section, item=item, product_views=product_views, operations=operations, has_logo=bool(logo), prefs=prefs,
+        setup_steps=setup_steps, cert_days=cert_days, lot_stage_choices=fs.LOT_STAGE_CHOICES, units=fs.UNITS, origins=fs.ORIGINS,
+        finalities=fs.FINALITIES, funrural_options=fs.FUNRURAL_OPTIONS, product_templates=fs.PRODUCT_TEMPLATES,
+        operation_templates=fs.OPERATION_TEMPLATES, operation_missing=fs.operation_missing,
     ))
 
 
@@ -26883,3 +26949,566 @@ def _purchase_edit_state(repo: FarmRepository, entry) -> dict:
             "open": None,
         },
     }
+
+
+# ============================================================ Notas Fiscais (gerenciamento NF-e)
+
+def _nf_scope(request: Request, db: Session, user: User, redirect_path: str = "/notas-fiscais"):
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, redirect_path, require_season=False)
+    if denied:
+        return repo, None, None, denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    if not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=403, detail="Fazenda indisponível.")
+    return repo, scope, farm, None
+
+
+def _nf_draft(db: Session, user: User, farm: Farm, draft_id: str):
+    from app.models.nfe_draft import NfeDraft
+    draft = db.query(NfeDraft).filter_by(id=draft_id, organization_id=user.organization_id, farm_id=farm.id).first()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Nota não encontrada.")
+    return draft
+
+
+def _nf_br_dt(dt, short: bool = False) -> str:
+    from datetime import timedelta, timezone as _tz
+    if not dt:
+        return ""
+    if not dt.tzinfo:
+        dt = dt.replace(tzinfo=_tz.utc)
+    return dt.astimezone(_tz(timedelta(hours=-3))).strftime("%d/%m às %H:%M" if short else "%d/%m/%Y às %H:%M")
+
+
+def _nf_actions(note: dict) -> dict:
+    """Ações válidas para cada situação da NF-e (painel, menu de três pontinhos e detalhe)."""
+    nid = note["id"]
+    edit = f"/producao/rascunhos-fiscais/{nid}"
+    detail = f"/notas-fiscais/{nid}"
+    danfe = f"/notas-fiscais/{nid}/danfe.pdf"
+    xml = f"/notas-fiscais/{nid}/xml"
+    st = note["status"]
+    duplicate = {"label": "Duplicar", "icon": "copy", "post": f"{detail}/duplicar", "hint": "cria novo rascunho"}
+    if st in ("rascunho", "pendente"):
+        primary = ({"label": "Continuar preenchendo", "icon": "edit", "href": edit} if st == "rascunho"
+                   else {"label": "Resolver pendências", "icon": "alert", "href": edit})
+        tiles = [{"label": "Conferir e emitir", "icon": "check", "href": edit + "?etapa=conferir"} if st == "rascunho"
+                 else {"label": "Editar rascunho", "icon": "edit", "href": edit},
+                 {"label": "Prévia do DANFE", "icon": "eye", "href": danfe}, duplicate]
+        danger = {"label": "Excluir rascunho", "icon": "trash", "post": f"{detail}/excluir", "hint": "nada foi enviado",
+                  "disabled": not note["can_delete"], "confirm": "Excluir este rascunho? Isso não pode ser desfeito."}
+    elif st == "enviando":
+        primary = {"label": "Ver detalhes", "icon": "refresh", "href": detail}
+        tiles = [{"label": "Ver dados enviados", "icon": "eye", "href": detail}]
+        danger = None
+    elif st == "autorizada":
+        primary = {"label": "Baixar DANFE (PDF)", "icon": "download", "href": danfe}
+        tiles = [{"label": "Baixar XML", "icon": "code", "href": xml},
+                 {"label": "Enviar ao comprador", "icon": "send", "soon": True},
+                 {"label": "Carta de correção", "icon": "cce", "soon": True}, duplicate]
+        danger = {"label": "Cancelar nota", "icon": "x", "href": detail + "?cancelar=1",
+                  "hint": ("até " + _nf_br_dt(note["cancel_deadline"], short=True)) if note["can_cancel"] else "prazo de 24 h encerrado",
+                  "disabled": not note["can_cancel"]}
+    elif st == "rejeitada":
+        primary = {"label": "Corrigir e reenviar", "icon": "edit", "href": edit}
+        tiles = [{"label": "Ver retorno da SEFAZ", "icon": "eye", "href": detail}, duplicate]
+        danger = None
+    else:
+        primary = {"label": "Baixar XML do cancelamento", "icon": "code", "href": xml + "?tipo=cancelamento"}
+        tiles = [{"label": "DANFE", "icon": "download", "href": danfe, "hint": "com marca CANCELADA"}, duplicate]
+        danger = None
+    return {"primary": primary, "tiles": tiles, "danger": danger}
+
+
+def _nf_box(note: dict) -> dict:
+    st = note["status"]
+    if st == "rascunho":
+        return {"tone": "neutral", "title": "Rascunho salvo", "text": f"Preenchido a partir da venda {note['sale_code']}. Nada foi enviado ainda."}
+    if st == "pendente":
+        n = len(note["issues"])
+        return {"tone": "amber", "title": f"{n} pendência{'s' if n != 1 else ''} antes de conferir",
+                "text": "\n".join("• " + i for i in note["issues"][:5])}
+    if st == "enviando":
+        return {"tone": "blue", "title": "Aguardando retorno da SEFAZ", "text": "Você não precisa fazer nada. Avisamos quando houver resposta."}
+    if st == "autorizada":
+        return {"tone": "green", "title": "Autorizada (ambiente de teste)",
+                "text": f"Protocolo {note['protocol'] or '—'}. Cancelamento possível até 24 h após a autorização."}
+    if st == "rejeitada":
+        return {"tone": "red", "title": note["reject_reason"] or "Rejeitada", "text": "Corrija e reenvie: o número da nota é mantido."}
+    return {"tone": "neutral", "title": "Nota cancelada", "text": ("Motivo: " + note["cancel_reason"]) if note["cancel_reason"] else ""}
+
+
+def _nf_public(note: dict) -> dict:
+    note["cancel_deadline_br"] = _nf_br_dt(note["cancel_deadline"])
+    note["authorized_br"] = _nf_br_dt(note["authorized_at"])
+    return {
+        "id": note["id"], "status": note["status"], "label": note["meta"]["label"], "tone": note["meta"]["tone"],
+        "title": note["title"], "subtitle": note["subtitle"], "kind": "NF-e · Série " + str(note["series"]) if note["series"] else "Rascunho de NF-e",
+        "emission": note["emission_br"], "day": note["emission_day"], "buyer": note["buyer"], "doc": note["buyer_doc"],
+        "product": note["product_line"], "sale": note["sale_code"], "value": float(note["value"]), "value_br": note["value_br"],
+        "box": _nf_box(note), "actions": _nf_actions(note), "detail": f"/notas-fiscais/{note['id']}",
+    }
+
+
+@router.get("/notas-fiscais")
+def fiscal_notes_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+                      csrf_token: str = Depends(get_csrf_token)):
+    from datetime import date as _date
+    from app.models.nfe_draft import NfeClientFiscalConfig
+    from app.services.nfe_fiscal_setup import active_operations
+    from app.services.nfe_notes import list_notes, summarize
+    repo, scope, farm, denied = _nf_scope(request, db, user, "/dashboard")
+    if denied:
+        return denied
+    notes = list_notes(db, organization_id=user.organization_id, farm_id=farm.id)
+    public = [_nf_public(n) for n in notes]
+    today = _date.today()
+    summary = summarize(notes, month_prefix=today.strftime("%Y-%m"))
+    months = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
+    cfg = db.query(NfeClientFiscalConfig).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    buyers = []
+    for n in public:
+        if n["buyer"] not in buyers:
+            buyers.append(n["buyer"])
+    return templates.TemplateResponse("notas_fiscais.html", _base_context(
+        request, user, csrf_token, "fiscal_notes", _repo=repo, title="Notas Fiscais",
+        notes=notes, notes_public=public, summary=summary, month_name=months[today.month - 1], farm=farm,
+        season_label=(scope.get("active_season").name if scope.get("active_season") is not None and getattr(scope.get("active_season"), "name", None) else ""),
+        env_test=(cfg is None or cfg.environment == "teste_ficticio"), buyers=buyers[:8],
+        setup_ready=bool(active_operations(db, organization_id=user.organization_id, farm_id=farm.id)),
+        today_iso=today.isoformat(),
+    ))
+
+
+@router.get("/notas-fiscais/{draft_id}")
+def fiscal_note_detail_page(draft_id: str, request: Request, db: Session = Depends(get_db),
+                            user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token)):
+    from app.models.nfe_draft import NfeIssuerProfile
+    from app.services.nfe_fiscal_setup import draft_sources
+    from app.services.nfe_notes import history, load_note
+    repo, scope, farm, denied = _nf_scope(request, db, user)
+    if denied:
+        return denied
+    draft = _nf_draft(db, user, farm, draft_id)
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    note = load_note(db, draft, issuer=issuer)
+    public = _nf_public(note)
+    buyer = None
+    if note["snapshot"].get("comprador_id"):
+        buyer = db.query(CoffeeBuyer).filter_by(id=note["snapshot"]["comprador_id"], organization_id=user.organization_id).first()
+    return templates.TemplateResponse("nota_fiscal.html", _base_context(
+        request, user, csrf_token, "fiscal_notes", _repo=repo, title="NF-e " + note["title"],
+        note=note, pub=public, issuer=issuer, buyer=buyer, events=history(db, draft=draft),
+        sources=draft_sources(db, draft=draft), open_cancel=request.query_params.get("cancelar") == "1",
+        freight_labels={"0": "Por conta da fazenda (CIF)", "1": "Por conta do comprador (FOB)", "2": "Por conta de terceiros",
+                        "3": "Transporte próprio da fazenda", "4": "Transporte próprio do comprador", "9": "Sem transporte"},
+    ))
+
+
+@router.post("/notas-fiscais/{draft_id}/cancelar")
+def fiscal_note_cancel(draft_id: str, request: Request, csrf_token: str = Form(...), reason: str = Form(""),
+                       db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.nfe_notes import cancel_note
+    validate_csrf(request, csrf_token)
+    repo, scope, farm, denied = _nf_scope(request, db, user)
+    if denied:
+        return denied
+    draft = _nf_draft(db, user, farm, draft_id)
+    try:
+        cancel_note(db, draft=draft, user_id=user.id, reason=reason)
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(f"/notas-fiscais/{draft.id}?cancelar=1")
+    _flash(request, "success", "Nota cancelada no ambiente de teste. A venda voltou a ficar sem nota.")
+    return _redirect(f"/notas-fiscais/{draft.id}")
+
+
+@router.post("/notas-fiscais/{draft_id}/excluir")
+def fiscal_note_delete(draft_id: str, request: Request, csrf_token: str = Form(...),
+                       db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.nfe_notes import delete_draft
+    validate_csrf(request, csrf_token)
+    repo, scope, farm, denied = _nf_scope(request, db, user)
+    if denied:
+        return denied
+    draft = _nf_draft(db, user, farm, draft_id)
+    try:
+        delete_draft(db, draft=draft)
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(f"/notas-fiscais/{draft_id}")
+    _flash(request, "success", "Rascunho excluído.")
+    return _redirect("/notas-fiscais")
+
+
+def _nf_create_draft_for_sale(db: Session, user: User, farm: Farm, sale_code: str, scope: dict):
+    from app.models.harvest import HarvestRecord
+    from app.models.nfe_draft import NfeIssuerProfile
+    from app.services.coffee_sales import sale_records
+    from app.services.harvest_lots import stage_of
+    from app.services.nfe_draft import create_draft
+    from app.services.nfe_fiscal_setup import apply_setup_to_draft, suggest_operation, suggest_product
+    records = sale_records(db, farm.id, sale_code)
+    if not records or not all(_commercialization_record_matches_scope(row, scope) for row in records):
+        raise HTTPException(status_code=404, detail="Venda não encontrada.")
+    draft = create_draft(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id, records=records)
+    operation = suggest_operation(db, organization_id=user.organization_id, farm_id=farm.id)
+    if operation:
+        stage = None
+        harvest = db.get(HarvestRecord, records[0].harvest_id) if getattr(records[0], "harvest_id", None) else None
+        if harvest is not None:
+            stage = stage_of(harvest)[0]
+        product = suggest_product(db, organization_id=user.organization_id, farm_id=farm.id, lot_stage=stage)
+        snapshot = json.loads(draft.snapshot_json)
+        buyer = (db.query(CoffeeBuyer).filter_by(id=snapshot.get("comprador_id"), organization_id=user.organization_id).first()
+                 if snapshot.get("comprador_id") else None)
+        issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+        try:
+            apply_setup_to_draft(db, draft=draft, product=product, operation=operation, buyer=buyer,
+                                 issuer_state=(issuer.state if issuer else "BA"), user_id=user.id)
+        except ValueError:
+            db.rollback()
+    return draft
+
+
+@router.post("/notas-fiscais/{draft_id}/duplicar")
+def fiscal_note_duplicate(draft_id: str, request: Request, csrf_token: str = Form(...),
+                          db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    repo, scope, farm, denied = _nf_scope(request, db, user)
+    if denied:
+        return denied
+    draft = _nf_draft(db, user, farm, draft_id)
+    try:
+        new_draft = _nf_create_draft_for_sale(db, user, farm, draft.sale_code, scope)
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(f"/notas-fiscais/{draft_id}")
+    _flash(request, "success", "Novo rascunho criado a partir desta nota.")
+    return _redirect(f"/producao/rascunhos-fiscais/{new_draft.id}")
+
+
+@router.get("/notas-fiscais/{draft_id}/xml")
+def fiscal_note_xml(draft_id: str, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import NfeStoredDocument
+    repo, scope, farm, denied = _nf_scope(request, db, user)
+    if denied:
+        return denied
+    draft = _nf_draft(db, user, farm, draft_id)
+    doc_type = "evento_simulacao" if request.query_params.get("tipo") == "cancelamento" else "nfe_proc_simulacao"
+    doc = (db.query(NfeStoredDocument).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id,
+                                                 document_type=doc_type)
+           .order_by(NfeStoredDocument.created_at.desc()).first())
+    if not doc:
+        raise HTTPException(status_code=404, detail="XML disponível só para nota autorizada.")
+    suffix = "-cancelamento" if doc_type == "evento_simulacao" else ""
+    return Response(doc.xml_content.encode("utf-8"), media_type="application/xml", headers={
+        "Content-Disposition": f'attachment; filename="NFe{doc.access_key}{suffix}-teste.xml"',
+        "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
+def _nf_danfe_bytes(db: Session, user: User, farm: Farm, draft) -> bytes:
+    from app.models.nfe_draft import (NfeDraftDetails, NfeDraftExtraData, NfeDraftIdentification, NfeDraftTechnicalData,
+                                      NfeIssuerProfile)
+    from app.services.nfe_danfe_preview import build_danfe_preview_pdf
+    from app.services.nfe_fiscal_setup import get_logo
+    from app.services.nfe_notes import load_note
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    details = db.query(NfeDraftDetails).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    technical = db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    identification = db.query(NfeDraftIdentification).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    extra_row = db.query(NfeDraftExtraData).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    note = load_note(db, draft, issuer=issuer)
+    logo = get_logo(db, organization_id=user.organization_id, farm_id=farm.id)
+    when = ""
+    if note["authorized_at"]:
+        from datetime import timedelta, timezone as _tz
+        when = note["authorized_at"].astimezone(_tz(timedelta(hours=-3))).strftime("%d/%m/%Y %H:%M:%S")
+    return build_danfe_preview_pdf(
+        snapshot=json.loads(draft.snapshot_json), issuer=issuer,
+        details=json.loads(details.data_json) if details else {},
+        technical=json.loads(technical.data_json) if technical else {},
+        identification=identification if note["number"] else None,
+        extra_data=json.loads(extra_row.data_json) if extra_row else {},
+        logo_bytes=logo.data if logo else None, access_key=note["access_key"], protocol=note["protocol"],
+        protocol_when=when, cancelled=note["status"] == "cancelada",
+    )
+
+
+@router.get("/notas-fiscais/{draft_id}/danfe.pdf")
+def fiscal_note_danfe(draft_id: str, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    repo, scope, farm, denied = _nf_scope(request, db, user)
+    if denied:
+        return denied
+    draft = _nf_draft(db, user, farm, draft_id)
+    try:
+        pdf = _nf_danfe_bytes(db, user, farm, draft)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="Não foi possível gerar o DANFE desta nota.") from None
+    return Response(pdf, media_type="application/pdf", headers={
+        "Content-Disposition": f'inline; filename="danfe-{draft.sale_code}-teste.pdf"',
+        "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
+@router.post("/notas-fiscais/lote/{kind}")
+async def fiscal_notes_batch(kind: str, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    import io
+    import zipfile
+    from app.models.nfe_draft import NfeDraft, NfeStoredDocument
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    if kind not in ("xml.zip", "danfes.zip"):
+        raise HTTPException(status_code=404)
+    repo, scope, farm, denied = _nf_scope(request, db, user)
+    if denied:
+        return denied
+    ids = [str(v) for v in form.getlist("ids")][:200]
+    drafts = db.query(NfeDraft).filter(NfeDraft.organization_id == user.organization_id, NfeDraft.farm_id == farm.id,
+                                        NfeDraft.id.in_(ids)).all() if ids else []
+    buf = io.BytesIO()
+    count = 0
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for draft in drafts:
+            doc = (db.query(NfeStoredDocument).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id,
+                                                         document_type="nfe_proc_simulacao").first())
+            if not doc:
+                continue
+            if kind == "xml.zip":
+                zf.writestr(f"NFe{doc.access_key}-teste.xml", doc.xml_content)
+            else:
+                zf.writestr(f"danfe-{draft.sale_code}-{doc.access_key[-9:]}-teste.pdf", _nf_danfe_bytes(db, user, farm, draft))
+            count += 1
+    if not count:
+        _flash(request, "error", "Selecione ao menos uma nota autorizada para baixar em lote.")
+        return _redirect("/notas-fiscais")
+    name = "xml-notas-teste.zip" if kind == "xml.zip" else "danfes-teste.zip"
+    return Response(buf.getvalue(), media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
+
+
+@router.post("/producao/rascunhos-fiscais/{draft_id}/aplicar-operacao")
+def fiscal_apply_operation_action(draft_id: str, request: Request, csrf_token: str = Form(...),
+                                  operation_id: str = Form(""), product_id: str = Form(""),
+                                  db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import NfeFiscalOperation, NfeFiscalProduct, NfeIssuerProfile
+    from app.services.nfe_fiscal_setup import apply_setup_to_draft
+    from app.services.nfe_notes import load_note
+    validate_csrf(request, csrf_token)
+    repo, scope, farm, denied = _nf_scope(request, db, user)
+    if denied:
+        return denied
+    draft = _nf_draft(db, user, farm, draft_id)
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    if load_note(db, draft, issuer=issuer)["status"] not in ("rascunho", "pendente", "rejeitada"):
+        _flash(request, "error", "Esta nota já foi enviada e não pode ser alterada.")
+        return _redirect(f"/notas-fiscais/{draft.id}")
+    op = db.query(NfeFiscalOperation).filter_by(id=operation_id, organization_id=user.organization_id, farm_id=farm.id,
+                                                status="ativa").first()
+    product = db.query(NfeFiscalProduct).filter_by(id=product_id, organization_id=user.organization_id, farm_id=farm.id).first() if product_id else None
+    if not op:
+        _flash(request, "error", "Escolha uma operação fiscal ativa.")
+        return _redirect(f"/producao/rascunhos-fiscais/{draft.id}")
+    snapshot = json.loads(draft.snapshot_json)
+    buyer = (db.query(CoffeeBuyer).filter_by(id=snapshot.get("comprador_id"), organization_id=user.organization_id).first()
+             if snapshot.get("comprador_id") else None)
+    try:
+        apply_setup_to_draft(db, draft=draft, product=product, operation=op, buyer=buyer,
+                             issuer_state=(issuer.state if issuer else "BA"), user_id=user.id)
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(f"/producao/rascunhos-fiscais/{draft.id}")
+    _flash(request, "success", f"Operação “{op.name}” aplicada à nota.")
+    return _redirect(f"/producao/rascunhos-fiscais/{draft.id}")
+
+
+@router.post("/producao/rascunhos-fiscais/{draft_id}/emitir")
+def fiscal_confirm_emission_action(draft_id: str, request: Request, csrf_token: str = Form(...), confirm: str = Form(""),
+                                   db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.nfe_notes import confirm_emission
+    validate_csrf(request, csrf_token)
+    repo, scope, farm, denied = _nf_scope(request, db, user)
+    if denied:
+        return denied
+    draft = _nf_draft(db, user, farm, draft_id)
+    if confirm != "1":
+        _flash(request, "error", "Marque “Conferi os dados e quero emitir” para confirmar.")
+        return _redirect(f"/producao/rascunhos-fiscais/{draft.id}?etapa=conferir")
+    try:
+        confirm_emission(db, draft=draft, user_id=user.id)
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(f"/producao/rascunhos-fiscais/{draft.id}?etapa=conferir")
+    return _redirect(f"/producao/rascunhos-fiscais/{draft.id}?etapa=enviada")
+
+
+# ---------- Configurações fiscais: produtos, operações, logotipo e textos
+
+def _nf_cfg_redirect(section: str, item: str = ""):
+    return _redirect(f"/producao/nfe/configuracao?secao={section}" + (f"&item={item}" if item else ""))
+
+
+@router.post("/producao/nfe/configuracao/produtos")
+async def nfe_config_product_save(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.nfe_fiscal_setup import create_product_from_template, save_product
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo, scope, farm, denied = _nf_scope(request, db, user, "/producao/nfe/configuracao")
+    if denied:
+        return denied
+    try:
+        if form.get("template"):
+            product = create_product_from_template(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id,
+                                                   key=str(form.get("template")))
+            _flash(request, "success", f"Produto “{product.name}” criado a partir do modelo. Confira os dados.")
+        else:
+            product = save_product(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id, data=form,
+                                   product_id=str(form.get("product_id") or "") or None)
+            _flash(request, "success", f"Produto fiscal “{product.name}” salvo.")
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _nf_cfg_redirect("prod", str(form.get("product_id") or "novo"))
+    return _nf_cfg_redirect("prod", product.id)
+
+
+@router.post("/producao/nfe/configuracao/operacoes")
+async def nfe_config_operation_save(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.nfe_fiscal_setup import activate_operation, create_operation_from_template, save_operation
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo, scope, farm, denied = _nf_scope(request, db, user, "/producao/nfe/configuracao")
+    if denied:
+        return denied
+    try:
+        if form.get("template"):
+            op = create_operation_from_template(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id,
+                                                key=str(form.get("template")))
+            _flash(request, "success", f"Operação “{op.name}” criada em rascunho. Preencha o CST e ative.")
+            return _nf_cfg_redirect("oper", op.id)
+        op = save_operation(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id, data=form,
+                            operation_id=str(form.get("operation_id") or "") or None)
+        if form.get("activate") == "1":
+            activate_operation(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id,
+                               operation_id=op.id, accepted=form.get("accept") == "1")
+            _flash(request, "success", f"Operação “{op.name}” ativa (versão {op.version}). Vale para as próximas notas.")
+        else:
+            _flash(request, "success", f"Rascunho da operação “{op.name}” salvo.")
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _nf_cfg_redirect("oper", str(form.get("operation_id") or "novo"))
+    return _nf_cfg_redirect("oper", op.id)
+
+
+@router.post("/producao/nfe/configuracao/logo")
+async def nfe_config_logo_upload(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.nfe_fiscal_setup import LOGO_MAX_BYTES, delete_logo, save_logo
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo, scope, farm, denied = _nf_scope(request, db, user, "/producao/nfe/configuracao")
+    if denied:
+        return denied
+    try:
+        if form.get("remove") == "1":
+            delete_logo(db, organization_id=user.organization_id, farm_id=farm.id)
+            _flash(request, "success", "Logotipo removido. O DANFE sai só com o nome da fazenda.")
+        else:
+            upload = form.get("logo_file")
+            raw = await upload.read(LOGO_MAX_BYTES + 1) if upload is not None and hasattr(upload, "read") else b""
+            save_logo(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id, raw=raw)
+            _flash(request, "success", "Logotipo salvo. Ele aparece no DANFE das próximas notas.")
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+    return _nf_cfg_redirect("emit")
+
+
+@router.get("/producao/nfe/configuracao/logo.png")
+def nfe_config_logo_image(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.nfe_fiscal_setup import get_logo
+    repo, scope, farm, denied = _nf_scope(request, db, user, "/producao/nfe/configuracao")
+    if denied:
+        return denied
+    logo = get_logo(db, organization_id=user.organization_id, farm_id=farm.id)
+    if not logo:
+        raise HTTPException(status_code=404)
+    return Response(logo.data, media_type="image/png", headers={"Cache-Control": "private, no-store",
+                                                                 "X-Content-Type-Options": "nosniff"})
+
+
+@router.post("/producao/nfe/configuracao/textos")
+def nfe_config_texts_save(request: Request, csrf_token: str = Form(...), default_info: str = Form(""),
+                          db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.nfe_fiscal_setup import save_prefs
+    validate_csrf(request, csrf_token)
+    repo, scope, farm, denied = _nf_scope(request, db, user, "/producao/nfe/configuracao")
+    if denied:
+        return denied
+    try:
+        save_prefs(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id, data={"default_info": default_info})
+        _flash(request, "success", "Texto padrão salvo.")
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+    return _nf_cfg_redirect("txt")
+
+
+@router.post("/producao/rascunhos-fiscais/{draft_id}/salvar")
+async def fiscal_draft_save_all(draft_id: str, request: Request, db: Session = Depends(get_db),
+                                user: User = Depends(get_current_user_web)):
+    """Salva de uma vez comprador, produto/operação, detalhes por lote, transporte e observações."""
+    from app.models.nfe_draft import NfeDraftDetails, NfeDraftExtraData, NfeDraftTechnicalData, NfeIssuerProfile
+    from app.services.nfe_draft import clean_draft_details, clean_technical_data
+    from app.services.nfe_notes import load_note
+    from app.services.nfe_snapshots import record_draft_event
+    from app.services.nfe_tax_profiles import clean_extra_data
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo, scope, farm, denied = _nf_scope(request, db, user, "/producao/comercializacao")
+    if denied:
+        return denied
+    draft = _nf_draft(db, user, farm, draft_id)
+    back = f"/producao/rascunhos-fiscais/{draft.id}"
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    if load_note(db, draft, issuer=issuer)["status"] not in ("rascunho", "pendente", "rejeitada"):
+        _flash(request, "error", "Esta nota já foi enviada e não pode ser alterada.")
+        return _redirect(f"/notas-fiscais/{draft.id}")
+    try:
+        details_values = clean_draft_details(form)
+        tech_values = clean_technical_data(form, json.loads(draft.snapshot_json))
+        extra_values = clean_extra_data(form)
+    except (ValueError, TypeError) as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(back)
+    for model, values in ((NfeDraftDetails, details_values), (NfeDraftTechnicalData, tech_values), (NfeDraftExtraData, extra_values)):
+        row = db.query(model).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+        if not row:
+            row = model(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id, updated_by=user.id)
+            db.add(row)
+        row.data_json = json.dumps(values, ensure_ascii=False)
+        row.updated_by = user.id
+    record_draft_event(db, draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id,
+                       event_type="complementos_salvos", summary="Rascunho salvo na tela de emissão.", user_id=user.id)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        _flash(request, "error", "O rascunho foi alterado ao mesmo tempo em outra tela. Reabra e tente novamente.")
+        return _redirect(back)
+    if form.get("next") == "conferir":
+        note = load_note(db, draft, issuer=issuer)
+        if note["status"] == "pendente":
+            _flash(request, "error", "Ainda faltam dados: " + "; ".join(note["issues"][:4]) + ".")
+            return _redirect(back)
+        return _redirect(back + "?etapa=conferir")
+    if form.get("next") == "sair":
+        _flash(request, "success", "Rascunho salvo. Você pode continuar depois em Notas Fiscais.")
+        return _redirect("/notas-fiscais")
+    _flash(request, "success", "Rascunho salvo.")
+    return _redirect(back)

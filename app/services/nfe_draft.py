@@ -379,7 +379,7 @@ def map_sale_payment_and_freight(snapshot: dict) -> dict:
     }
 
 
-def apply_tax_profile_to_draft(db, *, draft, profile, buyer, user_id: int) -> None:
+def apply_tax_profile_to_draft(db, *, draft, profile, buyer, user_id: int, summary: str | None = None) -> None:
     """Aplica regras aprovadas de um NfeTaxProfile aos dados salvos do rascunho (1 clique)."""
     from app.models.nfe_draft import NfeDraftDetails, NfeDraftTechnicalData
     from app.services.nfe_snapshots import record_draft_event
@@ -413,6 +413,13 @@ def apply_tax_profile_to_draft(db, *, draft, profile, buyer, user_id: int) -> No
     existing_by_idx = {i.get('item_index'): i for i in existing_tech.get('items', []) if isinstance(i, dict)}
 
     unit = str(rules.get('unit') or 'SC').strip().upper()[:6]
+    tax_unit = str(rules.get('tax_unit') or unit).strip().upper()[:6]
+    try:
+        tax_factor = Decimal(str(rules.get('tax_factor') or '1')) if tax_unit != unit else Decimal('1')
+    except Exception:
+        tax_factor = Decimal('1')
+    if not tax_factor.is_finite() or tax_factor <= 0:
+        tax_factor = Decimal('1')
     form_like = {
         'emission_date': existing_tech.get('emission_date') or snapshot.get('data_venda') or '',
         'freight_mode': existing_tech.get('freight_mode') or sale_map['default_freight_mode'],
@@ -427,14 +434,15 @@ def apply_tax_profile_to_draft(db, *, draft, profile, buyer, user_id: int) -> No
         form_like[f'item_{idx}_ibs_cbs_cst'] = str(rules.get('ibs_cbs_cst') or prev.get('ibs_cbs_cst') or '')
         form_like[f'item_{idx}_ibs_cbs_class'] = str(rules.get('ibs_cbs_class') or prev.get('ibs_cbs_class') or '')
         form_like[f'item_{idx}_commercial_unit'] = unit
-        form_like[f'item_{idx}_tax_unit'] = unit
+        form_like[f'item_{idx}_tax_unit'] = tax_unit
         if qty > 0:
             qty_str = format(qty.quantize(Decimal('0.0001')), 'f')
             price_str = format(unit_price.quantize(Decimal('0.0000000001')), 'f')
             form_like[f'item_{idx}_commercial_quantity'] = qty_str
-            form_like[f'item_{idx}_tax_quantity'] = qty_str
+            tax_qty = qty * tax_factor
+            form_like[f'item_{idx}_tax_quantity'] = format(tax_qty.quantize(Decimal('0.0001')), 'f')
             form_like[f'item_{idx}_commercial_unit_price'] = price_str
-            form_like[f'item_{idx}_tax_unit_price'] = price_str
+            form_like[f'item_{idx}_tax_unit_price'] = format((gross / tax_qty).quantize(Decimal('0.0000000001')), 'f')
         for carry in ('icms_base', 'icms_value', 'icms_rate', 'ibs_cbs_base', 'ibs_uf_value',
                       'ibs_uf_rate', 'ibs_municipal_value', 'ibs_municipal_rate', 'cbs_value', 'cbs_rate'):
             if prev.get(carry) is not None and str(prev.get(carry)) != '':
@@ -456,7 +464,7 @@ def apply_tax_profile_to_draft(db, *, draft, profile, buyer, user_id: int) -> No
         organization_id=draft.organization_id,
         farm_id=draft.farm_id,
         event_type='detalhes_salvos',
-        summary=f'Perfil fiscal "{profile.name}" (v{profile.version}) aplicado ao rascunho.',
+        summary=summary or f'Perfil fiscal "{profile.name}" (v{profile.version}) aplicado ao rascunho.',
         user_id=user_id,
         metadata={'profile_id': profile.id, 'profile_version': profile.version},
     )

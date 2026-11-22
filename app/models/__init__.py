@@ -170,4 +170,8 @@ from app.models.nfe_draft import (
     NfeTaxProfile,
     NfeTestSequence,
     NfeTransmissionAttempt,
+    NfeFiscalProduct,
+    NfeFiscalOperation,
+    NfeIssuerLogo,
+    NfeFarmFiscalPrefs,
 )

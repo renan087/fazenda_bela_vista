@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% from "partials/nx_icons.html" import nxi %}
+{% block content %}
+{% set c = summary.count %}
+<div class="sf-page nx-page" data-nx-page="list" data-csrf="{{ csrf_token }}" data-can-write="{{ '1' if can_write_page else '0' }}">
+  <header class="nx-head">
+    <div>
+      <p class="nx-kicker">{{ farm.name }}{% if season_label %} · Safra {{ season_label }}{% endif %}</p>
+      <h1 class="sf-page-title">Notas Fiscais</h1>
+    </div>
+    <div class="nx-head-actions">
+      <a class="sf-btn sf-btn-secondary" href="/producao/nfe/configuracao">{{ nxi('sliders') }}Configurações fiscais</a>
+      <a class="sf-btn sf-btn-primary" href="/producao/comercializacao">{{ nxi('plus', 18, 2) }}Emitir NF</a>
+    </div>
+  </header>
+
+  {% if env_test %}
+  <div class="nx-banner is-blue" role="status">
+    {{ nxi('info', 20) }}
+    <span><strong>Ambiente de teste.</strong> As notas desta fazenda ainda não são enviadas à SEFAZ e não têm valor fiscal.</span>
+    <a href="/producao/nfe/configuracao?secao=amb">Ver ambiente</a>
+  </div>
+  {% endif %}
+  {% if not setup_ready %}
+  <div class="nx-banner is-amber" role="status">
+    {{ nxi('alert', 20) }}
+    <span><strong>Falta configurar.</strong> Cadastre um produto fiscal e ative uma operação para as notas já nascerem preenchidas.</span>
+    <a href="/producao/nfe/configuracao">Configurar agora</a>
+  </div>
+  {% endif %}
+
+  <section class="nx-kpis" aria-label="Resumo — clique para filtrar">
+    <button type="button" class="nx-kpi nx-tone-green" data-nx-kpi="autorizada" aria-pressed="false">
+      <span class="nx-kpi-top"><span class="nx-kico">{{ nxi('ok', 20, 1.9) }}</span><span class="nx-kpi-tag">Faturamento</span></span>
+      <span><span class="nx-kpi-title">Autorizadas em {{ month_name }}</span><span class="nx-kpi-value" style="display:block">{{ summary.authorized_month }}</span></span>
+      <span class="nx-kpi-foot"><span class="nx-kpi-sub">{{ summary.authorized_value }} faturados</span><span class="nx-kpi-cta" data-nx-cta>Ver notas →</span></span>
+    </button>
+    <button type="button" class="nx-kpi nx-tone-amber" data-nx-kpi="pendente,rejeitada" aria-pressed="false">
+      <span class="nx-kpi-top"><span class="nx-kico">{{ nxi('warn', 20, 1.9) }}</span><span class="nx-kpi-tag">Pendentes + rejeitadas</span></span>
+      <span><span class="nx-kpi-title">Precisam de atenção</span><span class="nx-kpi-value" style="display:block">{{ c.pendente + c.rejeitada }}</span></span>
+      <span class="nx-kpi-foot"><span class="nx-kpi-sub">{{ c.pendente }} pendente{{ 's' if c.pendente != 1 }} · {{ c.rejeitada }} rejeitada{{ 's' if c.rejeitada != 1 }}</span><span class="nx-kpi-cta" data-nx-cta>Ver notas →</span></span>
+    </button>
+    <button type="button" class="nx-kpi nx-tone-blue" data-nx-kpi="rascunho,enviando" aria-pressed="false">
+      <span class="nx-kpi-top"><span class="nx-kico">{{ nxi('clock', 20, 1.9) }}</span><span class="nx-kpi-tag">Rascunhos + em envio</span></span>
+      <span><span class="nx-kpi-title">Em andamento</span><span class="nx-kpi-value" style="display:block">{{ c.rascunho + c.enviando }}</span></span>
+      <span class="nx-kpi-foot"><span class="nx-kpi-sub">{{ c.rascunho }} rascunho{{ 's' if c.rascunho != 1 }} · {{ c.enviando }} na SEFAZ</span><span class="nx-kpi-cta" data-nx-cta>Ver notas →</span></span>
+    </button>
+    <button type="button" class="nx-kpi nx-tone-muted" data-nx-kpi="cancelada" aria-pressed="false">
+      <span class="nx-kpi-top"><span class="nx-kico">{{ nxi('ban', 20, 1.9) }}</span><span class="nx-kpi-tag">No mês</span></span>
+      <span><span class="nx-kpi-title">Canceladas</span><span class="nx-kpi-value" style="display:block">{{ summary.cancelled_month }}</span></span>
+      <span class="nx-kpi-foot"><span class="nx-kpi-sub">{{ summary.cancelled_value }} estornados</span><span class="nx-kpi-cta" data-nx-cta>Ver notas →</span></span>
+    </button>
+  </section>
+
+  <div class="nx-tools">
+    <label class="sf-search">
+      {{ nxi('search') }}
+      <span class="sr-only">Pesquisar notas</span>
+      <input type="search" data-nx-q placeholder="Pesquisar por comprador, CPF/CNPJ, nº da nota ou venda" autocomplete="off">
+    </label>
+    <button type="button" class="sf-btn sf-btn-secondary" data-nx-filters-toggle aria-expanded="false" aria-controls="nx-filters">{{ nxi('filter') }}Filtros<span class="nx-count" data-nx-filter-count hidden></span></button>
+  </div>
+
+  <section id="nx-filters" class="nx-filters" aria-label="Filtros" hidden>
+    <div>
+      <p class="nx-label">Período</p>
+      <div class="nx-pills" data-nx-group="period">
+        <button type="button" class="nx-pill" data-value="" aria-pressed="true">Todo o período</button>
+        <button type="button" class="nx-pill" data-value="mes" aria-pressed="false">Este mês</button>
+        <button type="button" class="nx-pill" data-value="7d" aria-pressed="false">Últimos 7 dias</button>
+      </div>
+    </div>
+    {% if buyers %}
+    <div>
+      <p class="nx-label">Comprador</p>
+      <div class="nx-pills" data-nx-group="buyer">
+        {% for b in buyers %}<button type="button" class="nx-pill" data-value="{{ b }}" aria-pressed="false">{{ b|truncate(28, True, '…') }}</button>{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    <div>
+      <p class="nx-label">Valor da nota</p>
+      <div class="nx-pills" data-nx-group="value">
+        <button type="button" class="nx-pill" data-value="ate100" aria-pressed="false">Até R$ 100 mil</button>
+        <button type="button" class="nx-pill" data-value="mais100" aria-pressed="false">Acima de R$ 100 mil</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="nx-tabbar">
+    <div class="nx-tabs" role="tablist" aria-label="Situação">
+      {% for key, label in [('', 'Todas'), ('rascunho', 'Rascunhos'), ('pendente', 'Pendentes'), ('enviando', 'Em envio'), ('autorizada', 'Autorizadas'), ('rejeitada', 'Rejeitadas'), ('cancelada', 'Canceladas')] %}
+      <button type="button" class="nx-tab" role="tab" data-nx-tab="{{ key }}" aria-selected="{{ 'true' if not key else 'false' }}">{{ label }} <span data-nx-tab-count="{{ key }}">{{ summary.total if not key else c[key] }}</span></button>
+      {% endfor %}
+    </div>
+    <div class="nx-active" data-nx-active hidden>
+      <span>Mostrando:</span><span data-nx-active-list></span>
+      <button type="button" class="nx-link-btn" data-nx-clear>Limpar</button>
+    </div>
+  </div>
+
+  <div class="nx-split">
+    <section class="nx-list" aria-label="Lista de notas" data-nx-list>
+      <form class="nx-bulk" method="post" data-nx-bulk hidden>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div data-nx-bulk-ids></div>
+        <strong data-nx-bulk-label>0 notas selecionadas</strong>
+        <button type="submit" class="sf-btn sf-btn-secondary" formaction="/notas-fiscais/lote/xml.zip">Baixar XML (.zip)</button>
+        <button type="submit" class="sf-btn sf-btn-secondary" formaction="/notas-fiscais/lote/danfes.zip">Baixar DANFEs</button>
+        <button type="button" class="sf-btn sf-btn-secondary" disabled>Enviar aos compradores <span class="nx-soon">Em breve</span></button>
+      </form>
+      <div class="nx-scroll">
+        <table class="nx-table">
+          <thead><tr>
+            <th style="width:3rem;padding-left:1.125rem"><label class="dt-chk"><input type="checkbox" class="dt-check" data-nx-check-all aria-label="Selecionar todas as notas visíveis"></label></th>
+            <th>Nota</th><th>Emissão</th><th>Comprador</th><th>Produto</th><th>Venda</th><th class="is-num">Valor</th><th>Situação</th><th style="width:3.5rem"><span class="sr-only">Opções</span></th>
+          </tr></thead>
+          <tbody>
+            {% for n in notes_public %}
+            <tr class="nx-row" data-nx-id="{{ n.id }}" data-status="{{ n.status }}" data-day="{{ n.day }}" data-buyer="{{ n.buyer }}" data-value="{{ n.value }}" data-search="{{ (n.title ~ ' ' ~ n.buyer ~ ' ' ~ n.doc ~ ' ' ~ n.sale)|lower }}">
+              <td style="padding-left:1.125rem"><label class="dt-chk"><input type="checkbox" class="dt-check" data-nx-check value="{{ n.id }}" aria-label="Selecionar nota {{ n.title }}"></label></td>
+              <td><button type="button" class="nx-num" data-nx-open>{{ n.title }}</button><span class="nx-sub">{{ n.subtitle }}</span></td>
+              <td style="white-space:nowrap;color:#5b6660">{{ n.emission }}</td>
+              <td><span style="font-weight:500">{{ n.buyer }}</span><span class="nx-sub">{{ n.doc }}</span></td>
+              <td style="color:#5b6660">{{ n.product }}</td>
+              <td><a href="/producao/comercializacao?search={{ n.sale }}" style="font-size:.8125rem;font-weight:600;color:#446a36">{{ n.sale }}</a></td>
+              <td class="is-num" style="font-weight:600">{{ n.value_br }}</td>
+              <td><span class="nx-chip is-{{ n.tone }}">{{ n.label }}</span></td>
+              <td><button type="button" class="nx-dots" data-nx-menu aria-haspopup="menu" aria-expanded="false" aria-label="Opções da nota {{ n.title }}">{{ nxi('dots', 18, 3) }}</button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="nx-cards">
+        {% for n in notes_public %}
+        <button type="button" class="nx-card" data-nx-card="{{ n.id }}" data-status="{{ n.status }}" data-day="{{ n.day }}" data-buyer="{{ n.buyer }}" data-value="{{ n.value }}" data-search="{{ (n.title ~ ' ' ~ n.buyer ~ ' ' ~ n.doc ~ ' ' ~ n.sale)|lower }}">
+          <span class="nx-card-top"><strong>{{ n.title }}{% if n.title == 'Rascunho' %} · {{ n.sale }}{% endif %}</strong><span class="nx-chip is-{{ n.tone }}">{{ n.label }}</span></span>
+          <span class="nx-card-row"><span>{{ n.buyer|truncate(26, True, '…') }}</span><strong>{{ n.value_br }}</strong></span>
+          <span class="nx-sub">{{ n.product }} · {{ n.emission }}</span>
+        </button>
+        {% endfor %}
+      </div>
+      <div class="nx-empty" data-nx-empty {% if notes_public %}hidden{% endif %}>
+        {% if notes_public %}
+        <p><strong>Nenhuma nota com esses filtros</strong></p>
+        <p class="nx-muted" style="margin-bottom:.875rem">Tente outro período, situação ou comprador.</p>
+        <button type="button" class="sf-btn sf-btn-secondary" data-nx-clear>Limpar filtros</button>
+        {% else %}
+        <p><strong>Nenhuma nota ainda</strong></p>
+        <p class="nx-muted" style="margin-bottom:.875rem">Em Comercialização, clique em “Emitir NF” numa venda. A nota já nasce com os dados da venda.</p>
+        <a class="sf-btn sf-btn-primary" href="/producao/comercializacao">Ir para Comercialização</a>
+        {% endif %}
+      </div>
+      <div class="nx-foot"><span data-nx-footer>{{ notes_public|length }} nota{{ 's' if notes_public|length != 1 }}{% if notes_public %} · clique numa linha para ver as ações{% endif %}</span><span>Ambiente de teste</span></div>
+      <div class="nx-menu" role="menu" data-nx-menu-box hidden></div>
+    </section>
+
+    {% if notes_public %}
+    <div class="nx-scrim" data-nx-scrim hidden></div>
+    <aside class="nx-panel" aria-label="Nota selecionada" data-nx-panel>
+      <div class="nx-panel-head">
+        <div><p class="nx-sub" data-p="kind"></p><h2 data-p="title"></h2></div>
+        <div style="display:flex;gap:.5rem;align-items:center"><span class="nx-chip" data-p="chip"></span><button type="button" class="sf-icon-btn nx-panel-close" data-nx-panel-close aria-label="Fechar">{{ nxi('x') }}</button></div>
+      </div>
+      <div class="nx-facts">
+        <div class="is-wide"><span>Comprador</span><strong data-p="buyer"></strong></div>
+        <div><span>Valor</span><strong data-p="value" style="font-size:1rem"></strong></div>
+        <div><span>Produto</span><strong data-p="product"></strong></div>
+      </div>
+      <div class="nx-box" data-p="box"><p data-p="box-title"></p><p data-p="box-text"></p></div>
+      <div data-p="primary"></div>
+      <div class="nx-tiles" data-p="tiles"></div>
+      <div class="nx-danger" data-p="danger"></div>
+      <a class="nx-detail-link" data-p="detail" href="#">Abrir detalhes e histórico →</a>
+    </aside>
+    {% endif %}
+  </div>
+</div>
+<script type="application/json" id="nx-data">{{ notes_public|tojson }}</script>
+<script src="/static/js/notas_fiscais.js?v=20261122nx1" defer></script>
+{% endblock %}
