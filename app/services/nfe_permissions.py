@@ -21,11 +21,19 @@ _ROLE_DEFAULTS = {
 }
 
 
+def _is_super_admin(user) -> bool:
+    email = getattr(user, 'email', None)
+    if not isinstance(email, str) or not email:
+        return False
+    from app.core.admin_access import is_super_admin_email
+    return is_super_admin_email(email)
+
+
 def allowed_fiscal_permissions(user) -> frozenset[str]:
     """Retorna o conjunto de permissões fiscais efetivas para o usuário."""
     if not user:
         return frozenset()
-    if getattr(user, 'is_superuser', False):
+    if getattr(user, 'is_superuser', False) or _is_super_admin(user):
         return frozenset(FISCAL_PERMISSIONS)
 
     explicit = getattr(user, 'fiscal_permissions', None)
@@ -35,7 +43,8 @@ def allowed_fiscal_permissions(user) -> frozenset[str]:
     role_name = str(getattr(user, 'role_name', '') or getattr(user, 'role', '') or '').strip().lower()
     if role_name in _ROLE_DEFAULTS:
         return _ROLE_DEFAULTS[role_name]
-    if getattr(user, 'is_org_admin', False):
+    # No SiSFarm o administrador da organização é marcado por User.is_admin.
+    if getattr(user, 'is_org_admin', False) or getattr(user, 'is_admin', False) is True:
         return _ROLE_DEFAULTS['admin']
     return frozenset()
 

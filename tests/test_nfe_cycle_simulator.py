@@ -74,3 +74,12 @@ def test_offline_cycle_simulator_runs_end_to_end_and_handles_rejection():
     events = db.query(NfeDraftEvent).filter_by(draft_id='d' * 32).all()
     assert len(events) == 2
     db.close()
+
+
+def test_fiscal_permissions_for_real_sisfarm_users():
+    from app.models.user import User
+
+    admin = User(name='Dono', email='dono@exemplo.com', hashed_password='x', is_admin=True)
+    member = User(name='Equipe', email='equipe@exemplo.com', hashed_password='x', is_admin=False)
+    assert has_fiscal_permission(admin, 'nfe.certificate.manage') is True
+    assert has_fiscal_permission(member, 'nfe.certificate.manage') is False
