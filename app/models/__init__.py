@@ -156,6 +156,7 @@ __all__ = [
 
 from app.models.assistant_capability import AssistantCapability
 from app.models.nfe_draft import (
+    NfeCertificateVault,
     NfeDraft,
     NfeDraftDetails,
     NfeDraftEvent,
