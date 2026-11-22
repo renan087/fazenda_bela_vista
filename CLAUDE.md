@@ -22,6 +22,7 @@ ERP agrícola para fazendas de café (pt-BR). Usuários: produtores e equipe de 
 - Verde da marca `#446A36` (hover `#3A5C2E`, escuro `#294127`, claro `#EEF3EB`, destaque `#9BCB6B`). Menu lateral escuro `#0F1513`.
 - Estados: alerta/pendente âmbar `#D18A00` (fundo `#FFF6E5`), erro `#B42318` (fundo `#FDECEA`), sucesso `#1F7A3A` (fundo `#E6F4E2`), informação/chuva azul `#1F5FA8` (fundo `#E8F1FB`).
 - Cartões brancos, borda 1px `#E3E8E2`, raio 16–18px, sombra só em painéis flutuantes. Botões 36–44px de altura, raio 10–12px; primário verde, secundário branco com borda.
+- Checkbox padrão do SiSFarm: o da listagem de Agendamentos (`.dt-chk` + `input.dt-check` em `styles.css`; quadrado 22px, raio 7px, borda `#C9D2C6`, marcado verde `#446A36` com ✓ animado, área de toque 44px). Usar em toda lista com seleção.
 - Tokens `.sf-page` (`--sf-*`) e classes `sf-btn`, `sf-page-header` em `styles.css`. Cada página nova usa prefixo próprio de classes (ex.: `db-`, `fm-`, `as-`, `hd-`, `pzw-`).
 - Ao mudar `styles.css` ou um JS, incrementar o `?v=` correspondente no template.
 
