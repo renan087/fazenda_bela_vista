@@ -23043,6 +23043,57 @@ async def fiscal_extra_data_save(draft_id: str, request: Request, db: Session = 
     return _redirect("/producao/rascunhos-fiscais/" + draft_id)
 
 
+@router.get("/producao/nfe/painel-tecnico")
+def nfe_technical_panel_page(request: Request, db: Session = Depends(get_db),
+                             user: User = Depends(get_current_user_web),
+                             csrf_token: str = Depends(get_csrf_token)):
+    from app.services.nfe_client_config import build_technical_panel_context
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    if not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=403, detail="Fazenda indisponível.")
+    panel = build_technical_panel_context(db, organization_id=user.organization_id, farm_id=farm.id)
+    return templates.TemplateResponse("nfe_technical_panel.html", _base_context(
+        request, user, csrf_token, "commercialization",
+        title="Painel técnico NF-e", panel=panel, _repo=repo,
+    ))
+
+
+@router.post("/producao/nfe/painel-tecnico/configuracao")
+async def nfe_client_config_save(request: Request, db: Session = Depends(get_db),
+                                 user: User = Depends(get_current_user_web)):
+    from app.services.nfe_client_config import save_client_fiscal_config
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    if not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=403, detail="Fazenda indisponível.")
+    try:
+        save_client_fiscal_config(
+            db,
+            organization_id=user.organization_id,
+            farm_id=farm.id,
+            user_id=user.id,
+            data=form,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/nfe/painel-tecnico")
+    except IntegrityError:
+        db.rollback()
+        _flash(request, "error", "A configuração fiscal foi alterada simultaneamente. Tente novamente.")
+        return _redirect("/producao/nfe/painel-tecnico")
+    _flash(request, "success", "Configuração fiscal do cliente salva. A transmissão real permanece bloqueada.")
+    return _redirect("/producao/nfe/painel-tecnico")
+
+
 @router.get("/producao/rascunhos-fiscais/{draft_id}/versoes/{version}/json")
 def fiscal_snapshot_download(draft_id: str, version: int, request: Request, db: Session = Depends(get_db),
                              user: User = Depends(get_current_user_web)):

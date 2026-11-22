@@ -241,3 +241,26 @@ class NfeCertificateVault(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     uploaded_by: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class NfeClientFiscalConfig(Base):
+    """Configuração fiscal independente de cada cliente/fazenda no SaaS SiSFarm."""
+    __tablename__ = 'nfe_client_fiscal_configs'
+    __table_args__ = (
+        UniqueConstraint('organization_id', 'farm_id', name='uq_nfe_client_fiscal_config'),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    farm_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    person_type: Mapped[str] = mapped_column(String(10), nullable=False, default='pf')
+    document: Mapped[str] = mapped_column(String(14), nullable=False, default='')
+    state_registration: Mapped[str] = mapped_column(String(30), nullable=False, default='')
+    crt: Mapped[str] = mapped_column(String(1), nullable=False, default='')
+    state: Mapped[str] = mapped_column(String(2), nullable=False, default='BA')
+    environment: Mapped[str] = mapped_column(String(20), nullable=False, default='teste_ficticio')
+    default_series: Mapped[int] = mapped_column(Integer, nullable=False, default=920)
+    next_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    sefaz_credential_status: Mapped[str] = mapped_column(String(30), nullable=False, default='nao_credenciado')
+    pilot_homologacao_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

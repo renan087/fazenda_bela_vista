@@ -1,8 +1,10 @@
-# Guia Prático de Homologação NF-e — Produtor Rural PF na Bahia (SEFAZ-BA)
+# Guia Prático de Homologação NF-e — Arquitetura SaaS Multi-Cliente (SEFAZ-BA)
 
-Este guia resume **exatamente o que depende do produtor e do contador** para sair da etapa de testes fictícios offline e iniciar os testes reais em **homologação (`tpAmb=2`)** na SEFAZ-BA.
+O **SiSFarm** opera como plataforma **SaaS multi-cliente**: o proprietário/administrador do SiSFarm **não** possui inscrição estadual e **não** atua como emitente fiscal. Cada produtor rural cliente é o emitente independente de suas próprias NF-e (modelo 55), com CPF/CNPJ, IE, CRT, certificado digital A1, séries, numeração e credenciamento próprios.
 
-> **Importante:** o ambiente de homologação da SEFAZ emite notas **sem validade fiscal/jurídica**, mas exige credenciamento real, certificado digital válido e conferência contábil dos códigos tributários.
+Este guia resume **o que depende do produtor rural piloto e de seu contador** para sair da validação offline e iniciar a **homologação real (`tpAmb=2`)** na SEFAZ-BA — acompanhando todos os requisitos pelo **Painel técnico NF-e** (`/producao/nfe/painel-tecnico`).
+
+> **Importante:** o ambiente de homologação da SEFAZ emite notas **sem validade fiscal/jurídica**, mas exige credenciamento real do produtor piloto, certificado digital A1 do próprio produtor e conferência contábil dos códigos tributários. A transmissão real permanece bloqueada até que todos os requisitos de segurança, schemas (`reviewed: true`) e credenciamento sejam confirmados.
 
 ---
 

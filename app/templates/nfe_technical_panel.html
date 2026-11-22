@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="sf-page space-y-5">
+  <header class="pd-head">
+    <div>
+      <h1 class="sf-page-title">Painel técnico NF-e (SaaS multi-cliente)</h1>
+      <p class="sf-page-subtitle">Acompanhamento de conformidade offline e prontidão para homologação oficial na SEFAZ-BA</p>
+    </div>
+    <div class="pd-head-actions flex flex-wrap gap-2">
+      <a class="sf-btn sf-btn-secondary" href="/producao/comercializacao">Voltar às vendas</a>
+    </div>
+  </header>
+
+  <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900">
+    <strong>Arquitetura SaaS · Transmissão real bloqueada.</strong>
+    Cada produtor rural cliente é o emitente fiscal independente (com CPF/CNPJ, IE, CRT, certificado A1, séries e credenciamento próprios).
+    O administrador do SiSFarm não atua como emitente fiscal. Validação local/offline <strong>não</strong> equivale à homologação oficial da SEFAZ-BA.
+  </div>
+
+  <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="Resumo do painel técnico">
+    <article class="pd-card p-5">
+      <p class="pd-eyebrow">Validação local (offline)</p>
+      <p class="mt-2 text-2xl font-bold tabular-nums text-emerald-800">{{ panel.stats.approved_local }}</p>
+      <p class="mt-1 text-xs text-slate-500">módulos aprovados em testes locais</p>
+    </article>
+    <article class="pd-card p-5">
+      <p class="pd-eyebrow">Pendências p/ homologação oficial</p>
+      <p class="mt-2 text-2xl font-bold tabular-nums text-amber-700">{{ panel.stats.pending_official }}</p>
+      <p class="mt-1 text-xs text-slate-500">requisitos externos ou de segurança</p>
+    </article>
+    <article class="pd-card p-5">
+      <p class="pd-eyebrow">Erros / rejeições simuladas</p>
+      <p class="mt-2 text-2xl font-bold tabular-nums {% if panel.stats.errors_count %}text-red-700{% else %}text-slate-800{% endif %}">{{ panel.stats.errors_count }}</p>
+      <p class="mt-1 text-xs text-slate-500">nas últimas 10 tentativas registradas</p>
+    </article>
+    <article class="pd-card p-5">
+      <p class="pd-eyebrow">Transmissão real SEFAZ</p>
+      <p class="mt-2 text-lg font-bold {% if panel.readiness.transmission_blocked %}text-amber-800{% else %}text-emerald-800{% endif %}">
+        {% if panel.readiness.transmission_blocked %}Bloqueada{% else %}Liberada (homologação){% endif %}
+      </p>
+      <p class="mt-1 text-xs text-slate-500">{{ panel.stats.drafts_count }} rascunho(s) · {{ panel.stats.stored_docs_count }} XML(s) de teste</p>
+    </article>
+  </section>
+
+  <div class="grid gap-5 lg:grid-cols-2">
+    <section class="pd-card p-6" aria-labelledby="local-heading">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="local-heading" class="text-lg font-bold">1. Validação local (offline / fictícia)</h2>
+        <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">Sem comunicação SEFAZ</span>
+      </div>
+      <p class="mt-2 text-sm text-slate-600">Testes automatizados executados localmente com certificados efêmeros de teste, XSD em cópia temporária e respostas simuladas.</p>
+      <ul class="mt-4 space-y-2.5 text-sm">
+        {% for item in panel.local_conformity_items %}
+        <li class="rounded-xl border border-slate-200 p-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <strong class="text-slate-900">{{ item.name }}</strong>
+            <span class="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">Aprovado local</span>
+          </div>
+          <p class="mt-1 text-xs text-slate-500">{{ item.detail }}</p>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="pd-card p-6" aria-labelledby="official-heading">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="official-heading" class="text-lg font-bold">2. Homologação oficial SEFAZ-BA (cliente piloto)</h2>
+        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">
+          {% if panel.readiness.ready_for_official_homologacao %}Pronto para piloto{% else %}Pendente{% endif %}
+        </span>
+      </div>
+      <p class="mt-2 text-sm text-slate-600">Requisitos obrigatórios desta fazenda cliente e do ambiente antes de liberar qualquer transmissão real em homologação (<code>tpAmb=2</code>).</p>
+      <ul class="mt-4 space-y-2.5 text-sm">
+        {% for check in panel.readiness.checks %}
+        <li class="rounded-xl border border-slate-200 p-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <strong class="text-slate-900">{{ check.label }}</strong>
+            {% if check.ok %}
+            <span class="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">Confirmado</span>
+            {% else %}
+            <span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">Pendente</span>
+            {% endif %}
+          </div>
+          <p class="mt-1 text-xs text-slate-500">{{ check.detail }}</p>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+  </div>
+
+  <section class="pd-card p-6" aria-labelledby="config-heading">
+    <h2 id="config-heading" class="text-lg font-bold">Configuração fiscal independente desta fazenda cliente</h2>
+    <p class="mt-2 text-sm text-slate-600">Cada fazenda cliente mantém seus próprios dados de emitente, série, numeração e status de credenciamento na SEFAZ, sem vínculo com credenciais do administrador da plataforma.</p>
+    {% set cfg = panel.readiness.config %}
+    <form method="post" action="/producao/nfe/painel-tecnico/configuracao" class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="text-sm font-semibold text-slate-700">Tipo de emitente
+        <select name="person_type" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50">
+          <option value="pf" {% if not cfg or cfg.person_type == 'pf' %}selected{% endif %}>Produtor rural (CPF)</option>
+          <option value="cnpj" {% if cfg and cfg.person_type == 'cnpj' %}selected{% endif %}>Pessoa jurídica (CNPJ · expansão)</option>
+        </select>
+      </label>
+      <label class="text-sm font-semibold text-slate-700">CPF ou CNPJ do cliente
+        <input name="document" maxlength="18" value="{{ cfg.document if cfg else '' }}" placeholder="Somente números" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50">
+      </label>
+      <label class="text-sm font-semibold text-slate-700">Inscrição Estadual (IE)
+        <input name="state_registration" maxlength="30" value="{{ cfg.state_registration if cfg else '' }}" placeholder="IE do produtor cliente" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50">
+      </label>
+      <label class="text-sm font-semibold text-slate-700">CRT
+        <select name="crt" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50">
+          <option value="">Não informado</option>
+          {% for code, label in panel.allowed_crts %}
+          <option value="{{ code }}" {% if cfg and cfg.crt == code %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="text-sm font-semibold text-slate-700">UF do emitente
+        <input name="state" maxlength="2" value="{{ cfg.state if cfg else 'BA' }}" placeholder="BA" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50">
+      </label>
+      <label class="text-sm font-semibold text-slate-700">Série padrão (PF: 920–969)
+        <input type="number" name="default_series" min="0" max="969" value="{{ cfg.default_series if cfg else 920 }}" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50">
+      </label>
+      <label class="text-sm font-semibold text-slate-700">Próximo número
+        <input type="number" name="next_number" min="1" max="999999999" value="{{ cfg.next_number if cfg else 1 }}" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50">
+      </label>
+      <label class="text-sm font-semibold text-slate-700">Ambiente do cliente
+        <select name="environment" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50">
+          {% for code, label in panel.allowed_environments %}
+          <option value="{{ code }}" {% if cfg and cfg.environment == code %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="text-sm font-semibold text-slate-700">Credenciamento SEFAZ do cliente
+        <select name="sefaz_credential_status" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50">
+          {% for code, label in panel.allowed_credential_statuses %}
+          <option value="{{ code }}" {% if cfg and cfg.sefaz_credential_status == code %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="sm:col-span-2 lg:col-span-3 flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" name="pilot_homologacao_enabled" value="1" {% if cfg and cfg.pilot_homologacao_enabled %}checked{% endif %} class="rounded border-slate-300">
+        <span>Marcar esta fazenda como produtor piloto de homologação (não libera transmissão enquanto as travas de segurança permanecerem ativas)</span>
+      </label>
+      {% if can_write_page %}
+      <div class="sm:col-span-2 lg:col-span-3">
+        <button class="sf-btn sf-btn-primary" type="submit">Salvar configuração fiscal do cliente</button>
+      </div>
+      {% endif %}
+    </form>
+  </section>
+
+  {% if panel.recent_attempts %}
+  <section class="pd-card p-6" aria-labelledby="attempts-heading">
+    <h2 id="attempts-heading" class="text-lg font-bold">Últimas tentativas registradas (ambiente de teste)</h2>
+    <div class="mt-4 overflow-x-auto">
+      <table class="w-full min-w-[600px] text-left text-sm">
+        <thead>
+          <tr class="border-b text-xs uppercase text-slate-500">
+            <th class="p-2">Operação</th>
+            <th class="p-2">Ambiente</th>
+            <th class="p-2">Categoria</th>
+            <th class="p-2">cStat</th>
+            <th class="p-2">Motivo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for att in panel.recent_attempts %}
+          <tr class="border-b border-slate-100">
+            <td class="p-2 font-medium">{{ att.operation }}</td>
+            <td class="p-2 text-xs text-slate-500">{{ att.environment }}</td>
+            <td class="p-2">{{ att.status_category }}</td>
+            <td class="p-2 tabular-nums">{{ att.c_stat or '-' }}</td>
+            <td class="p-2 text-xs text-slate-600">{{ att.x_motivo }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

@@ -74,16 +74,29 @@ def send_soap_request(
         'Accept': 'application/soap+xml, application/xml, text/xml',
     }
     with _ephemeral_mtls_context(provider) as ssl_ctx:
-        if transport is not None:
-            req = httpx.Request('POST', endpoint_url, headers=headers, content=soap_xml_bytes)
-            resp = transport.handle_request(req)
-        else:
-            with httpx.Client(timeout=timeout_seconds, headers=headers, verify=ssl_ctx) as client:
-                resp = client.post(endpoint_url, content=soap_xml_bytes)
+        try:
+            if transport is not None:
+                req = httpx.Request('POST', endpoint_url, headers=headers, content=soap_xml_bytes)
+                resp = transport.handle_request(req)
+            else:
+                with httpx.Client(timeout=timeout_seconds, headers=headers, verify=ssl_ctx) as client:
+                    resp = client.post(endpoint_url, content=soap_xml_bytes)
+        except httpx.TimeoutException:
+            return {
+                'http_status': None,
+                'raw_response': b'',
+                'timeout': True,
+                'parsed': {
+                    'c_stat': '',
+                    'x_motivo': 'Tempo limite esgotado na comunicação com a SEFAZ. Consulte a situação da NF-e antes de reenviar.',
+                    'category': 'timeout',
+                },
+            }
 
     parsed = parse_sefaz_response(resp.content) if resp.content else {'c_stat': '', 'x_motivo': '', 'category': 'desconhecido'}
     return {
         'http_status': resp.status_code,
         'raw_response': resp.content,
+        'timeout': False,
         'parsed': parsed,
     }
