@@ -1090,6 +1090,8 @@ def _commercialization_available_sacks(
 def _base_context(request: Request, user: User, csrf_token: str, page: str, **kwargs):
     modal_mode = _is_modal_request(request)
     flash = request.session.get("flash") if modal_mode else request.session.pop("flash", None)
+    if not modal_mode:
+        _remember_return(request)
     repo = kwargs.pop("_repo", None)
     db_session = repo.db if repo else kwargs.pop("_db", None)
     if db_session is not None:
@@ -1114,6 +1116,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         "csrf_token": csrf_token,
         "page": page,
         "flash": flash,
+        "return_to": None if modal_mode else _active_return(request),
         "modal_mode": modal_mode,
         "menu_visibility": _build_menu_visibility(user, permission_codes),
         "permission_codes": permission_codes,
@@ -1695,6 +1698,58 @@ def _render_profile_page(
 
 def _flash(request: Request, kind: str, message: str) -> None:
     request.session["flash"] = {"kind": kind, "message": message}
+
+
+# "Continuar de onde parou": quando uma tela manda resolver algo em outra, guarda o caminho de volta.
+# (regex do destino, rótulo, telas onde a faixa "Você veio de…" aparece)
+_RETURN_RULES = (
+    (r"/producao/vendas/nova", "Nova venda", ("/producao/colheitas/nova", "/safras/")),
+    (r"/producao/classificacao/nova", "Nova análise", ("/producao/colheitas/nova", "/safras/")),
+    (r"/producao/colheitas/nova", "Registrar colheita", ("/safras/",)),
+    (r"/producao/rascunhos-fiscais/[0-9a-f]{32}", "Emissão da nota", ("/producao/nfe/configuracao",)),
+)
+_RETURN_TTL_SECONDS = 3600
+
+
+def _return_stack(request: Request) -> list:
+    try:
+        stack = list(request.session.get("nx_return") or [])
+    except (AssertionError, AttributeError):
+        return []
+    now = datetime.now(timezone.utc).timestamp()
+    return [item for item in stack if isinstance(item, dict) and now - float(item.get("at") or 0) < _RETURN_TTL_SECONDS]
+
+
+def _remember_return(request: Request) -> None:
+    """Empilha ?voltar= (só caminhos conhecidos) e limpa a pilha ao chegar no destino."""
+    if getattr(request, "method", "GET") != "GET" or not hasattr(request, "session"):
+        return
+    path = getattr(getattr(request, "url", None), "path", "") or ""
+    stack = [item for item in _return_stack(request) if item["path"] != path]
+    target = str(request.query_params.get("voltar") or "").strip()
+    for pattern, label, on in _RETURN_RULES:
+        if re.fullmatch(pattern, target):
+            stack = [item for item in stack if item["path"] != target][-2:]
+            stack.append({"path": target, "label": label, "on": list(on), "at": datetime.now(timezone.utc).timestamp()})
+            break
+    request.session["nx_return"] = stack
+
+
+def _active_return(request: Request) -> dict | None:
+    path = getattr(getattr(request, "url", None), "path", "") or ""
+    stack = _return_stack(request)
+    if stack and any(path.startswith(prefix) for prefix in stack[-1]["on"]):
+        return stack[-1]
+    return None
+
+
+def _pop_return(request: Request, on_prefix: str) -> str | None:
+    stack = _return_stack(request)
+    if stack and on_prefix in stack[-1]["on"]:
+        item = stack.pop()
+        request.session["nx_return"] = stack
+        return item["path"]
+    return None
 
 
 def _float_or_none(value: str | None):
@@ -18235,6 +18290,9 @@ def create_crop_season_action(
             _flash(request, "error", "A safra foi criada, mas não deu para copiar o programa de adubação. Faça pela página de Adubação.")
     if make_active:
         persist_user_context(request, db, user, new_season.farm_id, new_season.id)
+    back = _pop_return(request, "/safras/") if make_active else None
+    if back:
+        return _redirect(back)
     return _redirect_with_query(f"/safras/{new_season.id}/pronta", ativa="1" if make_active else "0", adub=str(copied))
 
 
@@ -18332,6 +18390,9 @@ def update_crop_season_action(
     if make_active:
         persist_user_context(request, db, user, crop_season.farm_id, crop_season.id)
     _flash(request, "success", "Safra atualizada com sucesso.")
+    back = _pop_return(request, "/safras/")
+    if back:
+        return _redirect(back)
     return _redirect_with_query("/safras", view_id=crop_season.id)
 
 
@@ -21293,6 +21354,9 @@ def create_harvest_action(
         area,
     )
     _flash(request, "success", f"Colheita registrada. Lote {harvest.lot_code} criado.")
+    back = _pop_return(request, "/producao/colheitas/nova")
+    if back in ("/producao/vendas/nova", "/producao/classificacao/nova"):
+        return _redirect_with_query(back, lote=harvest.id)
     return _redirect(f"/producao/lotes/{harvest.id}")
 
 

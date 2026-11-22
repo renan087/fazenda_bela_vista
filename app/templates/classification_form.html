@@ -18,7 +18,7 @@
     </header>
     {% if cf_error %}<div class="pd-alert is-error" role="alert" data-cf-server-error>{{ cf_error }}</div>{% endif %}
     {% if not cf_lots %}
-    <div class="pd-card pd-empty"><strong>Nenhum lote na safra ativa.</strong><span>Registre uma colheita para classificar o lote.</span><a class="sf-btn sf-btn-secondary" href="/producao/colheitas/nova">Registrar colheita</a></div>
+    <div class="pd-card pd-empty"><strong>Nenhum lote na safra ativa.</strong><span>Registre uma colheita para classificar o lote.</span><a class="sf-btn sf-btn-secondary" href="/producao/colheitas/nova?voltar=/producao/classificacao/nova">Registrar colheita</a></div>
     {% else %}
     <form method="post" enctype="multipart/form-data" action="{{ '/producao/classificacao/' ~ a.id ~ '/editar' if a else '/producao/classificacao' }}" class="vw-layout" data-cf-form novalidate
           data-scale="{{ cf_scale }}">

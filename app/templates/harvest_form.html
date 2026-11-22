@@ -40,7 +40,7 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <div class="pd-empty"><strong>Nenhum talhão ligado à safra ativa.</strong><span>Vincule os talhões à safra em Safras para registrar colheitas.</span><a class="sf-btn sf-btn-secondary" href="/safras">Ir para Safras</a></div>
+                <div class="pd-empty"><strong>Nenhum talhão ligado à safra ativa.</strong><span>Vincule os talhões à safra em Safras para registrar colheitas.</span><a class="sf-btn sf-btn-secondary" href="{{ ('/safras/' ~ hv_season.id ~ '/editar') if hv_season else '/safras/nova' }}?voltar=/producao/colheitas/nova">Ligar talhões à safra</a></div>
                 {% endif %}
                 <div class="vw-grid">
                     <label class="vw-f">Data da colheita

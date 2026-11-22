@@ -12125,3 +12125,8 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .lt-sale-chips { display: flex; flex-wrap: wrap; gap: .375rem; margin: .375rem 0; }
 @media (max-width: 639px) { .sn-actions { width: 100%; } .sn-actions .sf-btn, .sn-actions form { flex: 1 1 auto; } .sn-actions form .sf-btn { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .sn-card { animation: none; } }
+/* Continuar de onde parou */
+.nx-return { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin: 0 0 1.25rem; padding: .75rem 1rem; border-radius: .875rem; background: #e8f1fb; border: 1px solid #c9ddf3; color: #17487f; font-size: .875rem; line-height: 1.45; }
+.nx-return svg { width: 1.25rem; height: 1.25rem; flex: none; }
+.nx-return span { flex: 1 1 16rem; }
+.nx-return a { font-weight: 600; color: #17487f; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; min-height: 2.75rem; display: inline-flex; align-items: center; }

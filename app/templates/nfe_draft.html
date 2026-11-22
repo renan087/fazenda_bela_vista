@@ -47,7 +47,7 @@
 
   {% if step == 'preencher' %}
   {% if pending %}
-  <div class="nx-banner is-amber" role="alert">{{ nxi('alert', 20) }}<span><strong>Faltam {{ pending }} dado{{ 's' if pending != 1 }} para conferir a nota.</strong> Veja a lista de verificações ao lado.</span><a href="/producao/nfe/configuracao">Configurações fiscais</a></div>
+  <div class="nx-banner is-amber" role="alert">{{ nxi('alert', 20) }}<span><strong>Faltam {{ pending }} dado{{ 's' if pending != 1 }} para conferir a nota.</strong> Veja a lista de verificações ao lado.</span><a href="/producao/nfe/configuracao?voltar=/producao/rascunhos-fiscais/{{ draft.id }}">Configurações fiscais</a></div>
   {% endif %}
 
   <div class="nx-split">
@@ -153,7 +153,7 @@
                 <div class="nx-menu" role="menu" hidden style="width:16rem">
                   {% if products %}<button type="button" class="nx-mi" role="menuitem" data-nx-dialog-open="nx-dw-pick">Trocar produto fiscal</button>{% endif %}
                   <button type="button" class="nx-mi" role="menuitem" data-nx-dialog-open="nx-dw-calc">Ver dados fiscais deste lote</button>
-                  <a class="nx-mi" role="menuitem" href="/producao/nfe/configuracao?secao=prod{% if prod %}&amp;item={{ prod.id }}{% endif %}">Abrir o cadastro do produto {{ nxi('ext', 15) }}</a>
+                  <a class="nx-mi" role="menuitem" href="/producao/nfe/configuracao?secao=prod{% if prod %}&amp;item={{ prod.id }}{% endif %}&amp;voltar=/producao/rascunhos-fiscais/{{ draft.id }}">Abrir o cadastro do produto {{ nxi('ext', 15) }}</a>
                 </div>
               </div>
             </div>
@@ -161,14 +161,14 @@
           </div>
           {% if not prod %}
           <div class="nx-lot-warn">{{ nxi('alert', 18, 2) }}<span>{% if products %}Escolha qual produto fiscal sai no DANFE para {{ 'estes lotes' if snapshot.itens|length > 1 else 'este lote' }}.{% else %}Nenhum produto fiscal cadastrado. Cadastre um para emitir a nota.{% endif %}</span>
-            {% if products %}<button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-open="nx-dw-pick">Escolher produto</button>{% else %}<a class="sf-btn sf-btn-secondary" href="/producao/nfe/configuracao?secao=prod">Cadastrar produto fiscal</a>{% endif %}</div>
+            {% if products %}<button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-open="nx-dw-pick">Escolher produto</button>{% else %}<a class="sf-btn sf-btn-secondary" href="/producao/nfe/configuracao?secao=prod&amp;voltar=/producao/rascunhos-fiscais/{{ draft.id }}">Cadastrar produto fiscal</a>{% endif %}</div>
           {% elif not prod_ok %}
           <div class="nx-lot-warn">{{ nxi('alert', 18, 2) }}<span>Falta {{ prod_missing|join(' e ') }} no cadastro deste produto fiscal. Sem {{ 'eles' if prod_missing|length > 1 else 'ele' }} a nota não pode ser enviada.</span>
             {% if can_write_page %}<button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-open="nx-dw-fix">Completar cadastro</button>{% endif %}</div>
           {% endif %}
           <div class="nx-lot-total"><span>Total dos produtos</span><strong>R$ {{ snapshot.valor_bruto|decimal_br }}</strong></div>
           {% if not op %}
-          <div class="nx-lot-warn">{{ nxi('alert', 18, 2) }}<span>Nenhuma operação fiscal ativa. É ela que define natureza, CFOP e tributos da nota.</span><a class="sf-btn sf-btn-secondary" href="/producao/nfe/configuracao?secao=oper">Ativar operação</a></div>
+          <div class="nx-lot-warn">{{ nxi('alert', 18, 2) }}<span>Nenhuma operação fiscal ativa. É ela que define natureza, CFOP e tributos da nota.</span><a class="sf-btn sf-btn-secondary" href="/producao/nfe/configuracao?secao=oper&amp;voltar=/producao/rascunhos-fiscais/{{ draft.id }}">Ativar operação</a></div>
           {% endif %}
         </section>
 
@@ -236,7 +236,7 @@
     <aside class="nx-sticky" style="flex:1 1 21.25rem;min-width:0;display:flex;flex-direction:column;gap:1rem">
       <section class="nx-cardx" style="display:flex;flex-direction:column;gap:.875rem">
         <h2 style="margin:0">Resumo</h2>
-        <div style="display:flex;justify-content:space-between;gap:.75rem;font-size:.875rem"><span style="color:#5b6660">Emitente</span><a href="/producao/nfe/configuracao?secao=emit" style="font-weight:600;color:#16201a;text-align:right">{{ seller_name }}</a></div>
+        <div style="display:flex;justify-content:space-between;gap:.75rem;font-size:.875rem"><span style="color:#5b6660">Emitente</span><a href="/producao/nfe/configuracao?secao=emit&amp;voltar=/producao/rascunhos-fiscais/{{ draft.id }}" style="font-weight:600;color:#16201a;text-align:right">{{ seller_name }}</a></div>
         <div style="display:flex;justify-content:space-between;font-size:.875rem"><span style="color:#5b6660">Produtos</span><span>R$ {{ snapshot.valor_bruto|decimal_br }}</span></div>
         <div style="display:flex;justify-content:space-between;align-items:baseline;padding-top:.75rem;border-top:1px solid #eef1ed"><strong>Total da nota</strong><strong style="font-size:1.375rem">R$ {{ snapshot.valor_bruto|decimal_br }}</strong></div>
         <div>
@@ -275,7 +275,7 @@
         <span><b>IBS/CBS</b> · {% if op.ibs_cbs_cst %}CST {{ op.ibs_cbs_cst }}{% if op.ibs_cbs_class %} · classificação {{ op.ibs_cbs_class }}{% endif %}{% else %}não informado{% endif %}{% if op.cbs_rate or op.ibs_uf_rate or op.ibs_municipal_rate %} · CBS {{ (op.cbs_rate or '0')|replace('.', ',') }}% · IBS estadual {{ (op.ibs_uf_rate or '0')|replace('.', ',') }}% · IBS municipal {{ (op.ibs_municipal_rate or '0')|replace('.', ',') }}%{% endif %}</span>{% endif %}
         {% if prod %}<span><b>Produto</b> · {% if (prod.ncm or '')|length == 8 %}NCM {{ prod.ncm[:4] }}.{{ prod.ncm[4:6] }}.{{ prod.ncm[6:] }}{% else %}sem NCM{% endif %} · origem {{ prod.origin }} · tributável em {{ prod.tax_unit }}</span>{% endif %}
       </div>
-      <div class="nx-banner is-blue" style="font-size:.8125rem"><span style="flex:1">Algo diferente? Mude na operação ou no produto. A nota recalcula sozinha.</span>{% if op %}<a href="/producao/nfe/configuracao?secao=oper&amp;item={{ op.id }}" style="white-space:nowrap">Abrir operação {{ nxi('ext', 14) }}</a>{% endif %}</div>
+      <div class="nx-banner is-blue" style="font-size:.8125rem"><span style="flex:1">Algo diferente? Mude na operação ou no produto. A nota recalcula sozinha.</span>{% if op %}<a href="/producao/nfe/configuracao?secao=oper&amp;item={{ op.id }}&amp;voltar=/producao/rascunhos-fiscais/{{ draft.id }}" style="white-space:nowrap">Abrir operação {{ nxi('ext', 14) }}</a>{% endif %}</div>
     </div>
   </dialog>
   {% if products %}
@@ -292,7 +292,7 @@
       {% if lot_stage_label %}
       <label class="nx-agree"><span class="dt-chk"><input type="checkbox" class="dt-check" name="always" value="1" checked></span>Usar sempre este produto para lotes “{{ lot_stage_label|lower }}”</label>
       {% endif %}
-      <a href="/producao/nfe/configuracao?secao=prod" style="font-size:.8125rem;font-weight:600">+ Cadastrar novo produto fiscal em Configurações</a>
+      <a href="/producao/nfe/configuracao?secao=prod&amp;voltar=/producao/rascunhos-fiscais/{{ draft.id }}" style="font-size:.8125rem;font-weight:600">+ Cadastrar novo produto fiscal em Configurações</a>
       <div class="nx-dw-f"><button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-close>Cancelar</button>{% if can_write_page %}<button type="submit" class="sf-btn sf-btn-primary">Usar nesta nota</button>{% endif %}</div>
     </form>
   </dialog>
@@ -398,5 +398,5 @@
   </section>
   {% endif %}
 </div>
-<script src="/static/js/notas_fiscais.js?v=20261122nx7" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261122nx8" defer></script>
 {% endblock %}
