@@ -48,20 +48,35 @@ def build_incomplete_candidate(snapshot, issuer, details, technical):
     _address(recipient, 'enderDest', details, [('xLgr','recipient_street'), ('nro','recipient_number'), ('xCpl','recipient_complement'), ('xBairro','recipient_district'), ('cMun','recipient_municipality_code'), ('xMun','recipient_city'), ('UF','recipient_state'), ('CEP','recipient_postal_code')])
     _add(recipient, 'indIEDest', {'contribuinte':'1', 'isento':'2', 'nao_contribuinte':'9'}.get(details.get('recipient_ie_indicator')))
     _add(recipient, 'IE', details.get('recipient_ie'))
+    tech_items = technical.get('items', [])
+    if not isinstance(tech_items, list) or not all(isinstance(i, dict) for i in tech_items):
+        raise ValueError('Dados técnicos de itens inválidos.')
+    by_index = {}
+    for tech in tech_items:
+        index = tech.get('item_index')
+        if type(index) is not int or index < 1 or index > len(items) or index in by_index:
+            raise ValueError('Dados técnicos de itens inconsistentes.')
+        by_index[index] = tech
     for index, item in enumerate(items, 1):
         line = ET.SubElement(info, f'{{{NS}}}det', {'nItem': str(index)})
         prod = ET.SubElement(line, f'{{{NS}}}prod')
         _add(prod, 'xProd', details.get('product_description'))
         _add(prod, 'NCM', details.get('product_ncm'))
         _add(prod, 'CFOP', details.get('operation_cfop'))
-        for source, target in (('quantidade_sacas', 'qCom'), ('valor_bruto', 'vProd')):
-            try:
-                value = Decimal(str(item.get(source, '')))
-                if not value.is_finite() or value <= 0:
-                    raise ValueError
-            except (InvalidOperation, ValueError):
-                raise ValueError('Quantidade ou valor comercial inválido.') from None
-            _add(prod, target, format(value, 'f'))
+        tech = by_index.get(index, {})
+        _add(prod, 'uCom', tech.get('commercial_unit'))
+        _add(prod, 'qCom', tech.get('commercial_quantity'))
+        _add(prod, 'vUnCom', tech.get('commercial_unit_price'))
+        try:
+            value = Decimal(str(item.get('valor_bruto', '')))
+            if not value.is_finite() or value <= 0:
+                raise ValueError
+        except (InvalidOperation, ValueError):
+            raise ValueError('Valor comercial inválido.') from None
+        _add(prod, 'vProd', format(value, 'f'))
+        _add(prod, 'uTrib', tech.get('tax_unit'))
+        _add(prod, 'qTrib', tech.get('tax_quantity'))
+        _add(prod, 'vUnTrib', tech.get('tax_unit_price'))
     freight = technical.get('freight_mode')
     if freight is not None and str(freight) != '':
         if str(freight) not in ('0', '1', '2', '3', '4', '9'):

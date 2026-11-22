@@ -212,3 +212,21 @@ def test_technical_route_saves_test_data_for_authorized_farm(monkeypatch):
     assert result.status_code in (302, 303, 307) and record.organization_id == user.organization_id
     assert json.loads(record.data_json)['items'][0]['icms_cst'] == '20'
     db.close()
+
+
+def test_units_and_decimal_values_are_explicit_and_bounded():
+    from app.services.nfe_draft import clean_technical_data, review_item_values
+    snapshot = {'origem_ids': [8], 'itens': [{'lote': 'L1', 'valor_bruto': '100.00'}]}
+    data = {'item_1_commercial_unit': 'sc', 'item_1_commercial_quantity': '1,2500',
+            'item_1_commercial_unit_price': '80,0000000000', 'item_1_tax_unit': 'KG',
+            'item_1_tax_quantity': '75.0000', 'item_1_tax_unit_price': '1.3333333333'}
+    result = clean_technical_data(data, snapshot)
+    assert result['items'][0]['commercial_quantity'] == '1.2500'
+    assert result['items'][0]['tax_unit'] == 'KG'
+    assert review_item_values(snapshot, result)[0]['issues'] == []
+    data['item_1_tax_unit_price'] = '2'
+    assert 'difere' in review_item_values(snapshot, clean_technical_data(data, snapshot))[0]['issues'][0]
+    for field, value in [('item_1_commercial_quantity', '1.00001'), ('item_1_tax_unit_price', '-1'),
+                         ('item_1_tax_quantity', 'NaN'), ('item_1_tax_unit', 'KG 2')]:
+        with pytest.raises(ValueError):
+            clean_technical_data({field: value}, snapshot)

@@ -16,7 +16,7 @@ def test_maps_only_saved_values_and_cannot_be_emitted(tmp_path):
     producer = SimpleNamespace(name='Teste & Filho', cpf='52998224725', state='BA')
     details = {'recipient_cpf': '11144477735', 'recipient_name': 'Teste', 'recipient_ie_indicator': 'nao_contribuinte',
                'operation_nature': 'Venda', 'operation_cfop': '5102', 'product_description': 'Cafe', 'product_ncm': '09011110'}
-    xml = build_incomplete_candidate(example(), producer, details, {'freight_mode': '9'})
+    xml = build_incomplete_candidate(example(), producer, details, {'freight_mode': '9', 'items': [{'item_index': 1, 'commercial_quantity': '1.5000', 'commercial_unit': 'SC'}]})
     root = ET.fromstring(xml)
     ns = {'n':'http://www.portalfiscal.inf.br/nfe'}
     assert root.findtext('n:infNFe/n:ide/n:tpAmb', namespaces=ns) == '2'
@@ -32,7 +32,7 @@ def test_maps_only_saved_values_and_cannot_be_emitted(tmp_path):
 
 def test_rejects_invalid_amounts_and_does_not_invent_missing_fields():
     with pytest.raises(ValueError):
-        build_incomplete_candidate({'itens': [{'quantidade_sacas': 'NaN', 'valor_bruto': '10'}]}, None, {}, {})
+        build_incomplete_candidate({'itens': [{'quantidade_sacas': '1', 'valor_bruto': 'NaN'}]}, None, {}, {})
     xml = build_incomplete_candidate(example(), None, {}, {})
     assert b'<CPF>' not in xml and b'<natOp>' not in xml and b'<modFrete>' not in xml
 

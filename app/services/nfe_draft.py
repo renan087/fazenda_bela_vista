@@ -203,5 +203,47 @@ def clean_technical_data(data, snapshot):
             if value and not re.fullmatch(r'[0-9]{' + str(size) + '}', value):
                 raise ValueError('Confira o formato dos códigos tributários de cada lote.')
             row[field] = value
+        for field in ('commercial_unit', 'tax_unit'):
+            value = str(data.get(f'item_{index}_{field}') or '').strip().upper()
+            if value and not re.fullmatch(r'[A-Z0-9]{1,6}', value):
+                raise ValueError('Unidades devem conter até seis letras ou números, sem espaços.')
+            row[field] = value
+        for field, scale in [('commercial_quantity', 4), ('tax_quantity', 4), ('commercial_unit_price', 10), ('tax_unit_price', 10)]:
+            value = str(data.get(f'item_{index}_{field}') or '').strip().replace(',', '.')
+            if value:
+                if not re.fullmatch(r'[0-9]{1,11}(?:\.[0-9]{1,' + str(scale) + r'})?', value) or Decimal(value) <= 0:
+                    raise ValueError('Confira a quantidade ou o valor unitário: use número positivo e precisão permitida.')
+                value = format(Decimal(value), 'f')
+            row[field] = value
         result.append(row)
     return {'version': 1, 'emission_date': raw_date, 'freight_mode': modality, 'items': result}
+
+
+def review_item_values(snapshot, technical):
+    """Confere valores informados, sem substituir as regras tributárias da NF-e."""
+    from decimal import localcontext, ROUND_HALF_UP, InvalidOperation
+    items = snapshot.get('itens') or []
+    rows = technical.get('items') or []
+    by_index = {row.get('item_index'): row for row in rows if isinstance(row, dict)}
+    result = []
+    for index, item in enumerate(items, 1):
+        data = by_index.get(index, {})
+        issues = []
+        for prefix, label in [('commercial', 'comercial'), ('tax', 'tributável')]:
+            unit, quantity, price = (data.get(prefix + '_unit'), data.get(prefix + '_quantity'), data.get(prefix + '_unit_price'))
+            if not all((unit, quantity, price)):
+                issues.append(f'Informe unidade, quantidade e valor unitário {label}.')
+                continue
+            try:
+                with localcontext() as ctx:
+                    ctx.prec = 50
+                    qty, unit_price, gross = Decimal(str(quantity)), Decimal(str(price)), Decimal(str(item['valor_bruto']))
+                    if not all(v.is_finite() and v > 0 for v in (qty, unit_price, gross)):
+                        raise ValueError
+                    calculated = (qty * unit_price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    if calculated != gross:
+                        issues.append(f'Quantidade × valor unitário {label} difere do valor bruto comercial; confira.')
+            except (InvalidOperation, ValueError, TypeError, KeyError):
+                issues.append(f'Confira os valores {label} informados.')
+        result.append({'item_index': index, 'issues': issues})
+    return result
