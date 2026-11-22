@@ -22736,6 +22736,7 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
         review=review_preparation(snapshot, issuer, prepared, details_saved=bool(details)), _repo=repo,
         step=step, note=note, sources=draft_sources(db, draft=draft),
         fiscal_products=[product_view(p) for p in list_products(db, organization_id=user.organization_id, farm_id=scope["active_farm_id"])],
+        cargo_defaults=_nf_cargo_defaults(snapshot, technical_items, draft_sources(db, draft=draft)["product"]),
         lot_stage_label=LOT_STAGE_LABELS.get(_nf_lot_stage(db, farm, draft) or "", "") if farm else "",
         fiscal_operations=active_operations(db, organization_id=user.organization_id, farm_id=scope["active_farm_id"]),
         freight_options=[("9", "Sem transporte (retirada)"), ("0", "Por conta da fazenda (CIF)"), ("1", "Por conta do comprador (FOB)"),
@@ -27149,6 +27150,26 @@ def fiscal_note_delete(draft_id: str, request: Request, csrf_token: str = Form(.
     return _redirect("/notas-fiscais")
 
 
+def _nf_map_form(data: dict, prev_details: dict) -> None:
+    """Traduz a tela simplificada (cartões de transporte, espécie, município) para os campos da nota."""
+    from app.services.ibge_municipalities import resolve_municipality_code
+    kind = str(data.get("freight_kind") or "")
+    if kind:
+        data["freight_mode"] = {"sem": "9", "busca": "4", "entrega": "3"}.get(kind) or (
+            data.get("freight_payer") if data.get("freight_payer") in ("0", "1", "2") else "1")
+        if kind != "transp":
+            data["carrier_name"] = ""
+        if kind == "sem":
+            data["vehicle_plate"] = data["vehicle_uf"] = ""
+    if data.get("volume_species") == "__outra":
+        data["volume_species"] = data.get("volume_species_other") or ""
+    if "recipient_city" in data:
+        found = resolve_municipality_code(data.get("recipient_city"), data.get("recipient_state"))
+        same_city = (str(data.get("recipient_city") or "").strip().lower() == str(prev_details.get("recipient_city") or "").strip().lower())
+        data["recipient_municipality_code"] = found or data.get("recipient_municipality_code") or (
+            prev_details.get("recipient_municipality_code", "") if same_city else "")
+
+
 def _nf_saved_json(db: Session, user: User, farm: Farm, draft) -> tuple[dict, dict]:
     from app.models.nfe_draft import NfeDraftDetails, NfeDraftTechnicalData
     rows = [db.query(m).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
@@ -27170,6 +27191,34 @@ def _nf_resync(db: Session, user: User, draft, issuer, *, product=None) -> None:
                      user_id=user.id, product=product)
     except ValueError:
         db.rollback()
+
+
+def _nf_cargo_defaults(snapshot: dict, technical_items: dict, product) -> dict:
+    """Carga calculada pela venda e pelo produto fiscal (o usuário pode mudar)."""
+    from decimal import Decimal, InvalidOperation
+    items = snapshot.get("itens") or []
+    unit = (product.commercial_unit if product else "SC") or "SC"
+    try:
+        qty = sum(Decimal(str(i.get("quantidade_sacas") or 0)) for i in items)
+        kg_per = Decimal(str(product.kg_per_unit)) if product and product.kg_per_unit else Decimal("60")
+    except (InvalidOperation, ValueError):
+        return {}
+    taxed = [technical_items.get(n, {}) for n in range(1, len(items) + 1)]
+    if items and all(t.get("tax_unit") == "KG" and t.get("tax_quantity") for t in taxed):
+        net = sum(Decimal(str(t["tax_quantity"])) for t in taxed)
+    else:
+        net = qty * kg_per if unit == "SC" else qty
+    volumes = int(qty) if unit == "SC" and qty == int(qty) and qty > 0 else 0
+    gross = net + Decimal("0.5") * volumes
+    qty_txt = _format_decimal_br(qty, 0 if qty == int(qty) else 2)
+    return {
+        "volume_quantity": str(volumes) if volumes else "",
+        "volume_species": "Sacas" if unit == "SC" else "Granel",
+        "net_weight_kg": format(net.quantize(Decimal("0.001")), "f") if net > 0 else "",
+        "gross_weight_kg": format(gross.quantize(Decimal("0.001")), "f") if net > 0 else "",
+        "qty_help": f"Da venda: {qty_txt} {'sacas' if unit == 'SC' else 'kg'}",
+        "net_help": (f"{qty_txt} sacas × {_format_decimal_br(kg_per, 0)} kg (produto fiscal)" if unit == "SC" else "Da venda"),
+    }
 
 
 def _nf_lot_stage(db: Session, farm: Farm, draft):
@@ -27544,6 +27593,7 @@ async def fiscal_draft_save_all(draft_id: str, request: Request, db: Session = D
     # Dados fiscais vêm só do cadastro (produto e operação): o formulário não os altera.
     prev_details, prev_tech = _nf_saved_json(db, user, farm, draft)
     data = {k: form.get(k) for k in form.keys()}
+    _nf_map_form(data, prev_details)
     for key in ("product_description", "product_ncm", "operation_nature", "operation_cfop"):
         data[key] = prev_details.get(key, "")
     for row in prev_tech.get("items", []):
@@ -27553,7 +27603,7 @@ async def fiscal_draft_save_all(draft_id: str, request: Request, db: Session = D
     try:
         details_values = clean_draft_details(data)
         tech_values = clean_technical_data(data, json.loads(draft.snapshot_json))
-        extra_values = clean_extra_data(form)
+        extra_values = clean_extra_data(data)
     except (ValueError, TypeError) as exc:
         _flash(request, "error", str(exc))
         return _redirect(back)

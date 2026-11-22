@@ -410,3 +410,40 @@ def test_save_route_keeps_fiscal_data_from_setup(monkeypatch):
     assert details['product_ncm'] == '09011110' and details['recipient_name'] == 'Comprador'
     assert item['icms_cst'] == '41'
     db.close()
+
+
+def test_emit_form_maps_freight_cards_species_and_municipality():
+    from types import SimpleNamespace
+    from app.web import routes
+    data = {'freight_kind': 'transp', 'freight_payer': '0', 'carrier_name': 'Transportes X', 'vehicle_plate': 'ABC1D23',
+            'volume_species': '__outra', 'volume_species_other': 'Tambores', 'recipient_city': 'Cidade Inexistente',
+            'recipient_state': 'BA', 'recipient_municipality_code': ''}
+    routes._nf_map_form(data, {'recipient_city': 'Cidade Inexistente', 'recipient_municipality_code': '2900000'})
+    assert data['freight_mode'] == '0' and data['carrier_name'] == 'Transportes X' and data['volume_species'] == 'Tambores'
+    assert data['recipient_municipality_code'] == '2900000'
+    data = {'freight_kind': 'sem', 'carrier_name': 'X', 'vehicle_plate': 'ABC1D23', 'vehicle_uf': 'BA'}
+    routes._nf_map_form(data, {})
+    assert data['freight_mode'] == '9' and not data['carrier_name'] and not data['vehicle_plate']
+    data = {'freight_kind': 'busca', 'carrier_name': 'X'}
+    routes._nf_map_form(data, {})
+    assert data['freight_mode'] == '4' and data['carrier_name'] == ''
+
+    product = SimpleNamespace(commercial_unit='SC', kg_per_unit='60')
+    snapshot = {'itens': [{'quantidade_sacas': '80'}, {'quantidade_sacas': '40'}]}
+    cargo = routes._nf_cargo_defaults(snapshot, {}, product)
+    assert cargo['volume_quantity'] == '120' and cargo['volume_species'] == 'Sacas'
+    assert cargo['net_weight_kg'] == '7200.000' and cargo['gross_weight_kg'] == '7260.000'
+
+
+def test_emit_template_shows_buyer_card_modal_and_freight_cards():
+    snapshot = {'venda': 'V-1', 'comprador': 'Ana', 'data_venda': '2026-11-20', 'valor_bruto': '100',
+                'itens': [{'lote': 'L1', 'quantidade_sacas': '2', 'valor_bruto': '100'}]}
+    html = _render('nfe_draft.html', draft=type('D', (), {'id': 'x'})(), issuer=None,
+                   details={'recipient_name': 'Ana Souza', 'recipient_cpf': '52998224725', 'recipient_city': 'Lugar Nenhum'},
+                   technical={'freight_mode': '1'}, technical_items={}, snapshot=snapshot, extra_data={},
+                   cargo_defaults={'volume_quantity': '2', 'volume_species': 'Sacas', 'net_weight_kg': '120.000', 'gross_weight_kg': '121.000'})
+    assert 'Dados do comprador' in html and 'Completar dados' in html and 'CPF 529.982.247-25' in html
+    assert 'name="recipient_municipality_code" maxlength="7"' in html  # município fora da lista: pede o código
+    assert 'value="transp" checked' in html and 'Quem paga o frete?' in html
+    assert 'value="120"' in html and 'Restaurar valores calculados' in html
+    assert 'Tributos calculados pela operação' not in html

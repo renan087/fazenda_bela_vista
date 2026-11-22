@@ -47,15 +47,79 @@
       <form id="nx-draft-form" method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/salvar" style="display:flex;flex-direction:column;gap:1.25rem">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-        <section class="nx-cardx" aria-labelledby="h-buyer">
-          <div class="nx-hd"><h2 id="h-buyer">Comprador</h2><span class="nx-auto">Da venda</span></div>
-          <div class="nx-g">
-            {% for field, label, maximum, hint in [('recipient_name','Nome / razão social',180,'Nome'),('recipient_cpf','CPF',14,'000.000.000-00'),('recipient_ie','Inscrição estadual',30,'Opcional'),('recipient_postal_code','CEP',9,'00000-000'),('recipient_street','Endereço',180,'Rua, estrada'),('recipient_number','Número',30,'S/N'),('recipient_complement','Complemento',120,'Opcional'),('recipient_district','Bairro',120,'Bairro'),('recipient_city','Município',120,'Município'),('recipient_municipality_code','Código IBGE',7,'7 dígitos')] %}
-            <label class="nx-f">{{ label }}<input name="{{ field }}" maxlength="{{ maximum }}" value="{{ details.get(field, '') }}" placeholder="{{ hint }}" class="nx-in{% if not details.get(field) and field not in ('recipient_ie', 'recipient_complement') %} is-missing{% endif %}"></label>
-            {% endfor %}
-            <label class="nx-f">UF<select name="recipient_state" class="nx-in"><option value="">Selecione</option><option value="BA" {% if details.get('recipient_state') == 'BA' %}selected{% endif %}>Bahia (BA)</option></select></label>
-            <label class="nx-f">Indicador de IE<select name="recipient_ie_indicator" class="nx-in"><option value="">Não informado</option>{% for value, label in [('contribuinte','Contribuinte do ICMS'),('isento','Isento'),('nao_contribuinte','Não contribuinte')] %}<option value="{{ value }}" {% if details.get('recipient_ie_indicator') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        {% set d = details %}
+        {% set buyer_fields = [('recipient_name', 'nome'), ('recipient_cpf', 'CPF'), ('recipient_postal_code', 'CEP'), ('recipient_street', 'endereço'), ('recipient_number', 'número'), ('recipient_district', 'bairro'), ('recipient_city', 'município'), ('recipient_state', 'UF')] %}
+        {% set buyer_missing = [] %}{% for key, label in buyer_fields %}{% if not d.get(key) %}{% set _ = buyer_missing.append(label) %}{% endif %}{% endfor %}
+        {% set need_ibge = d.get('recipient_city') and not d.get('recipient_municipality_code') %}
+        {% if need_ibge %}{% set _ = buyer_missing.append('código do município') %}{% endif %}
+        {% set initials = (buyer_name.split()[:2]|map('first')|join)|upper %}
+        {% set cpf = d.get('recipient_cpf', '') %}
+        {% set cep = d.get('recipient_postal_code', '') %}
+        {% set ie_labels = {'contribuinte': 'Contribuinte do ICMS', 'isento': 'Isento de IE', 'nao_contribuinte': 'Não contribuinte'} %}
+        <section class="nx-cardx nx-buyer" aria-labelledby="h-buyer">
+          <div class="nx-hd">
+            <h2 id="h-buyer">Comprador</h2>
+            <div class="nx-hd-act">
+              {% if buyer_missing %}<span class="nx-tag is-warn">{{ buyer_missing|length }} dado{{ 's' if buyer_missing|length != 1 }} faltando</span>{% else %}<span class="nx-tag is-ok">✓ Dados completos</span>{% endif %}
+              <button type="button" class="sf-btn {{ 'sf-btn-primary' if buyer_missing else 'sf-btn-secondary' }} nx-btn-sm" data-nx-dialog-open="nx-buyer-modal" aria-haspopup="dialog">{{ nxi('edit', 16, 2) }}{{ 'Completar dados' if buyer_missing else 'Editar' }}</button>
+            </div>
           </div>
+          <div class="nx-who">
+            <span class="nx-av" aria-hidden="true">{{ initials or '?' }}</span>
+            <div style="min-width:0">
+              <p class="nx-who-nm">{{ d.get('recipient_name') or 'Comprador sem nome' }}</p>
+              <p class="nx-who-sub">{% if cpf|length == 11 %}CPF {{ cpf[:3] }}.{{ cpf[3:6] }}.{{ cpf[6:9] }}-{{ cpf[9:] }}{% else %}CPF não informado{% endif %}{% if d.get('recipient_ie_indicator') %} · {{ ie_labels.get(d.get('recipient_ie_indicator')) }}{% endif %}{% if d.get('recipient_ie') %} · IE {{ d.get('recipient_ie') }}{% endif %}</p>
+            </div>
+          </div>
+          <dl class="nx-facts">
+            <div><dt>Endereço</dt><dd class="{{ 'is-miss' if not d.get('recipient_street') }}">{{ (d.get('recipient_street') ~ (', ' ~ d.get('recipient_number') if d.get('recipient_number') else '')) if d.get('recipient_street') else 'Falta informar' }}</dd></div>
+            <div><dt>Cidade</dt><dd class="{{ 'is-miss' if not d.get('recipient_city') }}">{{ (d.get('recipient_city') ~ ' / ' ~ d.get('recipient_state')) if d.get('recipient_city') else 'Falta informar' }}</dd></div>
+            <div><dt>CEP</dt><dd class="{{ 'is-miss' if not cep }}">{{ (cep[:5] ~ '-' ~ cep[5:]) if cep|length == 8 else 'Falta informar' }}</dd></div>
+            <div><dt>Bairro</dt><dd class="{{ 'is-miss' if not d.get('recipient_district') }}">{{ d.get('recipient_district') or 'Falta informar' }}</dd></div>
+          </dl>
+          {% if buyer_missing %}
+          <div class="nx-lot-warn" style="margin-top:.875rem">{{ nxi('alert', 18, 2) }}<span>Falta{{ 'm' if buyer_missing|length > 1 }} {{ buyer_missing|join(', ') }} para emitir a nota.</span><button type="button" class="nx-link-btn" data-nx-dialog-open="nx-buyer-modal" style="color:#6b4600">Completar agora</button></div>
+          {% endif %}
+
+          <dialog id="nx-buyer-modal" class="nx-modal" aria-labelledby="nx-buyer-t" data-nx-reset-on-cancel>
+            <div class="nx-modal-h">
+              <span class="nx-av" aria-hidden="true">{{ initials or '?' }}</span>
+              <div style="min-width:0"><h2 id="nx-buyer-t">Dados do comprador</h2><p>Da venda {{ snapshot.venda }} · vale só para esta nota</p></div>
+              <button type="button" class="nx-x" data-nx-dialog-close aria-label="Fechar">{{ nxi('x', 18, 2) }}</button>
+            </div>
+            <div class="nx-modal-b">
+              <div class="nx-grp">
+                <div class="nx-grp-h"><i aria-hidden="true">{{ nxi('user', 15, 2) }}</i>Identificação</div>
+                <div class="nx-g2">
+                  <label class="nx-f w">Nome / razão social<input name="recipient_name" maxlength="180" value="{{ d.get('recipient_name', '') }}" class="nx-in{% if not d.get('recipient_name') %} is-missing{% endif %}"></label>
+                  <label class="nx-f w">CPF<input name="recipient_cpf" maxlength="14" inputmode="numeric" value="{{ cpf }}" placeholder="000.000.000-00" class="nx-in{% if not cpf %} is-missing{% endif %}"></label>
+                  <label class="nx-f">Situação no ICMS<select name="recipient_ie_indicator" class="nx-in"><option value="">Não informado</option>{% for value, label in [('contribuinte','Contribuinte'),('isento','Isento'),('nao_contribuinte','Não contribuinte')] %}<option value="{{ value }}" {% if d.get('recipient_ie_indicator') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+                  <label class="nx-f">Inscrição estadual<input name="recipient_ie" maxlength="30" value="{{ d.get('recipient_ie', '') }}" placeholder="Opcional" class="nx-in"></label>
+                </div>
+              </div>
+              <div class="nx-grp">
+                <div class="nx-grp-h"><i aria-hidden="true">{{ nxi('farm', 15, 2) }}</i>Endereço</div>
+                <div class="nx-g2">
+                  <label class="nx-f">CEP<input name="recipient_postal_code" maxlength="9" inputmode="numeric" value="{{ cep }}" placeholder="00000-000" class="nx-in{% if not cep %} is-missing{% endif %}"></label>
+                  <label class="nx-f">Número<input name="recipient_number" maxlength="30" value="{{ d.get('recipient_number', '') }}" placeholder="S/N" class="nx-in{% if not d.get('recipient_number') %} is-missing{% endif %}"></label>
+                  <label class="nx-f w">Endereço<input name="recipient_street" maxlength="180" value="{{ d.get('recipient_street', '') }}" placeholder="Rua, estrada, rodovia" class="nx-in{% if not d.get('recipient_street') %} is-missing{% endif %}"></label>
+                  <label class="nx-f">Complemento<input name="recipient_complement" maxlength="120" value="{{ d.get('recipient_complement', '') }}" placeholder="Opcional" class="nx-in"></label>
+                  <label class="nx-f">Bairro<input name="recipient_district" maxlength="120" value="{{ d.get('recipient_district', '') }}" placeholder="Ex.: Zona rural" class="nx-in{% if not d.get('recipient_district') %} is-missing{% endif %}"></label>
+                  <label class="nx-f">Município<input name="recipient_city" maxlength="120" value="{{ d.get('recipient_city', '') }}" class="nx-in{% if not d.get('recipient_city') %} is-missing{% endif %}"></label>
+                  <label class="nx-f">UF<select name="recipient_state" class="nx-in{% if not d.get('recipient_state') %} is-missing{% endif %}"><option value="">Selecione</option><option value="BA" {% if d.get('recipient_state') == 'BA' %}selected{% endif %}>Bahia (BA)</option></select></label>
+                  {% if need_ibge %}
+                  <label class="nx-f w">Código do município (IBGE)<input name="recipient_municipality_code" maxlength="7" inputmode="numeric" value="" placeholder="7 números" class="nx-in is-missing"><small>Não achamos este município na nossa lista. Informe o código de 7 números.</small></label>
+                  {% else %}
+                  <input type="hidden" name="recipient_municipality_code" value="{{ d.get('recipient_municipality_code', '') }}">
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            <div class="nx-modal-f">
+              <span class="nx-muted">O cadastro do comprador não muda.</span>
+              <div style="display:flex;gap:.625rem"><button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-close>Cancelar</button>{% if can_write_page %}<button type="submit" name="next" value="" class="sf-btn sf-btn-primary">Salvar dados</button>{% endif %}</div>
+            </div>
+          </dialog>
         </section>
 
         <section class="nx-cardx nx-prods" aria-labelledby="h-prod">
@@ -93,28 +157,61 @@
             {% if can_write_page %}<button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-open="nx-dw-fix">Completar cadastro</button>{% endif %}</div>
           {% endif %}
           <div class="nx-lot-total"><span>Total dos produtos</span><strong>R$ {{ snapshot.valor_bruto|decimal_br }}</strong></div>
-          {% if op %}
-          <div class="nx-taxline">{{ nxi('list', 18, 1.9) }}<span>Tributos calculados pela operação <b>{{ op.name }} v{{ op.version }}</b>{% if details.get('operation_cfop') %} · CFOP {{ details.get('operation_cfop')[:1] }}.{{ details.get('operation_cfop')[1:] }}{% endif %}: {{ icms_labels.get(op.icms_cst, 'ICMS sem situação') }} · {% if op.cbs_rate or op.ibs_uf_rate or op.ibs_municipal_rate %}CBS {{ '%g'|format((op.cbs_rate or '0')|float)|replace('.', ',') }}% · IBS {{ '%g'|format((op.ibs_uf_rate or '0')|float + (op.ibs_municipal_rate or '0')|float)|replace('.', ',') }}%{% else %}IBS/CBS sem alíquota{% endif %} · {{ funrural_labels.get(op.funrural, '') }}.</span>
-            <button type="button" class="nx-link-btn" data-nx-dialog-open="nx-dw-calc">Ver cálculo</button></div>
-          {% else %}
+          {% if not op %}
           <div class="nx-lot-warn">{{ nxi('alert', 18, 2) }}<span>Nenhuma operação fiscal ativa. É ela que define natureza, CFOP e tributos da nota.</span><a class="sf-btn sf-btn-secondary" href="/producao/nfe/configuracao?secao=oper">Ativar operação</a></div>
           {% endif %}
         </section>
 
-        <section class="nx-cardx" aria-labelledby="h-ship">
-          <h2 id="h-ship">Transporte e pagamento</h2>
+        {% set fk = {'9': 'sem', '4': 'busca', '3': 'entrega'}.get(freight_code, 'transp') %}
+        {% set cargo = cargo_defaults or {} %}
+        {% set vq = extra.get('volume_quantity') or cargo.get('volume_quantity', '') %}
+        {% set vs = extra.get('volume_species') or cargo.get('volume_species', 'Sacas') %}
+        {% set vn = extra.get('net_weight_kg') or cargo.get('net_weight_kg', '') %}
+        {% set vg = extra.get('gross_weight_kg') or cargo.get('gross_weight_kg', '') %}
+        {% set species = ['Sacas', 'Big bag', 'Granel', 'Bags', 'Paletes', 'Caixas', 'Fardos'] %}
+        {% set vs_other = vs and vs not in species %}
+        <section class="nx-cardx" aria-labelledby="h-ship" data-nx-ship>
+          <div class="nx-hd"><h2 id="h-ship">Transporte e pagamento</h2><span class="nx-auto">Pagamento e frete: da venda</span></div>
           <div class="nx-g">
             <label class="nx-f">Data de emissão<input type="date" name="emission_date" value="{{ technical.get('emission_date') or snapshot.data_venda }}" class="nx-in"></label>
-            <label class="nx-f">Frete<select name="freight_mode" class="nx-in">{% for value, label in (freight_options or [('9','Sem transporte (retirada)'),('0','Por conta da fazenda (CIF)'),('1','Por conta do comprador (FOB)'),('2','Por conta de terceiros'),('3','Transporte próprio da fazenda'),('4','Transporte próprio do comprador')]) %}<option value="{{ value }}" {% if freight_code == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-            <label class="nx-f">Transportadora<input name="carrier_name" maxlength="120" value="{{ extra.get('carrier_name', '') }}" placeholder="Opcional" class="nx-in"></label>
-            <label class="nx-f">Placa<input name="vehicle_plate" maxlength="8" value="{{ extra.get('vehicle_plate', '') }}" placeholder="ABC1D23" class="nx-in"></label>
-            <label class="nx-f">UF da placa<input name="vehicle_uf" maxlength="2" value="{{ extra.get('vehicle_uf', '') }}" placeholder="BA" class="nx-in"></label>
-            <label class="nx-f">Volumes<input name="volume_quantity" inputmode="numeric" value="{{ extra.get('volume_quantity', '') or ((total_sacks.v|int) if total_sacks.v == (total_sacks.v|int) else '') }}" class="nx-in"></label>
-            <label class="nx-f">Espécie<input name="volume_species" maxlength="60" value="{{ extra.get('volume_species', '') or 'Sacas' }}" class="nx-in"></label>
-            <label class="nx-f">Peso líquido (kg)<input name="net_weight_kg" inputmode="decimal" value="{{ extra.get('net_weight_kg', '') }}" class="nx-in"></label>
-            <label class="nx-f">Peso bruto (kg)<input name="gross_weight_kg" inputmode="decimal" value="{{ extra.get('gross_weight_kg', '') }}" class="nx-in"></label>
             <label class="nx-f">Pagamento<select name="payment_indicator" class="nx-in">{% for value, label in (payment_indicators or []) %}<option value="{{ value }}" {% if (extra.get('payment_indicator') or (sale_meta.ind_pag if sale_meta else '')) == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><small>{{ sale_meta.payment_label if sale_meta else 'Da venda' }}</small></label>
             <input type="hidden" name="payment_amount" value="{{ extra.get('payment_amount', '') }}">
+          </div>
+
+          <p class="nx-sec" style="margin-top:1.125rem">Como o café vai sair da fazenda?</p>
+          <div class="nx-tiles" role="radiogroup" aria-label="Transporte">
+            {% for key, label, hint, icon in [('sem', 'Sem transporte', 'Venda sem saída física (ex.: café no armazém)', 'ban'), ('busca', 'Comprador busca', 'Caminhão do comprador retira na fazenda', 'truck'), ('entrega', 'Fazenda entrega', 'Veículo da própria fazenda leva o café', 'farm'), ('transp', 'Transportadora', 'Frete contratado com uma empresa', 'send')] %}
+            <label class="nx-tile"><input type="radio" name="freight_kind" value="{{ key }}" {% if fk == key %}checked{% endif %} data-nx-freight><span class="nx-tile-i">{{ nxi(icon, 18, 1.9) }}</span><b>{{ label }}</b><small>{{ hint }}</small></label>
+            {% endfor %}
+          </div>
+          <div class="nx-g nx-reveal" data-nx-show="transp" {% if fk != 'transp' %}hidden{% endif %}>
+            <label class="nx-f">Quem paga o frete?<select name="freight_payer" class="nx-in">{% for value, label in [('1', 'Comprador (FOB)'), ('0', 'Fazenda (CIF)'), ('2', 'Outra pessoa')] %}<option value="{{ value }}" {% if freight_code == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+            <label class="nx-f nx-span2">Transportadora<input name="carrier_name" maxlength="120" value="{{ extra.get('carrier_name', '') }}" placeholder="Nome da transportadora" class="nx-in"></label>
+          </div>
+          <div class="nx-g nx-reveal" data-nx-show="busca entrega transp" {% if fk == 'sem' %}hidden{% endif %}>
+            <label class="nx-f">Placa do veículo<input name="vehicle_plate" maxlength="8" value="{{ extra.get('vehicle_plate', '') }}" placeholder="ABC1D23" class="nx-in"></label>
+            <label class="nx-f">UF da placa<input name="vehicle_uf" maxlength="2" value="{{ extra.get('vehicle_uf', '') }}" placeholder="BA" class="nx-in"></label>
+          </div>
+
+          <div class="nx-load" data-nx-load>
+            {{ nxi('bag', 20, 1.9) }}<b>Carga</b>
+            <span class="nx-pillv" data-nx-sum="qty">{{ vq or '—' }} {{ (vs or '')|lower }}</span>
+            <span class="nx-pillv" data-nx-sum="net">{{ vn|decimal_br(0) if vn else '—' }} kg líquido</span>
+            <span class="nx-pillv" data-nx-sum="gross">{{ vg|decimal_br(0) if vg else '—' }} kg bruto</span>
+            <button type="button" class="nx-link-btn" data-nx-toggle="nx-load-fields" aria-expanded="false" data-label-on="Recolher" data-label-off="Ajustar carga" style="margin-left:auto">Ajustar carga</button>
+          </div>
+          <div id="nx-load-fields" class="nx-reveal" hidden>
+            <p class="nx-muted" style="margin:.75rem 0">Já preenchido com os dados da venda e do produto fiscal. Mude se precisar.</p>
+            <div class="nx-g">
+              <label class="nx-f">Quantidade de volumes<input name="volume_quantity" inputmode="numeric" value="{{ vq }}" class="nx-in" data-nx-auto="{{ cargo.get('volume_quantity', '') }}" data-nx-sumsrc="qty"><small>{{ cargo.get('qty_help', '') }}</small></label>
+              <label class="nx-f">Espécie<select name="volume_species" class="nx-in" data-nx-species data-nx-auto="{{ cargo.get('volume_species', 'Sacas') }}">{% for sp in species %}<option value="{{ sp }}" {% if vs == sp %}selected{% endif %}>{{ sp }}</option>{% endfor %}<option value="__outra" {% if vs_other %}selected{% endif %}>Outra…</option></select></label>
+              <label class="nx-f" data-nx-species-other {% if not vs_other %}hidden{% endif %}>Qual espécie?<input name="volume_species_other" maxlength="60" value="{{ vs if vs_other else '' }}" placeholder="Ex.: Tambores" class="nx-in"></label>
+            </div>
+            <div class="nx-g" style="margin-top:.875rem">
+              <label class="nx-f">Peso líquido (kg)<input name="net_weight_kg" inputmode="decimal" value="{{ ('%g'|format(vn|float))|replace('.', ',') if vn else '' }}" class="nx-in" data-nx-auto="{{ ('%g'|format(cargo.get('net_weight_kg')|float))|replace('.', ',') if cargo.get('net_weight_kg') else '' }}"><small>{{ cargo.get('net_help', '') }}</small></label>
+              <label class="nx-f">Peso bruto (kg)<input name="gross_weight_kg" inputmode="decimal" value="{{ ('%g'|format(vg|float))|replace('.', ',') if vg else '' }}" class="nx-in" data-nx-auto="{{ ('%g'|format(cargo.get('gross_weight_kg')|float))|replace('.', ',') if cargo.get('gross_weight_kg') else '' }}"><small>Peso líquido + 0,5 kg de sacaria por volume. Ajuste se pesou na balança.</small></label>
+            </div>
+            <button type="button" class="nx-link-btn" data-nx-restore style="margin-top:.5rem;padding-left:0" hidden>Restaurar valores calculados</button>
           </div>
         </section>
 
@@ -291,5 +388,5 @@
   </section>
   {% endif %}
 </div>
-<script src="/static/js/notas_fiscais.js?v=20261122nx2" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261122nx3" defer></script>
 {% endblock %}

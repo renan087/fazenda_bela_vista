@@ -316,6 +316,51 @@
     });
   }
 
+  /* ---------------------------------------------------------------- emitir NF: modal do comprador, transporte e carga */
+  function initEmit(root) {
+    root.querySelectorAll('dialog[data-nx-reset-on-cancel]').forEach(function (d) {
+      var saving = false;
+      d.addEventListener('submit', function () { saving = true; });
+      d.querySelectorAll('[type="submit"]').forEach(function (b) { b.addEventListener('click', function () { saving = true; }); });
+      d.addEventListener('close', function () {
+        if (saving) return;
+        d.querySelectorAll('input, select, textarea').forEach(function (el) {
+          if (el.tagName === 'SELECT') { Array.prototype.forEach.call(el.options, function (o) { o.selected = o.defaultSelected; }); }
+          else if (el.type !== 'hidden') { el.value = el.defaultValue; }
+        });
+      });
+    });
+    var ship = root.querySelector('[data-nx-ship]');
+    if (!ship) return;
+    function freight() {
+      var on = ship.querySelector('[data-nx-freight]:checked'); var k = on ? on.value : '';
+      ship.querySelectorAll('[data-nx-show]').forEach(function (box) { box.hidden = box.getAttribute('data-nx-show').split(' ').indexOf(k) < 0; });
+    }
+    ship.querySelectorAll('[data-nx-freight]').forEach(function (r) { r.addEventListener('change', freight); });
+    var sp = ship.querySelector('[data-nx-species]'); var other = ship.querySelector('[data-nx-species-other]');
+    var autos = ship.querySelectorAll('[data-nx-auto]'); var restore = ship.querySelector('[data-nx-restore]');
+    function num(v) { var r = String(v || '').replace(/\s/g, ''); if (r.indexOf(',') >= 0) r = r.replace(/\./g, '').replace(',', '.'); var n = parseFloat(r); return isFinite(n) ? n : null; }
+    function fmt(n) { return n === null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 3 }); }
+    function sync() {
+      if (other) other.hidden = !(sp && sp.value === '__outra');
+      var q = ship.querySelector('[name="volume_quantity"]'); var otherIn = ship.querySelector('[name="volume_species_other"]');
+      var spName = sp ? (sp.value === '__outra' ? (otherIn && otherIn.value) || 'volumes' : sp.value) : '';
+      var set = function (k, t) { var el = ship.querySelector('[data-nx-sum="' + k + '"]'); if (el) el.textContent = t; };
+      set('qty', ((q && q.value) || '—') + ' ' + spName.toLowerCase());
+      set('net', fmt(num(ship.querySelector('[name="net_weight_kg"]').value)) + ' kg líquido');
+      set('gross', fmt(num(ship.querySelector('[name="gross_weight_kg"]').value)) + ' kg bruto');
+      var changed = false;
+      autos.forEach(function (el) { var a = el.getAttribute('data-nx-auto'); if (a && el.value !== a) changed = true; });
+      if (restore) restore.hidden = !changed;
+    }
+    ship.addEventListener('input', sync); ship.addEventListener('change', sync);
+    if (restore) restore.addEventListener('click', function () {
+      autos.forEach(function (el) { var a = el.getAttribute('data-nx-auto'); if (a) el.value = a; });
+      sync();
+    });
+    freight(); sync();
+  }
+
   /* ---------------------------------------------------------------- operação fiscal: abas e exemplo de tributos */
   function initOperationEditor(root) {
     var tabs = root.querySelectorAll('[data-nx-optab]');
@@ -369,5 +414,6 @@
     initMoreMenus(root);
     initCounters(root);
     if (kind === 'config') { initConfig(root); initOperationEditor(root); }
+    if (kind === 'emit') initEmit(root);
   });
 })();
