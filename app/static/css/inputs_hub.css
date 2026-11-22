@@ -370,3 +370,10 @@ a.io-chip.is-on:hover{color:#fff}
 .io-pager-size{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--io-muted)}
 .io-pager-size select{min-height:36px;border:1px solid var(--io-line);border-radius:10px;padding:0 28px 0 10px;font-size:14px;font-weight:600;color:var(--io-ink);background-color:#fff}
 @media (max-width:639px){.io-pager{justify-content:center}.io-pager-info{width:100%;text-align:center}}
+
+/* Foco: um só anel verde (anula o anel azul padrão do Tailwind Forms) */
+.io-page input:focus,.io-page select:focus,.io-page textarea:focus,
+.io-drawer input:focus,.io-drawer select:focus,.io-drawer textarea:focus{outline:none;--tw-ring-shadow:0 0 #0000;--tw-ring-offset-shadow:0 0 #0000}
+.io-search input,.io-search input:focus{border:0!important;box-shadow:none!important;outline:none!important;padding-left:0;padding-right:0;background:transparent}
+.io-search:focus-within{border-color:var(--io-green);box-shadow:0 0 0 3px #CFE5B7}
+.io-fld input:focus,.io-fld select:focus,.io-cell:focus,.io-count-input input:focus,.cw-parc input:focus,.io-pager-size select:focus{outline:none!important;border-color:var(--io-green)!important;box-shadow:0 0 0 3px #CFE5B7!important}

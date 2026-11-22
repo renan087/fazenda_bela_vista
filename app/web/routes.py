@@ -26096,6 +26096,9 @@ async def stock_count_action(
                 raise ValueError("Confira as quantidades contadas: use só números maiores ou iguais a zero.")
             if value > _ih.MAX_COUNT_QUANTITY:
                 raise ValueError("Uma das quantidades contadas está grande demais. O máximo é 9.999.999,99.")
+            catalog = repo.get_input_catalog(int(key))
+            if catalog and _ih.is_integer_unit(catalog.default_unit) and abs(value - round(value)) > 1e-9:
+                raise ValueError(f"{catalog.name} é contado em {catalog.default_unit}: use número inteiro, sem vírgula.")
             items.append({"input_id": int(key), "counted_quantity": value})
         _, adjustments = register_stock_inventory(repo, {
             "farm_id": farm_id, "inventory_date": str(form.get("data") or ""),

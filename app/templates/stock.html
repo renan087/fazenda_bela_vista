@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io4">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ url_for('static', path='css/inputs_hub.css') }}?v=20261121io5">{% endblock %}
 {% block content %}
 {%- set io_items = hub['items'] -%}
 {%- set io_sel = selected_stock_item if selected_stock_item in io_items|map(attribute='id')|list else (io_items[0].id if io_items else None) -%}

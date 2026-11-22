@@ -122,7 +122,7 @@ def test_legacy_links_land_on_new_views(hub):
 def test_movements_paginate_15_by_default_and_allow_bigger_pages(hub):
     env, x = hub
     repo = env.routes._repository(env.db)
-    ih.register_uses(repo, [{"input_id": x["luva"].id, "quantity": "0,5"} for _ in range(20)],
+    ih.register_uses(repo, [{"input_id": x["diesel"].id, "quantity": "1"} for _ in range(20)],
                      farm_id=env.scope["active_farm_id"], season_id=env.scope["active_season_id"], plots={})
     html = _page(env, "/insumos/estoque", aba="movimentacoes", periodo="safra", tipo="uso")
     assert html.count('class="io-mv"') == 15 and "Mostrando 1–15 de 20" in html and "Página 1 de 2" in html
@@ -148,3 +148,15 @@ def test_count_history_card_and_absurd_quantities(hub):
     sheet = ih.count_sheet([{"id": 1, "name": "X", "unit": "L", "available": 5, "available_label": "5 L", "value": 50,
                              "group_label": "G", "category": "C"}], {"1": "151515151515"})
     assert sheet["rows"][0]["status"] == "todo"
+
+
+def test_unit_items_only_accept_whole_numbers(hub):
+    import pytest
+    env, x = hub
+    repo = env.routes._repository(env.db)
+    with pytest.raises(ValueError, match="números inteiros"):
+        ih.register_uses(repo, [{"input_id": x["luva"].id, "quantity": "1,5"}], farm_id=env.scope["active_farm_id"],
+                         season_id=env.scope["active_season_id"], plots={})
+    req = env.request("/insumos/estoque/contagem", form=[("counted_%d" % x["luva"].id, "3,50"), ("acao", "aplicar")])
+    asyncio.run(env.routes.stock_count_action(req, db=env.db, user=env.user))
+    assert "número inteiro" in env.session["flash"]["message"]

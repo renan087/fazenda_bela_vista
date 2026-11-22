@@ -13,6 +13,8 @@
   const PLOT = byId(PLOTS);
   const MACH = byId(MACHINES);
   const TODAY = DATA.today || new Date().toISOString().slice(0, 10);
+  const INT_UNITS = ['un', 'un.', 'unid', 'unidade', 'par', 'pares', 'peça', 'peca', 'kit', 'cx', 'caixa', 'rolo'];
+  const isIntUnit = (u) => INT_UNITS.includes(String(u || '').trim().toLowerCase());
 
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const num = (raw) => {
@@ -262,6 +264,7 @@
           const q = num(l.quantity);
           if (!ITEM[l.input_id]) return showError(tag + 'escolha o item.');
           if (!(q > 0)) return showError(tag + 'informe uma quantidade maior que zero.');
+          if (isIntUnit(ITEM[l.input_id].unit) && Math.abs(q - Math.round(q)) > 1e-9) return showError(tag + `${ITEM[l.input_id].unit} é contado em números inteiros.`);
         } else {
           const lt = num(l.liters);
           if (!MACH[l.asset_id]) return showError(tag + 'escolha a máquina.');
@@ -342,6 +345,12 @@
     dlg.querySelectorAll('[data-io-close]').forEach((b) => b.addEventListener('click', () => dlg.close()));
     dlg.addEventListener('close', () => { if (fixBonus) { fixBonus.item.available -= fixBonus.qty; fixBonus = null; } });
     dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+    const intOnly = (input, unit) => { if (isIntUnit(unit) && /[^\d]/.test(input.value)) input.value = input.value.replace(/[^\d]/g, ''); };
+    dlg.addEventListener('input', (e) => {
+      if (kind !== 'use') return;
+      if (e.target.matches('[data-io-pane="one"] [data-f="quantity"]')) { const it = ITEM[one('input_id').value]; if (it) intOnly(e.target, it.unit); }
+      if (e.target.matches('[data-r="quantity"]')) { const r = rows[Number(e.target.closest('[data-row]').dataset.row)]; const it = r && ITEM[r.input_id]; if (it) intOnly(e.target, it.unit); }
+    }, true);
     dlg.querySelector('[data-io-pane="one"]') && dlg.querySelector('[data-io-pane="one"]').addEventListener('input', renderImpact);
     dlg.querySelector('[data-io-pane="one"]') && dlg.querySelector('[data-io-pane="one"]').addEventListener('change', renderImpact);
     const onRowEdit = (e) => {
@@ -553,8 +562,10 @@
     // Máscara de centavos: 1 → 0,01 · 10 → 0,10 · 12345 → 123,45 (máximo 9.999.999,99)
     const MAX_DIGITS = 9;
     const maskCents = (input) => {
-      const digits = input.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, MAX_DIGITS);
+      const intUnit = isIntUnit(input.closest('[data-io-crow]').dataset.unit);
+      const digits = input.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, intUnit ? MAX_DIGITS - 2 : MAX_DIGITS);
       if (!digits) { input.value = ''; return; }
+      if (intUnit) { input.value = Number(digits).toLocaleString('pt-BR'); return; }
       const padded = digits.padStart(3, '0');
       const whole = Number(padded.slice(0, -2)).toLocaleString('pt-BR');
       input.value = `${whole},${padded.slice(-2)}`;
@@ -564,8 +575,11 @@
       input.setAttribute('inputmode', 'numeric');
       input.setAttribute('maxlength', '12');
       const start = num(input.value);
-      if (input.value.trim() && !Number.isNaN(start)) input.value = Math.min(start, 9999999.99).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      else input.value = '';
+      const whole = isIntUnit(row.dataset.unit);
+      if (input.value.trim() && !Number.isNaN(start)) {
+        input.value = whole ? Math.round(Math.min(start, 9999999)).toLocaleString('pt-BR')
+          : Math.min(start, 9999999.99).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      } else input.value = '';
     });
     countForm.addEventListener('input', (e) => {
       if (!e.target.closest('[data-io-crow]')) return;

@@ -492,6 +492,8 @@ def register_uses(repo, lines: list[dict], *, farm_id, season_id, plots: dict) -
                 raise ValueError(prefix + "o setor escolhido não está na safra ativa.")
             catalog = repo.get_input_catalog(input_id)
             unit = (line.get("unit") or "").strip() or _display_unit(catalog)
+            if is_integer_unit(unit) and abs(quantity - round(quantity)) > 1e-9:
+                raise ValueError(prefix + f"{unit} é contado em números inteiros. Use, por exemplo, {int(quantity) or 1} {unit}.")
             try:
                 outputs.append(create_manual_stock_output(repo, {
                     "farm_id": farm_id, "plot_id": plot.id if plot else None, "input_id": input_id, "season_id": season_id,
@@ -614,6 +616,11 @@ MANUAL_REFERENCE = "manual_stock_output"
 ALLOCATION_REFERENCE = "manual_stock_output_allocation"
 PERIODS = {"7": 7, "30": 30}
 MAX_COUNT_QUANTITY = 9_999_999.99
+INTEGER_UNITS = {"un", "un.", "unid", "unidade", "par", "pares", "peça", "peca", "kit", "cx", "caixa", "rolo"}
+
+
+def is_integer_unit(unit: str | None) -> bool:
+    return (unit or "").strip().lower() in INTEGER_UNITS
 PAGE_SIZES = (15, 30, 50, 100)
 
 
