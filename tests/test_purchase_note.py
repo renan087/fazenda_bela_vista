@@ -230,3 +230,11 @@ def test_purchase_report_export_still_works(wiz):
     resp = env.routes.export_purchased_inputs_xlsx(env.request("/insumos/comprados/exportar.xlsx"), farm_id=None, item_type=None, input_id=None,
                                                    start_date=None, end_date=None, db=env.db, user=env.user)
     assert resp.status_code == 200 and "spreadsheet" in resp.media_type
+
+
+def test_item_step_has_search_above_list_and_missing_summary(wiz):
+    env, x, account = wiz
+    html = env.routes.purchase_wizard_page(env.request("/insumos/comprados/nova"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    step2 = html[html.index('data-cw-step="2"'):html.index('data-cw-step="3"')]
+    assert step2.index("data-cw-search") < step2.index("data-cw-items")
+    assert "data-cw-todo" in step2 and "data-cw-count" in step2

@@ -130,66 +130,121 @@
   }
 
   // ------------------------------------------------------------------ render
-  const CHEV_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
-  const CHEV_UP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>';
+  // máscaras: embalagens inteiras; tamanho, preço e mínimo em centavos (100 → 1,00)
+  const maskWhole = (raw) => { const d = String(raw || '').replace(/\D/g, '').replace(/^0+/, '').slice(0, 6); return d ? Number(d).toLocaleString('pt-BR') : ''; };
+  const maskCents = (raw) => {
+    const d = String(raw || '').replace(/\D/g, '').replace(/^0+/, '').slice(0, 9);
+    if (!d) return '';
+    const p = d.padStart(3, '0');
+    return `${Number(p.slice(0, -2)).toLocaleString('pt-BR')},${p.slice(-2)}`;
+  };
+  const asCents = (v) => { const n = num(v); return n && !Number.isNaN(n) ? n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''; };
+  const asWhole = (v) => { const n = num(v); return n && !Number.isNaN(n) ? Math.round(n).toLocaleString('pt-BR') : ''; };
+  const MASKS = { packs: maskWhole, size: maskCents, price: maskCents, minimum: maskCents };
+  S.items.forEach((it) => {
+    it.packs = asWhole(it.packs); it.size = asCents(it.size); it.price = asCents(it.price); it.minimum = asCents(it.minimum);
+  });
+  const missing = (it) => ({ packs: !(num(it.packs) > 0), size: !(num(it.size) > 0), price: !(num(it.price) > 0), type: !it.item_type || !it.category });
+  const isDone = (it) => { const m = missing(it); return !m.packs && !m.size && !m.price && !m.type; };
+  const calcLine = (it) => {
+    const p = num(it.packs) || 0; const sz = num(it.size) || 0; const pr = num(it.price) || 0;
+    return {
+      qty: p && sz ? `${fmt(p * sz)} ${it.unit || ''}` : '—',
+      detail: isDone(it) ? `${money(p * pr)} · ${money(pr / sz)} por ${it.unit}` : 'complete a linha',
+    };
+  };
 
   function itemHtml(it, i) {
     const known = byName(it.name);
-    const open = S.open === i;
     const units = known ? [known.unit] : (((TYPE[it.type_key] || TYPES.find((t) => t.item_type === it.item_type && t.categories.includes(it.category))) || {}).units || {})[it.category] || [];
-    const size = num(it.size) || 0;
-    const packs = num(it.packs) || 0;
-    const qtyLabel = packs ? `${fmt(packs)} × ${fmt(size)} ${esc(it.unit || '')}` : 'falta quantidade';
-    let body = '';
-    if (open) {
-      const typeChips = known ? '' : `<div class="io-fld"><span>Item novo: que tipo é?</span><div class="cw-types">${TYPES.map((t) => `<button type="button" class="cw-type${it.type_key === t.key ? ' is-on' : ''}" data-cw-type="${t.key}">${esc(t.label)}</button>`).join('')}</div></div>
-        ${it.type_key ? `<label class="io-fld"><span>Categoria</span><select data-cw-i="category">${TYPE[it.type_key].categories.map((c) => `<option${c === it.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>` : ''}`;
-      const unitField = `<label class="io-fld"><span>Unidade</span><select data-cw-i="unit"${known ? ' disabled' : ''}>${(units.length ? units : ['—']).map((u) => `<option${u === it.unit ? ' selected' : ''}>${esc(u)}</option>`).join('')}</select>${known ? '<small>Mesma unidade do estoque</small>' : ''}</label>`;
-      const lot = traceable(it) ? `<div class="cw-grid3">
-          <label class="io-fld"><span>Lote</span><input type="text" maxlength="120" data-cw-i="batch" value="${esc(it.batch)}"></label>
-          <label class="io-fld"><span>Fabricação</span><input type="date" data-cw-i="manufacture_date" value="${esc(it.manufacture_date)}"></label>
-          <label class="io-fld"><span>Validade</span><input type="date" data-cw-i="expiration_date" value="${esc(it.expiration_date)}"></label>
-        </div><small class="io-txt-muted" style="font-size:12px">Lote e validade aparecem só para defensivos e adubos.</small>` : '';
-      body = `<div class="cw-ibody">${typeChips}
-        <div class="cw-grid3">
-          <label class="io-fld"><span>Quantas embalagens</span><input type="text" inputmode="decimal" data-cw-i="packs" value="${esc(it.packs)}" placeholder="Ex.: 40"></label>
-          <label class="io-fld"><span>Cada embalagem tem</span><input type="text" inputmode="decimal" data-cw-i="size" value="${esc(it.size)}" placeholder="Ex.: 50"></label>
-          ${unitField}
-          <label class="io-fld"><span>Preço por embalagem (R$)</span><input type="text" inputmode="decimal" data-cw-i="price" value="${esc(it.price)}" placeholder="0,00"></label>
-          <label class="io-fld"><span>Avisar quando tiver menos de <em>(${esc(it.unit || 'unid.')})</em></span><input type="text" inputmode="decimal" data-cw-i="minimum" value="${esc(it.minimum)}" placeholder="opcional"></label>
-        </div>
-        <span class="cw-calc" data-cw-calc>${packs && size ? `= ${fmt(packs * size)} ${esc(it.unit)} no estoque${num(it.price) ? ` · ${money((num(it.price) || 0) / size)} por ${esc(it.unit)}` : ''}` : ''}</span>
-        ${lot}
-        <div style="display:flex;justify-content:flex-end">${it.used ? `<span class="io-sub" style="margin:0;font-size:12px">Já usado: ${esc(it.used_label)}. Este item não pode sair da nota.</span>` : '<button type="button" class="io-btn is-ghost is-sm" style="color:#B42318" data-cw-remove>Remover item</button>'}</div>
-      </div>`;
+    const m = missing(it);
+    const done = isDone(it);
+    const c = calcLine(it);
+    const typeChips = known ? '' : `<div class="cw-newtype"><span class="cw-lab">Item novo: que tipo é?${m.type ? ' <i>falta</i>' : ''}</span><div class="cw-types">${TYPES.map((t) => `<button type="button" class="cw-type${it.type_key === t.key ? ' is-on' : ''}" data-cw-type="${t.key}">${esc(t.label)}</button>`).join('')}</div>
+      ${it.type_key ? `<div class="cw-seg cw-seg-sm"><label class="cw-cell"><span class="cw-lab">Categoria</span><select data-cw-i="category">${TYPE[it.type_key].categories.map((x) => `<option${x === it.category ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
+        <label class="cw-cell"><span class="cw-lab">Unidade</span><select data-cw-i="unit">${(units.length ? units : ['—']).map((u) => `<option${u === it.unit ? ' selected' : ''}>${esc(u)}</option>`).join('')}</select></label></div>` : ''}</div>`;
+    const cell = (key, label, input, extraCls) => `<label class="cw-cell${m[key] ? ' is-miss' : ''}${extraCls || ''}"><span class="cw-lab">${label}${m[key] ? ' <i>falta</i>' : ''}</span>${input}</label>`;
+    const trace = traceable(it);
+    const extraLabel = it.open_extra ? `− Ocultar ${trace ? 'fabricação e aviso de mínimo' : 'aviso de mínimo'}` : `+ ${trace ? 'Fabricação e aviso de mínimo' : 'Aviso de mínimo'}`;
+    const removeBtn = it.used
+      ? `<span class="io-pill io-tone-amber" title="Já usado: não pode sair da nota">já usado ${esc(it.used_label)}</span>`
+      : `<button type="button" class="io-btn is-ghost is-sm cw-remove" data-cw-remove aria-label="Remover ${esc(it.name)}">Remover</button>`;
+    return `<article class="cw-item${done ? '' : ' is-todo'}" data-cw-index="${i}" aria-label="Item ${i + 1}: ${esc(it.name)}">
+      <div class="cw-ihead">
+        <span class="cw-num${done ? ' is-done' : ''}" data-cw-num>${done ? '✓' : i + 1}</span>
+        <span class="cw-iname"><strong>${esc(it.name)}</strong><span class="cw-imeta"><span class="io-pill io-tone-green">vai para: ${esc(groupLabel(it))}</span>${known ? `tem ${esc(known.stock)} no estoque` : '<span class="io-pill io-tone-blue">item novo</span>'}</span></span>
+        ${removeBtn}
+      </div>
+      ${typeChips}
+      <div class="cw-seg">
+        ${cell('packs', 'Embalagens', `<span class="cw-val"><input type="text" inputmode="numeric" data-cw-i="packs" value="${esc(it.packs)}" placeholder="0" autocomplete="off"><b>un.</b></span>`)}
+        ${cell('size', 'Cada uma tem', `<span class="cw-val"><input type="text" inputmode="numeric" data-cw-i="size" value="${esc(it.size)}" placeholder="0,00" autocomplete="off"><b data-cw-unit>${esc(it.unit || '')}</b></span>`)}
+        ${cell('price', 'Preço de cada', `<span class="cw-val"><b>R$</b><input type="text" inputmode="numeric" data-cw-i="price" value="${esc(it.price)}" placeholder="0,00" autocomplete="off"></span>`)}
+        <div class="cw-cell is-out"><span class="cw-lab">Entra no estoque</span><strong data-cw-qty>${esc(c.qty)}</strong><small data-cw-detail>${esc(c.detail)}</small></div>
+      </div>
+      <div class="cw-extra">
+        ${trace ? `<div class="cw-seg cw-seg-sm">
+          <label class="cw-cell"><span class="cw-lab">Lote <i class="is-opt">opcional</i></span><input type="text" maxlength="120" data-cw-i="batch" value="${esc(it.batch)}" placeholder="Como está na embalagem"></label>
+          <label class="cw-cell"><span class="cw-lab">Validade <i class="is-opt">opcional</i></span><input type="date" data-cw-i="expiration_date" value="${esc(it.expiration_date)}"></label>
+          ${it.open_extra ? `<label class="cw-cell"><span class="cw-lab">Fabricação <i class="is-opt">opcional</i></span><input type="date" data-cw-i="manufacture_date" value="${esc(it.manufacture_date)}"></label>` : ''}
+        </div>` : ''}
+        ${it.open_extra ? `<div class="cw-seg cw-seg-sm cw-seg-min">
+          <label class="cw-cell"><span class="cw-lab">Avisar quando tiver menos de <i class="is-opt">opcional</i></span><span class="cw-val"><input type="text" inputmode="numeric" data-cw-i="minimum" value="${esc(it.minimum)}" placeholder="0,00" autocomplete="off"><b>${esc(it.unit || '')}</b></span></label>
+          <div class="cw-cell is-hint"><span>O aviso aparece na Visão geral quando o estoque de ${esc(it.name)} chegar nesse ponto.</span></div>
+        </div>` : ''}
+        <button type="button" class="cw-link-btn" data-cw-extra aria-expanded="${it.open_extra ? 'true' : 'false'}">${extraLabel}</button>
+      </div>
+    </article>`;
+  }
+
+  function renderTodo() {
+    const todo = S.items.filter((it) => !isDone(it)).length;
+    const box = $('[data-cw-todo]');
+    if (box) {
+      box.innerHTML = !S.items.length ? '' : todo
+        ? `<button type="button" class="io-btn is-sm cw-todo-btn" data-cw-goto-missing>${todo === 1 ? '1 item falta completar' : `${todo} itens faltam completar`} · Ir para o que falta</button>`
+        : '<span class="io-pill io-tone-green cw-alldone">✓ Todos os itens completos</span>';
     }
-    const stock = (known ? `tem ${esc(known.stock)}` : '<span class="io-pill io-tone-blue">item novo</span>') + (it.used ? ` · <span class="io-pill io-tone-amber">já usado ${esc(it.used_label)}</span>` : '');
-    return `<div class="cw-item${open ? ' is-open' : ''}" data-cw-index="${i}">
-      <button type="button" class="cw-ihead" data-cw-toggle aria-expanded="${open}">
-        <span class="cw-iname"><strong>${esc(it.name)}</strong><span class="cw-imeta"><span class="io-pill io-tone-green">vai para: ${esc(groupLabel(it))}</span>${stock}</span></span>
-        <span class="cw-iqty">${qtyLabel}</span>
-        <span class="cw-isub" data-cw-isub>${money(itemTotal(it))}</span>${open ? CHEV_UP : CHEV_DOWN}
-      </button>${body}</div>`;
+    const count = $('[data-cw-count]');
+    if (count) count.textContent = S.items.length ? `${S.items.length} ${S.items.length === 1 ? 'item' : 'itens'} na nota${todo ? ` · ${todo} por completar` : ' · todos completos'}` : '';
+    $('[data-cw-total]').textContent = money(total());
   }
 
   function renderItems() {
     const box = $('[data-cw-items]');
-    box.innerHTML = S.items.length ? S.items.map(itemHtml).join('') : '<div class="io-empty" style="padding:18px"><strong>Nenhum item ainda</strong><span>Use a busca abaixo para adicionar o primeiro.</span></div>';
-    $('[data-cw-total]').textContent = money(total());
+    box.innerHTML = S.items.length ? S.items.map(itemHtml).join('') : '<div class="io-empty" style="padding:18px"><strong>Nenhum item ainda</strong><span>Use a busca acima para adicionar o primeiro.</span></div>';
+    renderTodo();
   }
   function refreshItemNumbers(i) {
     const card = $(`[data-cw-index="${i}"]`);
     if (!card) return;
     const it = S.items[i];
-    const sub = $('[data-cw-isub]', card);
-    if (sub) sub.textContent = money(itemTotal(it));
-    const calc = $('[data-cw-calc]', card);
-    const packs = num(it.packs) || 0;
-    const size = num(it.size) || 0;
-    if (calc) calc.textContent = packs && size ? `= ${fmt(packs * size)} ${it.unit} no estoque${num(it.price) ? ` · ${money((num(it.price) || 0) / size)} por ${it.unit}` : ''}` : '';
-    const qty = $('.cw-iqty', card);
-    if (qty) qty.textContent = packs ? `${fmt(packs)} × ${fmt(size)} ${it.unit || ''}` : 'falta quantidade';
-    $('[data-cw-total]').textContent = money(total());
+    const m = missing(it);
+    const done = isDone(it);
+    card.classList.toggle('is-todo', !done);
+    ['packs', 'size', 'price'].forEach((k) => {
+      const el = $(`[data-cw-i="${k}"]`, card);
+      const cellEl = el && el.closest('.cw-cell');
+      if (!cellEl) return;
+      cellEl.classList.toggle('is-miss', m[k]);
+      const lab = $('.cw-lab', cellEl);
+      const flag = $('i', lab);
+      if (m[k] && !flag) lab.insertAdjacentHTML('beforeend', ' <i>falta</i>');
+      if (!m[k] && flag) flag.remove();
+    });
+    const badge = $('[data-cw-num]', card);
+    if (badge) { badge.textContent = done ? '✓' : String(i + 1); badge.classList.toggle('is-done', done); }
+    const c = calcLine(it);
+    $('[data-cw-qty]', card).textContent = c.qty;
+    $('[data-cw-detail]', card).textContent = c.detail;
+    renderTodo();
+  }
+  function focusItem(i, selector) {
+    const card = $(`[data-cw-index="${i}"]`);
+    if (!card) return;
+    const target = $(selector || '.cw-cell.is-miss input, .cw-type, [data-cw-i="packs"]', card) || $('[data-cw-i="packs"]', card);
+    card.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    if (target) setTimeout(() => target.focus({ preventScroll: true }), 120);
   }
 
   function renderPayment() {
@@ -300,7 +355,7 @@
       if (p) {
         showError(p[1]);
         if (p[0] !== S.step) { S.step = p[0]; renderStep(); }
-        if (p[2] != null) { S.open = p[2]; renderItems(); }
+        if (p[2] != null) { renderItems(); focusItem(p[2]); }
         return;
       }
     }
@@ -327,7 +382,8 @@
   function renderSuggestions() {
     const q = plain(search.value);
     if (!q) { sugg.classList.add('io-hidden'); sugg.innerHTML = ''; return; }
-    const hits = CATALOG.filter((c) => plain(c.name).includes(q)).slice(0, 6);
+    const inNote = new Set(S.items.map((it) => plain(it.name)));
+    const hits = CATALOG.filter((c) => plain(c.name).includes(q) && !inNote.has(plain(c.name))).slice(0, 6);
     const exact = CATALOG.some((c) => plain(c.name) === q);
     sugg.innerHTML = hits.map((c) => `<button type="button" role="option" data-cw-pick="${esc(c.name)}">${esc(c.name)} <span>${esc(c.group_label)} · tem ${esc(c.stock)}</span></button>`).join('') +
       (exact ? '' : `<button type="button" role="option" class="is-new" data-cw-new>+ Cadastrar “${esc(search.value.trim())}” como item novo</button>`);
@@ -335,17 +391,14 @@
   }
   function addItem(name, isNew) {
     const known = isNew ? null : byName(name);
-    const it = { name: known ? known.name : name.trim(), item_type: known ? known.item_type : '', category: known ? known.category : '', unit: known ? known.unit : '', packs: '', size: known ? '' : '', price: '', batch: '', manufacture_date: '', expiration_date: '', minimum: '', type_key: '' };
-    if (known && known.minimum) it.minimum = fmt(known.minimum);
-    S.items.push(it);
-    S.open = S.items.length - 1;
+    const it = { name: known ? known.name : name.trim(), item_type: known ? known.item_type : '', category: known ? known.category : '', unit: known ? known.unit : '', packs: '', size: '', price: '', batch: '', manufacture_date: '', expiration_date: '', minimum: known && known.minimum ? asCents(known.minimum) : '', type_key: '', open_extra: false };
+    S.items.unshift(it);
     search.value = '';
     renderSuggestions();
     save();
     renderItems();
     renderSummary();
-    const first = $(`[data-cw-index="${S.open}"] ${known ? '[data-cw-i="packs"]' : '[data-cw-type]'}`);
-    if (first) first.focus();
+    focusItem(0, known ? '[data-cw-i="packs"]' : '.cw-type');
   }
   search.addEventListener('input', renderSuggestions);
   search.addEventListener('keydown', (e) => {
@@ -367,8 +420,8 @@
     if (!card) return;
     const i = Number(card.dataset.cwIndex);
     const it = S.items[i];
-    if (e.target.closest('[data-cw-toggle]')) { S.open = S.open === i ? null : i; renderItems(); return; }
-    if (e.target.closest('[data-cw-remove]')) { S.items.splice(i, 1); S.open = null; save(); renderItems(); renderSummary(); return; }
+    if (e.target.closest('[data-cw-remove]')) { S.items.splice(i, 1); save(); renderItems(); renderSummary(); return; }
+    if (e.target.closest('[data-cw-extra]')) { it.open_extra = !it.open_extra; save(); renderItems(); if (it.open_extra) focusItem(i, '[data-cw-i="minimum"]'); return; }
     const typeBtn = e.target.closest('[data-cw-type]');
     if (typeBtn) {
       const t = TYPE[typeBtn.dataset.cwType];
@@ -377,7 +430,13 @@
       it.category = t.categories[0];
       it.unit = (t.units[it.category] || [])[0] || '';
       save(); renderItems(); renderSummary();
+      focusItem(i, '[data-cw-i="packs"]');
     }
+  });
+  page.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-cw-goto-missing]')) return;
+    const idx = S.items.findIndex((it) => !isDone(it));
+    if (idx >= 0) focusItem(idx);
   });
   const onItemInput = (e) => {
     const card = e.target.closest('[data-cw-index]');
@@ -385,6 +444,10 @@
     if (!card || !key) return;
     const i = Number(card.dataset.cwIndex);
     const it = S.items[i];
+    if (MASKS[key]) {
+      const masked = MASKS[key](e.target.value);
+      if (masked !== e.target.value) e.target.value = masked;
+    }
     it[key] = e.target.value;
     if (key === 'category') {
       const units = (TYPE[it.type_key] || { units: {} }).units[it.category] || [];
@@ -395,7 +458,7 @@
       renderItems();
     } else {
       if (key === 'packs' || key === 'price') S.payment.installments = null;
-      refreshItemNumbers(i);
+      if (key !== 'minimum' && key !== 'batch') refreshItemNumbers(i);
     }
     save();
     renderSummary();
