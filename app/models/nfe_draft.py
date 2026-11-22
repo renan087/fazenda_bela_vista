@@ -38,3 +38,14 @@ class NfeIssuerProfile(Base):
     municipality_code: Mapped[str] = mapped_column(String(7), nullable=False, default='')
     state: Mapped[str] = mapped_column(String(2), nullable=False, default='BA')
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class NfeDraftDetails(Base):
+    """Dados editáveis apenas para preparação, sem regras fiscais presumidas."""
+    __tablename__ = 'nfe_draft_details'
+    draft_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    farm_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    data_json: Mapped[str] = mapped_column(Text, nullable=False, default='{}')
+    updated_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

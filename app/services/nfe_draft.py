@@ -63,3 +63,48 @@ def clean_issuer(data):
     if cleaned['state'] != 'BA':
         raise ValueError('Por enquanto o cadastro fiscal está disponível apenas para a Bahia.')
     return cleaned
+
+
+def buyer_prefill(buyer):
+    """Sugestão inicial, nunca uma afirmação de conformidade fiscal."""
+    if not buyer or buyer.person_type != 'pf':
+        return {}
+    return {'recipient_name': buyer.name or '', 'recipient_cpf': buyer.document or '',
+            'recipient_ie': buyer.state_registration or '', 'recipient_postal_code': buyer.postal_code or '',
+            'recipient_street': buyer.street or '', 'recipient_number': buyer.number or '',
+            'recipient_complement': buyer.complement or '', 'recipient_district': buyer.district or '',
+            'recipient_city': buyer.city or '', 'recipient_state': buyer.state or ''}
+
+
+def clean_draft_details(data):
+    import re
+    from app.services.coffee_buyers import valid_cpf
+    limits = {'recipient_name': 180, 'recipient_ie': 30, 'recipient_street': 180,
+              'recipient_number': 30, 'recipient_complement': 120, 'recipient_district': 120,
+              'recipient_city': 120, 'product_description': 180, 'operation_nature': 120}
+    cleaned = {}
+    for name, limit in limits.items():
+        text = ' '.join(str(data.get(name) or '').split())
+        if len(text) > limit:
+            raise ValueError('Um dos campos excede o tamanho permitido.')
+        cleaned[name] = text
+    for field, length in [('recipient_cpf', 11), ('recipient_postal_code', 8),
+                          ('recipient_municipality_code', 7), ('product_ncm', 8), ('operation_cfop', 4)]:
+        raw = str(data.get(field) or '').strip()
+        if re.search(r'[^0-9.\-/\s]', raw):
+            raise ValueError('Confira os campos numéricos informados.')
+        value = re.sub(r'\D', '', raw)
+        if value and len(value) != length:
+            raise ValueError('Confira o tamanho dos campos numéricos informados.')
+        cleaned[field] = value
+    if cleaned['recipient_cpf'] and not valid_cpf(cleaned['recipient_cpf']):
+        raise ValueError('CPF do destinatário inválido.')
+    state = str(data.get('recipient_state') or '').strip().upper()
+    if state not in ('', 'BA'):
+        raise ValueError('Esta etapa aceita apenas destinatário na Bahia.')
+    cleaned['recipient_state'] = state
+    indicator = str(data.get('recipient_ie_indicator') or '').strip()
+    if indicator not in ('', 'contribuinte', 'isento', 'nao_contribuinte'):
+        raise ValueError('Indicador de inscrição estadual inválido.')
+    cleaned['recipient_ie_indicator'] = indicator
+    return cleaned
