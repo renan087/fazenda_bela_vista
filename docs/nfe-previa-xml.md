@@ -17,3 +17,11 @@ Nenhum pacote oficial foi incorporado. Antes de ativar o componente para NF-e é
 O portal oficial exibiu o pacote 010h v1.03 em 21/11/2026. Foi possível identificar o link publicado, mas a tentativa de baixar pelo navegador e por requisição direta não retornou o arquivo. O endereço de referência é `https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?conteudo=YhWikFoTxUo=`; é necessário confirmar a versão aplicável antes do uso.
 
 Com um ZIP obtido e conferido na fonte oficial, o utilitário `python scripts/preparar_schemas_nfe.py ARQUIVO.zip DIRETORIO_NOVO --version VERSAO` prepara os XSDs, registra o SHA-256 do ZIP e dos arquivos e impede extração por caminhos indevidos. Ele cria `reviewed: false`; o validador não carregará o pacote enquanto não houver revisão independente da procedência, versão, imports e integridade. Alterar esse indicador não é confirmação de conformidade ou homologação. Qualquer referência não suportada pelo validador deve ser analisada antes de ativá-lo; não modificar automaticamente os XSDs oficiais.
+
+## Pacote recebido para conferência
+
+Foi recebido do usuário o arquivo `PL_010h_v1.03.zip`, com SHA-256 `bcbf6b277f79a6983d69016dfe0430f09b8a191997a4706a24938acddc18dc81`. A integridade do ZIP foi verificada e o nome corresponde à publicação encontrada no Portal Nacional; **essa correspondência e o hash local não comprovam, por si só, a autenticidade oficial dos bytes nem a aplicabilidade na Bahia**. O portal não disponibilizou arquivo verificável por download automatizado nesta sessão.
+
+Os nove XSDs foram preparados em `app/fiscal/schemas/nfe`, com hashes individuais. O schema principal da NF-e e suas referências locais foram compilados offline em um teste temporário. A aplicação mantém `reviewed: false`; a cópia usada nos testes altera esse indicador apenas em diretório temporário. Foram verificados o carregamento do schema e a rejeição de documentos incompletos e da prévia interna; não há ainda exemplo completo de NF-e aceito pelo XSD nem validação das regras tributárias ou SEFAZ.
+
+Para prosseguir: confirmar independentemente a origem e a versão aplicável; revisar as dependências e notas técnicas; somente então registrar a revisão e preparar exemplos fictícios completos. Alterar o indicador sem tal conferência não substitui esses passos. Não houve comunicação de dados fiscais à SEFAZ.

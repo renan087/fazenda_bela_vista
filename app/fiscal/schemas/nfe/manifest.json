@@ -1,0 +1,20 @@
+{
+  "version": "010h-v1.03",
+  "entry": "nfe_v4.00.xsd",
+  "reviewed": false,
+  "archive_sha256": "bcbf6b277f79a6983d69016dfe0430f09b8a191997a4706a24938acddc18dc81",
+  "files": {
+    "DFeTiposBasicos_v1.00.xsd": "22cc19e1bb09808ec475d0ad830303699cbf167d630e57023f7d7f1e7c2cb1cc",
+    "e110001_v1.00.xsd": "3a46fcc6db6c673ae7bbf9767df5fa99d1f4e5b7fbec6bb9575ae358c95b1616",
+    "e110300_v1.00.xsd": "3def9bd3e19dfb3e78688afc540c049dc77f6fb11ae2603d85b6e759a7908fa6",
+    "e412140_v1.00.xsd": "7a9dc2f580d6f1e3048bae07b4aeb291927e7bf55e91faa7b5bb4759c02c47f8",
+    "leiauteNFe_v4.00.xsd": "f1bedcdf38e8f6536be2f1a3fb8fb5c27a23364f62a8f7dab0ff884635a000e6",
+    "nfe_v4.00.xsd": "adce3646c13ceb54922ec3142fc1dc45bd4fb839ac35ad583e86c733c07d27df",
+    "tiposBasico_v1.03.xsd": "88bae738184e4af32286a4825392adf7da458dc1fa763e2feca3b90708aa7fff",
+    "tiposBasico_v4.00.xsd": "772619c85723e598840667ca66e7298a250442df47eeb94b397d2a333ce62047",
+    "xmldsig-core-schema_v1.01.xsd": "f56744a5f51c03f027de13f39f869307091781a9ef1d91b1ebe14719ce28e1ac"
+  },
+  "origin": "Arquivo entregue pelo usuário; autenticidade oficial não verificada independentemente.",
+  "official_listing": "https://www.nfe.fazenda.gov.br/portal/listaConteudo.aspx?tipoConteudo=BMPFMBoln3w%3D",
+  "official_download_link": "https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?conteudo=YhWikFoTxUo="
+}
