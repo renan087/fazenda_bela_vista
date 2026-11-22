@@ -22,6 +22,7 @@ ALLOWED_EVENT_TYPES = frozenset({
     'detalhes_salvos',
     'dados_tecnicos_salvos',
     'identificacao_teste_salva',
+    'complementos_salvos',
     'snapshot_congelado',
 })
 
@@ -68,12 +69,14 @@ def build_snapshot_payload(
     details_saved: bool,
     technical: dict,
     identification,
+    extra_data: dict | None = None,
 ) -> tuple[str, str]:
     """Serializa o estado salvo do rascunho de forma canônica e calcula seu SHA-256."""
     if not isinstance(sale_snapshot, dict):
         raise ValueError('Snapshot comercial do rascunho indisponível.')
     saved_details = dict(details) if (details_saved and isinstance(details, dict)) else {}
     saved_technical = dict(technical) if isinstance(technical, dict) else {}
+    saved_extra = dict(extra_data) if isinstance(extra_data, dict) else {}
 
     issuer_copy = {
         field: str(getattr(issuer, field, '') or '')
@@ -106,6 +109,7 @@ def build_snapshot_payload(
         'destinatario_e_operacao': saved_details,
         'dados_tecnicos': saved_technical,
         'identificacao_teste': ident_copy,
+        'complementos_teste': saved_extra,
         'pendencias_preparo': review,
     }
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
@@ -136,6 +140,7 @@ def freeze_draft_snapshot(
     identification,
     user_id: int,
     note: str = '',
+    extra_data: dict | None = None,
 ) -> NfeDraftSnapshot:
     """Congela uma nova versão imutável de teste do rascunho e registra no histórico."""
     clean_note = ' '.join(str(note or '').split())
@@ -150,6 +155,7 @@ def freeze_draft_snapshot(
         details_saved=details_saved,
         technical=technical,
         identification=identification,
+        extra_data=extra_data,
     )
 
     last_version = (

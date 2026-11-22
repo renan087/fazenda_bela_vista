@@ -59,6 +59,23 @@
   </div>
   {% endif %}
   </section>
+  <section id="complementos-teste" class="pd-card p-6"><h2 class="text-xl font-bold">Transporte complementar, pagamento e observações (teste)</h2>
+  <p class="mt-2 text-sm leading-6 text-slate-600">Campos preparatórios opcionais para conferência de volumes, veículo, detalhamento de pagamento e informações complementares (`infCpl`). Não representam cálculo ou emissão fiscal.</p>
+  {% set extra = extra_data or {} %}
+  <form method="post" action="/producao/rascunhos-fiscais/{{ draft.id }}/complementos" class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="text-sm font-semibold text-slate-700">Transportador (opcional)<input name="carrier_name" maxlength="120" value="{{ extra.get('carrier_name', '') }}" placeholder="Nome ou razão social" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50"></label>
+    <label class="text-sm font-semibold text-slate-700">Placa do veículo<input name="vehicle_plate" maxlength="8" value="{{ extra.get('vehicle_plate', '') }}" placeholder="ABC1D23" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50"></label>
+    <label class="text-sm font-semibold text-slate-700">UF da placa<input name="vehicle_uf" maxlength="2" value="{{ extra.get('vehicle_uf', '') }}" placeholder="BA" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50"></label>
+    <label class="text-sm font-semibold text-slate-700">Quantidade de volumes<input name="volume_quantity" maxlength="9" inputmode="numeric" value="{{ extra.get('volume_quantity', '') }}" placeholder="Ex.: 10" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50"></label>
+    <label class="text-sm font-semibold text-slate-700">Espécie dos volumes<input name="volume_species" maxlength="60" value="{{ extra.get('volume_species', '') }}" placeholder="Ex.: SACAS" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50"></label>
+    <label class="text-sm font-semibold text-slate-700">Peso líquido (kg)<input name="net_weight_kg" maxlength="16" inputmode="decimal" value="{{ extra.get('net_weight_kg', '') }}" placeholder="0.000" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50"></label>
+    <label class="text-sm font-semibold text-slate-700">Peso bruto (kg)<input name="gross_weight_kg" maxlength="16" inputmode="decimal" value="{{ extra.get('gross_weight_kg', '') }}" placeholder="0.000" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50"></label>
+    <label class="text-sm font-semibold text-slate-700">Condição de pagamento<select name="payment_indicator" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50"><option value="">Não informada</option>{% for value, label in (payment_indicators or [('0','Pagamento à vista'),('1','Pagamento a prazo')]) %}<option value="{{ value }}" {% if extra.get('payment_indicator') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label class="text-sm font-semibold text-slate-700">Valor do pagamento (teste)<input name="payment_amount" maxlength="16" inputmode="decimal" value="{{ extra.get('payment_amount', '') }}" placeholder="0.00" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50"></label>
+    <label class="sm:col-span-2 lg:col-span-3 text-sm font-semibold text-slate-700">Informações complementares (infCpl)<textarea name="additional_info" rows="3" maxlength="2000" placeholder="Observações de teste para conferência" class="mt-1 block w-full rounded-xl border-slate-300 bg-slate-50">{{ extra.get('additional_info', '') }}</textarea></label>
+    {% if can_write_page %}<div class="sm:col-span-2 lg:col-span-3"><button class="sf-btn sf-btn-primary" type="submit">Salvar complementos de teste</button></div>{% endif %}
+  </form></section>
   <section id="versoes-e-historico" class="pd-card p-6"><div class="flex flex-wrap items-center justify-between gap-3"><h2 class="text-xl font-bold">Versões congeladas e histórico local (teste)</h2><span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Integridade SHA-256</span></div>
   <p class="mt-2 text-sm leading-6 text-slate-600">Congele uma fotografia imutável dos dados salvos neste rascunho para conferência. Alterações futuras no cadastro do produtor ou nos campos editáveis não modificam versões já congeladas. Não substitui assinatura, protocolo ou autorização da SEFAZ.</p>
   {% if can_write_page %}

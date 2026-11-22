@@ -24,7 +24,7 @@ def _element(parent, name, value):
     return node
 
 
-def build_preview(snapshot, issuer, details, technical, identification=None):
+def build_preview(snapshot, issuer, details, technical, identification=None, extra_data=None):
     """Serializa somente campos conhecidos; dados omitidos continuam vazios."""
     items = snapshot.get('itens')
     if not isinstance(items, list) or not 1 <= len(items) <= 500 or not all(isinstance(i, dict) for i in items):
@@ -71,6 +71,14 @@ def build_preview(snapshot, issuer, details, technical, identification=None):
         _element(ident_node, 'ind_pres', getattr(identification, 'presence_indicator', ''))
         _element(ident_node, 'forma_pagamento', getattr(identification, 'payment_method', ''))
         _element(ident_node, 'chave_simulada', key_summary.get('key', ''))
+    if isinstance(extra_data, dict) and any(str(v or '').strip() for v in extra_data.values()):
+        extra_node = ET.SubElement(root, 'complementos_teste')
+        for field in (
+            'carrier_name', 'vehicle_plate', 'vehicle_uf', 'volume_quantity',
+            'volume_species', 'net_weight_kg', 'gross_weight_kg',
+            'payment_indicator', 'payment_amount', 'additional_info',
+        ):
+            _element(extra_node, field, extra_data.get(field))
     lines = ET.SubElement(root, 'lotes')
     for index, item in enumerate(items, 1):
         line = ET.SubElement(lines, 'lote', {'posicao': str(index)})

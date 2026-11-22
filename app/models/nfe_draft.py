@@ -130,3 +130,44 @@ class NfeDraftEvent(Base):
     metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default='{}')
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class NfeTaxProfile(Base):
+    """Perfil fiscal versionado por UF e operação; exige revisão contábil antes do uso real."""
+    __tablename__ = 'nfe_tax_profiles'
+    __table_args__ = (
+        UniqueConstraint(
+            'organization_id', 'operation_code', 'origin_state', 'destination_state',
+            'issuer_person_type', 'recipient_person_type', 'version',
+            name='uq_nfe_tax_profile_version',
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    operation_code: Mapped[str] = mapped_column(String(60), nullable=False, default='venda_cafe_interna')
+    origin_state: Mapped[str] = mapped_column(String(2), nullable=False, default='BA')
+    destination_state: Mapped[str] = mapped_column(String(2), nullable=False, default='BA')
+    issuer_person_type: Mapped[str] = mapped_column(String(10), nullable=False, default='pf')
+    recipient_person_type: Mapped[str] = mapped_column(String(10), nullable=False, default='pf')
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default='rascunho')
+    valid_from: Mapped[str] = mapped_column(String(10), nullable=False, default='')
+    valid_until: Mapped[str] = mapped_column(String(10), nullable=False, default='')
+    approved_by_name: Mapped[str] = mapped_column(String(160), nullable=False, default='')
+    reference_notes: Mapped[str] = mapped_column(Text, nullable=False, default='')
+    rules_json: Mapped[str] = mapped_column(Text, nullable=False, default='{}')
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class NfeDraftExtraData(Base):
+    """Complementos preparatórios de transporte, pagamento e informações adicionais (teste)."""
+    __tablename__ = 'nfe_draft_extra_data'
+    draft_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    farm_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    data_json: Mapped[str] = mapped_column(Text, nullable=False, default='{}')
+    updated_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

@@ -159,9 +159,11 @@ from app.models.nfe_draft import (
     NfeDraft,
     NfeDraftDetails,
     NfeDraftEvent,
+    NfeDraftExtraData,
     NfeDraftIdentification,
     NfeDraftSnapshot,
     NfeDraftTechnicalData,
     NfeIssuerProfile,
+    NfeTaxProfile,
     NfeTestSequence,
 )
