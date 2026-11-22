@@ -293,3 +293,27 @@ def summarize_test_tax_values(snapshot, technical):
         result.append({'field': field, 'label': label, 'total': format(total, '.2f') if items and missing == 0 else None,
                        'missing': missing if items else 0})
     return result
+
+
+def review_test_tax_fields(snapshot, technical):
+    """Inventaria campos salvos de teste, sem julgar obrigatoriedade ou validade fiscal."""
+    groups = [
+        ('ICMS', [('origin', 'origem'), ('icms_cst', 'CST'), ('icms_base', 'base'),
+                  ('icms_rate', 'alíquota'), ('icms_value', 'valor')]),
+        ('IBS/CBS', [('ibs_cbs_cst', 'CST'), ('ibs_cbs_class', 'classificação'),
+                     ('ibs_cbs_base', 'base'), ('ibs_uf_rate', 'alíquota IBS estadual'),
+                     ('ibs_uf_value', 'valor IBS estadual'), ('ibs_municipal_rate', 'alíquota IBS municipal'),
+                     ('ibs_municipal_value', 'valor IBS municipal'), ('cbs_rate', 'alíquota CBS'),
+                     ('cbs_value', 'valor CBS')]),
+    ]
+    items = snapshot.get('itens') or []
+    rows = technical.get('items') or []
+    by_index = {row.get('item_index'): row for row in rows if isinstance(row, dict)}
+    result = {}
+    for index in range(1, len(items) + 1):
+        saved = by_index.get(index, {})
+        result[index] = []
+        for label, fields in groups:
+            missing = [name for key, name in fields if saved.get(key) is None or str(saved.get(key)).strip() == '']
+            result[index].append({'label': label, 'missing': missing, 'all_absent': len(missing) == len(fields)})
+    return result

@@ -264,3 +264,35 @@ def test_tax_rates_are_explicit_bounded_and_independent_per_lot():
     for invalid in ('-1', '100.0001', '1.23456', 'NaN', '1e2'):
         with pytest.raises(ValueError):
             clean_technical_data({'item_1_cbs_rate': invalid}, snapshot)
+
+
+def test_tax_review_identifies_missing_saved_fields_per_lot_without_judging_tax_rules():
+    from app.services.nfe_draft import review_test_tax_fields
+    snapshot = {'itens': [{'lote': 'A'}, {'lote': 'B'}, {'lote': 'C'}]}
+    technical = {'items': [
+        {'item_index': 2, 'origin': '0', 'icms_cst': '00', 'icms_base': '0', 'icms_rate': '0', 'icms_value': '0'},
+        {'item_index': 1, 'icms_cst': '20', 'cbs_rate': '0'},
+    ]}
+    review = review_test_tax_fields(snapshot, technical)
+    assert review[1][0]['missing'] == ['origem', 'base', 'alíquota', 'valor']
+    assert 'alíquota CBS' not in review[1][1]['missing']
+    assert review[2][0]['missing'] == []
+    assert review[2][1]['all_absent']
+    assert all(group['all_absent'] for group in review[3])
+
+
+def test_tax_review_renders_saved_missing_values_with_conditional_disclaimer():
+    from jinja2 import ChoiceLoader, DictLoader
+    from app.services.nfe_draft import review_test_tax_fields
+    from app.web import routes
+    env = routes.templates.env.overlay(loader=ChoiceLoader([
+        DictLoader({'base.html': '{% block content %}{% endblock %}'}), routes.templates.env.loader]))
+    snapshot = {'venda': 'V-1', 'comprador': 'Teste', 'data_venda': '2026-11-20', 'valor_bruto': '1',
+                'itens': [{'lote': 'L1', 'quantidade_sacas': '1', 'valor_bruto': '1'}]}
+    technical = {'items': [{'item_index': 1, 'icms_cst': '20'}]}
+    page = env.get_template('nfe_draft.html').render(draft=SimpleNamespace(id='x'), issuer=None, details={},
+        technical=technical, technical_items={1: technical['items'][0]}, snapshot=snapshot,
+        tax_review=review_test_tax_fields(snapshot, technical), csrf_token='x', can_write_page=True)
+    assert 'não informados: origem, base, alíquota, valor' in page
+    assert 'nenhum campo informado' in page
+    assert 'aplicabilidade e obrigatoriedade dependem da operação' in page

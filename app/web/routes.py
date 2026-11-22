@@ -22627,7 +22627,7 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
     if not draft:
         raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
     from app.models.nfe_draft import NfeIssuerProfile, NfeDraftDetails, NfeDraftTechnicalData
-    from app.services.nfe_draft import buyer_prefill, review_preparation, review_item_values, summarize_test_tax_values
+    from app.services.nfe_draft import buyer_prefill, review_preparation, review_item_values, summarize_test_tax_values, review_test_tax_fields
     issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id,
                                                   farm_id=scope["active_farm_id"]).first()
     snapshot = json.loads(draft.snapshot_json)
@@ -22644,6 +22644,7 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
         issuer=issuer, details=prepared, snapshot=snapshot, technical=technical, technical_items=technical_items,
         item_review={r['item_index']: r['issues'] for r in review_item_values(snapshot, technical)},
         tax_summaries=summarize_test_tax_values(snapshot, technical),
+        tax_review=review_test_tax_fields(snapshot, technical),
         review=review_preparation(snapshot, issuer, prepared, details_saved=bool(details)), _repo=repo))
 
 

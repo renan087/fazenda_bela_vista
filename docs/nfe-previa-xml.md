@@ -64,3 +64,8 @@ Esses caminhos foram inspecionados no pacote recebido ainda não autenticado; n�
 ### Alíquotas fictícias para conferência
 
 Cada lote aceita percentuais fictícios de ICMS, IBS estadual, IBS municipal e CBS. O backend aceita valores entre 0 e 100, com até quatro casas decimais, e distingue ausência de zero informado. Isso valida somente o formato de entrada: não determina a alíquota legal ou aplicabilidade do grupo e não verifica as regras e a precisão exigidas para cada campo na versão do schema. Os dados salvos constam da simulação interna e não são incluídos no XML candidato. Não há cálculo, assinatura ou transmissão.
+
+
+### Conferência dos dados salvos
+
+A tela apresenta, por lote, um inventário dos campos de teste preenchidos e ausentes nos grupos ICMS e IBS/CBS. Zero explícito conta como informado. A lista não determina quais campos são obrigatórios, nem indica que os dados estejam corretos ou que o XML esteja pronto: essas decisões dependem do enquadramento, da operação e das regras fiscais aplicáveis. A conferência usa exclusivamente os dados já salvos.
