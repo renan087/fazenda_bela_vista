@@ -30,8 +30,17 @@
       <p class="sf-page-subtitle">Dados trazidos da venda {{ snapshot.venda }}. Confira, ajuste se precisar e confirme. Este rascunho não foi transmitido à SEFAZ.</p>
     </div>
     <ol class="nx-steps" aria-label="Etapas">
+      {% set can_check = prod_ok and op and can_write_page %}
       {% for key, label in steps_list %}
-      <li class="{{ 'is-on' if loop.index0 == step_index else ('is-done' if loop.index0 < step_index else '') }}"{% if loop.index0 == step_index %} aria-current="step"{% endif %}><b>{{ '✓' if loop.index0 < step_index else loop.index }}</b>{{ label }}</li>
+      {% set cls = 'is-on' if loop.index0 == step_index else ('is-done' if loop.index0 < step_index else '') %}
+      <li class="{{ cls }}"{% if loop.index0 == step_index %} aria-current="step"{% endif %}>
+        {% set num %}<b>{{ '✓' if loop.index0 < step_index else loop.index }}</b>{{ label }}{% endset %}
+        {% if loop.index0 == step_index or step == 'enviada' %}<span class="nx-step">{{ num }}</span>
+        {% elif key == 'preencher' %}<a class="nx-step is-link" href="/producao/rascunhos-fiscais/{{ draft.id }}" title="Voltar para preencher">{{ num }}</a>
+        {% elif key == 'conferir' and step == 'preencher' %}<button type="submit" form="nx-draft-form" name="next" value="conferir" class="nx-step is-link"{% if not can_check %} disabled title="Resolva os avisos para conferir"{% else %} title="Salvar e ir para Conferir"{% endif %}>{{ num }}</button>
+        {% elif key == 'enviada' and step == 'conferir' %}<button type="button" class="nx-step is-link" data-nx-goto="nx-confirm" title="Ir para a confirmação">{{ num }}</button>
+        {% else %}<span class="nx-step is-off" title="Confira a nota antes de enviar">{{ num }}</span>{% endif %}
+      </li>
       {% endfor %}
     </ol>
   </header>
@@ -71,11 +80,12 @@
               <p class="nx-who-sub">{% if cpf|length == 11 %}CPF {{ cpf[:3] }}.{{ cpf[3:6] }}.{{ cpf[6:9] }}-{{ cpf[9:] }}{% else %}CPF não informado{% endif %}{% if d.get('recipient_ie_indicator') %} · {{ ie_labels.get(d.get('recipient_ie_indicator')) }}{% endif %}{% if d.get('recipient_ie') %} · IE {{ d.get('recipient_ie') }}{% endif %}</p>
             </div>
           </div>
-          <dl class="nx-facts">
-            <div><dt>Endereço</dt><dd class="{{ 'is-miss' if not d.get('recipient_street') }}">{{ (d.get('recipient_street') ~ (', ' ~ d.get('recipient_number') if d.get('recipient_number') else '')) if d.get('recipient_street') else 'Falta informar' }}</dd></div>
-            <div><dt>Cidade</dt><dd class="{{ 'is-miss' if not d.get('recipient_city') }}">{{ (d.get('recipient_city') ~ ' / ' ~ d.get('recipient_state')) if d.get('recipient_city') else 'Falta informar' }}</dd></div>
+          <dl class="nx-bfacts">
+            {% set street = (d.get('recipient_street') ~ (', ' ~ d.get('recipient_number') if d.get('recipient_number') else '')) if d.get('recipient_street') else '' %}
+            <div class="is-wide"><dt>Endereço</dt><dd class="{{ 'is-miss' if not street }}" title="{{ street }}">{{ street or 'Falta informar' }}</dd></div>
+            <div><dt>Bairro</dt><dd class="{{ 'is-miss' if not d.get('recipient_district') }}" title="{{ d.get('recipient_district', '') }}">{{ d.get('recipient_district') or 'Falta informar' }}</dd></div>
+            <div><dt>Cidade</dt><dd class="{{ 'is-miss' if not d.get('recipient_city') }}" title="{{ d.get('recipient_city', '') }}">{{ (d.get('recipient_city') ~ ' / ' ~ d.get('recipient_state')) if d.get('recipient_city') else 'Falta informar' }}</dd></div>
             <div><dt>CEP</dt><dd class="{{ 'is-miss' if not cep }}">{{ (cep[:5] ~ '-' ~ cep[5:]) if cep|length == 8 else 'Falta informar' }}</dd></div>
-            <div><dt>Bairro</dt><dd class="{{ 'is-miss' if not d.get('recipient_district') }}">{{ d.get('recipient_district') or 'Falta informar' }}</dd></div>
           </dl>
           {% if buyer_missing %}
           <div class="nx-lot-warn" style="margin-top:.875rem">{{ nxi('alert', 18, 2) }}<span>Falta{{ 'm' if buyer_missing|length > 1 }} {{ buyer_missing|join(', ') }} para emitir a nota.</span><button type="button" class="nx-link-btn" data-nx-dialog-open="nx-buyer-modal" style="color:#6b4600">Completar agora</button></div>
@@ -85,7 +95,7 @@
             <div class="nx-modal-h">
               <span class="nx-av" aria-hidden="true">{{ initials or '?' }}</span>
               <div style="min-width:0"><h2 id="nx-buyer-t">Dados do comprador</h2><p>Da venda {{ snapshot.venda }} · vale só para esta nota</p></div>
-              <button type="button" class="nx-x" data-nx-dialog-close aria-label="Fechar">{{ nxi('x', 18, 2) }}</button>
+              <button type="button" class="nx-x" data-nx-dialog-close aria-label="Fechar">{{ nxi('close', 18, 2) }}</button>
             </div>
             <div class="nx-modal-b">
               <div class="nx-grp">
@@ -133,13 +143,13 @@
             {% set saved = technical_items.get(loop.index, {}) %}
             <div class="nx-lot">
               <span class="nx-lot-ico{% if not prod_ok %} is-warn{% endif %}">{{ nxi('bean', 20, 1.9) }}</span>
-              <div class="nx-lot-main">
+              <div class="nx-lot-main" role="button" tabindex="0" data-nx-dialog-open="nx-dw-calc" aria-label="Ver dados fiscais do lote {{ item.lote }}">
                 <p class="nx-lot-nm">{{ prod.name if prod else 'Lote ' ~ item.lote }}</p>
                 <p class="nx-lot-meta">{% if prod %}Lote {{ item.lote }}{% endif %}{% if prod %} · {% if (prod.ncm or '')|length == 8 %}NCM {{ prod.ncm[:4] }}.{{ prod.ncm[4:6] }}.{{ prod.ncm[6:] }}{% else %}NCM não cadastrado{% endif %}{% else %}Sem produto fiscal{% endif %}{% if prod and saved.get('tax_quantity') and saved.get('tax_unit') != saved.get('commercial_unit') %} · {{ saved.get('tax_quantity')|decimal_br(0 if (saved.get('tax_quantity')|float) == (saved.get('tax_quantity')|float|int) else 2) }} {{ saved.get('tax_unit')|lower }} tributáveis{% endif %}</p>
               </div>
-              <div class="nx-lot-num"><b>R$ {{ item.valor_bruto|decimal_br }}</b><span>{{ item.quantidade_sacas }} {{ saved.get('commercial_unit') or 'SC' }}{% if item.preco_unitario %} × R$ {{ item.preco_unitario|decimal_br }}{% endif %}</span></div>
+              <div class="nx-lot-num" data-nx-dialog-open="nx-dw-calc" aria-hidden="true"><b>R$ {{ item.valor_bruto|decimal_br }}</b><span>{{ item.quantidade_sacas }} {{ saved.get('commercial_unit') or 'SC' }}{% if item.preco_unitario %} × R$ {{ item.preco_unitario|decimal_br }}{% endif %}</span></div>
               <div class="nx-more" data-nx-more>
-                <button type="button" class="nx-dots" data-nx-more-btn aria-haspopup="menu" aria-expanded="false" aria-label="Mais opções do lote {{ item.lote }}">{{ nxi('dotsh', 18, 2.6) }}</button>
+                <button type="button" class="nx-lot-dots" data-nx-more-btn aria-haspopup="menu" aria-expanded="false" aria-label="Mais opções do lote {{ item.lote }}">{{ nxi('dotsh', 18, 2.6) }}</button>
                 <div class="nx-menu" role="menu" hidden style="width:16rem">
                   {% if products %}<button type="button" class="nx-mi" role="menuitem" data-nx-dialog-open="nx-dw-pick">Trocar produto fiscal</button>{% endif %}
                   <button type="button" class="nx-mi" role="menuitem" data-nx-dialog-open="nx-dw-calc">Ver dados fiscais deste lote</button>
@@ -179,9 +189,9 @@
           </div>
 
           <p class="nx-sec" style="margin-top:1.125rem">Como o café vai sair da fazenda?</p>
-          <div class="nx-tiles" role="radiogroup" aria-label="Transporte">
+          <div class="nx-ship-tiles" role="radiogroup" aria-label="Transporte">
             {% for key, label, hint, icon in [('sem', 'Sem transporte', 'Venda sem saída física (ex.: café no armazém)', 'ban'), ('busca', 'Comprador busca', 'Caminhão do comprador retira na fazenda', 'truck'), ('entrega', 'Fazenda entrega', 'Veículo da própria fazenda leva o café', 'farm'), ('transp', 'Transportadora', 'Frete contratado com uma empresa', 'send')] %}
-            <label class="nx-tile"><input type="radio" name="freight_kind" value="{{ key }}" {% if fk == key %}checked{% endif %} data-nx-freight><span class="nx-tile-i">{{ nxi(icon, 18, 1.9) }}</span><b>{{ label }}</b><small>{{ hint }}</small></label>
+            <label class="nx-ship-tile"><input type="radio" name="freight_kind" value="{{ key }}" {% if fk == key %}checked{% endif %} data-nx-freight><span class="nx-ship-ico">{{ nxi(icon, 18, 1.9) }}</span><b>{{ label }}</b><small>{{ hint }}</small></label>
             {% endfor %}
           </div>
           <div class="nx-g nx-reveal" data-nx-show="transp" {% if fk != 'transp' %}hidden{% endif %}>
@@ -360,7 +370,7 @@
             <span>Estoque e Financeiro</span><strong>sem mudança</strong>
           </div>
         </div>
-        <label class="nx-agree"><span class="dt-chk"><input type="checkbox" class="dt-check" name="confirm" value="1" data-nx-gate="emit"></span>Conferi os dados e quero emitir</label>
+        <label class="nx-agree" id="nx-confirm"><span class="dt-chk"><input type="checkbox" class="dt-check" name="confirm" value="1" data-nx-gate="emit"></span>Conferi os dados e quero emitir</label>
         {% if can_write_page %}<button type="submit" class="sf-btn sf-btn-primary" style="min-height:3.125rem;font-size:.9375rem" data-nx-gated="emit" disabled>Confirmar emissão</button>{% endif %}
         <a class="sf-btn sf-btn-secondary" href="/producao/rascunhos-fiscais/{{ draft.id }}">Voltar e editar</a>
       </form>
@@ -388,5 +398,5 @@
   </section>
   {% endif %}
 </div>
-<script src="/static/js/notas_fiscais.js?v=20261122nx3" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261122nx4" defer></script>
 {% endblock %}

@@ -330,6 +330,15 @@
         });
       });
     });
+    root.querySelectorAll('[role="button"][data-nx-dialog-open]').forEach(function (el) {
+      el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
+    });
+    root.querySelectorAll('[data-nx-goto]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var t = document.getElementById(b.getAttribute('data-nx-goto')); if (!t) return;
+        t.scrollIntoView({ behavior: 'smooth', block: 'center' }); var i = t.querySelector('input'); if (i) i.focus({ preventScroll: true });
+      });
+    });
     var ship = root.querySelector('[data-nx-ship]');
     if (!ship) return;
     function freight() {
