@@ -22904,7 +22904,7 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
     if not draft:
         raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
     from app.models.nfe_draft import NfeIssuerProfile, NfeDraftDetails
-    from app.services.nfe_draft import buyer_prefill
+    from app.services.nfe_draft import buyer_prefill, review_preparation
     issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id,
                                                   farm_id=scope["active_farm_id"]).first()
     snapshot = json.loads(draft.snapshot_json)
@@ -22914,7 +22914,8 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
     prepared = json.loads(details.data_json) if details else buyer_prefill(buyer)
     return templates.TemplateResponse("nfe_draft.html", _base_context(
         request, user, csrf_token, "commercialization", title="Rascunho fiscal", draft=draft,
-        issuer=issuer, details=prepared, snapshot=snapshot, _repo=repo))
+        issuer=issuer, details=prepared, snapshot=snapshot,
+        review=review_preparation(snapshot, issuer, prepared, details_saved=bool(details)), _repo=repo))
 
 
 @router.post("/producao/rascunhos-fiscais/{draft_id}/detalhes")

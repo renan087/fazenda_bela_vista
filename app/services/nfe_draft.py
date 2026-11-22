@@ -108,3 +108,66 @@ def clean_draft_details(data):
         raise ValueError('Indicador de inscrição estadual inválido.')
     cleaned['recipient_ie_indicator'] = indicator
     return cleaned
+
+
+def review_preparation(snapshot, issuer, details, *, details_saved):
+    """Revisão de completude; não substitui XSD, regras fiscais ou autorização."""
+    from datetime import date
+    groups = []
+
+    issuer_fields = [('name', 'Nome do produtor'), ('cpf', 'CPF do produtor'),
+                     ('state_registration', 'Inscrição estadual do produtor'), ('postal_code', 'CEP do produtor'),
+                     ('street', 'Logradouro do produtor'), ('number', 'Número do produtor'),
+                     ('district', 'Bairro ou localidade do produtor'), ('city', 'Município do produtor'),
+                     ('municipality_code', 'Código IBGE do município do produtor'), ('state', 'UF do produtor')]
+    issues = [label for field, label in issuer_fields if not issuer or not str(getattr(issuer, field, '') or '').strip()]
+    if issuer:
+        try:
+            clean_issuer({field: getattr(issuer, field, '') for field, _ in issuer_fields})
+        except ValueError:
+            issues.append('Revise o formato dos dados do produtor')
+    groups.append({'title': 'Produtor e estabelecimento', 'issues': issues, 'target': 'produtor'})
+
+    recipient_fields = [('recipient_name', 'Nome do destinatário'), ('recipient_cpf', 'CPF do destinatário'),
+                        ('recipient_postal_code', 'CEP do destinatário'), ('recipient_street', 'Logradouro do destinatário'),
+                        ('recipient_number', 'Número do destinatário'), ('recipient_district', 'Bairro ou localidade do destinatário'),
+                        ('recipient_city', 'Município do destinatário'), ('recipient_municipality_code', 'Código IBGE do município do destinatário'),
+                        ('recipient_state', 'UF do destinatário'), ('recipient_ie_indicator', 'Indicador de inscrição estadual')]
+    issues = [label for field, label in recipient_fields if not str(details.get(field) or '').strip()]
+    if not details_saved:
+        issues.append('Confirme e salve os dados do destinatário no rascunho')
+    if details.get('recipient_ie_indicator') == 'contribuinte' and not details.get('recipient_ie'):
+        issues.append('Inscrição estadual do destinatário contribuinte')
+    try:
+        clean_draft_details(details)
+    except ValueError:
+        issues.append('Revise o formato ou a UF dos dados do destinatário e da operação')
+    groups.append({'title': 'Destinatário', 'issues': issues, 'target': 'destinatario'})
+
+    product_fields = [('product_description', 'Descrição fiscal do produto'), ('product_ncm', 'NCM'),
+                      ('operation_nature', 'Natureza da operação'), ('operation_cfop', 'CFOP')]
+    issues = [label for field, label in product_fields if not str(details.get(field) or '').strip()]
+    if not details_saved:
+        issues.append('Salve os dados do produto e da operação no rascunho')
+    groups.append({'title': 'Produto e operação', 'issues': issues, 'target': 'destinatario'})
+
+    issues = []
+    try:
+        date.fromisoformat(snapshot.get('data_venda') or '')
+        items = snapshot.get('itens')
+        if not isinstance(items, list) or not items:
+            raise ValueError
+        total = Decimal('0')
+        for item in items:
+            quantity = Decimal(str(item.get('quantidade_sacas', '')))
+            amount = Decimal(str(item.get('valor_bruto', '')))
+            if not item.get('lote') or not quantity.is_finite() or not amount.is_finite() or quantity <= 0 or amount <= 0:
+                raise ValueError
+            total += amount
+        stored_total = Decimal(str(snapshot.get('valor_bruto', '')))
+        if not stored_total.is_finite() or total != stored_total:
+            issues.append('Total dos itens não confere com o total comercial registrado')
+    except (ValueError, TypeError, AttributeError, ArithmeticError):
+        issues.append('Revise data, lotes, quantidades e valores comerciais')
+    groups.append({'title': 'Dados comerciais', 'issues': issues, 'target': 'dados-comerciais'})
+    return {'groups': groups, 'pending_count': sum(len(g['issues']) for g in groups)}

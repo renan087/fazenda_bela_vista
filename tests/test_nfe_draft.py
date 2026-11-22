@@ -108,3 +108,31 @@ def test_details_route_rejects_other_organization(monkeypatch):
         asyncio.run(routes.fiscal_details_save(draft.id, Request(), db, user))
     assert exc.value.status_code == 404 and db.query(NfeDraftDetails).count() == 0
     db.close()
+
+
+def test_review_reports_missing_fields_and_never_authorizes_emission():
+    from app.services.nfe_draft import review_preparation
+    snapshot = {'data_venda': '2026-11-20', 'itens': [{'lote': 'L1', 'quantidade_sacas': '1', 'valor_bruto': '100.00'}], 'valor_bruto': '100.00'}
+    review = review_preparation(snapshot, None, {}, details_saved=False)
+    assert review['pending_count'] > 0
+    assert any('salve' in issue.lower() for g in review['groups'] for issue in g['issues'])
+    assert 'ready' not in review and 'authorized' not in review
+
+
+def test_review_detects_total_mismatch_and_unsaved_buyer_suggestions():
+    from app.services.nfe_draft import review_preparation
+    issuer = SimpleNamespace(name='Teste', cpf='52998224725', state_registration='123', postal_code='40000000',
+                             street='Rua', number='1', district='Centro', city='Salvador', municipality_code='2927408', state='BA')
+    details = {'recipient_name': 'Teste', 'recipient_cpf': '52998224725', 'recipient_postal_code': '40000000',
+               'recipient_street': 'Rua', 'recipient_number': '1', 'recipient_district': 'Centro', 'recipient_city': 'Salvador',
+               'recipient_municipality_code': '2927408', 'recipient_state': 'BA', 'recipient_ie_indicator': 'nao_contribuinte',
+               'product_description': 'Café', 'product_ncm': '09011110', 'operation_nature': 'Venda', 'operation_cfop': '5102'}
+    snapshot = {'data_venda': '2026-11-20', 'itens': [{'lote': 'L1', 'quantidade_sacas': '1.00', 'valor_bruto': '100.00'}], 'valor_bruto': '99.99'}
+    review = review_preparation(snapshot, issuer, details, details_saved=False)
+    issues = [issue for group in review['groups'] for issue in group['issues']]
+    assert any('Total dos itens' in issue for issue in issues)
+    assert any('Confirme e salve' in issue for issue in issues)
+    snapshot['valor_bruto'] = '100.00'
+    assert review_preparation(snapshot, issuer, details, details_saved=True)['pending_count'] == 0
+    details['recipient_ie_indicator'] = 'contribuinte'
+    assert any('Inscrição estadual do destinatário' in issue for g in review_preparation(snapshot, issuer, details, details_saved=True)['groups'] for issue in g['issues'])
