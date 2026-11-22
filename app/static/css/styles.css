@@ -11774,8 +11774,9 @@ textarea.nx-in { padding: .625rem .75rem; line-height: 1.5; min-height: 5rem; }
 .nx-av { width: 3rem; height: 3rem; border-radius: .875rem; background: #eef3eb; color: #294127; display: grid; place-items: center; font-weight: 700; font-size: 1rem; flex: none; }
 .nx-who-nm { margin: 0; font-size: 1.0625rem; font-weight: 700; overflow-wrap: anywhere; }
 .nx-who-sub { margin: .1875rem 0 0; font-size: .8125rem; color: #5b6660; }
-.nx-bfacts { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, minmax(0, max-content)); gap: .5rem 1.5rem; margin: .875rem 0 0; padding: .875rem 1rem; border-radius: .875rem; background: #f6f8f5; border: 1px solid #eef1ed; }
-.nx-bfacts > div { min-width: 0; }
+.nx-bfacts { display: flex; justify-content: space-between; gap: .5rem 1.5rem; margin: .875rem 0 0; padding: .875rem 1rem; border-radius: .875rem; background: #f6f8f5; border: 1px solid #eef1ed; }
+.nx-bfacts > div { min-width: 0; flex: 0 0 auto; }
+.nx-bfacts > .is-wide { flex: 0 1 auto; min-width: 6rem; }
 .nx-bfacts dt { font-size: .75rem; color: #7a857e; }
 .nx-bfacts dd { margin: .125rem 0 0; font-size: .875rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 14rem; }
 .nx-bfacts .is-wide dd { max-width: none; }
@@ -11824,7 +11825,7 @@ textarea.nx-in { padding: .625rem .75rem; line-height: 1.5; min-height: 5rem; }
   .nx-modal { width: 100vw; max-width: 100vw; max-height: 92vh; margin: auto 0 0; border-radius: 1.25rem 1.25rem 0 0; }
   .nx-modal-b { grid-template-columns: minmax(0, 1fr); }
   .nx-load .nx-link-btn { margin-left: 0 !important; }
-  .nx-bfacts { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: .75rem; }
+  .nx-bfacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: .75rem; }
   .nx-bfacts .is-wide { grid-column: 1 / -1; }
   .nx-bfacts dd { max-width: none; }
 }
