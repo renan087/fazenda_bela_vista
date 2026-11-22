@@ -108,3 +108,9 @@ O serviço `app/services/nfe_snapshots.py` e as tabelas `nfe_draft_snapshots` e 
 - **Catálogo de serviços (`app/services/nfe_sefaz_registry.py`):** mapeia os serviços NF-e 4.00 da SEFAZ-BA (extensível para demais UFs) com `verified=False` e `transmission_enabled=False`; a função `assert_transmission_allowed` bloqueia qualquer tentativa de envio real.
 - **Protocolo SOAP 1.2 e parser endurecido (`app/services/nfe_sefaz_protocol.py`):** monta envelopes `consStatServ`, `consSitNFe` e `enviNFe` puramente em memória (`tpAmb=2`), interpreta retornos XML/SOAP com proteção contra XXE/DTD e classifica códigos `cStat` (`autorizada`, `denegada`, `rejeitada`, `em_processamento`, `servico_em_operacao`, `servico_indisponivel`).
 - **Certificado e idempotência:** define o contrato `CertificateProvider` com implementação padrão bloqueada (`DisabledCertificateProvider`) e persiste tentativas simuladas em `nfe_transmission_attempts` com chave de idempotência e hashes SHA-256, sem jamais armazenar chaves privadas ou senhas.
+
+
+## Eventos fiscais preparatórios e prévia de DANFE (PDF)
+
+- **Eventos offline (`app/services/nfe_events.py`):** monta envelopes `envEvento` / SOAP 1.2 (`NFeRecepcaoEvento4`) em `tpAmb=2` para **Cancelamento (`110111`)** e **Carta de Correção (`110110`)**, validando justificativa/texto (mínimo de 15 caracteres), protocolo de 15 dígitos, sequência e autor (CPF ou CNPJ), além do parser endurecido `parse_event_response` (`retEnvEvento`). Não assina nem transmite eventos à SEFAZ.
+- **Prévia de DANFE em PDF (`app/services/nfe_danfe_preview.py`):** disponível em `/producao/rascunhos-fiscais/{draft_id}/previa-danfe.pdf`, gera um documento A4 de conferência com marca d'água diagonal `SEM VALOR FISCAL · SIMULAÇÃO`, faixa de aviso, dados salvos do produtor, destinatário, lotes e chave simulada (com código de barras Code128 quando disponível). Não substitui DANFE oficial de nota autorizada.

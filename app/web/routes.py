@@ -22699,6 +22699,53 @@ def fiscal_preview_xml(draft_id: str, request: Request, db: Session = Depends(ge
                                                                     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 
+@router.get("/producao/rascunhos-fiscais/{draft_id}/previa-danfe.pdf")
+def fiscal_preview_danfe_pdf(draft_id: str, request: Request, db: Session = Depends(get_db),
+                             user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import (
+        NfeDraft,
+        NfeDraftDetails,
+        NfeDraftExtraData,
+        NfeDraftIdentification,
+        NfeDraftTechnicalData,
+        NfeIssuerProfile,
+    )
+    from app.services.nfe_danfe_preview import build_danfe_preview_pdf
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    draft = db.query(NfeDraft).filter_by(id=draft_id, organization_id=user.organization_id, farm_id=scope["active_farm_id"]).first()
+    if not draft or not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    details = db.query(NfeDraftDetails).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    technical = db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    identification = db.query(NfeDraftIdentification).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    extra_row = db.query(NfeDraftExtraData).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id).first()
+    try:
+        pdf_bytes = build_danfe_preview_pdf(
+            snapshot=json.loads(draft.snapshot_json),
+            issuer=issuer,
+            details=json.loads(details.data_json) if details else {},
+            technical=json.loads(technical.data_json) if technical else {},
+            identification=identification,
+            extra_data=json.loads(extra_row.data_json) if extra_row else {},
+        )
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="Não foi possível gerar a prévia de DANFE deste rascunho.") from None
+    return Response(
+        pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="previa-danfe-sem-valor-fiscal.pdf"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.get("/producao/rascunhos-fiscais/{draft_id}/estrutura-xml")
 def fiscal_candidate_xml(draft_id: str, request: Request, db: Session = Depends(get_db),
                        user: User = Depends(get_current_user_web)):
