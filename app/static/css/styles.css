@@ -12059,3 +12059,17 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .fc-soon-btn .sf-btn:disabled { opacity: .6; cursor: not-allowed; }
 @media (max-width: 639px) { .fc-foot-btns { width: 100%; margin-left: 0; } .fc-foot-hint:empty { display: none; } .fc-drop-t .fc-hint { white-space: normal; } }
 .fc-drop-t .fc-hint { white-space: normal; } [data-fc-upload] .fc-drop-t .fc-hint { white-space: nowrap; }
+/* switch e senha: vencem os estilos de formulário do Tailwind */
+.fc-page input[type="checkbox"].fc-tg { appearance: none !important; -webkit-appearance: none !important; width: 2.75rem !important; height: 1.625rem !important; padding: 0 !important; border: 0 !important; border-radius: 999px !important; background: #c9d2c6 !important; background-image: none !important; color: transparent !important; box-shadow: none !important; display: inline-block; vertical-align: middle; }
+.fc-page input[type="checkbox"].fc-tg:checked { background: #446a36 !important; }
+.fc-page input[type="checkbox"].fc-tg:focus { outline: none; box-shadow: none !important; }
+.fc-page input[type="checkbox"].fc-tg:focus-visible { outline: 3px solid #9bcb6b !important; outline-offset: 2px; }
+.fc-pw { display: flex; gap: .5rem; align-items: center; max-width: 22.5rem; }
+.fc-pw .nx-in { flex: 1 1 auto; min-width: 0; height: 2.75rem; }
+.fc-eye { flex: none; width: 2.75rem; height: 2.75rem; display: grid; place-items: center; padding: 0; border: 1px solid #e3e8e2; border-radius: .625rem; background: #fff; color: #16201a; cursor: pointer; }
+.fc-eye:hover { background: #f6f8f5; }
+.fc-eye[aria-pressed="true"] { background: #eef3eb; border-color: #bfd6b6; color: #294127; }
+.fc-eye:focus-visible { outline: 3px solid #9bcb6b; outline-offset: 2px; }
+.fc-page button.fc-eye { border: 1px solid #d5dcd4; background: #fff; }
+.fc-page button.fc-eye:hover { background: #f6f8f5; }
+.fc-page button.fc-eye[aria-pressed="true"] { background: #eef3eb; border-color: #bfd6b6; }
