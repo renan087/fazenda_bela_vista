@@ -88,3 +88,23 @@ O serviço `app/services/nfe_snapshots.py` e as tabelas `nfe_draft_snapshots` e 
 - **Congelamento imutável com SHA-256:** ao congelar uma versão de teste (`v1`, `v2`, …), o sistema serializa em JSON canônico todos os dados efetivamente salvos naquele momento (snapshot comercial da venda, cadastro do produtor, destinatário/operação salvos, dados técnicos, identificação fictícia e pendências de preenchimento) e armazena o hash SHA-256. Alterações posteriores no cadastro do produtor ou nos formulários do rascunho não alteram versões anteriores; sugestões não salvas do comprador nunca entram no snapshot.
 - **Verificação de integridade:** a listagem na tela e o download em JSON (`/producao/rascunhos-fiscais/{draft_id}/versoes/{version}/json`) conferem o SHA-256 em tempo constante (`hmac.compare_digest`) e bloqueiam exportação caso haja divergência.
 - **Histórico local:** alterações nos dados do produtor, destinatário, dados técnicos, identificação de teste e congelamento de versões são registradas em `nfe_draft_events`. Trata-se apenas de trilha preparatória local, distinta de eventos fiscais da SEFAZ (cancelamento, CC-e, etc.). Nenhuma assinatura, autorização ou transmissão foi habilitada.
+
+
+## Perfis fiscais versionados e complementos preparatórios
+
+- **Perfis fiscais (`nfe_tax_profiles`, `app/services/nfe_tax_profiles.py`):** permitem versionar parâmetros por UF de origem/destino, tipo de emitente/destinatário (`pf`/`cnpj`), operação e vigência. Todo perfil nasce em `rascunho`, exige nome do responsável e embasamento para avançar a `aprovado_teste` e bloqueia qualquer status de produção nesta etapa. Nenhuma alíquota ou CST é presumida automaticamente.
+- **Complementos preparatórios (`nfe_draft_extra_data`):** armazenam campos opcionais de transporte (transportador, placa/UF, volumes e pesos), condição/valor de pagamento de teste e informações complementares (`infCpl`), integrados à simulação interna e aos snapshots imutáveis.
+
+
+## Motor modular de simulação XML (offline)
+
+- O serviço `app/services/nfe_xml_builder.py` monta a árvore NF-e 4.00 (`ide`, `emit`, `dest`, `det`, `total`, `transp`, `pag`, `infAdic`) exclusivamente em modo simulação (`simulation_only=True`, `environment='teste_ficticio'`, `tpAmb=2`) e sem assinatura digital.
+- Nenhum código tributário é adivinhado: `CRT`, `orig`, `CST` e bases/alíquotas (quando exigidos pelo CST) precisam ser informados explicitamente.
+- Os testes automatizados validam a estrutura gerada (acrescida em memória de assinatura artificial `AA==`) contra uma cópia temporária do schema recebido, confirmando ordem de tags e formatos sem alterar o estado `reviewed: false` da aplicação.
+
+
+## Protocolo SOAP SEFAZ offline e travas de segurança
+
+- **Catálogo de serviços (`app/services/nfe_sefaz_registry.py`):** mapeia os serviços NF-e 4.00 da SEFAZ-BA (extensível para demais UFs) com `verified=False` e `transmission_enabled=False`; a função `assert_transmission_allowed` bloqueia qualquer tentativa de envio real.
+- **Protocolo SOAP 1.2 e parser endurecido (`app/services/nfe_sefaz_protocol.py`):** monta envelopes `consStatServ`, `consSitNFe` e `enviNFe` puramente em memória (`tpAmb=2`), interpreta retornos XML/SOAP com proteção contra XXE/DTD e classifica códigos `cStat` (`autorizada`, `denegada`, `rejeitada`, `em_processamento`, `servico_em_operacao`, `servico_indisponivel`).
+- **Certificado e idempotência:** define o contrato `CertificateProvider` com implementação padrão bloqueada (`DisabledCertificateProvider`) e persiste tentativas simuladas em `nfe_transmission_attempts` com chave de idempotência e hashes SHA-256, sem jamais armazenar chaves privadas ou senhas.

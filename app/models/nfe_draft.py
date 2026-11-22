@@ -171,3 +171,28 @@ class NfeDraftExtraData(Base):
     data_json: Mapped[str] = mapped_column(Text, nullable=False, default='{}')
     updated_by: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class NfeTransmissionAttempt(Base):
+    """Registro idempotente de tentativas simuladas/futuras com a SEFAZ; nunca armazena segredos."""
+    __tablename__ = 'nfe_transmission_attempts'
+    __table_args__ = (
+        UniqueConstraint('organization_id', 'farm_id', 'idempotency_key', name='uq_nfe_transmission_idempotency'),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    draft_id: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    organization_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    farm_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    environment: Mapped[str] = mapped_column(String(20), nullable=False, default='teste_ficticio')
+    uf: Mapped[str] = mapped_column(String(2), nullable=False, default='BA')
+    operation: Mapped[str] = mapped_column(String(40), nullable=False)
+    status_category: Mapped[str] = mapped_column(String(30), nullable=False, default='desconhecido')
+    c_stat: Mapped[str] = mapped_column(String(10), nullable=False, default='')
+    x_motivo: Mapped[str] = mapped_column(String(300), nullable=False, default='')
+    protocol_number: Mapped[str] = mapped_column(String(40), nullable=False, default='')
+    access_key: Mapped[str] = mapped_column(String(44), nullable=False, default='')
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False, default='')
+    response_sha256: Mapped[str] = mapped_column(String(64), nullable=False, default='')
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

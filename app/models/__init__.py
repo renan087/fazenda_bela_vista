@@ -166,4 +166,5 @@ from app.models.nfe_draft import (
     NfeIssuerProfile,
     NfeTaxProfile,
     NfeTestSequence,
+    NfeTransmissionAttempt,
 )
