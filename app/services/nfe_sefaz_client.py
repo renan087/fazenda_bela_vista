@@ -69,8 +69,11 @@ def send_soap_request(
 ) -> dict:
     """Envia envelope SOAP 1.2 via mTLS (somente quando todas as travas forem liberadas)."""
     _assert_network_gate(config, endpoint_url)
+    content_type = SOAP12_CONTENT_TYPE
+    if config.soap_action:
+        content_type = f'{SOAP12_CONTENT_TYPE}; action="{config.soap_action}"'
     headers = {
-        'Content-Type': SOAP12_CONTENT_TYPE,
+        'Content-Type': content_type,
         'Accept': 'application/soap+xml, application/xml, text/xml',
     }
     with _ephemeral_mtls_context(provider) as ssl_ctx:

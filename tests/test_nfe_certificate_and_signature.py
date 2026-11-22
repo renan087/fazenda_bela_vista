@@ -123,16 +123,14 @@ def test_xmldsig_signature_verifies_mathematically_and_passes_temp_xsd(tmp_path)
     tampered = signed_xml.replace(b'CAFE FICTICIO DE TESTE', b'CAFE ADULTERADO TESTE')
     assert verify_xml_signature(tampered) is False
 
-    # Validação contra cópia temporária do XSD 4.00 (incluindo xmldsig-core-schema_v1.01.xsd).
-    temp_schema = tmp_path / 'schemas'
-    shutil.copytree(SCHEMA_DIRECTORY, temp_schema)
-    manifest_path = temp_schema / 'manifest.json'
-    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-    manifest['reviewed'] = True
-    manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+    # Validação direta contra o pacote oficial ativo da aplicação (010h-v1.03, reviewed=True).
+    official_validation = validate_xml(signed_xml)
+    assert official_validation['valid'] is True, f'Erros XSD oficial no XML assinado: {official_validation["errors"]}'
+    assert official_validation['schema_version'] == '010h-v1.03'
 
-    validation = validate_xml(signed_xml, schema_directory=temp_schema)
-    assert validation['valid'] is True, f'Erros XSD no XML assinado: {validation["errors"]}'
+    # Impede assinatura duplicada em documento já assinado.
+    with pytest.raises(ValueError):
+        provider.sign_xml(signed_xml, 'NFe' + built['access_key'])
 
     # Também assina e verifica evento de cancelamento (infEvento).
     cancel = build_cancellation_event(

@@ -270,7 +270,7 @@ def build_technical_panel_context(db, *, organization_id: int, farm_id: int) -> 
     local_conformity_items = [
         {'name': 'Chave de acesso 44 dígitos (Módulo 11, PF 000+CPF e CNPJ)', 'status': 'aprovado_local', 'detail': 'Validado offline em test_nfe_access_key.py'},
         {'name': 'Numeração fictícia sequencial isolada por cliente e série', 'status': 'aprovado_local', 'detail': 'Validado offline em test_nfe_numbering.py e test_nfe_conformity_suite.py'},
-        {'name': 'Motor XML NF-e 4.00 + IBSCBS opcional contra XSD temporário', 'status': 'aprovado_local', 'detail': 'Validado em cópia temporária do XSD recebido (pacote da app segue reviewed: false)'},
+        {'name': 'Motor XML NF-e 4.00 + IBSCBS opcional contra XSD oficial 010h-v1.03', 'status': 'aprovado_local', 'detail': 'Validado offline contra o pacote PL_010h v1.03 verificado no Portal Nacional (reviewed: true)'},
         {'name': 'Cofre AES-256-GCM (AAD por cliente) e assinatura XMLDSig real', 'status': 'aprovado_local', 'detail': 'Testado com certificado efêmero RSA-2048 em memória + XSD xmldsig'},
         {'name': 'Protocolo SOAP 1.2 (autorização, rejeição, consulta, cancelamento, duplicidade)', 'status': 'aprovado_local', 'detail': 'Simulado offline com parser endurecido contra XXE/DTD'},
         {'name': 'Timeout, idempotência e isolamento estrito entre clientes SaaS', 'status': 'aprovado_local', 'detail': 'Validado offline em test_nfe_conformity_suite.py'},

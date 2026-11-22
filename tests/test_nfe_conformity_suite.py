@@ -245,8 +245,8 @@ def test_conformity_saas_multi_client_isolation_and_pilot_readiness(monkeypatch)
     )
     assert id_a.number == 1 and id_b.number == 1
 
-    # Prontidão do Cliente A piloto: seus dados/certificado estão ok, mas transmissão REAL segue bloqueada
-    # por XSD reviewed=false e trava de rede/SEFAZ!
+    # Prontidão do Cliente A piloto: dados, certificado e XSD oficial (010h-v1.03) confirmados,
+    # mas transmissão REAL segue bloqueada pela trava de rede/SEFAZ!
     readiness_a = evaluate_pilot_homologation_readiness(db, organization_id=101, farm_id=1001)
     assert readiness_a['transmission_blocked'] is True
     assert readiness_a['ready_for_official_homologacao'] is False
@@ -254,13 +254,13 @@ def test_conformity_saas_multi_client_isolation_and_pilot_readiness(monkeypatch)
     assert by_code['client_config'] is True
     assert by_code['client_certificate'] is True
     assert by_code['client_credential'] is True
-    assert by_code['xsd_official_review'] is False
+    assert by_code['xsd_official_review'] is True
     assert by_code['sefaz_transmission_gate'] is False
 
     # Painel técnico distingue validação local de homologação oficial e renderiza sem erro.
     panel = build_technical_panel_context(db, organization_id=101, farm_id=1001)
     assert panel['stats']['approved_local'] >= 7
-    assert panel['stats']['pending_official'] >= 2
+    assert panel['stats']['pending_official'] >= 1
 
     from jinja2 import ChoiceLoader, DictLoader
     from app.web import routes

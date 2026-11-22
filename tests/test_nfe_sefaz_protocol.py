@@ -26,7 +26,9 @@ def _new_db():
 def test_sefaz_registry_has_bahia_and_blocks_real_transmission():
     cfg = get_service_config(state_uf='BA', environment='homologacao', service='NfeAutorizacao4')
     assert cfg.uf == 'BA' and cfg.uf_code == '29' and cfg.authorizer == 'SEFAZ-BA'
-    assert cfg.verified is False and cfg.transmission_enabled is False
+    assert cfg.verified is True and cfg.transmission_enabled is False
+    assert cfg.endpoint_url == 'https://hnfe.sefaz.ba.gov.br/webservices/NFeAutorizacao4/NFeAutorizacao4.asmx'
+    assert 'NFeAutorizacao4/nfeAutorizacaoLote' in cfg.soap_action
     with pytest.raises(PermissionError):
         assert_transmission_allowed(cfg)
 

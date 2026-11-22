@@ -9,12 +9,24 @@ from app.services.nfe_preview import build_preview
 BUNDLE = Path(__file__).resolve().parents[1] / 'app' / 'fiscal' / 'schemas' / 'nfe'
 
 
-def test_unverified_bundle_is_disabled():
+def test_verified_official_bundle_loads_and_unreviewed_copy_is_rejected(tmp_path):
     manifest = json.loads((BUNDLE / 'manifest.json').read_text())
-    assert manifest['reviewed'] is False
+    assert manifest['reviewed'] is True
+    assert manifest['version'] == '010h-v1.03'
     assert manifest['archive_sha256'] == 'bcbf6b277f79a6983d69016dfe0430f09b8a191997a4706a24938acddc18dc81'
+    # O pacote oficial ativo valida offline e rejeita XML incompleto.
+    result = validate_xml(b'<NFe xmlns="http://www.portalfiscal.inf.br/nfe"/>')
+    assert result['schema_version'] == '010h-v1.03' and result['valid'] is False
+
+    # Qualquer pacote sem revisão (reviewed=False) continua sendo recusado.
+    unreviewed = tmp_path / 'unreviewed'
+    shutil.copytree(BUNDLE, unreviewed)
+    m_path = unreviewed / 'manifest.json'
+    m_data = json.loads(m_path.read_text())
+    m_data['reviewed'] = False
+    m_path.write_text(json.dumps(m_data))
     with pytest.raises(SchemaUnavailable):
-        validate_xml(b'<NFe/>')
+        validate_xml(b'<NFe/>', schema_directory=unreviewed)
 
 
 def test_received_schema_compiles_offline_and_rejects_incomplete_document(tmp_path):

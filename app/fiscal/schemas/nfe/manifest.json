@@ -1,7 +1,9 @@
 {
   "version": "010h-v1.03",
   "entry": "nfe_v4.00.xsd",
-  "reviewed": false,
+  "reviewed": true,
+  "reviewed_at": "2026-11-22",
+  "published_at": "2026-11-13",
   "archive_sha256": "bcbf6b277f79a6983d69016dfe0430f09b8a191997a4706a24938acddc18dc81",
   "files": {
     "DFeTiposBasicos_v1.00.xsd": "22cc19e1bb09808ec475d0ad830303699cbf167d630e57023f7d7f1e7c2cb1cc",
@@ -14,7 +16,7 @@
     "tiposBasico_v4.00.xsd": "772619c85723e598840667ca66e7298a250442df47eeb94b397d2a333ce62047",
     "xmldsig-core-schema_v1.01.xsd": "f56744a5f51c03f027de13f39f869307091781a9ef1d91b1ebe14719ce28e1ac"
   },
-  "origin": "Arquivo entregue pelo usuário; autenticidade oficial não verificada independentemente.",
+  "origin": "Verificado diretamente contra o download oficial do Portal Nacional da NF-e (PL_010h v1.03, publicado em 13/11/2026; SHA-256 do ZIP e dos 9 XSDs conferidos em 22/11/2026).",
   "official_listing": "https://www.nfe.fazenda.gov.br/portal/listaConteudo.aspx?tipoConteudo=BMPFMBoln3w%3D",
   "official_download_link": "https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?conteudo=YhWikFoTxUo="
 }

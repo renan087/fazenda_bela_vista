@@ -213,12 +213,15 @@ class Pkcs12CertificateProvider(CertificateProvider):
         parent = target.getparent()
         if parent is None:
             raise ValueError('Elemento alvo precisa estar contido em um nó pai (<NFe> ou <evento>).')
+        if parent.xpath('./ds:Signature', namespaces={'ds': DS_NS}):
+            raise ValueError('O documento já possui uma assinatura XMLDSig.')
 
-        # 1. Canonicalização C14N 1.0 e DigestValue SHA-1 do elemento alvo.
+        # 1. Canonicalização C14N 1.0 e DigestValue SHA-1 do elemento alvo (sem comentários).
         target_c14n = etree.tostring(target, method='c14n', exclusive=False, with_comments=False)
         digest_b64 = base64.b64encode(sha1(target_c14n).digest()).decode('ascii')
 
-        # 2. Monta <Signature><SignedInfo>...</SignedInfo></Signature> no namespace XMLDSig.
+        # 2. Monta <Signature><SignedInfo>...</SignedInfo></Signature> e anexa ao pai ANTES
+        #    da canonicalização de SignedInfo (garante herança exata de namespaces no C14N 1.0).
         sig = etree.Element(f'{{{DS_NS}}}Signature', nsmap={None: DS_NS})
         signed_info = etree.SubElement(sig, f'{{{DS_NS}}}SignedInfo')
         etree.SubElement(signed_info, f'{{{DS_NS}}}CanonicalizationMethod', {'Algorithm': C14N_ALG})
@@ -229,8 +232,9 @@ class Pkcs12CertificateProvider(CertificateProvider):
         etree.SubElement(transforms, f'{{{DS_NS}}}Transform', {'Algorithm': C14N_ALG})
         etree.SubElement(ref, f'{{{DS_NS}}}DigestMethod', {'Algorithm': SHA1_ALG})
         etree.SubElement(ref, f'{{{DS_NS}}}DigestValue').text = digest_b64
+        parent.append(sig)
 
-        # 3. Canonicaliza SignedInfo e assina com RSA PKCS#1 v1.5 + SHA-1.
+        # 3. Canonicaliza SignedInfo já inserido na árvore e assina com RSA PKCS#1 v1.5 + SHA-1.
         signed_info_c14n = etree.tostring(signed_info, method='c14n', exclusive=False, with_comments=False)
         signature_raw = self._private_key.sign(signed_info_c14n, padding.PKCS1v15(), hashes.SHA1())
         sig_value_b64 = base64.b64encode(signature_raw).decode('ascii')
@@ -240,7 +244,6 @@ class Pkcs12CertificateProvider(CertificateProvider):
         x509_data = etree.SubElement(key_info, f'{{{DS_NS}}}X509Data')
         etree.SubElement(x509_data, f'{{{DS_NS}}}X509Certificate').text = self._cert_b64
 
-        parent.append(sig)
         return etree.tostring(root, encoding='utf-8', xml_declaration=True)
 
 
