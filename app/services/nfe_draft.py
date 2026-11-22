@@ -18,11 +18,30 @@ def build_sale_snapshot(records):
         quantity = Decimal(str(row.equivalent_sacks))
         if not amount.is_finite() or not quantity.is_finite() or amount <= 0 or quantity <= 0:
             raise ValueError('Confira as quantidades e valores da venda.')
-        lines.append({'lote': row.lot_label, 'quantidade_sacas': str(quantity), 'valor_bruto': str(amount)})
-    return {'versao': 1, 'venda': first.sale_code, 'origem_ids': sorted(r.id for r in records), 'comprador': first.buyer_name,
-            'comprador_id': first.buyer_id, 'data_venda': first.sale_date.isoformat(),
-            'itens': lines, 'valor_bruto': str(sum((Decimal(i['valor_bruto']) for i in lines), Decimal('0'))),
-            'aviso': 'Dados comerciais para revisão. Não são uma nota fiscal.'}
+        unit_price = getattr(row, 'unit_price', None)
+        lines.append({
+            'lote': row.lot_label,
+            'quantidade_sacas': str(quantity),
+            'valor_bruto': str(amount),
+            'unidade': getattr(row, 'sale_unit', None) or 'sc_60',
+            'preco_unitario': str(Decimal(str(unit_price))) if unit_price is not None else '',
+        })
+    freight_val = getattr(first, 'freight_value', None)
+    return {
+        'versao': 1,
+        'venda': first.sale_code,
+        'origem_ids': sorted(r.id for r in records),
+        'comprador': first.buyer_name,
+        'comprador_id': first.buyer_id,
+        'data_venda': first.sale_date.isoformat(),
+        'coffee_type': getattr(first, 'coffee_type', None) or 'beneficiado',
+        'payment_condition': getattr(first, 'payment_condition', None) or 'a_vista',
+        'payment_method': getattr(first, 'payment_method', None) or '',
+        'freight_value': str(Decimal(str(freight_val))) if freight_val is not None else '0',
+        'itens': lines,
+        'valor_bruto': str(sum((Decimal(i['valor_bruto']) for i in lines), Decimal('0'))),
+        'aviso': 'Dados comerciais para revisão. Não são uma nota fiscal.',
+    }
 
 
 def create_draft(db, *, organization_id, farm_id, user_id, records):
@@ -322,3 +341,123 @@ def review_test_tax_fields(snapshot, technical):
             missing = [name for key, name in fields if saved.get(key) is None or str(saved.get(key)).strip() == '']
             result[index].append({'label': label, 'missing': missing, 'all_absent': len(missing) == len(fields)})
     return result
+
+
+def map_sale_payment_and_freight(snapshot: dict) -> dict:
+    """Traduz pagamento e frete gravados na venda para exibição amigável e códigos de teste."""
+    raw_method = str((snapshot or {}).get('payment_method') or '').strip()
+    raw_cond = str((snapshot or {}).get('payment_condition') or 'a_vista').strip().lower()
+    lower_method = raw_method.lower()
+    if 'pix' in lower_method:
+        t_pag = '17'
+    elif 'dinheiro' in lower_method:
+        t_pag = '01'
+    elif 'boleto' in lower_method:
+        t_pag = '15'
+    elif 'transfer' in lower_method or 'ted' in lower_method or 'doc' in lower_method:
+        t_pag = '18'
+    elif 'crédito' in lower_method or 'credito' in lower_method:
+        t_pag = '03'
+    elif 'débito' in lower_method or 'debito' in lower_method:
+        t_pag = '04'
+    else:
+        t_pag = '99' if raw_method else ''
+
+    cond_label = 'a prazo' if raw_cond == 'a_prazo' else 'à vista'
+    payment_label = f'{raw_method} · {cond_label}' if raw_method else f'A definir · {cond_label}'
+
+    try:
+        freight_num = Decimal(str((snapshot or {}).get('freight_value') or '0'))
+    except Exception:
+        freight_num = Decimal('0')
+    default_freight_mode = '9' if freight_num <= 0 else '0'
+    return {
+        'payment_label': payment_label,
+        't_pag': t_pag,
+        'ind_pag': '1' if raw_cond == 'a_prazo' else '0',
+        'default_freight_mode': default_freight_mode,
+    }
+
+
+def apply_tax_profile_to_draft(db, *, draft, profile, buyer, user_id: int) -> None:
+    """Aplica regras aprovadas de um NfeTaxProfile aos dados salvos do rascunho (1 clique)."""
+    from app.models.nfe_draft import NfeDraftDetails, NfeDraftTechnicalData
+    from app.services.nfe_snapshots import record_draft_event
+
+    snapshot = json.loads(draft.snapshot_json)
+    rules = json.loads(profile.rules_json or '{}')
+    sale_map = map_sale_payment_and_freight(snapshot)
+
+    # 1. Atualiza/cria NfeDraftDetails preservando destinatário salvo (ou prefill do comprador).
+    details_row = db.query(NfeDraftDetails).filter_by(
+        draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id
+    ).first()
+    details_data = json.loads(details_row.data_json) if details_row else buyer_prefill(buyer)
+    for key in ('product_description', 'product_ncm', 'operation_nature', 'operation_cfop'):
+        if rules.get(key):
+            details_data[key] = str(rules[key]).strip()
+    cleaned_details = clean_draft_details(details_data)
+    if not details_row:
+        details_row = NfeDraftDetails(
+            draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id, updated_by=user_id
+        )
+        db.add(details_row)
+    details_row.data_json = json.dumps(cleaned_details, ensure_ascii=False)
+    details_row.updated_by = user_id
+
+    # 2. Atualiza/cria NfeDraftTechnicalData por lote sem inventar impostos fora do perfil.
+    tech_row = db.query(NfeDraftTechnicalData).filter_by(
+        draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id
+    ).first()
+    existing_tech = json.loads(tech_row.data_json) if tech_row else {}
+    existing_by_idx = {i.get('item_index'): i for i in existing_tech.get('items', []) if isinstance(i, dict)}
+
+    unit = str(rules.get('unit') or 'SC').strip().upper()[:6]
+    form_like = {
+        'emission_date': existing_tech.get('emission_date') or snapshot.get('data_venda') or '',
+        'freight_mode': existing_tech.get('freight_mode') or sale_map['default_freight_mode'],
+    }
+    for idx, item in enumerate(snapshot.get('itens') or [], 1):
+        prev = existing_by_idx.get(idx, {})
+        qty = Decimal(str(item.get('quantidade_sacas') or '0'))
+        gross = Decimal(str(item.get('valor_bruto') or '0'))
+        unit_price = (gross / qty) if qty > 0 else Decimal('0')
+        form_like[f'item_{idx}_origin'] = str(rules.get('origin') or prev.get('origin') or '0')
+        form_like[f'item_{idx}_icms_cst'] = str(rules.get('icms_cst') or prev.get('icms_cst') or '')
+        form_like[f'item_{idx}_ibs_cbs_cst'] = str(rules.get('ibs_cbs_cst') or prev.get('ibs_cbs_cst') or '')
+        form_like[f'item_{idx}_ibs_cbs_class'] = str(rules.get('ibs_cbs_class') or prev.get('ibs_cbs_class') or '')
+        form_like[f'item_{idx}_commercial_unit'] = unit
+        form_like[f'item_{idx}_tax_unit'] = unit
+        if qty > 0:
+            qty_str = format(qty.quantize(Decimal('0.0001')), 'f')
+            price_str = format(unit_price.quantize(Decimal('0.0000000001')), 'f')
+            form_like[f'item_{idx}_commercial_quantity'] = qty_str
+            form_like[f'item_{idx}_tax_quantity'] = qty_str
+            form_like[f'item_{idx}_commercial_unit_price'] = price_str
+            form_like[f'item_{idx}_tax_unit_price'] = price_str
+        for carry in ('icms_base', 'icms_value', 'icms_rate', 'ibs_cbs_base', 'ibs_uf_value',
+                      'ibs_uf_rate', 'ibs_municipal_value', 'ibs_municipal_rate', 'cbs_value', 'cbs_rate'):
+            if prev.get(carry) is not None and str(prev.get(carry)) != '':
+                form_like[f'item_{idx}_{carry}'] = str(prev[carry])
+
+    cleaned_tech = clean_technical_data(form_like, snapshot)
+    if not tech_row:
+        tech_row = NfeDraftTechnicalData(
+            draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id, updated_by=user_id
+        )
+        db.add(tech_row)
+    tech_row.data_json = json.dumps(cleaned_tech, ensure_ascii=False)
+    tech_row.schema_version = 1
+    tech_row.updated_by = user_id
+
+    record_draft_event(
+        db,
+        draft_id=draft.id,
+        organization_id=draft.organization_id,
+        farm_id=draft.farm_id,
+        event_type='detalhes_salvos',
+        summary=f'Perfil fiscal "{profile.name}" (v{profile.version}) aplicado ao rascunho.',
+        user_id=user_id,
+        metadata={'profile_id': profile.id, 'profile_version': profile.version},
+    )
+    db.commit()

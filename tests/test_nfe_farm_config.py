@@ -126,3 +126,73 @@ def test_certificate_upload_enforces_permission_and_encrypts_in_vault(monkeypatc
     db.refresh(cert)
     assert cert.is_active is False
     db.close()
+
+
+def test_tax_profile_create_approve_and_apply_to_draft(monkeypatch):
+    import json
+    from app.models.nfe_draft import NfeDraft, NfeDraftDetails, NfeDraftTechnicalData, NfeTaxProfile
+    from app.web import routes
+    from tests.test_stock_assistant import _route_env
+    _, db, user, scope, *_ = _route_env(monkeypatch, [])
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
+    monkeypatch.setattr(routes, '_launch_scope_or_redirect', lambda *args: (scope, None))
+    monkeypatch.setattr(routes, '_flash', lambda *args: None)
+
+    class CreateProfileReq:
+        async def form(self):
+            return {
+                'csrf_token': 'x',
+                'name': 'Café Beneficiado · BA',
+                'product_description': 'Café arábica beneficiado em grão',
+                'product_ncm': '09011110',
+                'operation_nature': 'Venda de produção do estabelecimento',
+                'operation_cfop': '5101',
+                'origin': '0',
+                'icms_cst': '40',
+                'unit': 'SC',
+                'approved_by_name': 'Dr. Carlos Mendes CRC-BA',
+                'reference_notes': 'Parecer interno BA',
+            }
+
+    resp = asyncio.run(routes.nfe_tax_profile_create(CreateProfileReq(), db, user))
+    assert resp.status_code == 303
+    profile = db.query(NfeTaxProfile).filter_by(organization_id=user.organization_id).first()
+    assert profile is not None and profile.status == 'rascunho'
+
+    class ApproveReq:
+        async def form(self):
+            return {'csrf_token': 'x', 'status': 'aprovado_teste'}
+
+    resp2 = asyncio.run(routes.nfe_tax_profile_status_action(profile.id, ApproveReq(), db, user))
+    assert resp2.status_code == 303
+    db.refresh(profile)
+    assert profile.status == 'aprovado_teste'
+
+    # Cria um rascunho e aplica o perfil em 1 clique.
+    draft = NfeDraft(
+        id='k' * 32, organization_id=user.organization_id, farm_id=scope['active_farm_id'],
+        sale_code='V-0018', created_by=user.id,
+        snapshot_json=json.dumps({
+            'versao': 1, 'venda': 'V-0018', 'origem_ids': [1],
+            'comprador': 'João Batista', 'comprador_id': None, 'data_venda': '2026-11-22',
+            'payment_method': 'PIX', 'payment_condition': 'a_vista', 'freight_value': '0',
+            'itens': [{'lote': 'Lote 04', 'quantidade_sacas': '10', 'valor_bruto': '14200.00'}],
+            'valor_bruto': '14200.00',
+        }),
+    )
+    db.add(draft)
+    db.commit()
+
+    class ApplyReq:
+        async def form(self):
+            return {'csrf_token': 'x', 'profile_id': profile.id}
+
+    resp3 = asyncio.run(routes.fiscal_apply_profile_action(draft.id, ApplyReq(), db, user))
+    assert resp3.status_code == 303
+
+    det = db.query(NfeDraftDetails).filter_by(draft_id=draft.id).first()
+    tech = db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id).first()
+    assert det is not None and json.loads(det.data_json)['product_ncm'] == '09011110'
+    assert tech is not None and json.loads(tech.data_json)['items'][0]['icms_cst'] == '40'
+    assert json.loads(tech.data_json)['items'][0]['commercial_unit'] == 'SC'
+    db.close()

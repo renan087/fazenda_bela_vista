@@ -204,6 +204,77 @@
         <p class="mt-4 text-sm text-[#5B6660]">Nenhum certificado A1 carregado para esta fazenda ainda.</p>
         {% endif %}
       </section>
+
+      <section id="perfis-fiscais" class="nf-card" aria-labelledby="profiles-heading">
+        <div class="nf-card-head">
+          <div>
+            <h2 id="profiles-heading" class="nf-card-title">3. Perfis fiscais da fazenda (revisão contábil)</h2>
+            <p class="nf-card-desc">Cadastre uma única vez com seu contador os perfis de venda (ex.: Café Beneficiado na BA). Depois, na hora de emitir a nota, basta selecionar o perfil aprovado.</p>
+          </div>
+          <span class="nf-pill is-neutral">{{ (tax_profiles or []) | length }} perfil(is)</span>
+        </div>
+
+        {% if can_write_page %}
+        <form method="post" action="/producao/nfe/configuracao/perfis" class="mt-4 space-y-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="nf-grid-3">
+            <label class="nf-field"><span class="nf-field-label">Nome do perfil</span><input name="name" maxlength="160" required placeholder="Ex.: Café Beneficiado · BA" class="nf-input"></label>
+            <label class="nf-field"><span class="nf-field-label">Descrição fiscal do produto</span><input name="product_description" maxlength="180" required placeholder="Café arábica beneficiado em grão" class="nf-input"></label>
+            <label class="nf-field"><span class="nf-field-label">Unidade padrão</span><select name="unit" class="nf-select"><option value="SC">SC (Saca)</option><option value="KG">KG (Quilo)</option></select></label>
+            <label class="nf-field"><span class="nf-field-label">NCM (8 dígitos)</span><input name="product_ncm" maxlength="10" inputmode="numeric" placeholder="09011110" class="nf-input"></label>
+            <label class="nf-field"><span class="nf-field-label">CFOP (4 dígitos)</span><input name="operation_cfop" maxlength="5" inputmode="numeric" placeholder="5101" class="nf-input"></label>
+            <label class="nf-field"><span class="nf-field-label">Natureza da operação</span><input name="operation_nature" maxlength="120" placeholder="Venda de produção do estabelecimento" class="nf-input"></label>
+            <label class="nf-field"><span class="nf-field-label">Origem (1 dígito)</span><input name="origin" maxlength="1" inputmode="numeric" value="0" class="nf-input"></label>
+            <label class="nf-field"><span class="nf-field-label">CST ICMS (2 dígitos)</span><input name="icms_cst" maxlength="2" inputmode="numeric" placeholder="40" class="nf-input"></label>
+            <label class="nf-field"><span class="nf-field-label">Contador responsável</span><input name="approved_by_name" maxlength="160" placeholder="Nome e CRC do contador" class="nf-input"></label>
+          </div>
+          <label class="nf-field">
+            <span class="nf-field-label">Embasamento / observações contábeis</span>
+            <input name="reference_notes" maxlength="500" placeholder="Ex.: Parecer contábil para venda interna de café na Bahia" class="nf-input">
+          </label>
+          <div class="nf-form-actions">
+            <p class="nf-form-hint">Perfis nascem em rascunho e podem ser aprovados para teste após conferência com o contador.</p>
+            <button type="submit" class="sf-btn sf-btn-primary">Salvar perfil fiscal</button>
+          </div>
+        </form>
+        {% endif %}
+
+        {% if tax_profiles %}
+        <div class="mt-5 space-y-2.5">
+          <h3 class="nf-subblock-title">Perfis cadastrados</h3>
+          {% for prof in tax_profiles %}
+          <div class="nf-subblock flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div class="space-y-1 text-xs">
+              <div class="flex flex-wrap items-center gap-2">
+                <strong class="text-sm text-[#16201A]">{{ prof.name }}</strong>
+                <span class="nf-pill is-neutral tabular-nums">v{{ prof.version }}</span>
+                {% if prof.status == 'aprovado_teste' %}<span class="nf-pill is-ok">Aprovado teste</span>
+                {% elif prof.status == 'arquivado' %}<span class="nf-pill is-neutral">Arquivado</span>
+                {% else %}<span class="nf-pill is-warn">{{ prof.status }}</span>{% endif %}
+              </div>
+              <p class="text-[#5B6660]">{{ prof.origin_state }} → {{ prof.destination_state }} · {{ prof.issuer_person_type|upper }} → {{ prof.recipient_person_type|upper }}{% if prof.approved_by_name %} · Responsável: {{ prof.approved_by_name }}{% endif %}</p>
+            </div>
+            {% if can_write_page and prof.status != 'arquivado' %}
+            <div class="flex flex-wrap gap-2">
+              {% if prof.status != 'aprovado_teste' %}
+              <form method="post" action="/producao/nfe/configuracao/perfis/{{ prof.id }}/status">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="status" value="aprovado_teste">
+                <button type="submit" class="sf-btn sf-btn-secondary">Aprovar p/ teste</button>
+              </form>
+              {% endif %}
+              <form method="post" action="/producao/nfe/configuracao/perfis/{{ prof.id }}/status">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="status" value="arquivado">
+                <button type="submit" class="sf-btn sf-btn-secondary">Arquivar</button>
+              </form>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </section>
     </div>
 
     <aside class="nf-aside" aria-label="Prontidão de homologação desta fazenda">

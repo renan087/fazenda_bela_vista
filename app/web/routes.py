@@ -22626,8 +22626,23 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
                                           farm_id=scope["active_farm_id"]).first()
     if not draft:
         raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
-    from app.models.nfe_draft import NfeIssuerProfile, NfeDraftDetails, NfeDraftTechnicalData, NfeDraftIdentification, NfeDraftExtraData
-    from app.services.nfe_draft import buyer_prefill, review_preparation, review_item_values, summarize_test_tax_values, review_test_tax_fields
+    from app.models.nfe_draft import (
+        NfeCertificateVault,
+        NfeDraftDetails,
+        NfeDraftExtraData,
+        NfeDraftIdentification,
+        NfeDraftTechnicalData,
+        NfeIssuerProfile,
+        NfeTaxProfile,
+    )
+    from app.services.nfe_draft import (
+        buyer_prefill,
+        map_sale_payment_and_freight,
+        review_item_values,
+        review_preparation,
+        review_test_tax_fields,
+        summarize_test_tax_values,
+    )
     from app.services.nfe_numbering import (
         CONSUMER_INDICATORS,
         PAYMENT_METHODS,
@@ -22636,6 +22651,7 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
     )
     from app.services.nfe_snapshots import list_draft_events, list_draft_snapshots
     from app.services.nfe_tax_profiles import PAYMENT_INDICATORS
+    farm = db.get(Farm, scope["active_farm_id"])
     issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id,
                                                   farm_id=scope["active_farm_id"]).first()
     snapshot = json.loads(draft.snapshot_json)
@@ -22654,11 +22670,25 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
         draft_id=draft.id, organization_id=user.organization_id, farm_id=scope["active_farm_id"]
     ).first()
     extra_data = json.loads(extra_row.data_json) if extra_row else {}
+    has_active_cert = (
+        db.query(NfeCertificateVault)
+        .filter_by(organization_id=user.organization_id, farm_id=scope["active_farm_id"], is_active=True)
+        .first()
+        is not None
+    )
+    tax_profiles = (
+        db.query(NfeTaxProfile)
+        .filter_by(organization_id=user.organization_id, status="aprovado_teste")
+        .order_by(NfeTaxProfile.name.asc(), NfeTaxProfile.version.desc())
+        .all()
+    )
     key_summary = build_simulated_access_key_summary(issuer, technical, identification)
     snapshots = list_draft_snapshots(db, draft_id=draft.id, organization_id=user.organization_id, farm_id=scope["active_farm_id"])
     draft_events = list_draft_events(db, draft_id=draft.id, organization_id=user.organization_id, farm_id=scope["active_farm_id"])
     return templates.TemplateResponse("nfe_draft.html", _base_context(
-        request, user, csrf_token, "commercialization", title="Rascunho fiscal", draft=draft,
+        request, user, csrf_token, "commercialization", title="Emitir nota fiscal", draft=draft,
+        farm_name=farm.name if farm else "", buyer=buyer, has_active_cert=has_active_cert,
+        tax_profiles=tax_profiles, sale_meta=map_sale_payment_and_freight(snapshot),
         issuer=issuer, details=prepared, snapshot=snapshot, technical=technical, technical_items=technical_items,
         identification=identification, key_summary=key_summary, extra_data=extra_data, snapshots=snapshots, draft_events=draft_events,
         consumer_indicators=CONSUMER_INDICATORS, presence_indicators=PRESENCE_INDICATORS,
@@ -23099,7 +23129,7 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
                          user: User = Depends(get_current_user_web),
                          csrf_token: str = Depends(get_csrf_token)):
     import os
-    from app.models.nfe_draft import NfeCertificateVault, NfeIssuerProfile
+    from app.models.nfe_draft import NfeCertificateVault, NfeIssuerProfile, NfeTaxProfile
     from app.services.nfe_client_config import (
         ALLOWED_CREDENTIAL_STATUSES,
         ALLOWED_CRTS,
@@ -23123,6 +23153,13 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
         .limit(10)
         .all()
     )
+    tax_profiles = (
+        db.query(NfeTaxProfile)
+        .filter_by(organization_id=user.organization_id)
+        .order_by(NfeTaxProfile.created_at.desc())
+        .limit(30)
+        .all()
+    )
     master_key_configured = len(os.environ.get("NFE_CERT_MASTER_KEY", "").strip()) >= 32
     return templates.TemplateResponse("nfe_farm_config.html", _base_context(
         request, user, csrf_token, "commercialization",
@@ -23131,6 +23168,7 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
         cfg=readiness["config"],
         readiness=readiness,
         certificates=certificates,
+        tax_profiles=tax_profiles,
         master_key_configured=master_key_configured,
         can_manage_cert=has_fiscal_permission(user, "nfe.certificate.manage"),
         allowed_environments=ALLOWED_ENVIRONMENTS,
@@ -23273,6 +23311,109 @@ async def nfe_farm_certificate_deactivate(cert_id: str, request: Request, db: Se
     db.commit()
     _flash(request, "success", "Certificado A1 desativado nesta fazenda.")
     return _redirect("/producao/nfe/configuracao")
+
+
+@router.post("/producao/nfe/configuracao/perfis")
+async def nfe_tax_profile_create(request: Request, db: Session = Depends(get_db),
+                                 user: User = Depends(get_current_user_web)):
+    from app.services.nfe_tax_profiles import create_tax_profile
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    if not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=403, detail="Fazenda indisponível.")
+    rules = {
+        "product_description": str(form.get("product_description") or "").strip(),
+        "product_ncm": str(form.get("product_ncm") or "").strip(),
+        "operation_nature": str(form.get("operation_nature") or "").strip(),
+        "operation_cfop": str(form.get("operation_cfop") or "").strip(),
+        "origin": str(form.get("origin") or "0").strip(),
+        "icms_cst": str(form.get("icms_cst") or "").strip(),
+        "unit": str(form.get("unit") or "SC").strip().upper(),
+    }
+    try:
+        create_tax_profile(
+            db,
+            organization_id=user.organization_id,
+            user_id=user.id,
+            data={
+                "name": form.get("name"),
+                "approved_by_name": form.get("approved_by_name"),
+                "reference_notes": form.get("reference_notes"),
+                "rules": rules,
+            },
+        )
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/nfe/configuracao#perfis-fiscais")
+    _flash(request, "success", "Perfil fiscal salvo em rascunho. Aprove para teste quando estiver conferido pelo contador.")
+    return _redirect("/producao/nfe/configuracao#perfis-fiscais")
+
+
+@router.post("/producao/nfe/configuracao/perfis/{profile_id}/status")
+async def nfe_tax_profile_status_action(profile_id: str, request: Request, db: Session = Depends(get_db),
+                                        user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import NfeTaxProfile
+    from app.services.nfe_tax_profiles import transition_tax_profile_status
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    profile = db.query(NfeTaxProfile).filter_by(id=profile_id, organization_id=user.organization_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Perfil fiscal não encontrado.")
+    try:
+        transition_tax_profile_status(db, profile, new_status=str(form.get("status") or ""))
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/nfe/configuracao#perfis-fiscais")
+    _flash(request, "success", "Status do perfil fiscal atualizado.")
+    return _redirect("/producao/nfe/configuracao#perfis-fiscais")
+
+
+@router.post("/producao/rascunhos-fiscais/{draft_id}/aplicar-perfil")
+async def fiscal_apply_profile_action(draft_id: str, request: Request, db: Session = Depends(get_db),
+                                      user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import NfeDraft, NfeTaxProfile
+    from app.services.nfe_draft import apply_tax_profile_to_draft
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    farm = db.get(Farm, scope["active_farm_id"])
+    draft = db.query(NfeDraft).filter_by(
+        id=draft_id, organization_id=user.organization_id, farm_id=scope["active_farm_id"]
+    ).first()
+    if not draft or not farm or farm.organization_id != user.organization_id:
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
+    profile = db.query(NfeTaxProfile).filter_by(
+        id=str(form.get("profile_id") or ""), organization_id=user.organization_id, status="aprovado_teste"
+    ).first()
+    if not profile:
+        _flash(request, "error", "Selecione um perfil fiscal aprovado para teste.")
+        return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+    snapshot = json.loads(draft.snapshot_json)
+    buyer = db.query(CoffeeBuyer).filter_by(
+        id=snapshot.get("comprador_id"), organization_id=user.organization_id
+    ).first() if snapshot.get("comprador_id") else None
+    try:
+        apply_tax_profile_to_draft(db, draft=draft, profile=profile, buyer=buyer, user_id=user.id)
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/rascunhos-fiscais/" + draft_id)
+    _flash(request, "success", f'Perfil "{profile.name}" aplicado automaticamente à nota.')
+    return _redirect("/producao/rascunhos-fiscais/" + draft_id)
 
 
 @router.get("/producao/rascunhos-fiscais/{draft_id}/versoes/{version}/json")
