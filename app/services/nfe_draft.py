@@ -215,6 +215,14 @@ def clean_technical_data(data, snapshot):
                     raise ValueError('Confira a quantidade ou o valor unitário: use número positivo e precisão permitida.')
                 value = format(Decimal(value), 'f')
             row[field] = value
+        for field in ('icms_base', 'icms_value', 'ibs_cbs_base', 'ibs_uf_value', 'ibs_municipal_value', 'cbs_value'):
+            raw = data.get(f'item_{index}_{field}')
+            value = str(raw if raw is not None else '').strip().replace(',', '.')
+            if value:
+                if not re.fullmatch(r'[0-9]{1,13}(?:\.[0-9]{1,2})?', value):
+                    raise ValueError('Confira os valores tributários: use valores não negativos com até duas casas decimais.')
+                value = format(Decimal(value), 'f')
+            row[field] = value
         result.append(row)
     return {'version': 1, 'emission_date': raw_date, 'freight_mode': modality, 'items': result}
 
@@ -246,4 +254,34 @@ def review_item_values(snapshot, technical):
             except (InvalidOperation, ValueError, TypeError, KeyError):
                 issues.append(f'Confira os valores {label} informados.')
         result.append({'item_index': index, 'issues': issues})
+    return result
+
+
+def summarize_test_tax_values(snapshot, technical):
+    """Soma somente valores explicitamente informados, sem determinar sua aplicabilidade."""
+    from decimal import localcontext, InvalidOperation
+    fields = [('icms_base', 'Base de ICMS'), ('icms_value', 'ICMS'), ('ibs_cbs_base', 'Base de IBS/CBS'),
+              ('ibs_uf_value', 'IBS estadual'), ('ibs_municipal_value', 'IBS municipal'), ('cbs_value', 'CBS')]
+    items = snapshot.get('itens') or []
+    rows = technical.get('items') or []
+    by_index = {row.get('item_index'): row for row in rows if isinstance(row, dict)}
+    result = []
+    for field, label in fields:
+        total, missing = Decimal('0'), 0
+        with localcontext() as ctx:
+            ctx.prec = 50
+            for index in range(1, len(items) + 1):
+                raw = by_index.get(index, {}).get(field)
+                if raw is None or str(raw).strip() == '':
+                    missing += 1
+                    continue
+                try:
+                    value = Decimal(str(raw))
+                    if not value.is_finite() or value < 0 or value.as_tuple().exponent < -2:
+                        raise ValueError
+                    total += value
+                except (InvalidOperation, ValueError):
+                    missing += 1
+        result.append({'field': field, 'label': label, 'total': format(total, '.2f') if items and missing == 0 else None,
+                       'missing': missing if items else 0})
     return result

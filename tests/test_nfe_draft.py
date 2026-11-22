@@ -230,3 +230,22 @@ def test_units_and_decimal_values_are_explicit_and_bounded():
                          ('item_1_tax_quantity', 'NaN'), ('item_1_tax_unit', 'KG 2')]:
         with pytest.raises(ValueError):
             clean_technical_data({field: value}, snapshot)
+
+
+def test_fictional_tax_values_preserve_zero_and_require_explicit_valid_amounts():
+    from app.services.nfe_draft import clean_technical_data, summarize_test_tax_values
+    snapshot = {'origem_ids': [1, 2], 'itens': [{'lote': 'A'}, {'lote': 'B'}]}
+    data = {'item_1_icms_value': '0', 'item_2_icms_value': '12,50',
+            'item_1_cbs_value': 0, 'item_2_cbs_value': ''}
+    technical = clean_technical_data(data, snapshot)
+    assert technical['items'][0]['icms_value'] == '0'
+    assert technical['items'][0]['cbs_value'] == '0'
+    summary = {row['field']: row for row in summarize_test_tax_values(snapshot, technical)}
+    assert summary['icms_value']['total'] == '12.50'
+    assert summary['cbs_value']['total'] is None and summary['cbs_value']['missing'] == 1
+    assert summary['icms_base']['total'] is None
+    for invalid in ('-1', '1.001', 'NaN', '10000000000000'):
+        with pytest.raises(ValueError):
+            clean_technical_data({'item_1_icms_value': invalid}, snapshot)
+    technical['items'][1]['icms_value'] = 'NaN'
+    assert next(x for x in summarize_test_tax_values(snapshot, technical) if x['field'] == 'icms_value')['total'] is None
