@@ -223,6 +223,14 @@ def clean_technical_data(data, snapshot):
                     raise ValueError('Confira os valores tributários: use valores não negativos com até duas casas decimais.')
                 value = format(Decimal(value), 'f')
             row[field] = value
+        for field in ('icms_rate', 'ibs_uf_rate', 'ibs_municipal_rate', 'cbs_rate'):
+            raw = data.get(f'item_{index}_{field}')
+            value = str(raw if raw is not None else '').strip().replace(',', '.')
+            if value:
+                if not re.fullmatch(r'[0-9]{1,3}(?:\.[0-9]{1,4})?', value) or Decimal(value) > 100:
+                    raise ValueError('Confira as alíquotas de teste: informe percentual entre 0 e 100 com até quatro casas decimais.')
+                value = format(Decimal(value), 'f')
+            row[field] = value
         result.append(row)
     return {'version': 1, 'emission_date': raw_date, 'freight_mode': modality, 'items': result}
 

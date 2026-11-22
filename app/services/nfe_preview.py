@@ -11,7 +11,8 @@ TECH_FIELDS = ('origin', 'icms_cst', 'ibs_cbs_cst', 'ibs_cbs_class',
                'commercial_unit', 'commercial_quantity', 'commercial_unit_price',
                'tax_unit', 'tax_quantity', 'tax_unit_price',
                'icms_base', 'icms_value', 'ibs_cbs_base', 'ibs_uf_value',
-               'ibs_municipal_value', 'cbs_value')
+               'ibs_municipal_value', 'cbs_value', 'icms_rate', 'ibs_uf_rate',
+               'ibs_municipal_rate', 'cbs_rate')
 
 
 def _element(parent, name, value):

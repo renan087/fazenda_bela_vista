@@ -185,10 +185,12 @@ def test_technical_fields_render_for_the_correct_snapshot_line():
                 'itens': [{'lote': 'Primeiro', 'quantidade_sacas': '1', 'valor_bruto': '1'},
                           {'lote': 'Segundo', 'quantidade_sacas': '1', 'valor_bruto': '1'}]}
     page = env.get_template('nfe_draft.html').render(draft=SimpleNamespace(id='x'), issuer=None, details={},
-        technical={'freight_mode': '9'}, technical_items={1: {'icms_cst': '20'}, 2: {'icms_cst': '40'}},
+        technical={'freight_mode': '9'}, technical_items={1: {'icms_cst': '20', 'icms_rate': '0'}, 2: {'icms_cst': '40', 'cbs_rate': '1.2345'}},
         snapshot=snapshot, csrf_token='x', can_write_page=True)
     assert 'name="item_1_icms_cst" value="20"' in page
     assert 'name="item_2_icms_cst" value="40"' in page
+    assert 'name="item_1_icms_rate" value="0"' in page
+    assert 'name="item_2_cbs_rate" value="1.2345"' in page
 
 
 def test_technical_route_saves_test_data_for_authorized_farm(monkeypatch):
@@ -203,7 +205,7 @@ def test_technical_route_saves_test_data_for_authorized_farm(monkeypatch):
     db.add(draft); db.commit()
     class Request:
         async def form(self):
-            return {'csrf_token': 'x', 'freight_mode': '9', 'item_1_icms_cst': '20'}
+            return {'csrf_token': 'x', 'freight_mode': '9', 'item_1_icms_cst': '20', 'item_1_cbs_rate': '1,2345'}
     monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
     monkeypatch.setattr(routes, '_flash', lambda *args: None)
     monkeypatch.setattr(routes, '_launch_scope_or_redirect', lambda *args: (scope, None))
@@ -211,6 +213,7 @@ def test_technical_route_saves_test_data_for_authorized_farm(monkeypatch):
     record = db.query(NfeDraftTechnicalData).one()
     assert result.status_code in (302, 303, 307) and record.organization_id == user.organization_id
     assert json.loads(record.data_json)['items'][0]['icms_cst'] == '20'
+    assert json.loads(record.data_json)['items'][0]['cbs_rate'] == '1.2345'
     db.close()
 
 
@@ -249,3 +252,15 @@ def test_fictional_tax_values_preserve_zero_and_require_explicit_valid_amounts()
             clean_technical_data({'item_1_icms_value': invalid}, snapshot)
     technical['items'][1]['icms_value'] = 'NaN'
     assert next(x for x in summarize_test_tax_values(snapshot, technical) if x['field'] == 'icms_value')['total'] is None
+
+
+def test_tax_rates_are_explicit_bounded_and_independent_per_lot():
+    from app.services.nfe_draft import clean_technical_data
+    snapshot = {'origem_ids': [1, 2], 'itens': [{}, {}]}
+    row = clean_technical_data({'item_1_icms_rate': 0, 'item_1_ibs_uf_rate': '1,2345',
+                                'item_2_cbs_rate': '100.0000'}, snapshot)['items']
+    assert row[0]['icms_rate'] == '0' and row[0]['ibs_uf_rate'] == '1.2345'
+    assert row[0]['cbs_rate'] == '' and row[1]['cbs_rate'] == '100.0000'
+    for invalid in ('-1', '100.0001', '1.23456', 'NaN', '1e2'):
+        with pytest.raises(ValueError):
+            clean_technical_data({'item_1_cbs_rate': invalid}, snapshot)

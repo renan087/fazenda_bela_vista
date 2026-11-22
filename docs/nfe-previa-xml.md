@@ -59,3 +59,8 @@ A inspeção preliminar do pacote recebido indica os seguintes destinos possíve
 | CBS | `det/imposto/IBSCBS/gIBSCBS/gCBS/vCBS` | Exige grupo aplicável, alíquota e demais informações exigidas. |
 
 Esses caminhos foram inspecionados no pacote recebido ainda não autenticado; não habilitam o validador da aplicação. A [NT 2025.002-RTC do Portal Nacional](https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?AspxAutoDetectCookieSupport=1&conteudo=xxtjiU7xjnk%3D) descreve regras adicionais, inclusive condições para o valor do IBS. O pacote, as tabelas de CST e classificação e a versão vigente precisam ser conferidos antes de implementar os grupos. A soma simples dos valores de teste não constitui o cálculo de `vIBS`, que pode depender de outras parcelas. O XML candidato permanece sem tributação, chave e assinatura.
+
+
+### Alíquotas fictícias para conferência
+
+Cada lote aceita percentuais fictícios de ICMS, IBS estadual, IBS municipal e CBS. O backend aceita valores entre 0 e 100, com até quatro casas decimais, e distingue ausência de zero informado. Isso valida somente o formato de entrada: não determina a alíquota legal ou aplicabilidade do grupo e não verifica as regras e a precisão exigidas para cada campo na versão do schema. Os dados salvos constam da simulação interna e não são incluídos no XML candidato. Não há cálculo, assinatura ou transmissão.

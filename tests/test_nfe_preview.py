@@ -49,13 +49,14 @@ def test_preview_maps_saved_test_values_per_lot_without_inventing_tax():
     snapshot = {'itens': [{'lote': 'A'}, {'lote': 'B'}]}
     technical = {'items': [{'item_index': 2, 'icms_base': '23.45', 'cbs_value': '0',
                             'tax_unit': 'KG', 'tax_quantity': '10', 'tax_unit_price': '2.345',
-                            'unknown_tax': 'secret'}, {'item_index': 1, 'icms_base': '0'}]}
+                            'cbs_rate': '0', 'unknown_tax': 'secret'}, {'item_index': 1, 'icms_base': '0'}]}
     root = ET.fromstring(build_preview(snapshot, None, {}, technical))
     rows = root.findall('lotes/lote')
     assert rows[0].findtext('icms_base') == '0'
     assert rows[0].findtext('cbs_value') == ''
     assert rows[1].findtext('icms_base') == '23.45'
     assert rows[1].findtext('cbs_value') == '0'
+    assert rows[1].findtext('cbs_rate') == '0' and rows[0].findtext('cbs_rate') == ''
     assert rows[1].findtext('tax_unit') == 'KG'
     assert rows[1].findtext('tax_quantity') == '10'
     assert rows[1].findtext('tax_unit_price') == '2.345'
