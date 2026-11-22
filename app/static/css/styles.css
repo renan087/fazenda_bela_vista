@@ -12073,3 +12073,7 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .fc-page button.fc-eye { border: 1px solid #d5dcd4; background: #fff; }
 .fc-page button.fc-eye:hover { background: #f6f8f5; }
 .fc-page button.fc-eye[aria-pressed="true"] { background: #eef3eb; border-color: #bfd6b6; }
+/* campos com type (senha, número, texto): vencem o Tailwind Forms */
+.fc-page input.nx-in[type="password"], .fc-page input.nx-in[type="text"], .fc-page input.nx-in[type="number"] { box-sizing: border-box; min-height: 2.75rem; height: 2.75rem; padding: 0 .75rem; border: 1px solid #d5dcd4; border-radius: .6875rem; background-color: #fff; font-size: .875rem; color: #16201a; box-shadow: none; }
+.fc-page input.nx-in[type="password"]:focus, .fc-page input.nx-in[type="text"]:focus, .fc-page input.nx-in[type="number"]:focus { outline: none; border-color: #446a36; box-shadow: 0 0 0 3px rgba(68, 106, 54, .18); }
+.fc-page input.nx-in[type="password"]::placeholder, .fc-page input.nx-in[type="text"]::placeholder { color: #7a857e; }

@@ -453,6 +453,7 @@
       b.addEventListener('click', function () {
         var show = input.type === 'password'; input.type = show ? 'text' : 'password';
         b.setAttribute('aria-pressed', show ? 'true' : 'false'); b.setAttribute('aria-label', show ? 'Esconder senha' : 'Mostrar senha');
+        var slash = b.querySelector('[data-fc-eye-slash]'); if (slash) slash.style.display = show ? 'none' : '';
       });
     });
     var prod = root.querySelector('[data-fc-product]');
