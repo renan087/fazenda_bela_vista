@@ -23,6 +23,8 @@ def _load_bundle(directory):
     try:
         manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
         version, entry, hashes = manifest['version'], manifest['entry'], manifest['files']
+        if manifest.get('reviewed') is not True:
+            raise ValueError
         if not isinstance(version, str) or not version.strip() or not isinstance(hashes, dict) or not hashes:
             raise ValueError
         contents = {}

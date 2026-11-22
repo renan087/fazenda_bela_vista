@@ -7,7 +7,7 @@ from app.services.nfe_schema import validate_xml, SchemaUnavailable, UnsafeXML
 def bundle(path, files, entry='main.xsd'):
     for name, value in files.items():
         (path / name).write_bytes(value)
-    manifest = {'version': 'fixture-nao-oficial', 'entry': entry,
+    manifest = {'version': 'fixture-nao-oficial', 'entry': entry, 'reviewed': True,
                 'files': {name: sha256(value).hexdigest() for name, value in files.items()}}
     (path / 'manifest.json').write_text(json.dumps(manifest))
 
