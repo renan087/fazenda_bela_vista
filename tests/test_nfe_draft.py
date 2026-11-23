@@ -139,16 +139,21 @@ def test_review_detects_total_mismatch_and_unsaved_buyer_suggestions():
 
 
 def test_technical_data_is_versioned_per_snapshot_line_without_tax_calculation():
+    from datetime import timedelta
+    from app.core.timezone import today_in_app_timezone
     from app.services.nfe_draft import clean_technical_data
+    today = today_in_app_timezone()
+    yesterday = (today - timedelta(days=1)).isoformat()
     snapshot = {'origem_ids': [8, 3], 'itens': [{'lote': 'L2'}, {'lote': 'L1'}]}
-    result = clean_technical_data({'emission_date': '2026-11-20', 'freight_mode': '9',
+    result = clean_technical_data({'emission_date': today.isoformat(), 'freight_mode': '9',
                                    'item_1_origin': '0', 'item_1_icms_cst': '20',
                                    'item_1_ibs_cbs_cst': '000', 'item_1_ibs_cbs_class': '000001',
                                    'item_999_icms_cst': '12'}, snapshot)
     assert result['version'] == 1 and result['items'][0]['item_index'] == 1
     assert result['items'][0]['icms_cst'] == '20' and result['items'][1]['icms_cst'] == ''
     assert len(result['items']) == 2 and 'impostos' not in result
-    for data in ({'freight_mode': '5'}, {'item_1_icms_cst': 'XYZ'}, {'emission_date': '20260230'}, {'emission_date': '20261120'}):
+    for data in ({'freight_mode': '5'}, {'item_1_icms_cst': 'XYZ'}, {'emission_date': '20260230'},
+                 {'emission_date': '20261120'}, {'emission_date': yesterday}):
         with pytest.raises(ValueError):
             clean_technical_data(data, snapshot)
     with pytest.raises(ValueError):

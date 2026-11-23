@@ -197,17 +197,24 @@ def review_preparation(snapshot, issuer, details, *, details_saved):
     return {'groups': groups, 'pending_count': sum(len(g['issues']) for g in groups)}
 
 
-def clean_technical_data(data, snapshot):
+def clean_technical_data(data, snapshot, *, today=None):
     """Somente formato e vínculo com o snapshot; não valida enquadramento fiscal."""
     import re
     from datetime import date
+    from app.core.timezone import today_in_app_timezone
     raw_date = str(data.get('emission_date') or '').strip()
     if raw_date:
         try:
-            if date.fromisoformat(raw_date).isoformat() != raw_date:
+            parsed_date = date.fromisoformat(raw_date)
+            if parsed_date.isoformat() != raw_date:
                 raise ValueError
         except ValueError:
             raise ValueError('Informe uma data de emissão válida.') from None
+        ref_today = today or today_in_app_timezone()
+        if parsed_date < ref_today:
+            raise ValueError(
+                f'A data de emissão da NF-e não pode ser anterior à data atual ({ref_today.strftime("%d/%m/%Y")}).'
+            )
     modality = str(data.get('freight_mode') or '').strip()
     if modality not in ('', '0', '1', '2', '3', '4', '9'):
         raise ValueError('Selecione uma modalidade de frete válida.')
@@ -448,8 +455,13 @@ def apply_tax_profile_to_draft(db, *, draft, profile, buyer, user_id: int, summa
         tax_factor = Decimal('1')
     if not tax_factor.is_finite() or tax_factor <= 0:
         tax_factor = Decimal('1')
+    from app.core.timezone import today_in_app_timezone
+    today_iso = today_in_app_timezone().isoformat()
+    existing_date = str(existing_tech.get('emission_date') or '').strip()
+    if not existing_date or existing_date < today_iso:
+        existing_date = today_iso
     form_like = {
-        'emission_date': existing_tech.get('emission_date') or snapshot.get('data_venda') or '',
+        'emission_date': existing_date,
         'freight_mode': existing_tech.get('freight_mode') or sale_map['default_freight_mode'],
     }
     for idx, item in enumerate(snapshot.get('itens') or [], 1):

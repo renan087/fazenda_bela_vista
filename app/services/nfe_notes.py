@@ -347,11 +347,32 @@ def confirm_emission(db, *, draft: NfeDraft, user_id: int) -> dict:
         if note['status'] == 'pendente':
             raise ValueError('Resolva as pendências antes de emitir: ' + '; '.join(note['issues'][:4]) + '.')
         raise ValueError('Esta nota já foi enviada.')
+    from datetime import date
+    from app.core.timezone import today_in_app_timezone
+
     snapshot = note['snapshot']
     details_row = _row(db, NfeDraftDetails, draft)
     review = review_preparation(snapshot, issuer, note['details'], details_saved=bool(details_row))
     if review['pending_count']:
         raise ValueError('Resolva as pendências antes de emitir.')
+    today = today_in_app_timezone()
+    raw_emission = str((note['technical'] or {}).get('emission_date') or '').strip()
+    if not raw_emission:
+        raise ValueError('Informe a data de emissão da NF-e antes de emitir.')
+    try:
+        emission_date = date.fromisoformat(raw_emission)
+    except ValueError:
+        raise ValueError('Informe uma data de emissão válida antes de emitir.') from None
+    if emission_date < today:
+        raise ValueError(
+            f'A data de emissão da NF-e ({emission_date.strftime("%d/%m/%Y")}) não pode ser anterior à data atual '
+            f'({today.strftime("%d/%m/%Y")}). Atualize a data no rascunho antes de emitir.'
+        )
+    if emission_date > today:
+        raise ValueError(
+            f'A data de emissão da NF-e ({emission_date.strftime("%d/%m/%Y")}) não pode ser posterior à data atual '
+            f'({today.strftime("%d/%m/%Y")}), pois a SEFAZ rejeita emissão com data futura. Ajuste para hoje antes de emitir.'
+        )
     ident = note['identification']
     if ident is None:
         sale = map_sale_payment_and_freight(snapshot)

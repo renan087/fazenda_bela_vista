@@ -184,7 +184,9 @@
         <section class="nx-cardx" aria-labelledby="h-ship" data-nx-ship>
           <div class="nx-hd"><h2 id="h-ship">Emissão e transporte</h2><span class="nx-auto">Pagamento preenchido da venda</span></div>
           <div class="nx-g">
-            <label class="nx-f">Data de emissão<input type="date" name="emission_date" value="{{ technical.get('emission_date') or snapshot.data_venda }}" class="nx-in"></label>
+            {% set saved_emission = technical.get('emission_date') or '' %}
+            {% set emission_value = saved_emission if saved_emission and saved_emission >= today_iso else today_iso %}
+            <label class="nx-f">Data de emissão<input type="date" name="emission_date" value="{{ emission_value }}" min="{{ today_iso }}" class="nx-in"></label>
             <div class="nx-f">
               <span>Pagamento da venda</span>
               <input type="hidden" name="payment_indicator" value="{{ sale_meta.ind_pag if sale_meta else '0' }}">

@@ -17,7 +17,9 @@ from tests.test_nfe_xml_builder import _sample_inputs
 
 
 def _seed_issuer_and_details(db, draft, user_id):
+    from app.core.timezone import today_in_app_timezone
     _snap, issuer_obj, details_data, technical_data, _ident, _extra = _sample_inputs(cst="40")
+    technical_data = {**technical_data, "emission_date": today_in_app_timezone().isoformat()}
     issuer = db.query(NfeIssuerProfile).filter_by(organization_id=draft.organization_id, farm_id=draft.farm_id).first()
     if not issuer:
         issuer = NfeIssuerProfile(

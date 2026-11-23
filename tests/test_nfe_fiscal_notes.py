@@ -30,7 +30,9 @@ def _db():
 
 
 def _seed(db, *, env='teste_ficticio'):
+    from app.core.timezone import today_in_app_timezone
     snapshot, issuer, details, technical, _ident, _extra = _sample_inputs(cst='40')
+    technical = {**technical, 'emission_date': today_in_app_timezone().isoformat()}
     snapshot = {**snapshot, 'origem_ids': [1, 2], 'payment_method': 'PIX', 'freight_value': '0'}
     db.add(NfeIssuerProfile(id='i' * 32, organization_id=ORG, farm_id=FARM, **vars(issuer)))
     db.add(NfeClientFiscalConfig(id='c' * 32, organization_id=ORG, farm_id=FARM, person_type='pf', document=issuer.cpf,
@@ -200,8 +202,10 @@ def _routes_env(monkeypatch):
     monkeypatch.setattr(routes, '_launch_scope_or_redirect', lambda *args, **kw: (scope, None))
     flashes = []
     monkeypatch.setattr(routes, '_flash', lambda request, kind, msg: flashes.append((kind, msg)))
+    from app.core.timezone import today_in_app_timezone
     farm_id = scope['active_farm_id']
     snapshot, issuer, details, technical, _i, _e = _sample_inputs(cst='40')
+    technical = {**technical, 'emission_date': today_in_app_timezone().isoformat()}
     snapshot = {**snapshot, 'origem_ids': [1, 2], 'payment_method': 'PIX', 'freight_value': '0'}
     db.add(NfeIssuerProfile(id='i' * 32, organization_id=user.organization_id, farm_id=farm_id, **vars(issuer)))
     db.add(NfeClientFiscalConfig(id='c' * 32, organization_id=user.organization_id, farm_id=farm_id, person_type='pf',
@@ -398,10 +402,13 @@ def test_save_route_keeps_fiscal_data_from_setup(monkeypatch):
                              operation_id=op.id, accepted=True)
     setup.apply_setup_to_draft(db, draft=draft, product=product, operation=op, buyer=None, issuer_state='BA', user_id=user.id)
 
+    from app.core.timezone import today_in_app_timezone
+    today_iso = today_in_app_timezone().isoformat()
+
     class R:
         query_params = {}
         async def form(self):
-            return {'csrf_token': 'x', 'recipient_name': 'Comprador', 'freight_mode': '9', 'emission_date': '2026-11-20',
+            return {'csrf_token': 'x', 'recipient_name': 'Comprador', 'freight_mode': '9', 'emission_date': today_iso,
                     'product_ncm': '11111111', 'item_1_icms_cst': '00'}
     resp = asyncio.run(routes.fiscal_draft_save_all(draft.id, R(), db, user))
     assert resp.status_code == 303
@@ -529,4 +536,47 @@ def test_note_buyer_modal_can_update_buyer_register_and_production_lists_nf_pend
     groups = group_sales(sale_records(db, scope['active_farm_id'], 'V-9'))
     items = routes._nf_attention(db, user, scope['active_farm_id'], groups)
     assert items and items[0]['title'] == '1 venda entregue sem nota' and 'V-9' in items[0]['detail']
+    db.close()
+
+
+def test_emission_date_defaults_to_today_and_blocks_past_or_future_on_emission():
+    from app.core.timezone import today_in_app_timezone
+    today = today_in_app_timezone()
+    past_iso = (today - timedelta(days=5)).isoformat()
+    future_iso = (today + timedelta(days=2)).isoformat()
+
+    db = _db()
+    draft = _seed(db)
+    # Venda antiga: apply_setup_to_draft deve preencher emission_date com a data atual, não com a data da venda
+    snap = json.loads(draft.snapshot_json)
+    snap['data_venda'] = past_iso
+    draft.snapshot_json = json.dumps(snap)
+    tech_row = db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id).first()
+    tech_data = json.loads(tech_row.data_json)
+    tech_data['emission_date'] = past_iso
+    tech_row.data_json = json.dumps(tech_data)
+    db.commit()
+
+    # Ao tentar emitir com data passada, deve bloquear
+    with pytest.raises(ValueError, match='não pode ser anterior à data atual'):
+        notes.confirm_emission(db, draft=draft, user_id=USER)
+
+    # Ao tentar emitir com data futura, deve bloquear (Rejeição 703 SEFAZ)
+    tech_data['emission_date'] = future_iso
+    tech_row.data_json = json.dumps(tech_data)
+    db.commit()
+    with pytest.raises(ValueError, match='não pode ser posterior à data atual'):
+        notes.confirm_emission(db, draft=draft, user_id=USER)
+
+    # Ao aplicar setup fiscal em rascunho com data antiga, atualiza automaticamente para hoje
+    tech_data['emission_date'] = past_iso
+    tech_row.data_json = json.dumps(tech_data)
+    db.commit()
+    product = setup.create_product_from_template(db, organization_id=ORG, farm_id=FARM, user_id=USER, key='arabica')
+    op = setup.save_operation(db, organization_id=ORG, farm_id=FARM, user_id=USER,
+                              data={'name': 'Venda', 'nature': 'Venda de produção', 'cfop_in': '5101', 'icms_cst': '41'})
+    setup.activate_operation(db, organization_id=ORG, farm_id=FARM, user_id=USER, operation_id=op.id, accepted=True)
+    setup.apply_setup_to_draft(db, draft=draft, product=product, operation=op, buyer=None, issuer_state='BA', user_id=USER)
+    updated_tech = json.loads(db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id).first().data_json)
+    assert updated_tech['emission_date'] == today.isoformat()
     db.close()

@@ -23175,6 +23175,7 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
     return templates.TemplateResponse("nfe_draft.html", _base_context(
         request, user, csrf_token, "commercialization", title="Emitir nota fiscal", draft=draft,
         farm_name=farm.name if farm else "", buyer=buyer, has_active_cert=has_active_cert,
+        today_iso=today_in_app_timezone().isoformat(),
         tax_profiles=tax_profiles, sale_meta=map_sale_payment_and_freight(snapshot),
         issuer=issuer, details=prepared, snapshot=snapshot, technical=technical, technical_items=technical_items,
         identification=identification, key_summary=key_summary, extra_data=extra_data, snapshots=snapshots, draft_events=draft_events,
