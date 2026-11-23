@@ -71,76 +71,85 @@
                 </div>
                 <div class="vw-block">
                     <h2>Negócio</h2>
-                    <div class="vw-grid">
-                        <label class="vw-f">Data do negócio<input type="date" name="sale_date" value="{{ p.sale_date or today.isoformat() }}" required></label>
-                        <label class="vw-f">Preço por saca
-                            <span class="vw-affix"><span>R$</span><input name="unit_price" inputmode="decimal" value="{{ p.unit_price or '' }}" placeholder="0,00" required data-vw-price></span>
-                            {% if sale_avg_price %}<small>Sua média nesta safra: R$ {{ sale_avg_price|decimal_br }}</small>{% endif %}
+                    <div class="vr-g3">
+                        <label class="vw-f"><span class="vr-t">Data do negócio</span><input type="date" name="sale_date" value="{{ p.get('sale_date') or today.isoformat() }}" required></label>
+                        <label class="vw-f"><span class="vr-t">Preço por saca</span>
+                            <span class="vw-affix"><span>R$</span><input name="unit_price" inputmode="numeric" value="{{ p.get('unit_price') or '' }}" placeholder="0,00" required data-vw-price data-mask="decimal"></span>
                         </label>
-                        <label class="vw-f"><span>Entregar até <small>opcional</small></span><input type="date" name="delivery_due_date" value="{{ p.delivery_due_date or '' }}"></label>
-                        <label class="vw-f"><span>Nº do contrato <small>opcional</small></span><input name="contract_number" maxlength="60" value="{{ p.contract_number or '' }}"></label>
-                        <label class="vw-f">Café entregue como
+                        <label class="vw-f"><span class="vr-t">Café entregue como</span>
                             <select name="coffee_type">
                                 {% for value, label in commercialization_coffee_type_options %}
-                                <option value="{{ value }}" {% if (p.coffee_type or 'beneficiado') == value %}selected{% endif %}>{{ label }}</option>
+                                <option value="{{ value }}" {% if (p.get('coffee_type') or 'beneficiado') == value %}selected{% endif %}>{{ label }}</option>
                                 {% endfor %}
                             </select>
                         </label>
-                        <fieldset class="vw-f vw-seg-field">
-                            <legend>Situação</legend>
-                            <div class="vw-seg">
-                                {% for value, label in sale_status_options %}
-                                <label><input type="radio" name="status" value="{{ value }}" {% if (p.status or 'negociado') == value %}checked{% endif %}><span>{{ label }}</span></label>
-                                {% endfor %}
-                            </div>
-                        </fieldset>
+                        <label class="vw-f"><span class="vr-t">Entregar até <small>opcional</small></span><input type="date" name="delivery_due_date" value="{{ p.get('delivery_due_date') or '' }}"></label>
+                        <label class="vw-f"><span class="vr-t">Nº do contrato <small>opcional</small></span><input name="contract_number" maxlength="60" value="{{ p.get('contract_number') or '' }}" placeholder="Ex.: 2026/045"></label>
+                        <div class="vw-f"><span class="vr-t" aria-hidden="true"></span>
+                            <label class="vr-sw"><input type="checkbox" name="delivered" value="1" role="switch" {% if p.get('delivered') %}checked{% endif %} data-vr-delivered><span class="vr-swb" aria-hidden="true"><i></i></span>Café já entregue</label>
+                        </div>
+                        <label class="vw-f" data-vr-delivered-on {% if not p.get('delivered') %}hidden{% endif %}><span class="vr-t">Entregue em</span><input type="date" name="delivered_on" value="{{ p.get('delivered_on') or today.isoformat() }}"></label>
                     </div>
                 </div>
                 <div class="vw-block">
-                    <h2>Descontos <small>opcional</small></h2>
-                    <div class="vw-grid vw-grid-3">
-                        <label class="vw-f">Funrural / Senar<span class="vw-affix is-end"><input name="funrural_percent" inputmode="decimal" value="{{ p.funrural_percent or '' }}" placeholder="0" data-vw-funrural><span>%</span></span></label>
-                        <label class="vw-f">Frete<span class="vw-affix"><span>R$</span><input name="freight_value" inputmode="decimal" value="{{ p.freight_value or '' }}" placeholder="0,00" data-vw-freight></span></label>
-                        <label class="vw-f">Corretagem<span class="vw-affix is-end"><input name="brokerage_percent" inputmode="decimal" value="{{ p.brokerage_percent or '' }}" placeholder="0" data-vw-brokerage><span>%</span></span></label>
+                    <h2>Descontos e custos <small>opcional</small></h2>
+                    <div class="vr-g3">
+                        <label class="vw-f"><span class="vr-t">Funrural / Senar</span><span class="vw-affix is-end"><input name="funrural_percent" inputmode="numeric" value="{{ p.get('funrural_percent') or '' }}" placeholder="0,00" data-vw-funrural data-mask="decimal"><span>%</span></span></label>
+                        <label class="vw-f"><span class="vr-t">Frete</span><span class="vw-affix"><span>R$</span><input name="freight_value" inputmode="numeric" value="{{ p.get('freight_value') or '' }}" placeholder="0,00" data-vw-freight data-mask="decimal"></span></label>
+                        <label class="vw-f"><span class="vr-t">Corretagem</span><span class="vw-affix is-end"><input name="brokerage_percent" inputmode="numeric" value="{{ p.get('brokerage_percent') or '' }}" placeholder="0,00" data-vw-brokerage data-mask="decimal"><span>%</span></span></label>
                     </div>
                 </div>
+                {% set mode = p.get('recebimento') or 'nao' %}
                 <div class="vw-block">
                     <h2>Recebimento</h2>
-                    <div class="vw-seg vw-seg-wide">
-                        <label><input type="radio" name="payment_condition" value="a_vista" {% if condition != 'a_prazo' %}checked{% endif %} data-vw-cond><span>À vista</span></label>
-                        <label><input type="radio" name="payment_condition" value="a_prazo" {% if condition == 'a_prazo' %}checked{% endif %} data-vw-cond><span>Parcelado</span></label>
+                    <fieldset class="vr-opts">
+                        <legend>O comprador já pagou?</legend>
+                        {% for value, label, sub in [('nao', 'Ainda não', 'vou receber depois'), ('sim', 'Já recebi', 'tudo de uma vez'), ('parc', 'Parcelado', 'em parcelas')] %}
+                        <label class="vr-opt"><input type="radio" name="recebimento" value="{{ value }}" {% if mode == value %}checked{% endif %} data-vr-mode><span class="vr-rd" aria-hidden="true"></span><span>{{ label }}<small>{{ sub }}</small></span></label>
+                        {% endfor %}
+                    </fieldset>
+                    <div class="vr-fields" data-vr-fields {% if mode == 'nao' %}hidden{% endif %}>
+                        <div class="vr-g3">
+                            <label class="vw-f" data-vr-only="sim"><span class="vr-t">Recebido em</span><input type="date" name="received_on" value="{{ p.get('received_on') or today.isoformat() }}"></label>
+                            <label class="vw-f" data-vr-only="parc"><span class="vr-t">Primeira parcela em</span><input type="date" name="first_installment_date" value="{{ p.get('first_installment_date') or '' }}" data-vw-first></label>
+                            <label class="vw-f"><span class="vr-t">Conta que recebe</span>
+                                <select name="finance_account_id" data-vw-account>
+                                    <option value="">Não lançar no Financeiro</option>
+                                    {% for account in finance_accounts %}
+                                    <option value="{{ account.id }}" {% if (p.get('finance_account_id')|string) == (account.id|string) or (not sale_exists and not p.get('finance_account_id') and account.id == sale_default_account_id) %}selected{% endif %}>{{ account.account_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label class="vw-f"><span class="vr-t">Forma</span>
+                                <select name="payment_method" data-vr-method>
+                                    <option value="">Selecione</option>
+                                    {% for method in finance_transaction_payment_methods %}
+                                    <option value="{{ method }}" {% if p.get('payment_method') == method %}selected{% endif %}>{{ method }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label class="vw-f" data-vr-card hidden><span class="vr-t">Cartão</span>
+                                <select name="credit_card_id">
+                                    {% for card in sale_cards %}<option value="{{ card.id }}" {% if (p.get('credit_card_id')|string) == (card.id|string) %}selected{% endif %}>{{ card.card_name }}{% if card.brand %} · {{ card.brand }}{% endif %}</option>
+                                    {% else %}<option value="">Nenhum cartão cadastrado no Financeiro</option>{% endfor %}
+                                </select>
+                            </label>
+                        </div>
+                        <div class="vr-g3" data-vr-only="parc">
+                            <div class="vw-f"><span class="vr-t">Parcelas</span>
+                                <span class="vr-stp"><button type="button" data-vr-dec="installment_count" aria-label="Uma parcela a menos">−</button><input name="installment_count" inputmode="numeric" value="{{ p.get('installment_count') if (p.get('installment_count')|int(0)) >= 2 else 2 }}" data-vw-count data-min="2" data-max="100" aria-label="Número de parcelas"><button type="button" data-vr-inc="installment_count" aria-label="Uma parcela a mais">+</button></span></div>
+                            <label class="vw-f"><span class="vr-t">Periodicidade</span>
+                                <select name="installment_frequency">
+                                    {% for value, label in [('mensal', 'Mensal'), ('trimestral', 'Trimestral'), ('semestral', 'Semestral'), ('anual', 'Anual')] %}
+                                    <option value="{{ value }}" {% if (p.get('installment_frequency') or 'mensal') == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <div class="vw-f"><span class="vr-t">Já recebidas <small data-vr-paid-range></small></span>
+                                <span class="vr-stp"><button type="button" data-vr-dec="paid_count" aria-label="Uma recebida a menos">−</button><input name="paid_count" inputmode="numeric" value="{{ p.get('paid_count') or 0 }}" data-vr-paid data-min="0" data-max="100" aria-label="Parcelas já recebidas"><button type="button" data-vr-inc="paid_count" aria-label="Uma recebida a mais">+</button></span></div>
+                        </div>
                     </div>
-                    <div class="vw-grid">
-                        <label class="vw-f">Conta que vai receber
-                            <select name="finance_account_id" data-vw-account>
-                                <option value="">Não lançar no Financeiro</option>
-                                {% for account in finance_accounts %}
-                                <option value="{{ account.id }}" {% if (p.finance_account_id|string) == (account.id|string) or (not sale_exists and not p.get('finance_account_id') and account.id == sale_default_account_id) %}selected{% endif %}>{{ account.account_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <label class="vw-f">Forma de recebimento
-                            <select name="payment_method">
-                                <option value="">Selecione</option>
-                                {% for method in finance_transaction_payment_methods %}
-                                <option value="{{ method }}" {% if p.payment_method == method %}selected{% endif %}>{{ method }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <label class="vw-f" data-vw-installments>Parcelas
-                            <select name="installment_count" data-vw-count>
-                                {% for n in range(2, 13) %}<option value="{{ n }}" {% if (p.installment_count|string) == (n|string) %}selected{% endif %}>{{ n }}×</option>{% endfor %}
-                            </select>
-                        </label>
-                        <label class="vw-f" data-vw-installments>Periodicidade
-                            <select name="installment_frequency">
-                                <option value="mensal" {% if p.installment_frequency != 'anual' %}selected{% endif %}>Mensal</option>
-                                <option value="anual" {% if p.installment_frequency == 'anual' %}selected{% endif %}>Anual</option>
-                            </select>
-                        </label>
-                        <label class="vw-f" data-vw-installments>Primeira parcela em<input type="date" name="first_installment_date" value="{{ p.first_installment_date or '' }}" data-vw-first></label>
-                    </div>
-                    <label class="vw-f"><span>Observações <small>opcional</small></span><textarea name="notes" rows="2">{{ p.notes or '' }}</textarea></label>
+                    <label class="vw-f"><span class="vr-t">Observações <small>opcional</small></span><textarea name="notes" rows="2">{{ p.get('notes') or '' }}</textarea></label>
                 </div>
             </div>
 
@@ -166,8 +175,19 @@
             <ul class="vw-sum-list" data-vw-sumlist></ul>
             <dl class="vw-sum-rows">
                 <div><dt>Comprador</dt><dd data-vw-sum-buyer>—</dd></div>
-                <div><dt>Valor bruto</dt><dd data-vw-sum-gross>—</dd></div>
-                <div><dt>Você recebe</dt><dd data-vw-sum-net>—</dd></div>
+            </dl>
+            <dl class="vw-sum-rows vr-money">
+                <div class="is-pos"><dt>Bruto</dt><dd data-vw-sum-gross>—</dd></div>
+                <div class="is-neg" data-vr-neg="fun" hidden><dt>Funrural / Senar</dt><dd data-vr-sum-fun></dd></div>
+                <div class="is-neg" data-vr-neg="freight" hidden><dt>Frete</dt><dd data-vr-sum-freight></dd></div>
+                <div class="is-neg" data-vr-neg="bro" hidden><dt>Corretagem</dt><dd data-vr-sum-bro></dd></div>
+                <div class="is-pos is-total"><dt>Líquido</dt><dd data-vw-sum-net>—</dd></div>
+                <div data-vr-sum-parc hidden><dt data-vr-sum-parc-label></dt><dd data-vr-sum-parc-value></dd></div>
+            </dl>
+            <dl class="vw-sum-rows">
+                <div><dt>Entrega</dt><dd data-vr-sum-del>—</dd></div>
+                <div><dt>Recebimento</dt><dd data-vr-sum-rec>—</dd></div>
+                <div><dt>No Financeiro</dt><dd data-vr-sum-fin>—</dd></div>
             </dl>
             <p class="pd-note">Nada é registrado até você confirmar no passo 3.</p>
         </aside>
@@ -215,5 +235,5 @@
     {{ buyer_modal(csrf_token) }}
 </div>
 <script src="{{ url_for('static', path='js/buyer_picker.js') }}?v=20261122bp1" defer></script>
-<script src="{{ url_for('static', path='js/sale_form.js') }}?v=2" defer></script>
+<script src="{{ url_for('static', path='js/sale_form.js') }}?v=3" defer></script>
 {% endblock %}

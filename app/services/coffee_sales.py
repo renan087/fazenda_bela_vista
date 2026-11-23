@@ -118,6 +118,9 @@ def save_sale(repo, *, farm_id: int, lines: list[dict], data: dict, existing: li
     old_tx_id = next((r.finance_transaction_id for r in existing if r.finance_transaction_id), None)
     if old_tx_id:
         tx = repo.get_finance_transaction(old_tx_id)
+    mode = data.get("recebimento")  # "nao" | "sim" | "parc" (Nova venda); ausente = formulário antigo
+    if mode == "nao" and tx is not None and any(not _open(i) for i in (tx.installments or [])):
+        raise ValueError("Esta venda já tem parcelas recebidas. Desfaça o recebimento pela lista antes de mudar para “Ainda não”.")
     for record in existing:
         repo.db.delete(record)
     repo.db.flush()
@@ -142,10 +145,24 @@ def save_sale(repo, *, farm_id: int, lines: list[dict], data: dict, existing: li
         tx.installment_frequency = installment_frequency
         tx.first_installment_date = first_installment_date
         tx.source = "Comercialização"
+        if mode:
+            tx.credit_card_id = data.get("credit_card_id") or None
         repo.db.flush()
         _replace_installments(repo, tx, _build_installments(
             amount=values["net"], payment_condition=payment_condition, installment_count=installment_count,
             installment_frequency=installment_frequency, first_installment_date=first_installment_date))
+        if mode and data.get("paid_count") is not None:
+            # As primeiras N parcelas já foram recebidas; as demais ficam pendentes.
+            repo.db.flush()
+            repo.db.refresh(tx)
+            today = today_in_app_timezone()
+            for inst in sorted(tx.installments or [], key=lambda i: i.installment_number):
+                if inst.installment_number <= int(data["paid_count"]):
+                    if _open(inst):
+                        inst.status = "pago"
+                        inst.paid_at = data.get("received_on") if mode == "sim" else min(inst.due_date, today)
+                elif not _open(inst):
+                    inst.status, inst.paid_at, inst.payment_notes = "pendente", None, None
     elif tx is not None:
         repo.db.delete(tx)
         tx = None
@@ -164,13 +181,19 @@ def save_sale(repo, *, farm_id: int, lines: list[dict], data: dict, existing: li
             total_value=line["gross"], discount_value=line["discount"], net_value=line["net"],
             funrural_percent=funrural or None, brokerage_percent=brokerage or None, freight_value=freight or None,
             contract_number=(data.get("contract_number") or "").strip()[:60] or None,
-            delivery_due_date=data.get("delivery_due_date"), status=status,
-            delivered_on=data.get("delivered_on") if status in {"entregue", "recebido"} else None,
-            received_on=data.get("received_on") if status == "recebido" else None,
+            delivery_due_date=data.get("delivery_due_date"), status="negociado" if mode else status,
+            delivered_on=data.get("delivered_on") if (mode or status in {"entregue", "recebido"}) else None,
+            received_on=data.get("received_on") if (mode or status == "recebido") else None,
             payment_method=payment_method, payment_condition=payment_condition, installment_count=installment_count,
             installment_frequency=installment_frequency, first_installment_date=first_installment_date,
             notes=(data.get("notes") or "").strip() or None,
         ))
+    repo.db.flush()
+    if mode:
+        records = sale_records(repo.db, farm_id, code)
+        if mode == "parc" and tx is not None:
+            _sync_received(repo.db, records, list(tx.installments or []))
+        refresh_status(records)
     repo.db.commit()
     return code
 
@@ -296,14 +319,29 @@ def _sync_received(db, records, installments) -> None:
 
 
 def receive(db, records: list[CoffeeCommercializationRecord], installment_ids: list[int] | None = None,
-            on_date: date | None = None) -> list[int]:
+            on_date: date | None = None, account_id: int | None = None, payment_method: str | None = None) -> list[int]:
     """Marca como recebidas as parcelas escolhidas (todas as abertas se nenhuma for indicada).
 
-    Sem lançamento no Financeiro, a venda inteira fica recebida. Devolve as parcelas pagas agora."""
+    Sem lançamento no Financeiro, a venda inteira fica recebida; com uma conta escolhida, o recebimento
+    entra no Financeiro como à vista na data. Devolve as parcelas pagas agora."""
     on_date = on_date or today_in_app_timezone()
     tx_id = records[0].finance_transaction_id if records else None
     installments = sale_installments(db, tx_id)
     if not installments:
+        if not tx_id and account_id and records:
+            first = records[0]
+            net = round(sum(_num(r.net_value if r.net_value is not None else r.total_value) for r in records), 2)
+            tx = FinanceTransaction(
+                farm_id=first.farm_id, operation_type="receita", created_at=app_now(), finance_account_id=account_id,
+                launch_date=on_date, amount=net, category="Venda Agrícola",
+                product_service=f"Venda de café {first.sale_code} — {len(records)} lote" + ("s" if len(records) > 1 else ""),
+                description=first.notes or "", counterparty_name=first.buyer_name, payment_condition="a_vista",
+                payment_method=(payment_method or "").strip() or None, installment_count=1, source="Comercialização")
+            db.add(tx)
+            db.flush()
+            for record in records:
+                record.finance_transaction_id, record.finance_account_id = tx.id, account_id
+                record.payment_method = tx.payment_method
         for record in records:
             record.received_on = on_date
         refresh_status(records)
@@ -332,6 +370,13 @@ def undo_receive(db, records: list[CoffeeCommercializationRecord], installment_i
     if installments:
         _sync_received(db, records, installments)
     else:
+        tx_id = records[0].finance_transaction_id if records else None
+        tx = db.get(FinanceTransaction, tx_id) if tx_id else None
+        if tx is not None and (tx.payment_condition or "a_vista") == "a_vista":
+            # À vista = já recebido no Financeiro; desfazer tira o lançamento (volta a "a receber").
+            for record in records:
+                record.finance_transaction_id = None
+            db.delete(tx)
         for record in records:
             record.received_on = None
         refresh_status(records)

@@ -22272,6 +22272,8 @@ def commercialization_page(
                        "available": sum(lot["available"] for lot in lots_with_balance),
                        "available_lots": len(lots_with_balance)},
             sale_lots=lots_with_balance, today=today,
+            sale_accounts=repo.list_finance_accounts(farm_id=farm_id) if farm_id else [],
+            sale_payment_methods=FINANCE_TRANSACTION_REVENUE_PAYMENT_METHODS,
         ),
     )
 
@@ -22607,6 +22609,23 @@ def _sale_form_render(request: Request, db: Session, user: User, csrf_token: str
             "first_installment_date": first.first_installment_date.isoformat() if first.first_installment_date else "",
             "notes": first.notes or "", "buyer_id": first.buyer_id, "buyer_name": first.buyer_name,
         })
+        # Recebimento e entrega da venda já gravada (o recebimento diz a situação).
+        from app.services.coffee_sales import sale_installments
+        tx = repo.get_finance_transaction(first.finance_transaction_id) if first.finance_transaction_id else None
+        insts = sale_installments(db, tx.id) if tx else []
+        paid = sum(1 for i in insts if (i.status or "").strip().lower() == "pago")
+        if tx is not None and (tx.payment_condition == "a_prazo") and len(insts) > 1:
+            mode = "parc"
+        elif first.received_on or (tx is not None and insts and paid == len(insts)):
+            mode = "sim"
+        else:
+            mode = "nao"
+        prefill.update({
+            "recebimento": mode, "paid_count": str(paid),
+            "received_on": (first.received_on or (tx.launch_date if tx else None) or first.sale_date).isoformat(),
+            "credit_card_id": str(tx.credit_card_id) if tx is not None and tx.credit_card_id else "",
+            "delivered": "1" if first.delivered_on else "", "delivered_on": first.delivered_on.isoformat() if first.delivered_on else "",
+        })
     lote = _optional_query_int(request.query_params.get("lote"))
     if not existing and "lines" not in prefill and lote:
         row = next((r for r in lots if r["id"] == lote and r["available_for_sale"] > 0), None)
@@ -22636,6 +22655,7 @@ def _sale_form_render(request: Request, db: Session, user: User, csrf_token: str
             sale_default_account_id=next((a.id for a in finance_accounts if a.is_default), None),
             sale_avg_price=avg_price, sale_origin_lot=lote, today=today_in_app_timezone(),
             sale_quick=_sale_quick_harvest(request, repo, scope) if not existing else None,
+            sale_cards=[c for c in repo.list_finance_credit_cards(farm_id=scope["active_farm_id"]) if c.is_active],
             sale_toast=request.session.pop("sale_toast", None),
         ),
     )
@@ -22700,7 +22720,8 @@ async def _sale_save(request: Request, db: Session, user: User, csrf_token: str,
     prefill = {key: text(key) for key in (
         "sale_date", "unit_price", "delivery_due_date", "contract_number", "coffee_type", "funrural_percent",
         "brokerage_percent", "freight_value", "status", "payment_condition", "finance_account_id", "payment_method",
-        "installment_count", "installment_frequency", "first_installment_date", "notes", "buyer_name")}
+        "installment_count", "installment_frequency", "first_installment_date", "notes", "buyer_name",
+        "recebimento", "received_on", "paid_count", "credit_card_id", "delivered", "delivered_on")}
     prefill["lines"] = raw_lines
     prefill["buyer_id"] = _int_or_none(text("buyer_id"))
 
@@ -22732,15 +22753,50 @@ async def _sale_save(request: Request, db: Session, user: User, csrf_token: str,
         "delivered_on": existing[0].delivered_on if existing else None,
         "received_on": existing[0].received_on if existing else None,
     }
-    if data["status"] in {"entregue", "recebido"}:
-        data["delivered_on"] = data["delivered_on"] or data["sale_date"]
-    if data["status"] == "recebido":
-        data["received_on"] = data["received_on"] or data["sale_date"]
+    mode = prefill.get("recebimento")
+    if mode in {"nao", "sim", "parc"}:
+        # Nova venda: o recebimento define a situação; a entrega vem do switch.
+        today = today_in_app_timezone()
+        data["delivered_on"] = (_date_or_none(prefill["delivered_on"]) or data["delivered_on"] or today) if prefill.get("delivered") else None
+        card_id = _int_or_none(prefill.get("credit_card_id"))
+        card_payment = (prefill.get("payment_method") or "").startswith("Cartão")
+        if card_id and card_payment:
+            card = repo.get_finance_credit_card(card_id)
+            if not card or card.farm_id != scope.get("active_farm_id"):
+                return fail("Escolha um cartão válido da fazenda ativa.")
+        else:
+            card_id = None
+        data.update(recebimento=mode, credit_card_id=card_id, paid_count=None, received_on=None)
+        if mode == "nao":
+            data.update(finance_account_id=None, payment_condition="a_vista", payment_method="")
+        elif mode == "sim":
+            received = _date_or_none(prefill["received_on"]) or today
+            data["received_on"] = received
+            if card_id and account_id:  # cartão: uma parcela já paga, para o Financeiro acompanhar o repasse
+                data.update(payment_condition="a_prazo", installment_count="1", installment_frequency="mensal",
+                            first_installment_date=received.isoformat(), paid_count=1)
+            else:
+                data.update(payment_condition="a_vista", first_installment_date=None)
+        else:
+            if not account_id:
+                return fail("Para parcelar, escolha a conta que vai receber.")
+            count = _int_or_none(prefill["installment_count"]) or 0
+            if not 2 <= count <= 100:
+                return fail("Informe de 2 a 100 parcelas.")
+            paid = max(0, min(count, _int_or_none(prefill["paid_count"]) or 0))
+            data.update(payment_condition="a_prazo", installment_count=str(count), paid_count=paid)
+    else:
+        if data["status"] in {"entregue", "recebido"}:
+            data["delivered_on"] = data["delivered_on"] or data["sale_date"]
+        if data["status"] == "recebido":
+            data["received_on"] = data["received_on"] or data["sale_date"]
     try:
         code = save_sale(repo, farm_id=scope["active_farm_id"], lines=lines, data=data, existing=existing)
     except ValueError as exc:
         db.rollback()
         return fail(str(exc))
+    if mode in {"nao", "sim", "parc"}:
+        _sale_keep_invoiced(db, user, scope["active_farm_id"], code, sale_records(db, scope["active_farm_id"], code))
     _flash(request, "success", f"Venda {code} {'atualizada' if sale_code else 'registrada'} com sucesso.")
     origin_lot = _int_or_none(form.get("origem_lote"))
     if origin_lot and origin_lot in raw_lines:
@@ -23865,17 +23921,27 @@ async def sale_receipt_action(
     acao = str(form.get("acao") or "")
     try:
         if acao == "receber":
-            paid = receive(db, records, ids or None, _date_or_none(str(form.get("data") or "")))
+            account_id = _int_or_none(str(form.get("conta") or ""))
+            if account_id:
+                account = _repository(db).get_finance_account(account_id)
+                if not account or account.farm_id != scope.get("active_farm_id"):
+                    raise ValueError("Escolha uma conta válida da fazenda ativa.")
+            paid = receive(db, records, ids or None, _date_or_none(str(form.get("data") or "")),
+                           account_id=account_id, payment_method=str(form.get("forma") or "") or None)
             if ids:
                 text = f"{len(paid)} parcela{'s' if len(paid) != 1 else ''} recebida{'s' if len(paid) != 1 else ''} · venda {sale_code}"
             else:
                 text = f"Venda {sale_code} recebida"
             _sale_toast(request, text, url, {"acao": "desfazer", "parcelas": ",".join(map(str, paid))})
         elif acao == "desfazer":
+            from app.models.finance_transaction import FinanceTransaction as _Tx
+            tx = db.get(_Tx, records[0].finance_transaction_id) if records[0].finance_transaction_id else None
+            redo = {"acao": "receber", "parcelas": ",".join(map(str, ids))}
+            if tx is not None and (tx.payment_condition or "a_vista") == "a_vista":
+                redo.update(conta=str(tx.finance_account_id or ""), forma=tx.payment_method or "", data=tx.launch_date.isoformat())
             undo_receive(db, records, ids or None)
             _sale_keep_invoiced(db, user, scope["active_farm_id"], sale_code, records)
-            _sale_toast(request, f"Recebimento da venda {sale_code} desfeito", url,
-                        {"acao": "receber", "parcelas": ",".join(map(str, ids))})
+            _sale_toast(request, f"Recebimento da venda {sale_code} desfeito", url, redo)
         else:
             _flash(request, "error", "Ação inválida.")
     except ValueError as exc:

@@ -264,3 +264,54 @@ def test_quick_harvest_inside_sale_includes_plot_and_selects_new_lot(env, monkey
     assert lot.lot_stage == "tulha" and float(lot.sacks_produced) == 12
     assert out_plot in season.plots
     assert env.session["sale_toast"]["text"].endswith(f"Lote {lot.lot_code} criado e selecionado")
+
+
+def test_receipt_choice_defines_sale_situation_and_finance(env):
+    from app.models.finance_transaction_installment import FinanceTransactionInstallment
+    from app.services.coffee_sales import sale_records
+    r = env.routes
+    lot_a, lot_b = env.lots
+    farm = env.scope["active_farm_id"]
+
+    # Ainda não: nada no Financeiro, venda a receber; entrega pelo switch.
+    asyncio.run(r.sale_create_action(env.request("/producao/vendas", _sale_form(
+        env, [(lot_a, "10")], recebimento="nao", delivered="1", delivered_on="2026-11-21")), db=env.db, user=env.user))
+    rec = sale_records(env.db, farm, "V-0001")[0]
+    assert rec.finance_transaction_id is None and rec.received_on is None
+    assert rec.delivered_on == date(2026, 11, 21) and rec.status == "entregue"
+
+    # Já recebi: à vista pago na data, venda recebida.
+    asyncio.run(r.sale_create_action(env.request("/producao/vendas", _sale_form(
+        env, [(lot_a, "10")], recebimento="sim", received_on="2026-11-20", payment_method="PIX")), db=env.db, user=env.user))
+    rec = sale_records(env.db, farm, "V-0002")[0]
+    tx = env.db.get(FinanceTransaction, rec.finance_transaction_id)
+    assert tx.payment_condition == "a_vista" and rec.received_on == date(2026, 11, 20) and rec.status == "recebido"
+
+    # Parcelado trimestral em 4×, as 2 primeiras já recebidas.
+    asyncio.run(r.sale_create_action(env.request("/producao/vendas", _sale_form(
+        env, [(lot_b, "20")], recebimento="parc", installment_count="4", installment_frequency="trimestral",
+        first_installment_date="2026-06-10", paid_count="2", payment_method="Boleto")), db=env.db, user=env.user))
+    rec = sale_records(env.db, farm, "V-0003")[0]
+    insts = sorted(env.db.query(FinanceTransactionInstallment).filter_by(finance_transaction_id=rec.finance_transaction_id),
+                   key=lambda i: i.installment_number)
+    assert [i.due_date for i in insts] == [date(2026, 6, 10), date(2026, 9, 10), date(2026, 12, 10), date(2027, 3, 10)]
+    assert [i.status for i in insts] == ["pago", "pago", "pendente", "pendente"]
+    assert rec.status == "negociado" and rec.received_on is None
+
+    # Edição mostra a escolha gravada.
+    html = r.sale_edit_page("V-0003", env.request("/producao/vendas/V-0003/editar"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert 'value="parc" checked' in html and 'name="paid_count" inputmode="numeric" value="2"' in html
+    assert 'name="status"' not in html and "Café já entregue" in html
+
+    # Na lista, "Ainda não" pede conta e forma; receber cria o lançamento à vista e desfazer o retira.
+    page = r.commercialization_page(env.request("/producao/comercializacao"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert 'class="sv-rcv"' in page and 'name="conta"' in page
+    req = env.request("/x", [("acao", "receber"), ("conta", str(env.account.id)), ("forma", "PIX"), ("data", "2026-11-22")])
+    asyncio.run(r.sale_receipt_action("V-0001", req, db=env.db, user=env.user))
+    rec = sale_records(env.db, farm, "V-0001")[0]
+    tx = env.db.get(FinanceTransaction, rec.finance_transaction_id)
+    assert tx.payment_method == "PIX" and float(tx.amount) == float(rec.net_value) and rec.status == "recebido"
+    asyncio.run(r.sale_receipt_action("V-0001", env.request("/x", [("acao", "desfazer")]), db=env.db, user=env.user))
+    rec = sale_records(env.db, farm, "V-0001")[0]
+    assert rec.finance_transaction_id is None and env.db.get(FinanceTransaction, tx.id) is None
+    assert env.session["sale_toast"]["undo"]["fields"]["conta"] == str(env.account.id)

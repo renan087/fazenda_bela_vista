@@ -138,6 +138,13 @@
                         {% if can_write_page %}
                         {% if r.received %}
                         <form method="post" action="/producao/vendas/{{ g.code }}/recebimento"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><button class="sv-pi" type="submit" name="acao" value="desfazer">{{ svg('undo') }}Desfazer recebimento</button></form>
+                        {% elif not g.finance_transaction_id %}
+                        <form method="post" action="/producao/vendas/{{ g.code }}/recebimento" class="sv-rcv"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><input type="hidden" name="acao" value="receber">
+                            <label><span>Recebido em</span><input type="date" name="data" value="{{ today.isoformat() }}" required></label>
+                            <label><span>Conta</span><select name="conta"><option value="">Não lançar no Financeiro</option>{% for a in sale_accounts %}<option value="{{ a.id }}"{% if a.is_default %} selected{% endif %}>{{ a.account_name }}</option>{% endfor %}</select></label>
+                            <label><span>Forma</span><select name="forma"><option value="">Selecione</option>{% for m in sale_payment_methods %}<option value="{{ m }}">{{ m }}</option>{% endfor %}</select></label>
+                            <button class="sv-pi is-main" type="submit">{{ svg('ok') }}Marcar como recebida</button>
+                        </form>
                         {% elif r.open|length <= 1 %}
                         <form method="post" action="/producao/vendas/{{ g.code }}/recebimento"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><button class="sv-pi is-main" type="submit" name="acao" value="receber">{{ svg('ok') }}Marcar como recebida</button></form>
                         {% elif r.open|length <= 6 %}
@@ -263,6 +270,6 @@
     </div>
     {% endif %}
 </div>
-<script src="/static/js/commercialization.js?v=20261122sv1" defer></script>
+<script src="/static/js/commercialization.js?v=20261123sv2" defer></script>
 {% if sale_focus %}<script>document.getElementById({{ ('venda-' ~ sale_focus)|tojson }})?.scrollIntoView({ block: 'center' });</script>{% endif %}
 {% endblock %}

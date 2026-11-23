@@ -177,7 +177,8 @@ def _build_installments(
         if effective_frequency == "anual":
             due_date = _finance_add_years(effective_first_due, index)
         else:
-            due_date = _finance_add_months(effective_first_due, index)
+            step_months = {"trimestral": 3, "semestral": 6}.get(effective_frequency, 1)
+            due_date = _finance_add_months(effective_first_due, index * step_months)
         installments.append(
             {
                 "installment_number": index + 1,
@@ -215,7 +216,7 @@ def _normalize_finance_schedule_fields(form: dict) -> tuple[str, str | None, int
             raise ValueError("Selecione a conta bancária para acompanhar o pagamento a prazo.")
         if installment_count < 1:
             raise ValueError("Informe ao menos 1 parcela para pagamento a prazo.")
-        if installment_frequency not in {"mensal", "anual"}:
+        if installment_frequency not in {"mensal", "trimestral", "semestral", "anual"}:
             raise ValueError("Selecione a periodicidade das parcelas.")
         if not first_installment_date:
             raise ValueError("Informe a data da primeira parcela.")

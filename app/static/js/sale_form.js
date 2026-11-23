@@ -28,10 +28,11 @@
         const sacks = lines.reduce((a, l) => a + l.sacks, 0);
         const price = parse($('[data-vw-price]').value);
         const gross = Math.round(sacks * price * 100) / 100;
-        const pct = parse($('[data-vw-funrural]').value) + parse($('[data-vw-brokerage]').value);
+        const fun = Math.round(gross * parse($('[data-vw-funrural]').value)) / 100;
+        const bro = Math.round(gross * parse($('[data-vw-brokerage]').value)) / 100;
         const freight = parse($('[data-vw-freight]').value);
-        const discount = Math.round((gross * pct / 100 + freight) * 100) / 100;
-        return { lines, sacks, price, gross, discount, net: Math.max(gross - discount, 0), freight, pct };
+        const discount = Math.round((fun + bro + freight) * 100) / 100;
+        return { lines, sacks, price, gross, discount, net: Math.max(gross - discount, 0), freight, fun, bro };
     }
 
     function setQty(el, value) {
@@ -67,12 +68,91 @@
         $('[data-vw-sum-buyer]', document).textContent = buyerName() || '—';
         $('[data-vw-sum-gross]', document).textContent = v.gross ? money(v.gross) : '—';
         $('[data-vw-sum-net]', document).textContent = v.gross ? money(v.net) : '—';
+        [['fun', v.fun], ['freight', v.freight], ['bro', v.bro]].forEach(([k, val]) => {
+            const row = document.querySelector(`[data-vr-neg="${k}"]`);
+            if (!row) return;
+            row.hidden = !(val > 0);
+            row.querySelector('dd').textContent = '− ' + money(val);
+        });
+        const r = receipt();
+        const parcRow = document.querySelector('[data-vr-sum-parc]');
+        if (parcRow) {
+            parcRow.hidden = r.mode !== 'parc' || !v.net;
+            parcRow.querySelector('dt').textContent = `${r.count} parcelas de`;
+            parcRow.querySelector('dd').textContent = money(v.net / Math.max(r.count, 1));
+        }
+        const delivered = $('[data-vr-delivered]')?.checked;
+        const put = (sel, txt) => { const el = document.querySelector(sel); if (el) el.textContent = txt; };
+        put('[data-vr-sum-del]', delivered ? 'Entregue' : 'A entregar');
+        put('[data-vr-sum-rec]', r.text);
+        put('[data-vr-sum-fin]', r.fin);
+        const range = document.querySelector('[data-vr-paid-range]');
+        if (range) range.textContent = r.paid ? (r.paid === 1 ? '1ª' : `1ª a ${r.paid}ª`) : '';
+    }
+
+    function receipt() {
+        const mode = $('[data-vr-mode]:checked')?.value || 'nao';
+        const count = Math.max(2, Math.min(100, Math.round(parse($('[data-vw-count]')?.value)) || 2));
+        const paid = Math.max(0, Math.min(count, Math.round(parse($('[data-vr-paid]')?.value)) || 0));
+        const account = $('[data-vw-account]')?.value;
+        let text = 'A receber', fin = 'Lança ao marcar recebida';
+        if (mode === 'sim') { text = 'Recebida'; fin = account ? 'Pago na data informada' : 'Não lançar'; }
+        if (mode === 'parc') {
+            text = paid === count ? 'Recebida' : (paid ? `Recebido ${Math.round(paid * 100 / count)}%` : 'A receber');
+            fin = `${count} parcelas · ${paid} paga${paid === 1 ? '' : 's'}`;
+        }
+        return { mode, count, paid, text, fin };
     }
 
     function syncCondition() {
-        const parcel = $('[name=payment_condition]:checked')?.value === 'a_prazo';
-        $$('[data-vw-installments]').forEach((el) => { el.hidden = !parcel; });
+        const mode = $('[data-vr-mode]:checked')?.value || 'nao';
+        const fields = $('[data-vr-fields]');
+        if (fields) fields.hidden = mode === 'nao';
+        $$('[data-vr-only]').forEach((el) => { el.hidden = el.dataset.vrOnly !== mode; });
+        const card = $('[data-vr-card]');
+        if (card) card.hidden = !($('[data-vr-method]')?.value || '').startsWith('Cartão');
+        const on = $('[data-vr-delivered-on]');
+        if (on) on.hidden = !$('[data-vr-delivered]')?.checked;
+        const count = $('[data-vw-count]'); const paid = $('[data-vr-paid]');
+        if (count && paid) paid.dataset.max = String(Math.max(2, Math.min(100, Math.round(parse(count.value)) || 2)));
+        $$('[data-vr-dec], [data-vr-inc]').forEach((b) => {
+            const input = $(`[name="${b.dataset.vrDec || b.dataset.vrInc}"]`);
+            const v = Math.round(parse(input.value)) || 0;
+            b.disabled = b.dataset.vrDec ? v <= Number(input.dataset.min) : v >= Number(input.dataset.max);
+        });
     }
+
+    // Contadores (parcelas e já recebidas) e máscara 100 → 1,00 nos valores.
+    function clampPaid() {
+        const count = $('[data-vw-count]'); const paid = $('[data-vr-paid]');
+        if (!count || !paid) return;
+        const max = Math.max(2, Math.min(100, Math.round(parse(count.value)) || 2));
+        if ((Math.round(parse(paid.value)) || 0) > max) paid.value = String(max);
+    }
+    $$('[data-vr-dec], [data-vr-inc]').forEach((b) => b.addEventListener('click', () => {
+        const input = $(`[name="${b.dataset.vrDec || b.dataset.vrInc}"]`);
+        const v = (Math.round(parse(input.value)) || 0) + (b.dataset.vrInc ? 1 : -1);
+        input.value = String(Math.max(Number(input.dataset.min), Math.min(Number(input.dataset.max), v)));
+        clampPaid(); syncCondition(); refresh();
+    }));
+    ['[data-vw-count]', '[data-vr-paid]'].forEach((sel) => {
+        const input = $(sel);
+        if (!input) return;
+        input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, '').slice(0, 3); });
+        input.addEventListener('blur', () => {
+            const v = Math.round(parse(input.value)) || 0;
+            input.value = String(Math.max(Number(input.dataset.min), Math.min(Number(input.dataset.max), v)));
+            clampPaid(); syncCondition(); refresh();
+        });
+    });
+    const maskDecimal = (el) => {
+        const digits = el.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 13);
+        el.value = digits ? (parseInt(digits, 10) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+    };
+    $$('[data-mask="decimal"]').forEach((el) => {
+        if (el.value && !el.value.includes(',')) el.value = parse(el.value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        el.addEventListener('input', () => maskDecimal(el));
+    });
 
     function error(msg) {
         const box = $('[data-vw-error]');
@@ -94,7 +174,7 @@
             if (!buyerName()) return 'Escolha ou cadastre o comprador.';
             if (v.price <= 0) return 'Informe o preço por saca.';
             if (v.discount > v.gross) return 'Os descontos não podem ser maiores que o valor da venda.';
-            const parcel = $('[name=payment_condition]:checked')?.value === 'a_prazo';
+            const parcel = receipt().mode === 'parc';
             if (parcel && !$('[data-vw-account]').value) return 'Para parcelar, escolha a conta que vai receber.';
             if (parcel && !$('[data-vw-first]').value) return 'Informe a data da primeira parcela.';
         }
@@ -103,19 +183,21 @@
 
     function review() {
         const v = values();
-        const status = $('[name=status]:checked');
-        const statusLabel = status ? status.nextElementSibling.textContent : 'Negociada';
+        const r = receipt();
+        const statusLabel = r.text;
         const account = $('[data-vw-account]');
-        const parcel = $('[name=payment_condition]:checked')?.value === 'a_prazo';
-        const count = parcel ? parse($('[data-vw-count]').value) : 1;
+        const parcel = r.mode === 'parc';
+        const count = parcel ? r.count : 1;
         const first = $('[data-vw-first]').value;
         const firstTxt = first ? first.split('-').reverse().join('/') : '';
         let fin = 'Esta venda não será lançada no Financeiro (nenhuma conta escolhida).';
-        if (account.value) {
+        if (r.mode === 'nao') fin = 'Fica a receber. Conta e forma você informa ao marcar como recebida na lista de vendas.';
+        else if (account.value) {
             const name = account.options[account.selectedIndex].text;
             fin = parcel
                 ? `No Financeiro: ${count} parcelas de ${money(v.net / count)}${firstTxt ? `, a partir de ${firstTxt}` : ''}, na conta ${esc(name)}.`
-                : `No Financeiro: 1 conta a receber de ${money(v.net)} na conta ${esc(name)}.`;
+                : `No Financeiro: ${money(v.net)} recebido na conta ${esc(name)}.`;
+            if (parcel && r.paid) fin += ` As ${r.paid === 1 ? '1ª parcela entra paga' : `${r.paid} primeiras entram pagas`}.`;
         }
         $('[data-vw-review]').innerHTML = `
             <div class="vw-rev-card vw-rev-buyer"><span><small>Comprador</small><strong>${esc(buyerName())}</strong></span><span class="pd-chip is-ok">${esc(statusLabel)}</span></div>

@@ -12296,3 +12296,39 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .hf-plot .hf-out { display:inline-flex; align-items:center; height:20px; padding:0 7px; border-radius:999px; background:#EEF1ED; color:#5B6660; font-size:11px; font-weight:700; font-style:normal; }
 .sv-pn { white-space:nowrap; } .sv-late-d { color:#B87400; font-weight:600; }
 .sv-yrb .sv-pr { gap:8px; font-size:13px; }
+/* Nova venda: recebimento define a situação (rótulos alinhados, switch, opções e contadores) */
+.vr-g3 { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px 16px; align-items:end; }
+.vr-t { display:flex; align-items:baseline; gap:6px; min-height:20px; white-space:nowrap; }
+.vr-sw { display:flex; align-items:center; gap:12px; min-height:44px; font-size:14px; font-weight:500; cursor:pointer; }
+.vr-sw input { position:absolute; opacity:0; width:1px; height:1px; }
+.vr-swb { position:relative; width:44px; height:26px; border-radius:999px; background:#C9D2C6; flex:none; transition:background .2s; }
+.vr-swb i { position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(15,21,19,.25); transition:transform .2s; }
+.vr-sw input:checked + .vr-swb { background:#446A36; }
+.vr-sw input:checked + .vr-swb i { transform:translateX(18px); }
+.vr-sw input:focus-visible + .vr-swb { outline:3px solid #9BCB6B; outline-offset:2px; }
+.vr-opts { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; margin:0; padding:0; border:0; }
+.vr-opts legend { margin-bottom:8px; padding:0; font-size:14px; font-weight:600; color:#46514A; }
+.vr-opt { position:relative; display:flex; align-items:center; gap:10px; min-height:56px; padding:10px 12px; border:1.5px solid #E3E8E2; border-radius:12px; background:#fff; cursor:pointer; font-size:14px; font-weight:600; }
+.vr-opt:hover { border-color:#BFD6B6; }
+.vr-opt small { display:block; margin-top:2px; font-size:12px; font-weight:500; color:#7A857E; }
+.vr-opt input { position:absolute; opacity:0; width:1px; height:1px; }
+.vr-rd { width:18px; height:18px; border-radius:50%; border:2px solid #C9D2C6; flex:none; box-sizing:border-box; }
+.vr-opt:has(input:checked) { border-color:#446A36; background:#F6F9F4; box-shadow:0 0 0 3px #EEF3EB; }
+.vr-opt input:checked + .vr-rd { border:5px solid #446A36; }
+.vr-opt:has(input:focus-visible) { outline:3px solid #9BCB6B; outline-offset:2px; }
+.vr-fields { display:flex; flex-direction:column; gap:14px; }
+.vr-fields[hidden], .vr-g3[hidden], .vr-g3 [hidden] { display:none; }
+.vr-stp { display:flex; align-items:center; height:44px; border:1px solid var(--pd-line); border-radius:12px; overflow:hidden; background:#fff; }
+.vr-stp button { width:44px; height:44px; flex:none; border:0; background:#fff; font-size:18px; color:#46514A; cursor:pointer; }
+.vr-stp button:hover { background:#F3F5F2; } .vr-stp button:disabled { color:#C9D2C6; cursor:not-allowed; }
+.vw-f .vr-stp input { flex:1; min-width:0; height:42px; border:0; border-radius:0; text-align:center; font-weight:700; padding:0; }
+.vr-money .is-pos dt { color:#4E8A5E; } .vr-money .is-pos dd { color:#2F7A45; }
+.vr-money .is-neg dt { color:#B87A72; } .vr-money .is-neg dd { color:#A9524A; }
+.vr-money .is-total { padding-top:8px; border-top:1px dashed #D5DCD4; font-size:15px; } .vr-money .is-total dt { font-weight:600; }
+.vr-money [hidden], .vw-sum-rows [hidden] { display:none; }
+@media (max-width:1023px) { .vr-g3 { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+@media (max-width:639px) { .vr-g3, .vr-opts { grid-template-columns:1fr; } }
+.sv-rcv { display:flex; flex-direction:column; gap:8px; padding:4px 10px 6px; }
+.sv-rcv label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; color:#5B6660; }
+.sv-rcv input, .sv-rcv select { height:38px; border:1px solid #D5DCD4; border-radius:9px; padding:0 8px; font-size:13px; color:#16201A; background:#fff; }
+.sv-rcv .sv-pi { margin:2px -10px 0; width:calc(100% + 20px); }
