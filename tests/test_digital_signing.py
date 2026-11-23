@@ -194,6 +194,23 @@ def web_db(monkeypatch):
     return sessions, settings
 
 
+def test_a1_key_configuration_distinguishes_absence_and_bad_format(web_db):
+    _, settings = web_db
+    setting = "digital_certificate_key"
+    expected = b"A" * 32
+    settings.digital_certificate_key = " " + base64.b64encode(expected).decode() + "\n"
+    assert certificates.encryption_key(setting) == expected
+    for value in (None, " "):
+        settings.digital_certificate_key = value
+        with pytest.raises(certificates.EncryptionConfigurationError, match="DIGITAL_CERTIFICATE_KEY está ausente"):
+            certificates.encryption_key(setting)
+    for value in ("segredo-invalido", base64.b64encode(b"curta").decode()):
+        settings.digital_certificate_key = value
+        with pytest.raises(certificates.EncryptionConfigurationError, match="32 bytes em Base64") as exc:
+            certificates.encryption_key(setting)
+        assert value not in str(exc.value)
+
+
 def test_central_reuses_fiscal_a1_and_controls_independent_purposes(authority, web_db):
     make, _ = authority
     sessions, _ = web_db

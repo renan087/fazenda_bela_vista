@@ -29,13 +29,21 @@ def utc(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
+class EncryptionConfigurationError(ValueError):
+    """The configured encryption secret is absent or invalid."""
+
+
 def encryption_key(setting: str) -> bytes:
+    variable = setting.upper()
+    configured = (getattr(get_settings(), setting) or "").strip()
+    if not configured:
+        raise EncryptionConfigurationError(f"A variável {variable} está ausente na implantação atual.")
     try:
-        raw = base64.b64decode(getattr(get_settings(), setting) or "", validate=True)
+        raw = base64.b64decode(configured, validate=True)
     except ValueError:
-        raw = b""
+        raise EncryptionConfigurationError(f"A variável {variable} deve conter uma chave de 32 bytes em Base64.") from None
     if len(raw) != 32:
-        raise ValueError("A chave de criptografia deste serviço precisa ser configurada.")
+        raise EncryptionConfigurationError(f"A variável {variable} deve conter uma chave de 32 bytes em Base64.")
     return raw
 
 

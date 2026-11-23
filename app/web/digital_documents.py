@@ -86,6 +86,8 @@ def _error(exc):
         return _json({"detail": str(exc)}, exc.status)
     if isinstance(exc, PermissionError):
         return _json({"detail": str(exc)}, 403)
+    if isinstance(exc, certificates.EncryptionConfigurationError):
+        return _json({"detail": str(exc)}, 503)
     if isinstance(exc, InvalidTag):
         return _json({"detail": "Não foi possível abrir o material protegido."}, 503)
     if isinstance(exc, IntegrityError):
