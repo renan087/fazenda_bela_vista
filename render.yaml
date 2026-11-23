@@ -17,6 +17,10 @@ services:
         generateValue: true
       - key: NFE_CERT_MASTER_KEY
         generateValue: true
+      - key: DIGITAL_CERTIFICATE_KEY
+        generateValue: true
+      - key: DIGITAL_DOCUMENT_KEY
+        generateValue: true
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: 60
       - key: ADMIN_NAME
