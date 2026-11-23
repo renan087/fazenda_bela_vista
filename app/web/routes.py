@@ -28154,6 +28154,7 @@ def fiscal_note_xml(draft_id: str, request: Request, db: Session = Depends(get_d
 def fiscal_note_cce_pdf(draft_id: str, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
     from app.models.nfe_draft import NfeIssuerProfile
     from app.services.nfe_cce_pdf import build_cce_pdf
+    from app.services.nfe_fiscal_setup import get_logo
     from app.services.nfe_notes import load_note
     repo, scope, farm, denied = _nf_scope(request, db, user)
     if denied:
@@ -28170,7 +28171,18 @@ def fiscal_note_cce_pdf(draft_id: str, request: Request, db: Session = Depends(g
         selected = letters[0]
     if not selected:
         raise HTTPException(status_code=404, detail="Carta de correção não encontrada.")
-    pdf_bytes = build_cce_pdf(issuer=issuer, note=note, cce=selected, test_mode=True)
+    buyer = None
+    if note["snapshot"].get("comprador_id"):
+        buyer = db.query(CoffeeBuyer).filter_by(id=note["snapshot"]["comprador_id"], organization_id=user.organization_id).first()
+    logo = get_logo(db, organization_id=user.organization_id, farm_id=farm.id)
+    pdf_bytes = build_cce_pdf(
+        issuer=issuer,
+        note=note,
+        cce=selected,
+        logo_bytes=(logo.data if logo else None),
+        buyer_phone=(buyer.phone if buyer else ""),
+        test_mode=True,
+    )
     return Response(pdf_bytes, media_type="application/pdf", headers={
         "Content-Disposition": f'inline; filename="CCe-{selected["seq"]:02d}-NFe-{note["title"]}.pdf"',
         "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
