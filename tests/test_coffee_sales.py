@@ -349,7 +349,9 @@ def test_sale_with_authorized_invoice_cannot_be_deleted(env, monkeypatch):
     note = {"id": "d" * 32, "status": "autorizada", "label": "Autorizada", "tone": "green", "number": "000127", "issues": 0}
     monkeypatch.setattr(r, "_nf_notes_by_sale", lambda *a: {"V-0001": note})
     page = r.commercialization_page(env.request("/producao/comercializacao"), db=env.db, user=env.user, csrf_token="x").body.decode()
-    assert "Cancelar a nota</a> antes de cancelar a venda" in page
+    assert 'data-sv-submenu="nf"' in page and 'data-sv-submenu="entrega"' in page and 'data-sv-submenu="recebimento"' in page
+    assert 'class="sl-mi-tip"' in page and "Cancele a nota fiscal antes de cancelar a venda." in page
+    assert 'class="sl-why"' not in page or 'id="sv-why-V-0001"' in page
     r.sale_delete_action("V-0001", env.request("/x"), csrf_token="x", db=env.db, user=env.user)
     assert sale_records(env.db, env.scope["active_farm_id"], "V-0001")[0].status != "cancelado"
     assert "Cancele a nota" in env.session.pop("flash")["message"]

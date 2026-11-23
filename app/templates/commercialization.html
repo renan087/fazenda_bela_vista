@@ -50,7 +50,7 @@
         'coin': 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM14.5 9.5c-.4-.9-1.4-1.5-2.5-1.5-1.5 0-2.5.8-2.5 2s1.1 1.7 2.5 2 2.5.8 2.5 2-1 2-2.5 2c-1.1 0-2.1-.6-2.5-1.5M12 6.5v1.5M12 16v1.5',
         'ok': 'M5 12l5 5 9-10', 'cal': 'M4 6h16v14H4zM4 10h16M9 3v4M15 3v4', 'undo': 'M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-2',
         'fin': 'M3 6h18v12H3zM3 10h18M7 15h3', 'doc': 'M6 3h9l3 3v15H6zM9 9h6M9 13h6M9 17h4', 'eye': 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
-        'list': 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01', 'edit': 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4', 'trash': 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'} %}
+        'list': 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01', 'edit': 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4', 'trash': 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', 'chev-r': 'm9 6 6 6-6 6'} %}
     {% macro svg(name) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ICON[name] }}"/></svg>{% endmacro %}
     {% macro dot(state) %}<i style="background: {{ {'done': '#446A36', 'part': '#446A36', 'warn': '#D18A00'}.get(state, '#A3ADA6') }}"></i>{% endmacro %}
     {% set back_url = sale_back_url %}
@@ -106,7 +106,7 @@
                 </div>
             </div>
             {% else %}
-            <div class="sv-nfcell" data-sv-pop>
+            <div class="sv-nfcell" data-sv-pop data-sv-pop-kind="nf">
                 <button type="button" class="sv-nf{% if nf_done %} is-ok{% elif nf_live %} is-draft{% else %} is-none{% endif %}" data-sv-pop-btn aria-haspopup="true" aria-expanded="false" aria-label="Nota fiscal da venda {{ g.code }}">
                     {% if nf_done and nf.number %}NF {{ nf.number }}{% elif nf_done %}NF enviada{% elif nf_live %}Em rascunho{% else %}Sem nota{% endif %}
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -125,7 +125,7 @@
             </div>
 
             <div class="sv-track">
-                <div class="sv-icwrap" data-sv-pop>
+                <div class="sv-icwrap" data-sv-pop data-sv-pop-kind="entrega">
                     <button type="button" class="sv-ic{% if d.state %} is-{{ d.state }}{% endif %}" data-sv-pop-btn aria-haspopup="true" aria-expanded="false" aria-label="Entrega: {{ d.tip }}">{{ svg('truck') }}<span class="sv-tip" aria-hidden="true">{{ d.tip }}</span></button>
                     <div class="sv-pop" hidden>
                         <div class="sv-ph"><small>Entrega</small><b>{{ dot(d.state) }}{{ d.title }}</b><span>{{ d.detail }}</span></div>
@@ -147,7 +147,7 @@
                     </div>
                 </div>
 
-                <div class="sv-icwrap" data-sv-pop>
+                <div class="sv-icwrap" data-sv-pop data-sv-pop-kind="recebimento">
                     <button type="button" class="sv-ic{% if r.state %} is-{{ r.state }}{% endif %}" data-sv-pop-btn aria-haspopup="true" aria-expanded="false" aria-label="Recebimento: {{ r.tip }}"{% if r.state == 'part' %} style="--p: {{ r.pct }}%"{% endif %}>{{ svg('coin') }}<span class="sv-tip" aria-hidden="true">{{ r.tip }}</span></button>
                     <div class="sv-pop sv-pop-r" hidden>
                         <div class="sv-ph"><small>Recebimento</small><b>{{ dot(r.state) }}{{ r.title }}</b>
@@ -204,11 +204,17 @@
                     <p class="sl-menu-h">Venda {{ g.code }}</p>
                     <a class="sl-mi" role="menuitem" href="/producao/vendas/{{ g.code }}/editar">{{ svg('edit') }}{{ 'Editar venda' if can_write_page else 'Ver venda' }}</a>
                     {% if g.finance_transaction_id %}<a class="sl-mi" role="menuitem" href="/gestao-financeira/contas?transaction_edit_id={{ g.finance_transaction_id }}">{{ svg('fin') }}Ver no Financeiro</a>{% endif %}
+                    <div class="sl-menu-sep" role="separator"></div>
+                    <button type="button" class="sl-mi sl-mi-sub" role="menuitem" aria-haspopup="true" aria-expanded="false" data-sv-submenu="nf">{{ svg('doc') }}<span>Nota fiscal</span><span class="sl-mi-chev">{{ svg('chev-r') }}</span></button>
+                    <button type="button" class="sl-mi sl-mi-sub" role="menuitem" aria-haspopup="true" aria-expanded="false" data-sv-submenu="entrega">{{ svg('truck') }}<span>Entrega</span><span class="sl-mi-chev">{{ svg('chev-r') }}</span></button>
+                    <button type="button" class="sl-mi sl-mi-sub" role="menuitem" aria-haspopup="true" aria-expanded="false" data-sv-submenu="recebimento">{{ svg('coin') }}<span>Recebimento de parcela</span><span class="sl-mi-chev">{{ svg('chev-r') }}</span></button>
                     {% if can_write_page %}
                     <div class="sl-menu-sep" role="separator"></div>
                     {% if nf_done %}
-                    <button class="sl-mi is-danger" role="menuitem" type="button" disabled aria-describedby="sv-why-{{ g.code }}">{{ svg('trash') }}Cancelar venda</button>
-                    <p class="sl-why" id="sv-why-{{ g.code }}">Tem NF-e autorizada. <a href="/notas-fiscais/{{ nf.id }}">Cancelar a nota</a> antes de cancelar a venda.</p>
+                    <span class="sl-mi-tipwrap" title="Tem NF-e autorizada. Cancele a nota fiscal antes de cancelar a venda.">
+                        <button class="sl-mi is-danger" role="menuitem" type="button" disabled aria-describedby="sv-why-{{ g.code }}">{{ svg('trash') }}Cancelar venda</button>
+                        <span class="sl-mi-tip" id="sv-why-{{ g.code }}" role="tooltip">Tem NF-e autorizada. Cancele a nota fiscal antes de cancelar a venda.</span>
+                    </span>
                     {% else %}
                     <form method="post" action="/producao/vendas/{{ g.code }}/cancelar" data-confirm="Cancelar a venda {{ g.code }}? O saldo volta para os lotes, o lançamento financeiro é estornado e a venda continua no histórico como Cancelada{% if nf_live %}; o rascunho da nota é descartado{% elif nf %}; a nota cancelada continua em Notas Fiscais{% endif %}.">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -296,6 +302,6 @@
     </div>
     {% endif %}
 </div>
-<script src="/static/js/commercialization.js?v=20261123sv5" defer></script>
+<script src="/static/js/commercialization.js?v=20261123sv6" defer></script>
 {% if sale_focus %}<script>document.getElementById({{ ('venda-' ~ sale_focus)|tojson }})?.scrollIntoView({ block: 'center' });</script>{% endif %}
 {% endblock %}

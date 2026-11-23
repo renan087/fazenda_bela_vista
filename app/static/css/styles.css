@@ -12386,3 +12386,15 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .sv-c4.is-cancelled b { color:#7A857E; text-decoration:line-through; }
 .sv-nf.is-static { cursor:default; pointer-events:none; }
 .sv-cancelled-pill { display:inline-flex; align-items:center; height:26px; padding:0 10px; border-radius:999px; background:#FDECEA; color:#B42318; font-size:12px; font-weight:700; white-space:nowrap; }
+/* Submenu no menu ⋯ da Comercialização e tooltip ao passar o mouse em item desabilitado */
+.sl-mi-sub > span:first-of-type { flex:1; }
+.sl-mi-chev { margin-left:auto; display:inline-flex; align-items:center; color:#7A857E; }
+.sl-mi-chev svg { width:15px; height:15px; color:inherit; }
+.sl-mi-sub.is-sub-open { background:#EEF3EB; color:#294127; }
+.sl-mi-sub.is-sub-open svg, .sl-mi-sub.is-sub-open .sl-mi-chev { color:#446A36; }
+.sv-pop.is-sub { position:fixed; z-index:45; margin:0; }
+.sl-mi-tipwrap { position:relative; display:block; cursor:not-allowed; }
+.sl-mi-tipwrap > .sl-mi[disabled] { pointer-events:none; }
+.sl-mi-tip { position:absolute; bottom:calc(100% + 6px); right:0; width:228px; max-width:calc(100vw - 24px); background:#16201A; color:#fff; font-size:12px; font-weight:500; line-height:1.4; padding:7px 10px; border-radius:8px; box-shadow:0 10px 24px rgba(15,21,19,.22); pointer-events:none; opacity:0; visibility:hidden; transition:opacity .15s ease; z-index:50; }
+.sl-mi-tipwrap:hover .sl-mi-tip, .sl-mi-tipwrap:focus-within .sl-mi-tip { opacity:1; visibility:visible; }
+@media (max-width: 639px) { .sv-pop.is-sub { z-index:45; } }
