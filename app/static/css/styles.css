@@ -12227,7 +12227,7 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .sv-size select { min-height:36px; border:1px solid #E3E8E2; border-radius:10px; padding:0 30px 0 10px; font-size:14px; font-weight:600; color:#16201A; background-color:#fff; cursor:pointer; }
 .sv-size select:focus { outline:none; border-color:#446A36; box-shadow:0 0 0 3px #CFE5B7; }
 /* Gaveta de parcelas */
-.sv-dw { position:fixed; inset:0; z-index:80; }
+.sv-dw { position:fixed; inset:0; z-index:80; --pd-ink:#16201A; --pd-muted:#5B6660; --pd-line:#E3E8E2; --pd-line2:#EEF1ED; --pd-soft:#F6F8F5; --pd-brand:#446A36; --pd-brand-dark:#294127; --pd-brand-soft:#EEF3EB; --pd-accent:#9BCB6B; }
 .sv-dw[hidden] { display:none; }
 .sv-dw-ov { position:absolute; inset:0; background:rgba(15,21,19,.35); border:0; padding:0; cursor:default; }
 .sv-dw-panel { position:absolute; top:0; right:0; bottom:0; width:420px; max-width:100%; background:#fff; box-shadow:-18px 0 40px rgba(15,21,19,.16); display:flex; flex-direction:column; margin:0; animation:sv-slx .25s ease-out; }
@@ -12343,9 +12343,12 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .vw-qty-field small { font-size:13px; color:var(--pd-muted); }
 .vw-qty-field:focus-within { border-color:#446A36; box-shadow:0 0 0 3px #CFE5B7; }
 .vw-page input:focus, .vw-page select:focus, .vw-page textarea:focus { outline:none !important; --tw-ring-shadow:0 0 #0000; --tw-ring-offset-shadow:0 0 #0000; }
-.vw-page .vw-f > input:focus, .vw-page .vw-f > select:focus, .vw-page .vw-f > textarea:focus { border-color:#446A36 !important; box-shadow:0 0 0 3px #CFE5B7 !important; }
-.vw-page .vw-affix input, .vw-page .vw-affix input:focus { border:0 !important; box-shadow:none !important; outline:none !important; background:transparent; border-radius:12px; }
-.vw-page .vw-affix:focus-within { border-color:#446A36; box-shadow:0 0 0 3px #CFE5B7; }
+.vw-page .vw-f > input:focus, .vw-page .vw-f > select:focus, .vw-page .vw-f > textarea:focus,
+.sv-dw .vw-f > input:focus, .sv-dw .vw-f > select:focus, .sv-dw .vw-f > textarea:focus { border-color:#446A36 !important; box-shadow:0 0 0 3px #CFE5B7 !important; outline:none !important; }
+.vw-page .vw-affix input, .vw-page .vw-affix input:focus,
+.sv-dw .vw-affix input, .sv-dw .vw-affix input:focus { border:0 !important; box-shadow:none !important; outline:none !important; background:transparent; border-radius:12px; }
+.vw-page .vw-affix:focus-within,
+.sv-dw .vw-affix:focus-within { border-color:#446A36; box-shadow:0 0 0 3px #CFE5B7; }
 .vw-page .vr-stp:focus-within { border-color:#446A36; box-shadow:0 0 0 3px #CFE5B7; }
 .vw-page .vr-stp input:focus { box-shadow:none !important; border:0 !important; }
 .bp-search input, .bp-search input:focus, .bp-search input:focus-visible { outline:none !important; box-shadow:none !important; border:0 !important; --tw-ring-shadow:0 0 #0000; }
