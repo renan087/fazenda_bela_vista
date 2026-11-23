@@ -36,7 +36,7 @@
                     {% for lot in sale_lots %}
                     {% set qty = sale_lines.get(lot.id) %}
                     <div class="vw-lot{% if qty %} is-on{% endif %}" data-vw-lot data-id="{{ lot.id }}" data-code="{{ lot.code }}" data-available="{{ lot.available_for_sale }}">
-                        <input type="checkbox" class="vw-lot-check" name="lot_id" value="{{ lot.id }}" id="vw-lot-{{ lot.id }}" {% if qty %}checked{% endif %}>
+                        <span class="dt-chk"><input type="checkbox" class="dt-check vw-lot-check" name="lot_id" value="{{ lot.id }}" id="vw-lot-{{ lot.id }}" {% if qty %}checked{% endif %}></span>
                         <label for="vw-lot-{{ lot.id }}" class="vw-lot-text">
                             <span class="vw-lot-title"><strong>{{ lot.code }}</strong>{{ quality_chip(lot.quality, lot.quality_tone) }}</span>
                             <span class="vw-lot-sub">{{ lot.plot }}{% if lot.variety %} · {{ lot.variety }}{% endif %} · saldo {{ lot.available_for_sale|decimal_br }} sc</span>
@@ -45,7 +45,7 @@
                             <button type="button" class="vw-step-btn" data-vw-minus aria-label="Menos 10 sacas do lote {{ lot.code }}">−</button>
                             <label class="vw-qty-field"><span class="sr-only">Sacas do lote {{ lot.code }}</span>
                                 <input name="lot_sacks_{{ lot.id }}" inputmode="decimal" value="{{ (qty or 0)|decimal_br }}" data-vw-sacks>
-                                <small>sacas</small>
+                                <small aria-hidden="true">sc</small>
                             </label>
                             <button type="button" class="vw-step-btn" data-vw-plus aria-label="Mais 10 sacas do lote {{ lot.code }}">+</button>
                             <button type="button" class="vw-all" data-vw-all>Tudo</button>
@@ -235,5 +235,5 @@
     {{ buyer_modal(csrf_token) }}
 </div>
 <script src="{{ url_for('static', path='js/buyer_picker.js') }}?v=20261122bp1" defer></script>
-<script src="{{ url_for('static', path='js/sale_form.js') }}?v=3" defer></script>
+<script src="{{ url_for('static', path='js/sale_form.js') }}?v=4" defer></script>
 {% endblock %}

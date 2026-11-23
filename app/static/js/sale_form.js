@@ -95,7 +95,7 @@
         const count = Math.max(2, Math.min(100, Math.round(parse($('[data-vw-count]')?.value)) || 2));
         const paid = Math.max(0, Math.min(count, Math.round(parse($('[data-vr-paid]')?.value)) || 0));
         const account = $('[data-vw-account]')?.value;
-        let text = 'A receber', fin = 'Lança ao marcar recebida';
+        let text = 'A receber', fin = 'Ao marcar recebida';
         if (mode === 'sim') { text = 'Recebida'; fin = account ? 'Pago na data informada' : 'Não lançar'; }
         if (mode === 'parc') {
             text = paid === count ? 'Recebida' : (paid ? `Recebido ${Math.round(paid * 100 / count)}%` : 'A receber');
