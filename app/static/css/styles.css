@@ -12379,3 +12379,10 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .sv-pop.is-up { top:auto; bottom:42px; transform-origin:bottom; }
 .sv-pop.is-right { left:auto; right:-6px; }
 .sl-menu.is-up { top:auto; bottom:calc(100% + 8px); }
+/* Venda cancelada mantida no histórico */
+.sv-row.is-cancelled { background:#FAFBF9; cursor:default; }
+.sv-row.is-cancelled:hover { background:#F6F8F5; }
+.sv-row.is-cancelled .sv-c1 b, .sv-row.is-cancelled .sv-c2 b { color:#5B6660; }
+.sv-c4.is-cancelled b { color:#7A857E; text-decoration:line-through; }
+.sv-nf.is-static { cursor:default; pointer-events:none; }
+.sv-cancelled-pill { display:inline-flex; align-items:center; height:26px; padding:0 10px; border-radius:999px; background:#FDECEA; color:#B42318; font-size:12px; font-weight:700; white-space:nowrap; }

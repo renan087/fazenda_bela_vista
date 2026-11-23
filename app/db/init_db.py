@@ -1212,6 +1212,32 @@ def _sync_schema() -> None:
         "UPDATE coffee_commercialization_records SET net_value = total_value, discount_value = 0 WHERE net_value IS NULL",
         "ALTER TABLE coffee_commercialization_records ADD COLUMN IF NOT EXISTS buyer_id INTEGER REFERENCES coffee_buyers(id) ON DELETE SET NULL",
         "CREATE INDEX IF NOT EXISTS ix_coffee_commercialization_records_buyer_id ON coffee_commercialization_records (buyer_id)",
+        "ALTER TABLE coffee_commercialization_records ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ",
+        """
+        CREATE TABLE IF NOT EXISTS coffee_sale_sequences (
+            farm_id INTEGER PRIMARY KEY REFERENCES farms(id) ON DELETE CASCADE,
+            last_number INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
+        INSERT INTO coffee_sale_sequences (farm_id, last_number, updated_at)
+        SELECT farm_id, MAX(num) AS last_number, NOW()
+        FROM (
+            SELECT farm_id, CAST(SUBSTRING(sale_code FROM '^V-([0-9]+)$') AS INTEGER) AS num
+            FROM coffee_commercialization_records
+            WHERE sale_code ~ '^V-[0-9]+$'
+            UNION ALL
+            SELECT farm_id, CAST(SUBSTRING(sale_code FROM '^V-([0-9]+)$') AS INTEGER) AS num
+            FROM nfe_drafts
+            WHERE sale_code ~ '^V-[0-9]+$'
+        ) used_codes
+        WHERE farm_id IS NOT NULL AND num IS NOT NULL
+        GROUP BY farm_id
+        ON CONFLICT (farm_id) DO UPDATE
+        SET last_number = GREATEST(coffee_sale_sequences.last_number, EXCLUDED.last_number),
+            updated_at = NOW()
+        """,
         "ALTER TABLE coffee_buyers ADD COLUMN IF NOT EXISTS municipality_code VARCHAR(7)",
         "ALTER TABLE coffee_buyers ADD COLUMN IF NOT EXISTS ie_indicator VARCHAR(20)",
         "ALTER TABLE harvest_records ADD COLUMN IF NOT EXISTS measure_unit VARCHAR(20)",

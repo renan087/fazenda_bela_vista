@@ -127,8 +127,11 @@ def test_multi_lot_sale_creates_one_sale_with_one_finance_entry(env):
     assert records[0].status == "entregue" and records[0].delivered_on == date(2026, 11, 28)
 
     r.sale_delete_action("V-0001", env.request("/x"), csrf_token="x", db=env.db, user=env.user)
-    assert env.db.query(CoffeeCommercializationRecord).count() == 0
+    env.db.expire_all()
+    cancelled = env.db.query(CoffeeCommercializationRecord).filter_by(sale_code="V-0001").all()
+    assert len(cancelled) == 1 and all(rec.status == "cancelado" and rec.cancelled_at is not None for rec in cancelled)
     assert env.db.get(FinanceTransaction, tx.id) is None
+    assert env.routes._repository(env.db).list_coffee_commercializations(farm_id=env.scope["active_farm_id"]) == []
 
 
 def test_sale_form_page_lists_lots_and_preselects_origin_lot(env):
@@ -346,13 +349,13 @@ def test_sale_with_authorized_invoice_cannot_be_deleted(env, monkeypatch):
     note = {"id": "d" * 32, "status": "autorizada", "label": "Autorizada", "tone": "green", "number": "000127", "issues": 0}
     monkeypatch.setattr(r, "_nf_notes_by_sale", lambda *a: {"V-0001": note})
     page = r.commercialization_page(env.request("/producao/comercializacao"), db=env.db, user=env.user, csrf_token="x").body.decode()
-    assert "Cancelar a nota</a> antes de excluir" in page
+    assert "Cancelar a nota</a> antes de cancelar a venda" in page
     r.sale_delete_action("V-0001", env.request("/x"), csrf_token="x", db=env.db, user=env.user)
-    assert sale_records(env.db, env.scope["active_farm_id"], "V-0001")
+    assert sale_records(env.db, env.scope["active_farm_id"], "V-0001")[0].status != "cancelado"
     assert "Cancele a nota" in env.session.pop("flash")["message"]
     note["status"] = "cancelada"
     r.sale_delete_action("V-0001", env.request("/x"), csrf_token="x", db=env.db, user=env.user)
-    assert not sale_records(env.db, env.scope["active_farm_id"], "V-0001")
+    assert all(rec.status == "cancelado" for rec in sale_records(env.db, env.scope["active_farm_id"], "V-0001"))
 
 
 def test_harvest_delete_removes_analyses_and_is_blocked_by_sales(env, monkeypatch):

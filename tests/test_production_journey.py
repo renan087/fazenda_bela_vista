@@ -152,7 +152,7 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     assert 'id="venda-V-0001"' in sale_details and 'is-focus' in sale_details
     assert 'Mostrando <b>1–1</b> de <b>1 venda</b>' in sale_details and 'aria-label="Vendas por página"' in sale_details
     assert 'aria-label="Mais ações da venda V-0001"' in sale_details and 'Marcar como entregue' in sale_details
-    assert 'Excluir venda' in sale_details and 'Desfazer' not in sale_details
+    assert 'Cancelar venda' in sale_details and 'Desfazer' not in sale_details
     assert '>Sem nota' in sale_details and 'name="por"' in sale_details and '<option value="100">' in sale_details
     assert f'href="/producao?lote={lot_id}"' in sale_details
     other_sales = get(f"/producao/comercializacao?harvest_id={other_lot.id}")

@@ -11,13 +11,29 @@ from collections import OrderedDict
 from datetime import date
 
 from app.core.timezone import app_now, today_in_app_timezone
-from app.models.coffee_commercialization import CoffeeCommercializationRecord
+from app.models.coffee_commercialization import CoffeeCommercializationRecord, CoffeeSaleSequence
 from app.models.finance_transaction import FinanceTransaction
 
 SALE_STATUS_OPTIONS = [("negociado", "Negociada"), ("entregue", "Entregue"), ("recebido", "Recebida")]
-SALE_STATUS_LABELS = {"negociado": "Negociada", "faturado": "Faturada", "entregue": "Entregue", "recebido": "Recebida"}
+SALE_STATUS_LABELS = {
+    "negociado": "Negociada",
+    "faturado": "Faturada",
+    "entregue": "Entregue",
+    "recebido": "Recebida",
+    "cancelado": "Cancelada",
+}
 SALE_STATUS_STEPS = ["negociado", "entregue", "recebido"]
 EPS = 0.0001
+
+
+def is_sale_cancelled(records_or_record) -> bool:
+    if not records_or_record:
+        return False
+    if isinstance(records_or_record, dict):
+        return bool(records_or_record.get("cancelled") or (records_or_record.get("status") or "").lower() == "cancelado")
+    if isinstance(records_or_record, (list, tuple)):
+        return all((getattr(r, "status", None) or "").lower() == "cancelado" for r in records_or_record)
+    return (getattr(records_or_record, "status", None) or "").lower() == "cancelado"
 
 
 def _num(value) -> float:
@@ -47,11 +63,44 @@ def parse_decimal(value) -> float | None:
 
 
 def next_sale_code(db, farm_id: int) -> str:
-    codes = [row[0] for row in db.query(CoffeeCommercializationRecord.sale_code)
-             .filter(CoffeeCommercializationRecord.farm_id == farm_id, CoffeeCommercializationRecord.sale_code.isnot(None))
-             .distinct().all()]
-    numbers = [int(m.group(1)) for code in codes if (m := re.fullmatch(r"V-(\d+)", code or ""))]
-    return f"V-{(max(numbers) + 1) if numbers else 1:04d}"
+    """Gera próximo código V-NNNN de forma estritamente crescente por fazenda, sem jamais reutilizar códigos."""
+    from app.models.nfe_draft import NfeDraft
+
+    seq_query = db.query(CoffeeSaleSequence).filter(CoffeeSaleSequence.farm_id == farm_id)
+    bind = db.get_bind() if hasattr(db, "get_bind") else None
+    if bind is not None and getattr(bind.dialect, "name", "") != "sqlite":
+        seq_query = seq_query.with_for_update()
+    seq = seq_query.first()
+
+    sale_codes = [
+        row[0]
+        for row in db.query(CoffeeCommercializationRecord.sale_code)
+        .filter(CoffeeCommercializationRecord.farm_id == farm_id, CoffeeCommercializationRecord.sale_code.isnot(None))
+        .distinct()
+        .all()
+    ]
+    nfe_codes = [
+        row[0]
+        for row in db.query(NfeDraft.sale_code)
+        .filter(NfeDraft.farm_id == farm_id, NfeDraft.sale_code.isnot(None))
+        .distinct()
+        .all()
+    ]
+    numbers = [
+        int(m.group(1))
+        for code in (*sale_codes, *nfe_codes)
+        if (m := re.fullmatch(r"V-(\d+)", code or ""))
+    ]
+    floor = max([int(seq.last_number or 0) if seq else 0, *numbers])
+    next_number = floor + 1
+    if seq is None:
+        seq = CoffeeSaleSequence(farm_id=farm_id, last_number=next_number, updated_at=app_now())
+        db.add(seq)
+    else:
+        seq.last_number = next_number
+        seq.updated_at = app_now()
+    db.flush()
+    return f"V-{next_number:04d}"
 
 
 def compute_values(lines: list[dict], unit_price: float, funrural_percent: float, brokerage_percent: float,
@@ -227,6 +276,7 @@ def group_sales(records: list[CoffeeCommercializationRecord]) -> list[dict]:
             "received_on": first.received_on, "contract_number": first.contract_number,
             "finance_transaction_id": first.finance_transaction_id, "coffee_type": first.coffee_type,
             "delivered": first.delivered_on is not None, "received": first.received_on is not None,
+            "cancelled": status == "cancelado", "cancelled_at": getattr(first, "cancelled_at", None),
         })
     return result
 
@@ -383,9 +433,46 @@ def undo_receive(db, records: list[CoffeeCommercializationRecord], installment_i
     db.commit()
 
 
-def sync_status_with_invoice(db, *, farm_id: int, sale_code: str, authorized: bool) -> bool:
+def cancel_sale(db, repo, *, records: list[CoffeeCommercializationRecord]) -> int:
+    """Cancela logicamente a venda (status='cancelado'), devolve o saldo aos lotes e estorna o Financeiro.
+
+    Desvincula ``finance_transaction_id`` antes de excluir ``FinanceTransaction`` para que o
+    ``cascade='all, delete-orphan'`` não apague os registros históricos da venda.
+    Não faz commit (fica a cargo da rota para manter atomicidade com rascunhos de NF-e).
+    """
+    now = app_now()
+    tx_ids = {r.finance_transaction_id for r in records if r.finance_transaction_id}
+    for record in records:
+        record.status = "cancelado"
+        record.cancelled_at = now
+        record.delivered_on = None
+        record.received_on = None
+        record.finance_transaction_id = None
+    db.flush()
+    removed_tx = 0
+    for tx_id in tx_ids:
+        tx = repo.get_finance_transaction(tx_id)
+        if tx is not None:
+            db.delete(tx)
+            removed_tx += 1
+    db.flush()
+    return removed_tx
+
+
+def sync_status_with_invoice(
+    db,
+    *,
+    farm_id: int,
+    sale_code: str,
+    authorized: bool,
+    origin_ids: list[int] | None = None,
+) -> bool:
     """Nota autorizada fatura a venda negociada; nota cancelada devolve a venda faturada para negociada."""
     records = sale_records(db, farm_id, sale_code)
+    if not records or is_sale_cancelled(records):
+        return False
+    if origin_ids is not None and sorted(r.id for r in records) != sorted(origin_ids):
+        return False
     changed = False
     for record in records:
         current = (record.status or "negociado").lower()
@@ -401,7 +488,7 @@ def sync_status_with_invoice(db, *, farm_id: int, sale_code: str, authorized: bo
 def sold_sacks_by_harvest(records) -> dict[int, float]:
     totals: dict[int, float] = {}
     for record in records:
-        if record.harvest_id:
+        if record.harvest_id and not is_sale_cancelled(record):
             totals[record.harvest_id] = totals.get(record.harvest_id, 0.0) + _num(record.equivalent_sacks)
     return totals
 

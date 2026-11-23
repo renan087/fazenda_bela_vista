@@ -73,6 +73,110 @@ def _json(row) -> dict:
     return json.loads(row.data_json) if row else {}
 
 
+def _draft_origin_ids(draft: NfeDraft) -> list[int] | None:
+    try:
+        raw = json.loads(draft.snapshot_json or '{}').get('origem_ids')
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if isinstance(raw, list) and raw:
+        try:
+            return sorted(int(x) for x in raw)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def inspect_sale_link(db, draft: NfeDraft) -> dict:
+    """Verifica se a venda original desta NF-e continua ativa, foi cancelada ou foi excluída."""
+    from app.services.coffee_sales import is_sale_cancelled, sale_records
+
+    origin_ids = _draft_origin_ids(draft)
+    if not draft.sale_code:
+        return {'state': 'excluida', 'records': [], 'origin_ids': origin_ids}
+    records = sale_records(db, draft.farm_id, draft.sale_code)
+    if not records:
+        return {'state': 'excluida', 'records': [], 'origin_ids': origin_ids}
+    if origin_ids is not None and sorted(r.id for r in records) != origin_ids:
+        return {'state': 'excluida', 'records': [], 'origin_ids': origin_ids}
+    if is_sale_cancelled(records):
+        return {'state': 'cancelada', 'records': records, 'origin_ids': origin_ids}
+    return {'state': 'ativa', 'records': records, 'origin_ids': origin_ids}
+
+
+def _draft_is_live_fiscal(db, draft: NfeDraft) -> bool:
+    """True se o rascunho está autorizado ou aguardando retorno da SEFAZ (e não cancelado)."""
+    cancel_ev = (db.query(NfeDraftEvent.id)
+                 .filter_by(draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id,
+                            event_type='cancelamento_simulado').first())
+    if cancel_ev:
+        return False
+    proc = (db.query(NfeStoredDocument.id)
+            .filter_by(draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id,
+                       document_type='nfe_proc_simulacao').first())
+    if proc:
+        return True
+    attempt = (db.query(NfeTransmissionAttempt)
+               .filter_by(draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id)
+               .order_by(NfeTransmissionAttempt.created_at.desc()).first())
+    return bool(attempt and attempt.status_category not in ('rejeitada', 'denegada'))
+
+
+def has_active_note_for_sale(db, draft: NfeDraft, *, origin_ids: list[int] | None = None) -> bool:
+    """True se a mesma venda já possui alguma NF-e autorizada ou em envio."""
+    if not draft.sale_code:
+        return False
+    siblings = (db.query(NfeDraft)
+                .filter_by(organization_id=draft.organization_id, farm_id=draft.farm_id, sale_code=draft.sale_code)
+                .all())
+    for sibling in siblings:
+        if origin_ids is not None:
+            sib_origins = _draft_origin_ids(sibling)
+            if sib_origins is not None and sib_origins != origin_ids:
+                continue
+        if _draft_is_live_fiscal(db, sibling):
+            return True
+    return False
+
+
+def copy_draft_preparation(db, *, source: NfeDraft, target: NfeDraft, user_id: int) -> None:
+    """Copia os dados preparatórios editáveis de uma nota para um novo rascunho (sem número nem eventos)."""
+    src_details = _row(db, NfeDraftDetails, source)
+    if src_details:
+        dst_details = _row(db, NfeDraftDetails, target)
+        if dst_details:
+            dst_details.data_json = src_details.data_json
+            dst_details.updated_by = user_id
+        else:
+            db.add(NfeDraftDetails(
+                draft_id=target.id, organization_id=target.organization_id, farm_id=target.farm_id,
+                data_json=src_details.data_json, updated_by=user_id,
+            ))
+    src_tech = _row(db, NfeDraftTechnicalData, source)
+    if src_tech:
+        dst_tech = _row(db, NfeDraftTechnicalData, target)
+        if dst_tech:
+            dst_tech.schema_version = src_tech.schema_version
+            dst_tech.data_json = src_tech.data_json
+            dst_tech.updated_by = user_id
+        else:
+            db.add(NfeDraftTechnicalData(
+                draft_id=target.id, organization_id=target.organization_id, farm_id=target.farm_id,
+                schema_version=src_tech.schema_version, data_json=src_tech.data_json, updated_by=user_id,
+            ))
+    src_extra = _row(db, NfeDraftExtraData, source)
+    if src_extra:
+        dst_extra = _row(db, NfeDraftExtraData, target)
+        if dst_extra:
+            dst_extra.data_json = src_extra.data_json
+            dst_extra.updated_by = user_id
+        else:
+            db.add(NfeDraftExtraData(
+                draft_id=target.id, organization_id=target.organization_id, farm_id=target.farm_id,
+                data_json=src_extra.data_json, updated_by=user_id,
+            ))
+    db.commit()
+
+
 def load_note(db, draft: NfeDraft, *, issuer=None, now: datetime | None = None) -> dict:
     """Junta tudo o que a lista e o detalhe precisam e calcula a situação real da nota."""
     from app.services.nfe_draft import review_preparation
@@ -133,6 +237,16 @@ def load_note(db, draft: NfeDraft, *, issuer=None, now: datetime | None = None) 
         emission_br, emission_day = emission, ''
     deadline = authorized_at + CANCEL_WINDOW if authorized_at else None
     can_cancel = status == 'autorizada' and deadline is not None and now <= deadline
+    sale_link = inspect_sale_link(db, draft)
+    sale_state = sale_link['state']
+    if sale_state == 'cancelada':
+        can_duplicate, duplicate_reason = False, 'venda cancelada'
+    elif sale_state == 'excluida':
+        can_duplicate, duplicate_reason = False, 'venda excluída'
+    elif status in ('autorizada', 'enviando') or has_active_note_for_sale(db, draft, origin_ids=sale_link['origin_ids']):
+        can_duplicate, duplicate_reason = False, 'venda já tem NF-e autorizada'
+    else:
+        can_duplicate, duplicate_reason = True, ''
     return {
         'draft': draft, 'id': draft.id, 'status': status, 'meta': STATUS_META[status],
         'number': f'{ident.number:06d}' if numbered else '', 'series': ident.series if numbered else None,
@@ -143,6 +257,7 @@ def load_note(db, draft: NfeDraft, *, issuer=None, now: datetime | None = None) 
         'buyer_doc': _fmt_doc(details.get('recipient_cpf')),
         'product_line': f'{product} · {_num_br(sacks, 0 if sacks == sacks.to_integral() else 2)} sc',
         'sacks': sacks, 'sale_code': draft.sale_code,
+        'sale_state': sale_state, 'can_duplicate': can_duplicate, 'duplicate_reason': duplicate_reason,
         'value': Decimal(str(snapshot.get('valor_bruto') or '0')), 'value_br': _money(snapshot.get('valor_bruto')),
         'issues': issues, 'review': review,
         'attempt': attempt, 'proc': proc, 'cancel_event': cancel_ev,

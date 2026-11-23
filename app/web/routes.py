@@ -21114,11 +21114,25 @@ def lot_detail_page(
                                                        selectinload(CoffeeClassification.attachments).load_only(CoffeeClassificationAttachment.filename))
                 .filter(CoffeeClassification.harvest_id == harvest.id)
                 .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).all())
-    own_sales = (db.query(CoffeeCommercializationRecord).filter(CoffeeCommercializationRecord.harvest_id == harvest.id).all())
+    own_sales = (
+        db.query(CoffeeCommercializationRecord)
+        .filter(
+            CoffeeCommercializationRecord.harvest_id == harvest.id,
+            CoffeeCommercializationRecord.status != "cancelado",
+        )
+        .all()
+    )
     codes = {s.sale_code for s in own_sales if s.sale_code}
-    group_records = (db.query(CoffeeCommercializationRecord).filter(CoffeeCommercializationRecord.sale_code.in_(codes),
-                                                                    CoffeeCommercializationRecord.farm_id == harvest.plot.farm_id)
-                     .order_by(CoffeeCommercializationRecord.sale_date.desc(), CoffeeCommercializationRecord.id.desc()).all()) if codes else []
+    group_records = (
+        db.query(CoffeeCommercializationRecord)
+        .filter(
+            CoffeeCommercializationRecord.sale_code.in_(codes),
+            CoffeeCommercializationRecord.farm_id == harvest.plot.farm_id,
+            CoffeeCommercializationRecord.status != "cancelado",
+        )
+        .order_by(CoffeeCommercializationRecord.sale_date.desc(), CoffeeCommercializationRecord.id.desc())
+        .all()
+    ) if codes else []
     group_records += [s for s in own_sales if not s.sale_code]
     groups = group_sales(group_records)
     produced = float(harvest.sacks_produced or 0)
@@ -21283,7 +21297,10 @@ def lot_processing_action(
         _flash(request, "error", "Informe quantas sacas de 60 kg o lote rendeu.")
         return _redirect(f"/producao/lotes/{lot_id}")
     sold = sum(float(s.equivalent_sacks or 0) for s in
-               db.query(CoffeeCommercializationRecord).filter(CoffeeCommercializationRecord.harvest_id == harvest.id).all())
+               db.query(CoffeeCommercializationRecord).filter(
+                   CoffeeCommercializationRecord.harvest_id == harvest.id,
+                   CoffeeCommercializationRecord.status != "cancelado",
+               ).all())
     if sacks + 0.0001 < sold:
         _flash(request, "error", f"O lote já tem {_format_decimal_br(sold)} sc vendidas. Confira as sacas reais ou ajuste as vendas.")
         return _redirect(f"/producao/lotes/{lot_id}")
@@ -21723,7 +21740,14 @@ def _quality_price_refs(db: Session, harvests, by_lot) -> list[dict]:
     ids = [item.id for item in harvests]
     if not ids:
         return []
-    sales = db.query(CoffeeCommercializationRecord).filter(CoffeeCommercializationRecord.harvest_id.in_(ids)).all()
+    sales = (
+        db.query(CoffeeCommercializationRecord)
+        .filter(
+            CoffeeCommercializationRecord.harvest_id.in_(ids),
+            CoffeeCommercializationRecord.status != "cancelado",
+        )
+        .all()
+    )
     buckets = {"top": [], "ok": [], "std": []}
     for sale in sales:
         latest = (by_lot.get(sale.harvest_id) or [None])[0]
@@ -21931,7 +21955,14 @@ def coffee_classification_detail_page(analysis_id: int, request: Request, db: Se
     versions = by_lot[harvest.id]
     index = versions.index(analysis)
     previous = versions[index + 1] if index + 1 < len(versions) else None
-    sales = db.query(CoffeeCommercializationRecord).filter(CoffeeCommercializationRecord.harvest_id == harvest.id).all()
+    sales = (
+        db.query(CoffeeCommercializationRecord)
+        .filter(
+            CoffeeCommercializationRecord.harvest_id == harvest.id,
+            CoffeeCommercializationRecord.status != "cancelado",
+        )
+        .all()
+    )
     sold = sum(float(s.equivalent_sacks or 0) for s in sales)
     available = max(float(harvest.sacks_produced or 0) - sold, 0)
     history = [a for a in reversed(versions) if a.sensory_score is not None]
@@ -22275,19 +22306,29 @@ def commercialization_page(
     if harvest_id and request.query_params.get("launch") == "1":
         return _redirect_with_query("/producao/vendas/nova", lote=harvest_id)
 
-    lots, sales = _production_lots(request, repo, db, scope) if scope.get("active_farm_id") else ([], [])
+    lots, _active_sales = _production_lots(request, repo, db, scope) if scope.get("active_farm_id") else ([], [])
+    farm_id = scope.get("active_farm_id")
+    sales = [
+        item
+        for item in repo.list_coffee_commercializations(farm_id=farm_id, include_cancelled=True)
+        if _commercialization_record_matches_scope(item, scope)
+    ] if farm_id else []
     groups = group_sales(_sort_collection_desc(sales, lambda item: item.sale_date, lambda item: item.id))
     all_groups = list(groups)
+    active_groups = [g for g in all_groups if not g["cancelled"]]
     if harvest_id:
         groups = [g for g in groups if any(lot["harvest_id"] == harvest_id for lot in g["lots"])]
     today = today_in_app_timezone()
-    farm_id = scope.get("active_farm_id")
     draft_by_sale = _nf_drafts_by_sale(db, user, farm_id, all_groups)
     note_by_sale = _nf_notes_by_sale(db, user, farm_id, draft_by_sale)
     track = _sale_track(db, all_groups, note_by_sale, today)
-    # Filtros: o que falta fazer em cada venda (entrega, recebimento e nota são independentes).
-    filters = {"a_entregar": lambda g: not g["delivered"], "a_receber": lambda g: not track[g["code"]]["receipt"]["received"],
-               "sem_nota": lambda g: (note_by_sale.get(g["code"]) or {}).get("status") not in ("autorizada", "enviando")}
+    # Filtros: o que falta fazer em cada venda ativa (entrega, recebimento e nota) + histórico de canceladas.
+    filters = {
+        "a_entregar": lambda g: not g["cancelled"] and not g["delivered"],
+        "a_receber": lambda g: not g["cancelled"] and not track[g["code"]]["receipt"]["received"],
+        "sem_nota": lambda g: not g["cancelled"] and (note_by_sale.get(g["code"]) or {}).get("status") not in ("autorizada", "enviando"),
+        "canceladas": lambda g: g["cancelled"],
+    }
     chosen_filter = (request.query_params.get("filtro") or "").strip().lower()
     chosen_filter = chosen_filter if chosen_filter in filters else ""
     filter_counts = {key: sum(1 for g in groups if fn(g)) for key, fn in filters.items()}
@@ -22336,10 +22377,10 @@ def commercialization_page(
         "from": (page - 1) * per_page + 1 if groups else 0, "to": min(page * per_page, len(groups)), "total": len(groups),
         "per_page": per_page, "sizes": sizes, "keep": keep,
     }
-    sold_sacks = sum(g["sacks"] for g in all_groups)
-    gross = sum(g["gross"] for g in all_groups)
-    received = sum(track[g["code"]]["receipt"]["paid_amount"] for g in all_groups)
-    to_receive = sum(g["net"] for g in all_groups) - received
+    sold_sacks = sum(g["sacks"] for g in active_groups)
+    gross = sum(g["gross"] for g in active_groups)
+    received = sum(track[g["code"]]["receipt"]["paid_amount"] for g in active_groups)
+    to_receive = sum(g["net"] for g in active_groups) - received
     lots_with_balance = [lot for lot in lots if lot["available"] > 0]
     new_sale = request.query_params.get("nova") == "1" and next((g for g in page_groups if g["code"] == focus), None)
     return templates.TemplateResponse(
@@ -22771,7 +22812,7 @@ def sale_edit_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
-    from app.services.coffee_sales import sale_records
+    from app.services.coffee_sales import is_sale_cancelled, sale_records
 
     repo = _repository(db)
     scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
@@ -22781,11 +22822,14 @@ def sale_edit_page(
     if not records or not all(_commercialization_record_matches_scope(r, scope) for r in records):
         _flash(request, "error", "Venda não encontrada na fazenda ativa.")
         return _redirect("/producao/comercializacao")
+    if is_sale_cancelled(records):
+        _flash(request, "error", f"A venda {sale_code} foi cancelada e não pode ser editada.")
+        return _redirect_with_query("/producao/comercializacao", venda=sale_code)
     return _sale_form_render(request, db, user, csrf_token, repo, scope, sale_code=sale_code)
 
 
 async def _sale_save(request: Request, db: Session, user: User, csrf_token: str, sale_code: str | None):
-    from app.services.coffee_sales import parse_decimal, sale_records, save_sale
+    from app.services.coffee_sales import is_sale_cancelled, parse_decimal, sale_records, save_sale
 
     form = await request.form()
     validate_csrf(request, form.get("csrf_token"))
@@ -22797,6 +22841,9 @@ async def _sale_save(request: Request, db: Session, user: User, csrf_token: str,
     if sale_code and (not existing or not all(_commercialization_record_matches_scope(r, scope) for r in existing)):
         _flash(request, "error", "Venda não encontrada na fazenda ativa.")
         return _redirect("/producao/comercializacao")
+    if sale_code and is_sale_cancelled(existing):
+        _flash(request, "error", f"A venda {sale_code} foi cancelada e não pode ser editada.")
+        return _redirect_with_query("/producao/comercializacao", venda=sale_code)
     text = lambda key: (form.get(key) or "").strip()
     raw_lines = {}
     for value in form.getlist("lot_id"):
@@ -22997,6 +23044,7 @@ async def sale_update_action(
 def create_fiscal_draft_action(sale_code: str, request: Request, csrf_token: str = Form(...),
                                db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
     from app.services.coffee_sales import sale_records
+    from app.services.coffee_sales import is_sale_cancelled
     from app.services.nfe_draft import create_draft
     validate_csrf(request, csrf_token)
     repo = _repository(db)
@@ -23006,14 +23054,24 @@ def create_fiscal_draft_action(sale_code: str, request: Request, csrf_token: str
     records = sale_records(db, scope["active_farm_id"], sale_code)
     if not records or not all(_commercialization_record_matches_scope(row, scope) for row in records):
         raise HTTPException(status_code=404, detail="Venda não encontrada.")
+    if is_sale_cancelled(records):
+        _flash(request, "error", f"A venda {sale_code} foi cancelada. Registre uma nova venda para emitir outra nota.")
+        return _redirect_with_query("/producao/comercializacao", venda=sale_code)
     farm = db.get(Farm, scope["active_farm_id"])
     if not farm or farm.organization_id != user.organization_id:
         raise HTTPException(status_code=403, detail="Fazenda indisponível.")
     from app.models.nfe_draft import NfeDraft, NfeIssuerProfile
     from app.services.nfe_notes import load_note
     issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    current_origin_ids = sorted(row.id for row in records)
     for existing in (db.query(NfeDraft).filter_by(organization_id=user.organization_id, farm_id=farm.id, sale_code=sale_code)
-                     .order_by(NfeDraft.created_at.desc()).limit(5).all()):
+                     .order_by(NfeDraft.created_at.desc()).limit(10).all()):
+        try:
+            snap_origins = json.loads(existing.snapshot_json or "{}").get("origem_ids")
+        except (ValueError, TypeError, AttributeError):
+            snap_origins = None
+        if isinstance(snap_origins, list) and sorted(int(x) for x in snap_origins) != current_origin_ids:
+            continue
         status_now = load_note(db, existing, issuer=issuer)["status"]
         if status_now in ("rascunho", "pendente", "rejeitada"):
             return _redirect("/producao/rascunhos-fiscais/" + existing.id)
@@ -23960,7 +24018,7 @@ def sale_status_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    from app.services.coffee_sales import SALE_STATUS_LABELS, group_sales, sale_records, set_status
+    from app.services.coffee_sales import SALE_STATUS_LABELS, group_sales, is_sale_cancelled, sale_records, set_status
 
     del user
     validate_csrf(request, csrf_token)
@@ -23972,6 +24030,9 @@ def sale_status_action(
     if not records or not all(_commercialization_record_matches_scope(r, scope) for r in records):
         _flash(request, "error", "Venda não encontrada na fazenda ativa.")
         return _redirect("/producao/comercializacao")
+    if is_sale_cancelled(records):
+        _flash(request, "error", f"A venda {sale_code} está cancelada.")
+        return _redirect_with_query("/producao/comercializacao", venda=sale_code)
     try:
         set_status(db, records, (status or "").strip().lower(), _date_or_none(status_date))
     except ValueError as exc:
@@ -23992,7 +24053,7 @@ def sale_status_action(
 
 
 def _sale_action_scope(request: Request, db: Session, sale_code: str, csrf_token: str):
-    from app.services.coffee_sales import sale_records
+    from app.services.coffee_sales import is_sale_cancelled, sale_records
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
@@ -24002,6 +24063,9 @@ def _sale_action_scope(request: Request, db: Session, sale_code: str, csrf_token
     if not records or not all(_commercialization_record_matches_scope(r, scope) for r in records):
         _flash(request, "error", "Venda não encontrada na fazenda ativa.")
         return None, None, _redirect("/producao/comercializacao")
+    if is_sale_cancelled(records):
+        _flash(request, "error", f"A venda {sale_code} está cancelada.")
+        return None, None, _redirect_with_query("/producao/comercializacao", venda=sale_code)
     return scope, records, None
 
 
@@ -24119,6 +24183,7 @@ async def sale_receipt_action(
     return _sale_back(sale_code, str(form.get("voltar") or "") or None)
 
 
+@router.post("/producao/vendas/{sale_code}/cancelar")
 @router.post("/producao/vendas/{sale_code}/excluir")
 def sale_delete_action(
     sale_code: str,
@@ -24127,7 +24192,10 @@ def sale_delete_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    from app.services.coffee_sales import sale_records
+    """Cancela a venda (mantendo o histórico como Cancelada), devolve saldo aos lotes e estorna o Financeiro."""
+    from app.models.nfe_draft import NfeDraft
+    from app.services.coffee_sales import cancel_sale, group_sales, is_sale_cancelled, sale_records
+    from app.services.nfe_notes import delete_draft
 
     validate_csrf(request, csrf_token)
     repo = _repository(db)
@@ -24138,43 +24206,58 @@ def sale_delete_action(
     if not records or not all(_commercialization_record_matches_scope(r, scope) for r in records):
         _flash(request, "error", "Venda não encontrada na fazenda ativa.")
         return _redirect("/producao/comercializacao")
-    # Venda com NF-e autorizada (ou em envio) não sai: primeiro cancela a nota. Rascunho é descartado junto.
-    from app.models.nfe_draft import NfeDraft
-    from app.services.coffee_sales import group_sales
-    from app.services.nfe_notes import delete_draft
+    if is_sale_cancelled(records):
+        _flash(request, "error", f"A venda {sale_code} já está cancelada.")
+        return _redirect_with_query("/producao/comercializacao", venda=sale_code)
+    # Venda com NF-e autorizada (ou em envio) não cancela: primeiro cancela a nota. Rascunho sem envio é descartado.
     farm_id = scope["active_farm_id"]
     notes = _nf_notes_by_sale(db, user, farm_id, _nf_drafts_by_sale(db, user, farm_id, group_sales(records)))
     note = notes.get(sale_code) or {}
     if note.get("status") in ("autorizada", "enviando"):
-        _flash(request, "error", f"A venda {sale_code} tem NF-e {note.get('number') or ''} autorizada. Cancele a nota antes de excluir a venda.".replace("  ", " "))
+        _flash(
+            request,
+            "error",
+            f"A venda {sale_code} tem NF-e {note.get('number') or ''} autorizada. Cancele a nota antes de cancelar a venda.".replace("  ", " "),
+        )
         return _redirect_with_query("/producao/comercializacao", venda=sale_code)
     discarded = 0
     if user.organization_id:
+        current_origin_ids = sorted(r.id for r in records)
         for draft in db.query(NfeDraft).filter_by(organization_id=user.organization_id, farm_id=farm_id, sale_code=sale_code).all():
+            try:
+                snap_origins = json.loads(draft.snapshot_json or "{}").get("origem_ids")
+            except (ValueError, TypeError, AttributeError):
+                snap_origins = None
+            if isinstance(snap_origins, list) and sorted(int(x) for x in snap_origins) != current_origin_ids:
+                continue
             try:
                 delete_draft(db, draft=draft)
                 discarded += 1
             except ValueError:
                 pass  # nota cancelada: fica no histórico de Notas Fiscais
-    tx_ids = {r.finance_transaction_id for r in records if r.finance_transaction_id}
-    for record in records:
-        db.delete(record)
-    for tx_id in tx_ids:
-        tx = repo.get_finance_transaction(tx_id)
-        if tx:
-            db.delete(tx)
+    cancel_sale(db, repo, records=records)
     db.commit()
-    _flash(request, "success", f"Venda {sale_code} excluída. O saldo voltou para os lotes."
-           + (" O rascunho da nota foi descartado." if discarded else ""))
-    return _redirect("/producao/comercializacao")
+    _flash(
+        request,
+        "success",
+        f"Venda {sale_code} cancelada. O saldo voltou para os lotes."
+        + (" O rascunho da nota foi descartado." if discarded else ""),
+    )
+    return _redirect_with_query("/producao/comercializacao", venda=sale_code)
 
 
 def _buyer_last_sales(db: Session, buyer_ids: list[int]) -> dict[int, date]:
     if not buyer_ids:
         return {}
-    rows = (db.query(CoffeeCommercializationRecord.buyer_id, func.max(CoffeeCommercializationRecord.sale_date))
-            .filter(CoffeeCommercializationRecord.buyer_id.in_(buyer_ids))
-            .group_by(CoffeeCommercializationRecord.buyer_id).all())
+    rows = (
+        db.query(CoffeeCommercializationRecord.buyer_id, func.max(CoffeeCommercializationRecord.sale_date))
+        .filter(
+            CoffeeCommercializationRecord.buyer_id.in_(buyer_ids),
+            CoffeeCommercializationRecord.status != "cancelado",
+        )
+        .group_by(CoffeeCommercializationRecord.buyer_id)
+        .all()
+    )
     return {buyer_id: last for buyer_id, last in rows}
 
 
@@ -27610,7 +27693,12 @@ def _nf_actions(note: dict) -> dict:
     danfe = f"/notas-fiscais/{nid}/danfe.pdf"
     xml = f"/notas-fiscais/{nid}/xml"
     st = note["status"]
-    duplicate = {"label": "Duplicar", "icon": "copy", "post": f"{detail}/duplicar", "hint": "cria novo rascunho"}
+    can_dup = note.get("can_duplicate", True)
+    dup_reason = note.get("duplicate_reason") or "indisponível"
+    if can_dup:
+        duplicate = {"label": "Duplicar", "icon": "copy", "post": f"{detail}/duplicar", "hint": "cria novo rascunho"}
+    else:
+        duplicate = {"label": "Duplicar", "icon": "copy", "disabled": True, "hint": dup_reason}
     if st in ("rascunho", "pendente"):
         primary = ({"label": "Continuar preenchendo", "icon": "edit", "href": edit} if st == "rascunho"
                    else {"label": "Resolver pendências", "icon": "alert", "href": edit})
@@ -27667,7 +27755,11 @@ def _nf_public(note: dict) -> dict:
         "id": note["id"], "status": note["status"], "label": note["meta"]["label"], "tone": note["meta"]["tone"],
         "title": note["title"], "subtitle": note["subtitle"], "kind": "NF-e · Série " + str(note["series"]) if note["series"] else "Rascunho de NF-e",
         "emission": note["emission_br"], "day": note["emission_day"], "buyer": note["buyer"], "doc": note["buyer_doc"],
-        "product": note["product_line"], "sale": note["sale_code"], "value": float(note["value"]), "value_br": note["value_br"],
+        "product": note["product_line"], "sale": note["sale_code"],
+        "sale_state": note.get("sale_state", "ativa"),
+        "can_duplicate": note.get("can_duplicate", True),
+        "duplicate_reason": note.get("duplicate_reason", ""),
+        "value": float(note["value"]), "value_br": note["value_br"],
         "box": _nf_box(note), "actions": _nf_actions(note), "detail": f"/notas-fiscais/{note['id']}",
     }
 
@@ -27928,13 +28020,15 @@ def _nf_lot_stage(db: Session, farm: Farm, draft):
 def _nf_create_draft_for_sale(db: Session, user: User, farm: Farm, sale_code: str, scope: dict):
     from app.models.harvest import HarvestRecord
     from app.models.nfe_draft import NfeIssuerProfile
-    from app.services.coffee_sales import sale_records
+    from app.services.coffee_sales import is_sale_cancelled, sale_records
     from app.services.harvest_lots import stage_of
     from app.services.nfe_draft import create_draft
     from app.services.nfe_fiscal_setup import apply_setup_to_draft, suggest_operation, suggest_product
     records = sale_records(db, farm.id, sale_code)
     if not records or not all(_commercialization_record_matches_scope(row, scope) for row in records):
-        raise HTTPException(status_code=404, detail="Venda não encontrada.")
+        raise ValueError("A venda de origem não foi encontrada na fazenda ativa.")
+    if is_sale_cancelled(records):
+        raise ValueError(f"A venda {sale_code} foi cancelada. Registre uma nova venda para emitir outra nota.")
     draft = create_draft(db, organization_id=user.organization_id, farm_id=farm.id, user_id=user.id, records=records)
     operation = suggest_operation(db, organization_id=user.organization_id, farm_id=farm.id)
     if operation:
@@ -27958,13 +28052,38 @@ def _nf_create_draft_for_sale(db: Session, user: User, farm: Farm, sale_code: st
 @router.post("/notas-fiscais/{draft_id}/duplicar")
 def fiscal_note_duplicate(draft_id: str, request: Request, csrf_token: str = Form(...),
                           db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.nfe_notes import copy_draft_preparation, has_active_note_for_sale, inspect_sale_link
+
     validate_csrf(request, csrf_token)
     repo, scope, farm, denied = _nf_scope(request, db, user)
     if denied:
         return denied
     draft = _nf_draft(db, user, farm, draft_id)
+    sale_link = inspect_sale_link(db, draft)
+    if sale_link["state"] == "cancelada":
+        _flash(
+            request,
+            "error",
+            f"Não é possível duplicar: a venda {draft.sale_code} foi cancelada. Registre uma nova venda para emitir outra nota.",
+        )
+        return _redirect(f"/notas-fiscais/{draft_id}")
+    if sale_link["state"] == "excluida":
+        _flash(
+            request,
+            "error",
+            f"Não é possível duplicar: a venda de origem ({draft.sale_code}) não existe mais. Registre uma nova venda para emitir outra nota.",
+        )
+        return _redirect(f"/notas-fiscais/{draft_id}")
+    if has_active_note_for_sale(db, draft, origin_ids=sale_link["origin_ids"]):
+        _flash(
+            request,
+            "error",
+            f"A venda {draft.sale_code} já possui uma NF-e autorizada ou em envio. Cancele a nota ativa antes de emitir outra.",
+        )
+        return _redirect(f"/notas-fiscais/{draft_id}")
     try:
         new_draft = _nf_create_draft_for_sale(db, user, farm, draft.sale_code, scope)
+        copy_draft_preparation(db, source=draft, target=new_draft, user_id=user.id)
     except ValueError as exc:
         db.rollback()
         _flash(request, "error", str(exc))

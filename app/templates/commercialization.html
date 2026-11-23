@@ -63,6 +63,9 @@
                     {% for value, label in [('', 'Todas'), ('a_entregar', 'A entregar'), ('a_receber', 'A receber'), ('sem_nota', 'Sem nota')] %}
                     <button type="submit" name="filtro" value="{{ value }}" aria-pressed="{{ 'true' if sale_filter == value else 'false' }}">{{ label }} <span>{{ sale_total_count if not value else sale_filter_counts[value] }}</span></button>
                     {% endfor %}
+                    {% if sale_filter_counts.get('canceladas') or sale_filter == 'canceladas' %}
+                    <button type="submit" name="filtro" value="canceladas" aria-pressed="{{ 'true' if sale_filter == 'canceladas' else 'false' }}">Canceladas <span>{{ sale_filter_counts.get('canceladas', 0) }}</span></button>
+                    {% endif %}
                 </div>
                 <label class="sl-search">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -82,10 +85,27 @@
         {% set nf_live = nf and nf.status != 'cancelada' %}
         {% set nf_done = nf_live and nf.status in ('autorizada', 'enviando') %}
         {% set t = sale_track[g.code] %}{% set d = t.delivery %}{% set r = t.receipt %}
-        <article class="sv-row{% if g.code == sale_focus %} is-focus{% endif %}{% if new_sale and new_sale.code == g.code %} is-new{% endif %}" id="venda-{{ g.code }}" data-sv-href="/producao/vendas/{{ g.code }}/editar">
-            <div class="sv-c1"><a href="/producao/vendas/{{ g.code }}/editar"><b>{{ g.code }}</b></a><span>{{ g.sale_date.strftime('%d/%m/%Y') }}</span></div>
+        <article class="sv-row{% if g.cancelled %} is-cancelled{% endif %}{% if g.code == sale_focus %} is-focus{% endif %}{% if new_sale and new_sale.code == g.code %} is-new{% endif %}" id="venda-{{ g.code }}"{% if not g.cancelled %} data-sv-href="/producao/vendas/{{ g.code }}/editar"{% endif %}>
+            <div class="sv-c1">{% if g.cancelled %}<b>{{ g.code }}</b>{% else %}<a href="/producao/vendas/{{ g.code }}/editar"><b>{{ g.code }}</b></a>{% endif %}<span>{{ g.sale_date.strftime('%d/%m/%Y') }}</span></div>
             <div class="sv-c2"><b title="{{ g.buyer_name }}">{{ g.buyer_name }}</b><span>{% for lot in g.lots %}{% if lot.harvest_id %}<a href="/producao?lote={{ lot.harvest_id }}">{{ lot.label }}</a>{% else %}{{ lot.label }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</span></div>
 
+            {% if g.cancelled %}
+            <div class="sv-nfcell">
+                {% if nf %}<a class="sv-nf is-none" href="/notas-fiscais/{{ nf.id }}">NF {{ nf.number or 'cancelada' }}</a>{% else %}<span class="sv-nf is-none is-static">Sem nota</span>{% endif %}
+            </div>
+            <div class="sv-track">
+                <span class="sv-cancelled-pill">Cancelada</span>
+            </div>
+            <div class="sv-c4 is-cancelled"><b>R$ {{ g.net|decimal_br }}</b><span>{{ g.sacks|decimal_br(0 if g.sacks == (g.sacks|int) else 2) }} sc · saldo devolvido</span></div>
+            <div class="sl-more" data-sl-more>
+                <button type="button" class="sl-more-btn" data-sl-more-btn aria-haspopup="menu" aria-expanded="false" aria-label="Mais ações da venda {{ g.code }}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></button>
+                <div class="sl-menu" role="menu" hidden>
+                    <p class="sl-menu-h">Venda {{ g.code }} · cancelada</p>
+                    {% if nf %}<a class="sl-mi" role="menuitem" href="/notas-fiscais/{{ nf.id }}">{{ svg('eye') }}Ver nota fiscal</a>{% endif %}
+                    <p class="sl-why">Venda cancelada. O saldo foi devolvido aos lotes e o código não será reutilizado.</p>
+                </div>
+            </div>
+            {% else %}
             <div class="sv-nfcell" data-sv-pop>
                 <button type="button" class="sv-nf{% if nf_done %} is-ok{% elif nf_live %} is-draft{% else %} is-none{% endif %}" data-sv-pop-btn aria-haspopup="true" aria-expanded="false" aria-label="Nota fiscal da venda {{ g.code }}">
                     {% if nf_done and nf.number %}NF {{ nf.number }}{% elif nf_done %}NF enviada{% elif nf_live %}Em rascunho{% else %}Sem nota{% endif %}
@@ -187,17 +207,18 @@
                     {% if can_write_page %}
                     <div class="sl-menu-sep" role="separator"></div>
                     {% if nf_done %}
-                    <button class="sl-mi is-danger" role="menuitem" type="button" disabled aria-describedby="sv-why-{{ g.code }}">{{ svg('trash') }}Excluir venda</button>
-                    <p class="sl-why" id="sv-why-{{ g.code }}">Tem NF-e autorizada. <a href="/notas-fiscais/{{ nf.id }}">Cancelar a nota</a> antes de excluir.</p>
+                    <button class="sl-mi is-danger" role="menuitem" type="button" disabled aria-describedby="sv-why-{{ g.code }}">{{ svg('trash') }}Cancelar venda</button>
+                    <p class="sl-why" id="sv-why-{{ g.code }}">Tem NF-e autorizada. <a href="/notas-fiscais/{{ nf.id }}">Cancelar a nota</a> antes de cancelar a venda.</p>
                     {% else %}
-                    <form method="post" action="/producao/vendas/{{ g.code }}/excluir" data-confirm="Excluir a venda {{ g.code }}? Os lotes voltam a ter o saldo disponível{% if nf_live %} e o rascunho da nota é descartado{% elif nf %}; a nota cancelada continua em Notas Fiscais{% endif %}.">
+                    <form method="post" action="/producao/vendas/{{ g.code }}/cancelar" data-confirm="Cancelar a venda {{ g.code }}? O saldo volta para os lotes, o lançamento financeiro é estornado e a venda continua no histórico como Cancelada{% if nf_live %}; o rascunho da nota é descartado{% elif nf %}; a nota cancelada continua em Notas Fiscais{% endif %}.">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button class="sl-mi is-danger" role="menuitem" type="submit">{{ svg('trash') }}Excluir venda</button>
+                        <button class="sl-mi is-danger" role="menuitem" type="submit">{{ svg('trash') }}Cancelar venda</button>
                     </form>
                     {% endif %}
                     {% endif %}
                 </div>
             </div>
+            {% endif %}
         </article>
         {% else %}
         <div class="pd-empty">

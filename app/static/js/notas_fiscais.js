@@ -118,7 +118,7 @@
 
     function actionNode(a, kind) {
       var node;
-      if (a.post && canWrite) {
+      if (a.post && canWrite && !a.disabled) {
         var f = postForm(a.post, csrf, a.label, '', a.confirm);
         node = el('button'); node.type = 'submit'; f.appendChild(node);
         node._wrap = f;

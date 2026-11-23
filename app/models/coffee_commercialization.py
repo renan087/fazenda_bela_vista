@@ -44,6 +44,7 @@ class CoffeeCommercializationRecord(Base):
     freight_value: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
     discount_value: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
     net_value: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     farm = relationship("Farm")
@@ -51,3 +52,18 @@ class CoffeeCommercializationRecord(Base):
     harvest = relationship("HarvestRecord", back_populates="commercializations")
     finance_account = relationship("FinanceAccount")
     finance_transaction = relationship("FinanceTransaction", back_populates="commercializations")
+
+
+class CoffeeSaleSequence(Base):
+    """Contador monotônico de códigos de venda (V-0001, V-0002...) por fazenda; nunca reutiliza códigos."""
+
+    __tablename__ = "coffee_sale_sequences"
+
+    farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id", ondelete="CASCADE"), primary_key=True)
+    last_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )

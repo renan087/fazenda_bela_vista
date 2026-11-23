@@ -8,7 +8,7 @@ from app.models.agricultural_operation import AgriculturalOperation
 from app.models.backup_automation_setting import BackupAutomationSetting
 from app.models.backup_run import BackupRun
 from app.models.coffee_buyer import CoffeeBuyer
-from app.models.coffee_commercialization import CoffeeCommercializationRecord
+from app.models.coffee_commercialization import CoffeeCommercializationRecord, CoffeeSaleSequence
 from app.models.coffee_quote import CoffeeQuote
 from app.models.coffee_variety import CoffeeVariety
 from app.models.crop_season import CropSeason
@@ -101,6 +101,7 @@ __all__ = [
     "BackupRun",
     "CoffeeBuyer",
     "CoffeeCommercializationRecord",
+    "CoffeeSaleSequence",
     "CoffeeQuote",
     "CoffeeVariety",
     "CropSeason",

@@ -123,7 +123,15 @@
               <td style="white-space:nowrap;color:#5b6660">{{ n.emission }}</td>
               <td><span style="font-weight:500">{{ n.buyer }}</span><span class="nx-sub">{{ n.doc }}</span></td>
               <td style="color:#5b6660">{{ n.product }}</td>
-              <td><a href="/producao/comercializacao?search={{ n.sale }}" style="font-size:.8125rem;font-weight:600;color:#446a36">{{ n.sale }}</a></td>
+              <td>
+                {% if n.sale_state == 'ativa' %}
+                <a href="/producao/comercializacao?venda={{ n.sale }}" style="font-size:.8125rem;font-weight:600;color:#446a36">{{ n.sale }}</a>
+                {% elif n.sale_state == 'cancelada' %}
+                <a href="/producao/comercializacao?filtro=canceladas&amp;venda={{ n.sale }}" style="font-size:.8125rem;font-weight:600;color:#7a857e">{{ n.sale }}</a><span class="nx-sub">venda cancelada</span>
+                {% else %}
+                <span style="font-size:.8125rem;font-weight:600;color:#7a857e">{{ n.sale }}</span><span class="nx-sub">venda excluída</span>
+                {% endif %}
+              </td>
               <td class="is-num" style="font-weight:600">{{ n.value_br }}</td>
               <td><span class="nx-chip is-{{ n.tone }}">{{ n.label }}</span></td>
               <td><button type="button" class="nx-dots" data-nx-menu aria-haspopup="menu" aria-expanded="false" aria-label="Opções da nota {{ n.title }}">{{ nxi('dots', 18, 3) }}</button></td>
@@ -178,5 +186,5 @@
   </div>
 </div>
 <script type="application/json" id="nx-data">{{ notes_public|tojson }}</script>
-<script src="/static/js/notas_fiscais.js?v=20261123ex2" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261123ex3" defer></script>
 {% endblock %}

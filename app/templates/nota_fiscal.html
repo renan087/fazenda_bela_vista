@@ -40,7 +40,11 @@
           <a class="nx-mi" role="menuitem" href="/notas-fiscais/{{ n.id }}/danfe.pdf" target="_blank" rel="noopener">{{ nxi('eye') }}<span>Prévia do DANFE</span></a>
           {% endif %}
           {% if can_write_page %}
+          {% if n.can_duplicate %}
           <form method="post" action="/notas-fiscais/{{ n.id }}/duplicar"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="nx-mi" role="menuitem">{{ nxi('copy') }}<span>Duplicar como novo rascunho</span></button></form>
+          {% else %}
+          <button type="button" class="nx-mi" role="menuitem" disabled>{{ nxi('copy') }}<span>Duplicar como novo rascunho</span><em>{{ n.duplicate_reason }}</em></button>
+          {% endif %}
           {% if n.status == 'autorizada' %}
           <div class="nx-sep"></div>
           {% if n.can_cancel %}
@@ -65,7 +69,7 @@
   {% elif n.status == 'rejeitada' %}
   <div class="nx-banner is-red">{{ nxi('alert', 20) }}<span><strong>{{ n.reject_reason }}</strong> Corrija e reenvie: o número da nota é mantido.</span>{% if can_write_page %}<a href="/producao/rascunhos-fiscais/{{ n.id }}">Corrigir</a>{% endif %}</div>
   {% elif n.status == 'cancelada' %}
-  <div class="nx-banner is-red">{{ nxi('ban', 20) }}<span><strong>Nota cancelada.</strong> {% if n.cancel_reason %}Motivo: {{ n.cancel_reason }}{% endif %} A venda {{ n.sale_code }} voltou a ficar sem nota.</span></div>
+  <div class="nx-banner is-red">{{ nxi('ban', 20) }}<span><strong>Nota cancelada.</strong> {% if n.cancel_reason %}Motivo: {{ n.cancel_reason }}{% endif %} {% if n.sale_state == 'cancelada' %}A venda {{ n.sale_code }} também foi cancelada.{% elif n.sale_state == 'excluida' %}A venda de origem ({{ n.sale_code }}) foi excluída.{% else %}A venda {{ n.sale_code }} voltou a ficar sem nota.{% endif %}</span></div>
   {% elif n.status == 'rascunho' %}
   <div class="nx-banner is-blue">{{ nxi('info', 20) }}<span>Rascunho salvo. Este rascunho não foi transmitido à SEFAZ.</span></div>
   {% endif %}
@@ -141,10 +145,22 @@
     <aside style="flex:1 1 21.25rem;min-width:0;display:flex;flex-direction:column;gap:1.25rem">
       <section class="nx-cardx">
         <h2>Venda vinculada</h2>
-        <a class="nx-linked" href="/producao/comercializacao?search={{ n.sale_code }}">
+        {% if n.sale_state == 'ativa' %}
+        <a class="nx-linked" href="/producao/comercializacao?venda={{ n.sale_code }}">
           <span><strong>{{ n.sale_code }}</strong><span class="nx-sub">{{ n.product_line }}</span></span>
           <span style="font-size:.8125rem;font-weight:600;color:#446a36">Abrir venda</span>
         </a>
+        {% elif n.sale_state == 'cancelada' %}
+        <a class="nx-linked" href="/producao/comercializacao?filtro=canceladas&amp;venda={{ n.sale_code }}">
+          <span><strong style="color:#5b6660">{{ n.sale_code }} · cancelada</strong><span class="nx-sub">{{ n.product_line }}</span></span>
+          <span style="font-size:.8125rem;font-weight:600;color:#7a857e">Ver histórico</span>
+        </a>
+        {% else %}
+        <div class="nx-linked" style="cursor:default">
+          <span><strong style="color:#5b6660">{{ n.sale_code }} · excluída</strong><span class="nx-sub">{{ n.product_line }}</span></span>
+          <span style="font-size:.8125rem;font-weight:600;color:#7a857e">Sem vínculo</span>
+        </div>
+        {% endif %}
       </section>
       <section class="nx-cardx">
         {% set grouped = events|selectattr('count', 'gt', 1)|list if events else [] %}
@@ -197,5 +213,5 @@
   </dialog>
   {% endif %}
 </div>
-<script src="/static/js/notas_fiscais.js?v=20261123ex2" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261123ex3" defer></script>
 {% endblock %}
