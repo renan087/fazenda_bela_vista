@@ -1,11 +1,12 @@
-/* Abre o menu para cima quando não cabe embaixo na tela. */
+/* Ajusta direção do menu (para cima e/ou alinhado à direita) quando não cabe na tela. */
 window.svPlaceMenu = function (menu) {
   if (!menu) return;
-  menu.classList.remove('is-up');
+  menu.classList.remove('is-up', 'is-right');
   if (getComputedStyle(menu).position === 'fixed') return;
   var r = menu.getBoundingClientRect();
   var trigger = menu.parentElement.getBoundingClientRect();
   if (r.bottom > window.innerHeight - 8 && trigger.top - r.height - 8 > 0) menu.classList.add('is-up');
+  if (r.right > window.innerWidth - 8 && trigger.right - r.width > 8) menu.classList.add('is-right');
 };
 
 /* Comercialização: menu "⋯" de cada venda (fecha ao clicar fora e com Esc). */

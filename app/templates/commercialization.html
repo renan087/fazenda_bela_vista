@@ -151,8 +151,8 @@
                         <form method="post" action="/producao/vendas/{{ g.code }}/recebimento" data-sv-pick><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="voltar" value="{{ back_url }}"><input type="hidden" name="acao" value="receber">
                             <div class="sv-pl">
                                 {% for p in r.rows %}
-                                {% if p.paid %}<div class="sv-pr is-paid"><span class="dt-chk"><input type="checkbox" class="dt-check" checked disabled aria-label="Parcela {{ p.n }} paga"></span><span>{{ p.n }}ª · {{ p.due.strftime('%d/%m') }}</span><span class="sv-ok">Paga</span></div>
-                                {% else %}<label class="sv-pr"><span class="dt-chk"><input type="checkbox" class="dt-check" name="parcela" value="{{ p.id }}" data-amount="{{ p.amount }}"></span><span>{{ p.n }}ª · {{ p.due.strftime('%d/%m/%Y') }}{% if p.late %}<em class="sv-late">vencida</em>{% endif %}</span><span class="sv-pv">R$ {{ p.amount|decimal_br }}</span></label>{% endif %}
+                                {% if p.paid %}<div class="sv-pr is-paid"><span class="dt-chk"><input type="checkbox" class="dt-check" checked disabled aria-label="Parcela {{ p.n }} paga"></span><span class="sv-plab">{{ p.n }}ª · {{ p.due.strftime('%d/%m') }}</span><span class="sv-ok">Paga</span></div>
+                                {% else %}<label class="sv-pr"><span class="dt-chk"><input type="checkbox" class="dt-check" name="parcela" value="{{ p.id }}" data-amount="{{ p.amount }}"></span><span class="sv-plab">{{ p.n }}ª · {{ p.due.strftime('%d/%m/%Y') }}{% if p.late %}<em class="sv-late">Vencida</em>{% endif %}</span><span class="sv-pv">R$ {{ p.amount|decimal_br }}</span></label>{% endif %}
                                 {% endfor %}
                             </div>
                             <button class="sv-pi is-main" type="submit" disabled data-sv-pick-btn>{{ svg('ok') }}<span>Selecione as parcelas</span></button>
@@ -275,6 +275,6 @@
     </div>
     {% endif %}
 </div>
-<script src="/static/js/commercialization.js?v=20261123sv4" defer></script>
+<script src="/static/js/commercialization.js?v=20261123sv5" defer></script>
 {% if sale_focus %}<script>document.getElementById({{ ('venda-' ~ sale_focus)|tojson }})?.scrollIntoView({ block: 'center' });</script>{% endif %}
 {% endblock %}
