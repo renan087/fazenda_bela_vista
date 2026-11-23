@@ -364,7 +364,9 @@ def map_sale_payment_and_freight(snapshot: dict) -> dict:
         t_pag = '99' if raw_method else ''
 
     cond_label = 'a prazo' if raw_cond == 'a_prazo' else 'à vista'
+    cond_title = 'A prazo' if raw_cond == 'a_prazo' else 'À vista'
     payment_label = f'{raw_method} · {cond_label}' if raw_method else f'A definir · {cond_label}'
+    payment_summary = f'{cond_title} · {raw_method}' if raw_method else cond_title
 
     try:
         freight_num = Decimal(str((snapshot or {}).get('freight_value') or '0'))
@@ -373,6 +375,8 @@ def map_sale_payment_and_freight(snapshot: dict) -> dict:
     default_freight_mode = '9' if freight_num <= 0 else '0'
     return {
         'payment_label': payment_label,
+        'payment_summary': payment_summary,
+        'condition_label': cond_title,
         't_pag': t_pag,
         'ind_pag': '1' if raw_cond == 'a_prazo' else '0',
         'default_freight_mode': default_freight_mode,

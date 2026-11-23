@@ -182,10 +182,18 @@
         {% set species = ['Sacas', 'Big bag', 'Granel', 'Bags', 'Paletes', 'Caixas', 'Fardos'] %}
         {% set vs_other = vs and vs not in species %}
         <section class="nx-cardx" aria-labelledby="h-ship" data-nx-ship>
-          <div class="nx-hd"><h2 id="h-ship">Transporte e pagamento</h2><span class="nx-auto">Pagamento e frete: da venda</span></div>
+          <div class="nx-hd"><h2 id="h-ship">Emissão e transporte</h2><span class="nx-auto">Pagamento preenchido da venda</span></div>
           <div class="nx-g">
             <label class="nx-f">Data de emissão<input type="date" name="emission_date" value="{{ technical.get('emission_date') or snapshot.data_venda }}" class="nx-in"></label>
-            <label class="nx-f">Pagamento<select name="payment_indicator" class="nx-in">{% for value, label in (payment_indicators or []) %}<option value="{{ value }}" {% if (extra.get('payment_indicator') or (sale_meta.ind_pag if sale_meta else '')) == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><small>{{ sale_meta.payment_label if sale_meta else 'Da venda' }}</small></label>
+            <div class="nx-f">
+              <span>Pagamento da venda</span>
+              <input type="hidden" name="payment_indicator" value="{{ sale_meta.ind_pag if sale_meta else '0' }}">
+              <div class="nx-in" style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;background:#f6f8f5;color:#16201a">
+                <strong style="font-weight:600">{{ sale_meta.payment_summary if sale_meta else 'À vista' }}</strong>
+                <a href="/producao/vendas/{{ draft.sale_code }}/editar" style="font-size:.75rem;font-weight:600;color:#446a36;text-decoration:none;white-space:nowrap">Alterar na venda</a>
+              </div>
+              <small>Definido automaticamente pela venda {{ draft.sale_code }}</small>
+            </div>
             <input type="hidden" name="payment_amount" value="{{ extra.get('payment_amount', '') }}">
           </div>
 

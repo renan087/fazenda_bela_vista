@@ -401,9 +401,10 @@ def build_simulation_xml(
         _sub(vol, 'pesoB', extra.get('gross_weight_kg'))
 
     # 7. pag
+    from app.services.nfe_draft import map_sale_payment_and_freight
     pag = _sub(inf, 'pag')
     det_pag = _sub(pag, 'detPag')
-    _sub(det_pag, 'indPag', extra.get('payment_indicator'))
+    _sub(det_pag, 'indPag', extra.get('payment_indicator') or map_sale_payment_and_freight(snapshot)['ind_pag'])
     _sub(det_pag, 'tPag', identification.payment_method)
     if identification.payment_method == '90':
         v_pag = '0.00'
