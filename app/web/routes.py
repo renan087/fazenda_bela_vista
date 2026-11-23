@@ -27324,6 +27324,11 @@ async def register_purchase_note_action(
         credit_card = None
         if mode == "cartao":
             credit_card = _resolve_optional_finance_credit_card(repo, active_farm=scope["active_farm"], credit_card_id=payment.get("card_id"), payment_method="Cartão de crédito")
+            if credit_card and credit_card.payment_account_id:
+                finance_account = repo.get_finance_account(credit_card.payment_account_id)
+            if finance_account is None:
+                farm_accounts = repo.list_finance_accounts(farm_id=scope["active_farm_id"])
+                finance_account = next((a for a in farm_accounts if a.is_default), None) or (farm_accounts[0] if farm_accounts else None)
         else:
             finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=payment.get("account_id"))
         attachments = _read_attachments(await _request_attachments(request))

@@ -91,10 +91,17 @@ def _payment_plan(payment: dict, finance_account, credit_card) -> dict:
     first_due = _date(payment.get("first_due"), "primeiro vencimento") if mode == "prazo" else None
     if mode == "prazo" and not first_due:
         raise ValueError("Informe a data do primeiro vencimento.")
+    account_id = (
+        finance_account.id
+        if finance_account
+        else (getattr(credit_card, "payment_account_id", None) if mode == "cartao" else None)
+    )
+    if mode == "cartao" and not account_id:
+        raise ValueError("Cadastre ou vincule uma conta bancária ao cartão antes de lançar a compra no cartão.")
     return {
         "mode": mode, "method": method, "count": count, "condition": condition, "first_due": first_due,
         "frequency": "mensal" if condition == "a_prazo" else None,
-        "account_id": finance_account.id if finance_account and mode != "cartao" else None,
+        "account_id": account_id,
         "card_id": credit_card.id if credit_card and mode == "cartao" else None,
         "custom": payment.get("installments") or [],
     }

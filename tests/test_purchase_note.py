@@ -274,3 +274,48 @@ def test_purchase_wizard_quick_account_and_card_creation(hub):
     card_data = json.loads(card_resp.body.decode())
     assert card_data["id"] and "Visa Ourocard" in card_data["name"]
     assert card_data["closing_day"] == 5 and card_data["due_day"] == 12
+
+
+def test_note_paid_with_credit_card_uses_card_or_default_account(wiz):
+    from datetime import datetime, timezone
+    from app.models.finance_credit_card import FinanceCreditCard
+    env, x, account = wiz
+    farm_id = env.scope["active_farm_id"]
+    card_linked = FinanceCreditCard(
+        farm_id=farm_id, payment_account_id=account.id, card_name="Visa Fazenda",
+        issuer="BB", brand="Visa", closing_day=10, due_day=20, is_default=True,
+        created_at=datetime.now(timezone.utc),
+    )
+    card_unlinked = FinanceCreditCard(
+        farm_id=farm_id, payment_account_id=None, card_name="Master Sem Conta",
+        issuer="Sicredi", brand="Mastercard", closing_day=5, due_day=15, is_default=False,
+        created_at=datetime.now(timezone.utc),
+    )
+    env.db.add_all([card_linked, card_unlinked])
+    env.db.commit()
+
+    # 1. Cartão vinculado a uma conta (parcelado em 3x)
+    p1 = {
+        "note": {"supplier": "Agro Cartão", "invoice": "CC-01", "date": "2026-11-23"},
+        "payment": {"mode": "cartao", "card_id": str(card_linked.id), "count": "3", "account_id": ""},
+        "items": [{"name": "Ureia Cartão", "item_type": "insumo_agricola", "category": "Fertilizantes", "unit": "kg", "packs": "6", "size": "50", "price": "150"}],
+    }
+    resp1 = _post(env, p1)
+    assert resp1.status_code == 303 and resp1.headers["location"] == "/insumos/comprados/nova?registrada=1"
+    entry1 = env.db.query(PurchasedInput).filter(PurchasedInput.name == "Ureia Cartão").one()
+    tx1 = env.db.get(FinanceTransaction, entry1.finance_transaction_id)
+    assert tx1 is not None and tx1.credit_card_id == card_linked.id and tx1.finance_account_id == account.id
+    assert len(tx1.installments) == 3
+
+    # 2. Cartão sem conta vinculada cai na conta padrão da fazenda (1x)
+    p2 = {
+        "note": {"supplier": "Agro Cartão 2", "invoice": "CC-02", "date": "2026-11-23"},
+        "payment": {"mode": "cartao", "card_id": str(card_unlinked.id), "count": "1", "account_id": ""},
+        "items": [{"name": "Adubo Cartão 2", "item_type": "insumo_agricola", "category": "Fertilizantes", "unit": "kg", "packs": "2", "size": "50", "price": "100"}],
+    }
+    resp2 = _post(env, p2)
+    assert resp2.status_code == 303 and resp2.headers["location"] == "/insumos/comprados/nova?registrada=1"
+    entry2 = env.db.query(PurchasedInput).filter(PurchasedInput.name == "Adubo Cartão 2").one()
+    tx2 = env.db.get(FinanceTransaction, entry2.finance_transaction_id)
+    assert tx2 is not None and tx2.credit_card_id == card_unlinked.id and tx2.finance_account_id == account.id
+    assert len(tx2.installments) == 1
