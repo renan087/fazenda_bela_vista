@@ -68,14 +68,15 @@ def test_certificate_upload_enforces_permission_and_encrypts_in_vault(monkeypatc
     pfx_bytes = _generate_ephemeral_pfx(password='senha-piloto-123')
 
     class FakeUpload:
-        async def read(self):
-            return pfx_bytes
+        async def read(self, size=-1):
+            return pfx_bytes if size == -1 else pfx_bytes[:size]
 
     class Request:
         async def form(self):
             return {
                 'csrf_token': 'x',
                 'environment': 'homologacao',
+                'fiscal_consent': '1',
                 'certificate_password': 'senha-piloto-123',
                 'certificate_file': FakeUpload(),
             }
@@ -93,6 +94,15 @@ def test_certificate_upload_enforces_permission_and_encrypts_in_vault(monkeypatc
     owner = SimpleNamespace(
         id=user.id, organization_id=user.organization_id, is_superuser=False, role='owner',
     )
+    class MissingConsent(Request):
+        async def form(self):
+            fields = await super().form()
+            fields.pop('fiscal_consent')
+            return fields
+
+    assert asyncio.run(routes.nfe_farm_certificate_upload(MissingConsent(), db, owner)).status_code == 303
+    assert db.query(NfeCertificateVault).count() == 0
+
     resp = asyncio.run(routes.nfe_farm_certificate_upload(Request(), db, owner))
     assert resp.status_code == 303
     cert = db.query(NfeCertificateVault).filter_by(organization_id=user.organization_id, farm_id=scope['active_farm_id']).first()

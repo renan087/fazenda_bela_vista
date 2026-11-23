@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     # Chave mestra do cofre de certificados A1 (AES-256-GCM). Mínimo 32 caracteres; nunca vai ao banco.
     # Não troque depois de enviar certificados: os já guardados deixam de abrir.
     nfe_cert_master_key: str | None = None
+    digital_certificate_key: str | None = None
+    digital_document_key: str | None = None
+    digital_signing_iti_receipts: str | None = None
+    digital_signing_pilot_farm_ids: str = ""
+    digital_validation_hosts: str = ""
     memory_monitor_enabled: bool = True
     memory_monitor_interval_seconds: int = 60
     coffee_quote_sync_enabled: bool = True

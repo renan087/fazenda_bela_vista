@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "partials/digital_signing_ui.html" import icon %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=1">{% endblock %}
+{% block content %}
+<main class="sf-page ds-page" data-ds-certificates data-csrf="{{ csrf_token }}">
+  <header class="ds-hero">
+    <div>
+      {% if farm %}<div class="ds-context">{{ farm.name }}</div>{% endif %}
+      <h1>Central de Certificados</h1>
+      <p>Cadastre certificados A1 e gerencie sua autorização para cada finalidade.</p>
+    </div>
+    <a class="sf-btn sf-btn-secondary ds-hero-action" href="/assinatura-digital">{{ icon('pen', 18) }} Assinatura de documentos</a>
+  </header>
+
+  {% if not farm %}
+    <p class="ds-note">Selecione uma fazenda no topo para acessar os certificados.</p>
+  {% else %}
+  <div class="ds-center-grid">
+    <section class="ds-card ds-history">
+      <header class="ds-history-header"><div><h2>Certificados da fazenda</h2><p>O A1 da configuração fiscal aparece aqui quando a sua conta tem acesso.</p></div></header>
+      {% for entry in inventory %}
+      {% set cert = entry.cert %}
+      <article class="ds-cert-row">
+        <div class="ds-cert-id">
+          <span class="ds-file-icon">{{ icon('key', 20) }}</span>
+          <div><h3>{{ cert.subject_cn or 'Certificado A1' }}</h3><p>{{ cert.issuer_cn }} · Vence em {{ cert.valid_until.strftime('%d/%m/%Y') }}</p></div>
+          <span class="ds-status ds-status--{{ 'valid' if entry.valid else 'invalid' }}">{{ 'Vigente' if entry.valid else 'Fora da vigência' }}</span>
+        </div>
+        <div class="ds-purpose-list">
+          <div><strong>Emissão fiscal</strong><span class="ds-status ds-status--{{ 'valid' if entry.fiscal_active else 'unsigned' }}">{{ 'Em uso' if entry.fiscal_active else 'Inativa' }}</span>
+            {% if entry.can_set_fiscal and (entry.valid or entry.fiscal_active) %}
+            <button class="ds-inline-action" type="button" data-ds-purpose="fiscal" data-cert="{{ cert.id }}" data-enable="{{ 'no' if entry.fiscal_active else 'yes' }}" data-env="{{ cert.environment if cert.environment in ('producao', 'homologacao') else 'homologacao' }}" data-holder="{{ cert.subject_cn }}">{{ 'Revogar uso' if entry.fiscal_active else 'Autorizar uso' }}</button>
+            {% endif %}
+          </div>
+          <div><strong>Assinatura de documentos</strong><span class="ds-status ds-status--{{ 'valid' if entry.docs_enabled else 'unsigned' }}">{{ 'Autorizada para você' if entry.docs_enabled else 'Disponível após autorização' if entry.can_set_docs else 'Requer vínculo do responsável' }}</span>
+            {% if entry.can_set_docs and (entry.valid or entry.docs_enabled) %}
+            <button class="ds-inline-action" type="button" data-ds-purpose="documents" data-cert="{{ cert.id }}" data-enable="{{ 'no' if entry.docs_enabled else 'yes' }}" data-holder="{{ cert.subject_cn }}">{{ 'Revogar uso' if entry.docs_enabled else 'Autorizar uso' }}</button>
+            {% endif %}
+          </div>
+        </div>
+        <details class="ds-cert-details"><summary>Dados do certificado</summary><dl><dt>ID para vincular o responsável</dt><dd>{{ cert.id }}</dd><dt>Impressão digital SHA-256</dt><dd>{{ cert.fingerprint_sha256 }}</dd></dl></details>
+      </article>
+      {% else %}
+      <div class="ds-empty">{{ icon('key', 25) }}<strong>Nenhum certificado disponível</strong><p>Cadastre um arquivo A1 para habilitar o uso após a verificação do responsável.</p></div>
+      {% endfor %}
+    </section>
+    <aside class="ds-card ds-side-card">
+      <header class="ds-card-heading"><span class="ds-tile">{{ icon('key', 18) }}</span><div><h2>Cadastrar certificado</h2><p>Envie o arquivo e a senha de um A1.</p></div></header>
+      <form data-ds-register>
+        <label class="ds-label" for="ds-pfx">Arquivo .pfx ou .p12</label>
+        <input id="ds-pfx" name="file" type="file" accept=".p12,.pfx" required>
+        <label class="ds-label" for="ds-pfx-password">Senha do certificado</label>
+        <input id="ds-pfx-password" name="password" type="password" autocomplete="off" maxlength="1024" required>
+        <button type="submit" class="sf-btn sf-btn-primary ds-full">{{ icon('upload', 17) }} Cadastrar A1</button>
+        <p class="ds-feedback" data-ds-status role="status" hidden></p>
+      </form>
+      <div class="ds-note ds-note--small">{{ icon('shield', 18) }} Após o cadastro, solicite à equipe do SiSFarm o vínculo da conta do titular ou responsável. A autorização é dada por essa conta.</div>
+    </aside>
+  </div>
+
+  <dialog class="ds-dialog" data-ds-purpose-dialog>
+    <form data-ds-purpose-form>
+      <div class="ds-dialog-heading"><span class="ds-tile">{{ icon('key', 23) }}</span><button type="button" class="ds-icon-button" data-ds-close aria-label="Fechar">{{ icon('close', 19) }}</button></div>
+      <h2 data-ds-purpose-title></h2><p data-ds-purpose-holder></p>
+      <div data-ds-purpose-password>
+        <label class="ds-label" for="ds-purpose-pw">Senha do certificado A1</label>
+        <input id="ds-purpose-pw" name="password" type="password" autocomplete="off" maxlength="1024">
+      </div>
+      <label class="ds-check"><input name="consent" type="checkbox" required> <span data-ds-purpose-consent></span></label>
+      <p class="ds-feedback" data-ds-purpose-status role="status" hidden></p>
+      <button class="sf-btn sf-btn-primary ds-full" type="submit" data-ds-purpose-submit>Confirmar</button>
+    </form>
+  </dialog>
+  {% endif %}
+</main>
+<script type="module" src="/static/js/digital_signing.js?v=1"></script>
+{% endblock %}

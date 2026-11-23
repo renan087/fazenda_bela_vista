@@ -43,6 +43,10 @@
         {'id': 'contas', 'label': 'Contas a pagar e receber', 'raw': '/gestao-financeira/contas', 'page': 'finance_accounts', 'show': mv.get('finance')},
         {'id': 'custos', 'label': 'Custos por setor', 'raw': '/custos-por-setor', 'page': 'sector_costs', 'show': mv.get('finance')},
     ]},
+    {'id': 'documentos', 'label': 'Documentos', 'short': 'Documentos', 'icon': 'doc', 'items': [
+        {'id': 'assinatura-digital', 'label': 'Assinatura de documentos', 'raw': '/assinatura-digital', 'plain': True, 'page': 'digital_signing', 'show': True},
+        {'id': 'certificados-digitais', 'label': 'Central de Certificados', 'raw': '/certificados-digitais', 'plain': True, 'page': 'certificate_center', 'show': True},
+    ]},
     {'id': 'admin', 'label': 'Administração', 'short': 'Admin', 'icon': 'cog', 'admin': True, 'items': [
         {'id': 'usuarios', 'label': 'Usuários', 'raw': '/usuarios', 'page': 'users', 'show': mv.get('users')},
         {'id': 'organizacoes', 'label': 'Organizações', 'raw': '/organizacoes', 'page': 'organizations', 'show': mv.get('organizations')},
@@ -86,6 +90,7 @@
 {%- endmacro -%}
 
 <svg width="0" height="0" class="sf-sprite" aria-hidden="true" focusable="false">
+    <symbol id="sf-doc" viewBox="0 0 24 24"><path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10ZM13 3v7h7M8 14h8m-8 3h5"/></symbol>
     <symbol id="sf-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17h.01"/></symbol>
     <symbol id="sf-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></symbol>
     <symbol id="sf-cal" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></symbol>

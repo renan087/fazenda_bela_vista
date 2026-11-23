@@ -49,6 +49,7 @@ from app.middleware.maintenance import MaintenanceMiddleware
 from app.middleware.subscription_enforcement import SubscriptionEnforcementMiddleware
 from app.services.runtime_memory_monitor import get_current_rss_mb, run_runtime_memory_monitor
 from app.web.routes import router as web_router
+from app.web.digital_documents import router as digital_documents_router
 
 logger = logging.getLogger(__name__)
 req_mem_logger = logging.getLogger("uvicorn.error")
@@ -352,5 +353,6 @@ app.include_router(whatsapp_webhook_router)
 app.include_router(whatsapp_record_access_router)
 app.include_router(assistant_shared_reports_router)
 app.include_router(web_router)
+app.include_router(digital_documents_router)
 app.include_router(auth_api_router)
 app.include_router(api_router)

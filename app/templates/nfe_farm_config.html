@@ -19,7 +19,7 @@
 {% set pending = setup_steps | rejectattr('ok') | list %}
 {% set next_step = pending | first %}
 {% set prod_edit = (product_views | selectattr('obj.id', 'equalto', item) | first) if item and item != 'novo' else None %}
-{% set active_cert = certificates | selectattr('is_active') | first %}
+{% if active_cert is not defined %}{% set active_cert = certificates | selectattr('is_active') | first %}{% endif %}
 {% set uf = (cfg.state if cfg and cfg.state else (issuer.state if issuer and issuer.state else 'BA')) %}
 {% set partial = {'emit': issuer is not none and issuer, 'cert': certificates|length > 0, 'prod': product_views|length > 0, 'oper': operations|length > 0, 'num': false} %}
 {% set ns = namespace(op_edit=None, op_group=None) %}
@@ -263,6 +263,7 @@
                   <small class="fc-hint">A senha definida na compra do certificado. Fica guardada criptografada e nunca aparece na tela.</small></div></li>
                 <li><span class="fc-n">3</span><div><span class="fc-lbl">Conferimos antes de ativar</span>
                   <ul class="fc-checks"><li>{{ nxi('check', 15, 3) }}Se a senha abre o arquivo</li><li>{{ nxi('check', 15, 3) }}Se o certificado está dentro da validade</li></ul>
+                  <label class="nx-f" style="display:flex;gap:.4rem;align-items:flex-start;margin:.45rem 0"><input type="checkbox" name="fiscal_consent" value="1" required> Autorizo o uso deste A1 para a emissão fiscal desta fazenda.</label>
                   <div><button type="submit" class="sf-btn sf-btn-primary" {% if not master_key_configured %}disabled{% endif %}>Enviar e conferir</button></div></div></li>
               </ol>
             </form>
@@ -274,7 +275,7 @@
             <section class="nx-cfg-card">
               <h2 style="font-size:.9375rem">Certificados anteriores</h2>
               <div class="fc-hist">
-                {% for cert in certificates if not cert.is_active %}
+                {% for cert in certificates if not cert.is_active and (not active_cert or cert.id != active_cert.id) %}
                 <div><span>{{ cert.subject_cn or 'Certificado A1' }} · enviado em {{ cert.created_at.strftime('%d/%m/%Y') if cert.created_at else '—' }}</span><span class="nx-tag is-off">Inativo · até {{ cert.valid_until.strftime('%d/%m/%Y') if cert.valid_until else '—' }}</span></div>
                 {% else %}
                 <p class="nx-desc">Nenhum certificado anterior.</p>
@@ -291,6 +292,7 @@
           <aside class="fc-aside" aria-label="Ajuda">
             <section class="nx-cfg-card fc-sm" style="background:#f6f8f5">
               <h3 class="fc-h3">O que é o certificado A1?</h3>
+              <p><a class="nx-link-btn" href="/certificados-digitais">Abrir Central de Certificados</a></p>
               <p class="nx-desc">É a sua assinatura digital. Sem ele, a SEFAZ não aceita a nota. Vale por 1 ano e é comprado em uma certificadora.</p>
             </section>
             <div class="nx-banner is-blue" style="font-size:.8125rem">{{ nxi('info', 18) }}<span>Quando faltar pouco para vencer, o aviso aparece aqui e na visão geral.</span></div>

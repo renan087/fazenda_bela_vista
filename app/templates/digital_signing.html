@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "partials/digital_signing_ui.html" import icon, status, dropzone %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=1">{% endblock %}
+{% block content %}
+<main class="sf-page ds-page" data-ds-home data-csrf="{{ csrf_token }}">
+  <header class="ds-hero">
+    <div>
+      {% if farm %}<div class="ds-context">{{ farm.name }}</div>{% endif %}
+      <h1>Assinatura de documentos</h1>
+      <p>Assine PDFs com certificados ICP-Brasil ou confira a validade de um documento recebido.</p>
+    </div>
+    <a class="sf-btn sf-btn-secondary ds-hero-action" href="/certificados-digitais">{{ icon('key', 18) }} Central de Certificados</a>
+  </header>
+
+  <div class="ds-home-grid">
+    <section class="ds-card ds-action-card" aria-labelledby="ds-new-title">
+      <header class="ds-card-heading"><span class="ds-tile">{{ icon('pen', 19) }}</span><div><h2 id="ds-new-title">Preparar assinatura</h2><p>Use um PDF novo ou acrescente assinaturas a um arquivo já assinado.</p></div></header>
+      {% if farm %}
+        {{ dropzone('import', 'ds-import-file', 'Arraste o PDF para cá', 'Abra o arquivo para revisar as páginas e configurar a assinatura.', 'Escolher PDF') }}
+      {% else %}
+        <div class="ds-note">Selecione uma fazenda no topo para importar e guardar documentos.</div>
+      {% endif %}
+      {% if mode == 'blocked' %}<p class="ds-note ds-note--small">{{ icon('clock', 17) }} A assinatura aguarda homologação no VALIDAR do ITI.</p>{% endif %}
+    </section>
+    <section class="ds-card ds-action-card" aria-labelledby="ds-validate-title">
+      <header class="ds-card-heading"><span class="ds-tile ds-tile--blue">{{ icon('shield', 19) }}</span><div><h2 id="ds-validate-title">Validar assinaturas</h2><p>Confira a integridade do PDF e a situação dos certificados.</p></div></header>
+      {{ dropzone('validate', 'ds-validate-file', 'Arraste um PDF assinado', 'A validação é feita no SiSFarm e não exige certificado próprio.', 'Validar PDF') }}
+      <p class="ds-hint ds-note--small">O PDF externo é descartado após a análise.</p>
+    </section>
+  </div>
+  <p class="ds-feedback" data-ds-status role="status" aria-live="polite" hidden></p>
+  <section class="ds-card ds-result" data-ds-result tabindex="-1" aria-label="Resultado da validação" hidden></section>
+
+  <section class="ds-card ds-history" aria-labelledby="ds-history-title">
+    <header class="ds-history-header">
+      <div><h2 id="ds-history-title">Histórico de documentos</h2><p>Seus arquivos e os que foram compartilhados com você nesta fazenda.</p></div>
+      {% if history %}<label class="ds-search">{{ icon('search', 18) }}<input type="search" placeholder="Buscar documento" aria-label="Buscar documento" data-ds-search></label>{% endif %}
+    </header>
+    {% if history %}
+    <ul class="ds-list">
+      {% for doc in history %}
+      <li data-ds-list-row>
+        <a href="/assinatura-digital/documentos/{{ doc.id }}">
+          <span class="ds-file-icon">{{ icon('file', 20) }}</span>
+          <span class="ds-row-name"><strong>{{ doc.filename }}</strong><small>{{ doc.updated_at|datetime_sp }}{% if doc.owner_id != user.id %} · Compartilhado{% endif %}</small></span>
+          <span class="ds-row-count">{{ doc.validation.signatures|length }} {{ 'assinatura' if doc.validation.signatures|length == 1 else 'assinaturas' }}</span>
+          {{ status(doc.validation.state) }}
+          <span class="ds-row-arrow">{{ icon('arrow', 18) }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="ds-empty" data-ds-search-empty hidden>Nenhum documento corresponde à busca.</p>
+    {% else %}
+    <div class="ds-empty">{{ icon('file', 25) }}<strong>Nenhum documento nesta fazenda</strong><p>Os PDFs importados aparecem aqui.</p></div>
+    {% endif %}
+  </section>
+</main>
+<script type="module" src="/static/js/digital_signing.js?v=1"></script>
+{% endblock %}

@@ -176,3 +176,6 @@ from app.models.nfe_draft import (
     NfeIssuerLogo,
     NfeFarmFiscalPrefs,
 )
+
+from app.models.digital_certificate import CertificatePurpose, DigitalCertificate, FiscalCertificateSelection
+from app.models.signed_document import SigningChallenge, SigningDocument, SigningParticipant, SigningRevision

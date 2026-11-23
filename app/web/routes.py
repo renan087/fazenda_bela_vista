@@ -23099,7 +23099,6 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
     if not draft:
         raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
     from app.models.nfe_draft import (
-        NfeCertificateVault,
         NfeDraftDetails,
         NfeDraftExtraData,
         NfeDraftIdentification,
@@ -23145,12 +23144,10 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
         draft_id=draft.id, organization_id=user.organization_id, farm_id=scope["active_farm_id"]
     ).first()
     extra_data = json.loads(extra_row.data_json) if extra_row else {}
-    has_active_cert = (
-        db.query(NfeCertificateVault)
-        .filter_by(organization_id=user.organization_id, farm_id=scope["active_farm_id"], is_active=True)
-        .first()
-        is not None
-    )
+    from app.services.digital_certificates import fiscal_certificate_query
+    has_active_cert = fiscal_certificate_query(
+        db, user.organization_id, scope["active_farm_id"], active=True,
+    ).first() is not None
     tax_profiles = (
         db.query(NfeTaxProfile)
         .filter_by(organization_id=user.organization_id, status="aprovado_teste")
@@ -23625,6 +23622,7 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
         ALLOWED_ENVIRONMENTS,
         evaluate_pilot_homologation_readiness,
     )
+    from app.services.digital_certificates import fiscal_certificate_query
     from app.services.nfe_permissions import has_fiscal_permission
     repo = _repository(db)
     scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
@@ -23636,8 +23634,7 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
     issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
     readiness = evaluate_pilot_homologation_readiness(db, organization_id=user.organization_id, farm_id=farm.id)
     certificates = (
-        db.query(NfeCertificateVault)
-        .filter_by(organization_id=user.organization_id, farm_id=farm.id)
+        fiscal_certificate_query(db, user.organization_id, farm.id)
         .order_by(NfeCertificateVault.created_at.desc())
         .limit(10)
         .all()
@@ -23658,7 +23655,13 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
     operations = fs.list_operations(db, organization_id=user.organization_id, farm_id=farm.id)
     logo = fs.get_logo(db, organization_id=user.organization_id, farm_id=farm.id)
     prefs = fs.get_prefs(db, organization_id=user.organization_id, farm_id=farm.id)
-    active_cert = next((c for c in certificates if c.is_active), None)
+    active_cert = (
+        fiscal_certificate_query(db, user.organization_id, farm.id, active=True)
+        .order_by(NfeCertificateVault.created_at.desc())
+        .first()
+    )
+    if active_cert and active_cert not in certificates:
+        certificates.insert(0, active_cert)
     cert_days = None
     if active_cert and active_cert.valid_until:
         until = active_cert.valid_until if active_cert.valid_until.tzinfo else active_cert.valid_until.replace(tzinfo=_tz.utc)
@@ -23706,6 +23709,7 @@ def nfe_farm_config_page(request: Request, db: Session = Depends(get_db),
         cfg=readiness["config"],
         readiness=readiness,
         certificates=certificates,
+        active_cert=active_cert,
         tax_profiles=tax_profiles,
         master_key_configured=master_key_configured,
         can_manage_cert=has_fiscal_permission(user, "nfe.certificate.manage"),
@@ -23819,12 +23823,16 @@ async def nfe_farm_certificate_upload(request: Request, db: Session = Depends(ge
         _flash(request, "error", "Nesta etapa apenas certificados para o ambiente de homologação podem ser carregados.")
         return _redirect("/producao/nfe/configuracao?secao=cert")
 
+    if form.get("fiscal_consent") != "1":
+        _flash(request, "error", "Confirme a autorização de uso do certificado para emissão fiscal.")
+        return _redirect("/producao/nfe/configuracao?secao=cert")
+
     upload = form.get("certificate_file")
     password = str(form.get("certificate_password") or "")
     if not upload or not hasattr(upload, "read"):
         _flash(request, "error", "Selecione o arquivo do certificado A1 (.pfx ou .p12).")
         return _redirect("/producao/nfe/configuracao?secao=cert")
-    pfx_bytes = await upload.read()
+    pfx_bytes = await upload.read(200_001)
     try:
         stored = store_encrypted_certificate(
             db,
@@ -23847,6 +23855,7 @@ async def nfe_farm_certificate_upload(request: Request, db: Session = Depends(ge
 async def nfe_farm_certificate_deactivate(cert_id: str, request: Request, db: Session = Depends(get_db),
                                           user: User = Depends(get_current_user_web)):
     from app.models.nfe_draft import NfeCertificateVault
+    from app.services.digital_certificates import CENTRAL, fiscal_selection_for, lock_fiscal_farm
     from app.services.nfe_permissions import require_fiscal_permission
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
@@ -23862,12 +23871,19 @@ async def nfe_farm_certificate_deactivate(cert_id: str, request: Request, db: Se
     except PermissionError:
         raise HTTPException(status_code=403, detail="Sem permissão para gerenciar certificado A1.") from None
 
+    lock_fiscal_farm(db, user.organization_id, farm.id)
     cert = db.query(NfeCertificateVault).filter_by(
         id=cert_id, organization_id=user.organization_id, farm_id=farm.id
     ).first()
     if not cert:
         raise HTTPException(status_code=404, detail="Certificado não encontrado.")
-    cert.is_active = False
+    if cert.environment == CENTRAL:
+        selection = fiscal_selection_for(cert, db)
+        if selection is None:
+            raise HTTPException(status_code=404, detail="Certificado fiscal não encontrado.")
+        db.delete(selection)
+    else:
+        cert.is_active = False
     db.commit()
     _flash(request, "success", "Certificado A1 desativado nesta fazenda.")
     return _redirect("/producao/nfe/configuracao?secao=cert")

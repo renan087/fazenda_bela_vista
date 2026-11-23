@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% from "partials/digital_signing_ui.html" import icon, status %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=1">{% endblock %}
+{% block content %}
+{% set endpoint = '/assinatura-digital/documentos/' ~ doc.id %}
+{% set pdf_url = endpoint ~ '/revisoes/' ~ doc.current_revision ~ '/pdf' %}
+<main class="sf-page ds-page ds-workspace" data-ds-workspace data-csrf="{{ csrf_token }}" data-document-url="{{ endpoint }}" data-pdf-url="{{ pdf_url }}">
+  <script type="application/json" data-ds-options>{{ options|tojson }}</script>
+  <script type="application/json" data-ds-report>{{ doc.validation|tojson }}</script>
+  <a class="ds-back" href="/assinatura-digital">{{ icon('back', 16) }} Documentos</a>
+  <header class="ds-workspace-head">
+    <div><div class="ds-context">{{ farm.name }} · Versão {{ doc.current_revision }}</div><h1>{{ doc.filename }}</h1></div>
+    <a class="sf-btn sf-btn-secondary" href="{{ pdf_url }}">{{ icon('download', 18) }} Baixar PDF</a>
+  </header>
+
+  {% if mode == 'blocked' %}<p class="ds-note">{{ icon('clock', 18) }} Assinatura em homologação. Você pode preparar, visualizar, compartilhar e validar o PDF.</p>{% endif %}
+  {% if mode == 'pilot' %}<p class="ds-note">{{ icon('clock', 18) }} Ambiente piloto do VALIDAR. Use documentos de teste.</p>{% endif %}
+
+  <div class="ds-work-grid">
+    <section class="ds-card ds-viewer" aria-label="Prévia do PDF">
+      <div class="ds-toolbar">
+        <button type="button" class="ds-icon-button" data-ds-thumbs-toggle aria-controls="ds-thumbnails" aria-expanded="false" aria-label="Mostrar miniaturas">{{ icon('pages', 18) }}</button>
+        <div class="ds-pager">
+          <button type="button" class="ds-icon-button" data-ds-prev aria-label="Página anterior">‹</button>
+          <label><span class="sr-only">Página</span><input type="number" min="1" value="1" data-ds-page></label>
+          <span>de <span data-ds-pages>{{ options.pages }}</span></span>
+          <button type="button" class="ds-icon-button" data-ds-next aria-label="Próxima página">›</button>
+        </div>
+        <div class="ds-zoom"><button type="button" class="ds-icon-button" data-ds-zoom="-1" aria-label="Diminuir zoom">−</button><button type="button" class="ds-fit" data-ds-fit title="Ajustar à largura">Ajustar</button><button type="button" class="ds-icon-button" data-ds-zoom="1" aria-label="Aumentar zoom">+</button></div>
+      </div>
+      <div class="ds-viewer-body">
+        <nav id="ds-thumbnails" class="ds-thumbnails" data-ds-thumbs aria-label="Páginas do documento" hidden></nav>
+        <div class="ds-canvas-scroll" data-ds-scroll>
+          <p data-ds-preview-status role="status" class="ds-preview-status">Carregando o documento…</p>
+          <div class="ds-sheet" data-ds-sheet hidden>
+            <canvas data-ds-canvas aria-label="Página atual do documento"></canvas>
+            <div class="ds-stamp" data-ds-stamp tabindex="0" role="group" aria-label="Posição da assinatura. Use as setas para mover e Shift com as setas para redimensionar." hidden>
+              {{ icon('pen', 14) }} <span data-ds-stamp-label>Assinatura digital</span><span class="ds-stamp-handle" data-ds-handle aria-hidden="true"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <aside class="ds-work-side">
+      <section class="ds-card ds-side-card">
+        <header class="ds-card-heading"><span class="ds-tile">{{ icon('pen', 18) }}</span><div><h2>Nova assinatura</h2><p>Revise esta versão e escolha o certificado.</p></div></header>
+        <label class="ds-label" for="ds-certificate">Certificado digital</label>
+        <select id="ds-certificate" data-ds-certificate {% if not certificate_options %}disabled{% endif %}>
+          <option value="">Selecione um certificado</option>
+          {% for cert in certificate_options %}<option value="{{ cert.id }}" data-holder="{{ cert.subject_cn }}">{{ cert.subject_cn }} · vence {{ cert.valid_until.strftime('%d/%m/%Y') }}</option>{% endfor %}
+        </select>
+        {% if not certificate_options %}<p class="ds-hint">Ative o uso de um certificado na <a href="/certificados-digitais">Central de Certificados</a>.</p>{% endif %}
+        {% if options.fields %}
+        <label class="ds-label" for="ds-target">Campo da assinatura</label>
+        <select id="ds-target" data-ds-target>
+          {% if options.free_position %}<option value="">Novo campo</option>{% endif %}
+          {% for field in options.fields %}<option value="{{ field.name }}">{{ field.name }}{% if field.location %} · página {{ field.location.page + 1 }}{% endif %}</option>{% endfor %}
+        </select>
+        {% endif %}
+        {% if options.free_position %}
+        <div class="ds-placement" data-ds-placement>
+          <label class="ds-check"><input type="checkbox" data-ds-visible> Mostrar assinatura no PDF</label>
+          <p class="ds-hint" data-ds-placement-hint hidden>Arraste a marca e ajuste o tamanho, ou use as setas com foco na marca.</p>
+          <button type="button" class="ds-inline-action" data-ds-place-current hidden>Mover para esta página</button>
+        </div>
+        {% elif not options.fields %}
+        <p class="ds-note ds-note--small">O PDF não permite acrescentar uma assinatura a esta versão.</p>
+        {% endif %}
+        <label class="ds-check ds-authorization"><input type="checkbox" data-ds-consent {% if mode == 'blocked' %}disabled{% endif %}> Autorizo expressamente a assinatura desta versão do PDF.</label>
+        <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-authorize data-enabled="{{ 'yes' if mode != 'blocked' and (options.fields or options.free_position) else 'no' }}" disabled>Solicitar código {{ icon('arrow', 17) }}</button>
+        <p class="ds-feedback" data-ds-status role="status" aria-live="polite" hidden></p>
+      </section>
+
+      <section class="ds-card ds-side-card">
+        <header class="ds-card-heading"><span class="ds-tile ds-tile--blue">{{ icon('shield', 18) }}</span><div><h2>Validação</h2><p data-ds-overview></p></div></header>
+        <div data-ds-result></div>
+        <button type="button" class="sf-btn sf-btn-secondary ds-full" data-ds-revalidate>Revalidar PDF</button>
+      </section>
+    </aside>
+  </div>
+
+  <div class="ds-work-bottom">
+    <section class="ds-card ds-history">
+      <header class="ds-history-header"><div><h2>Versões do PDF</h2><p>Confira quem assinou cada versão e baixe os arquivos.</p></div></header>
+      <ul class="ds-list ds-revisions">
+        {% for revision in revisions %}
+        <li>
+          <a href="{{ endpoint }}/revisoes/{{ revision.number }}/pdf">
+            <span class="ds-file-icon">{{ icon('file', 18) }}</span>
+            <span class="ds-row-name"><strong>{{ 'Original importado' if revision.number == 1 else 'Versão ' ~ revision.number }}{% if revision.number == doc.current_revision %} · atual{% endif %}</strong>
+              <small>{{ revision.created_at|datetime_sp }}{% if revision.signature %} · {{ revision.signature.holder }} (conta de {{ revision.signature.operator }}){% endif %}</small></span>
+            <span aria-hidden="true" class="ds-row-arrow">{{ icon('download', 18) }}</span><span class="sr-only">Baixar</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% if doc.owner_id == user.id %}
+    <section class="ds-card ds-side-card">
+      <header class="ds-card-heading"><div><h2>Participantes</h2><p>Pessoas autorizadas a acessar o PDF e assinar com seu próprio certificado.</p></div></header>
+      {% for person in participants %}
+      <div class="ds-person"><div><strong>{{ person.display_name or person.name }}</strong><small>{{ person.email }}</small></div>
+        <button type="button" class="ds-inline-action" data-ds-remove="{{ person.id }}">Remover</button>
+      </div>
+      {% endfor %}
+      <form data-ds-share>
+        <label class="ds-label" for="ds-collaborator">E-mail da conta no SiSFarm</label>
+        <input id="ds-collaborator" name="email" type="email" required maxlength="120">
+        <label class="ds-check"><input name="consent" type="checkbox" required> Autorizo o acesso deste participante ao PDF e às suas versões.</label>
+        <button class="sf-btn sf-btn-secondary" type="submit">Conceder acesso</button>
+        <p class="ds-feedback" data-ds-share-status role="status" hidden></p>
+      </form>
+    </section>
+    {% endif %}
+  </div>
+
+  <dialog class="ds-dialog" data-ds-confirm>
+    <form data-ds-sign-form>
+      <div class="ds-dialog-heading"><span class="ds-tile">{{ icon('shield', 23) }}</span><button type="button" data-ds-close class="ds-icon-button" aria-label="Fechar">{{ icon('close', 19) }}</button></div>
+      <h2>Confirmar assinatura</h2><p>Enviamos um código à sua conta. Digite o código e a senha do certificado A1.</p>
+      <div class="ds-dialog-summary"><strong>{{ doc.filename }}</strong><span data-ds-confirm-holder></span><small data-ds-confirm-hash></small></div>
+      <label class="ds-label" for="ds-code">Código de autorização</label>
+      <input id="ds-code" name="code" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" required>
+      <label class="ds-label" for="ds-password">Senha do certificado A1</label>
+      <input id="ds-password" name="password" type="password" autocomplete="off" maxlength="1024" required>
+      <p class="ds-feedback" data-ds-confirm-status role="status" hidden></p>
+      <button type="submit" class="sf-btn sf-btn-primary ds-full">Assinar esta versão</button>
+    </form>
+  </dialog>
+</main>
+<script type="module" src="/static/js/digital_signing.js?v=1"></script>
+{% endblock %}

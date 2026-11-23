@@ -10,6 +10,7 @@ import os
 import re
 from uuid import uuid4
 
+from app.services.digital_certificates import fiscal_certificate_query
 from app.models.nfe_draft import (
     NfeCertificateVault,
     NfeClientFiscalConfig,
@@ -172,8 +173,7 @@ def evaluate_pilot_homologation_readiness(db, *, organization_id: int, farm_id: 
     )
     now = datetime.now(timezone.utc)
     active_cert = (
-        db.query(NfeCertificateVault)
-        .filter_by(organization_id=organization_id, farm_id=farm_id, environment='homologacao', is_active=True)
+        fiscal_certificate_query(db, organization_id, farm_id, environment='homologacao', active=True)
         .order_by(NfeCertificateVault.created_at.desc())
         .first()
     )

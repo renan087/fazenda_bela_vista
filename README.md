@@ -123,6 +123,10 @@ A situação das assinaturas é conciliada automaticamente com o Asaas a cada 5 
 3. Vincule novamente o cliente de cada organização em Organizações e contrate as assinaturas.
 4. Para reutilizar o cartão salvo do cliente, peça ao Asaas a liberação da tokenização de cartão.
 
+## Assinatura de documentos
+
+A área Documentos reúne a Central de Certificados, a assinatura de PDFs e a validação independente. A configuração e o procedimento de liberação estão no [guia de assinatura digital](docs/assinatura-digital.md).
+
 ## Testes automatizados
 
 Instale dependências de desenvolvimento e execute a suíte:
