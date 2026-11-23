@@ -12366,3 +12366,9 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .vr-add:hover { border-color:#446A36; background:#F6F8F5; } .vr-add svg { width:16px; height:16px; color:#446A36; }
 .vr-add:focus-visible { outline:3px solid #9BCB6B; outline-offset:2px; }
 .vw-f select[hidden] { display:none; }
+.vw-qty-field input { width:5ch; min-width:3ch; max-width:16ch; box-sizing:content-box; padding:0 6px; }
+.vw-all span { font-weight:500; color:var(--pd-muted); }
+.vw-qty { flex-wrap:nowrap; }
+/* Menus que abrem para cima quando não cabem embaixo */
+.sv-pop.is-up { top:auto; bottom:42px; transform-origin:bottom; }
+.sl-menu.is-up { top:auto; bottom:calc(100% + 8px); }

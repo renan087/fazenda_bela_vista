@@ -324,15 +324,15 @@ def test_quick_account_and_card_from_sale_form(env):
     r = env.routes
     html = r.sale_new_page(env.request("/producao/vendas/nova"), db=env.db, user=env.user, csrf_token="x").body.decode()
     assert '+ Cadastrar outra conta…' in html and 'data-vr-open="cartao"' in html and 'Salvar e usar' in html
-    res = asyncio.run(r.sale_quick_account_action(env.request("/x", [("account_name", "Sicredi"), ("bank_code", "748"),
-                                                                     ("initial_balance", "1.234,56")]), db=env.db, user=env.user))
+    res = asyncio.run(r.sale_quick_account_action(env.request("/x", [("nome", "Sicredi"), ("bank_code", "748"),
+                                                                     ("saldo", "1.234,56")]), db=env.db, user=env.user))
     data = json.loads(res.body)
     acc = env.db.get(FinanceAccount, data["id"])
     assert data["name"] == "Sicredi" and float(acc.initial_balance) == 1234.56
-    bad = asyncio.run(r.sale_quick_card_action(env.request("/x", [("card_name", "Visa"), ("issuer", "Nenhum")]), db=env.db, user=env.user))
+    bad = asyncio.run(r.sale_quick_card_action(env.request("/x", [("nome_cartao", "Visa"), ("issuer", "Nenhum")]), db=env.db, user=env.user))
     assert bad.status_code == 422 and "emissor" in json.loads(bad.body)["error"]
     issuer = r.FINANCE_CREDIT_CARD_ISSUER_OPTIONS[0]
-    res = asyncio.run(r.sale_quick_card_action(env.request("/x", [("card_name", "Visa Sicredi"), ("issuer", issuer), ("brand", "Visa"),
+    res = asyncio.run(r.sale_quick_card_action(env.request("/x", [("nome_cartao", "Visa Sicredi"), ("issuer", issuer), ("brand", "Visa"),
                                                                   ("closing_day", "5"), ("due_day", "12"), ("payment_account_id", str(acc.id))]),
                                                db=env.db, user=env.user))
     card = env.db.get(FinanceCreditCard, json.loads(res.body)["id"])

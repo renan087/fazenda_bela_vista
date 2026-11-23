@@ -35,10 +35,14 @@
         return { lines, sacks, price, gross, discount, net: Math.max(gross - discount, 0), freight, fun, bro };
     }
 
+    // O campo de sacas cresce com o número (nada fica escondido).
+    function fit(input) { input.style.width = `${Math.max(3, (input.value || input.placeholder || '').length + 1.5)}ch`; }
+
     function setQty(el, value) {
         const max = parse(el.dataset.available);
         const v = Math.max(0, Math.min(max, Math.round(value * 100) / 100));
         $('[data-vw-sacks]', el).value = fmt(v);
+        fit($('[data-vw-sacks]', el));
         refresh();
     }
 
@@ -53,7 +57,7 @@
         $('[data-vw-plus]', el).addEventListener('click', () => setQty(el, parse($('[data-vw-sacks]', el).value) + 10));
         $('[data-vw-minus]', el).addEventListener('click', () => setQty(el, Math.max(1, parse($('[data-vw-sacks]', el).value) - 10)));
         $('[data-vw-all]', el).addEventListener('click', () => setQty(el, parse(el.dataset.available)));
-        $('[data-vw-sacks]', el).addEventListener('input', refresh);
+        $('[data-vw-sacks]', el).addEventListener('input', () => { fit($('[data-vw-sacks]', el)); refresh(); });
         $('[data-vw-sacks]', el).addEventListener('blur', (e) => setQty(el, parse(e.target.value)));
     });
 
@@ -250,6 +254,10 @@
         if (event.key === 'Enter' && event.target.tagName === 'INPUT' && step < 3) { event.preventDefault(); go(step + 1); }
     });
     syncCondition();
+    $$('[data-vw-sacks]').forEach(fit);
+    // "Vender deste lote": o lote já vem marcado e o cursor fica na quantidade (ou "Tudo").
+    const ask = $('[data-vw-ask]');
+    if (ask && !document.querySelector('.pd-alert.is-error[role=alert]:not([data-vw-error])')) setTimeout(() => ask.focus(), 50);
     refresh();
     if (document.querySelector('.pd-alert.is-error[role=alert]:not([data-vw-error])')) go(lots.some((el) => $('.vw-lot-check', el).checked) ? 2 : 1);
 })();

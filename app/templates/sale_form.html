@@ -44,11 +44,12 @@
                         <div class="vw-qty" data-vw-qty {% if not qty %}hidden{% endif %}>
                             <button type="button" class="vw-step-btn" data-vw-minus aria-label="Menos 10 sacas do lote {{ lot.code }}">−</button>
                             <label class="vw-qty-field"><span class="sr-only">Sacas do lote {{ lot.code }}</span>
-                                <input name="lot_sacks_{{ lot.id }}" inputmode="decimal" value="{{ (qty or 0)|decimal_br }}" data-vw-sacks>
+                                {% set ask = lot.id == sale_origin_lot and not sale_exists and not sale_error %}
+                                <input name="lot_sacks_{{ lot.id }}" inputmode="decimal" value="{{ '' if ask else (qty or 0)|decimal_br }}" placeholder="0" autocomplete="off" data-vw-sacks{% if ask %} data-vw-ask{% endif %}>
                                 <small aria-hidden="true">sc</small>
                             </label>
                             <button type="button" class="vw-step-btn" data-vw-plus aria-label="Mais 10 sacas do lote {{ lot.code }}">+</button>
-                            <button type="button" class="vw-all" data-vw-all>Tudo</button>
+                            <button type="button" class="vw-all" data-vw-all>Tudo <span>{{ lot.available_for_sale|decimal_br(0 if lot.available_for_sale == (lot.available_for_sale|int) else 2) }} sc</span></button>
                         </div>
                     </div>
                     {% endfor %}
@@ -198,7 +199,7 @@
     {% macro quick_drawer(kind, title, endpoint) %}
     <div class="sv-dw" hidden data-vr-drawer="{{ kind }}">
         <button type="button" class="sv-dw-ov" data-vr-close aria-label="Fechar"></button>
-        <form method="post" action="{{ endpoint }}" class="sv-dw-panel" role="dialog" aria-modal="true" aria-labelledby="vr-dw-{{ kind }}" novalidate data-vr-quick="{{ kind }}">
+        <form method="post" action="{{ endpoint }}" class="sv-dw-panel" role="dialog" aria-modal="true" aria-labelledby="vr-dw-{{ kind }}" novalidate autocomplete="off" data-vr-quick="{{ kind }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <header class="sv-dw-h"><div><h2 id="vr-dw-{{ kind }}">{{ title }}</h2><p>Fica salvo no Financeiro e já entra escolhido.</p></div>
                 <button type="button" class="sv-x" data-vr-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
@@ -208,16 +209,16 @@
     </div>
     {% endmacro %}
     {% call quick_drawer('conta', 'Nova conta', '/producao/vendas/conta-rapida') %}
-        <label class="vw-f"><span class="vr-t">Nome da conta</span><input name="account_name" maxlength="180" required placeholder="Ex.: Sicoob — conta da fazenda"></label>
+        <label class="vw-f"><span class="vr-t">Nome da conta</span><input name="nome" maxlength="180" required autocomplete="off" data-1p-ignore data-lpignore="true" placeholder="Ex.: Sicoob — conta da fazenda"></label>
         <label class="vw-f"><span class="vr-t">Banco</span><select name="bank_code" required><option value="">Escolha o banco</option>{% for b in sale_banks %}<option value="{{ b.code }}">{{ b.code }} · {{ b.name }}</option>{% endfor %}</select></label>
-        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Agência <small>opcional</small></span><input name="branch_number" maxlength="30" inputmode="numeric"></label><label class="vw-f"><span class="vr-t">Conta <small>opcional</small></span><input name="account_number" maxlength="60"></label></div>
-        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Saldo inicial</span><span class="vw-affix"><span>R$</span><input name="initial_balance" inputmode="numeric" value="0,00" data-mask="decimal"></span></label><label class="vw-f"><span class="vr-t">Saldo em</span><input type="date" name="initial_balance_date" value="{{ today.isoformat() }}"></label></div>
+        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Agência <small>opcional</small></span><input name="agencia" maxlength="30" inputmode="numeric" autocomplete="off" data-1p-ignore data-lpignore="true"></label><label class="vw-f"><span class="vr-t">Nº da conta <small>opcional</small></span><input name="numero" maxlength="60" inputmode="numeric" autocomplete="off" data-1p-ignore data-lpignore="true"></label></div>
+        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Saldo inicial</span><span class="vw-affix"><span>R$</span><input name="saldo" inputmode="numeric" value="0,00" data-mask="decimal" autocomplete="off"></span></label><label class="vw-f"><span class="vr-t">Saldo em</span><input type="date" name="saldo_em" value="{{ today.isoformat() }}"></label></div>
     {% endcall %}
     {% call quick_drawer('cartao', 'Novo cartão', '/producao/vendas/cartao-rapido') %}
-        <label class="vw-f"><span class="vr-t">Nome do cartão</span><input name="card_name" maxlength="180" required placeholder="Ex.: Visa Sicoob"></label>
+        <label class="vw-f"><span class="vr-t">Nome do cartão</span><input name="nome_cartao" maxlength="180" required autocomplete="off" data-1p-ignore data-lpignore="true" placeholder="Ex.: Visa Sicoob"></label>
         <div class="vr-g2"><label class="vw-f"><span class="vr-t">Emissor</span><select name="issuer" required><option value="">Escolha</option>{% for i in sale_card_issuers %}<option>{{ i }}</option>{% endfor %}</select></label>
             <label class="vw-f"><span class="vr-t">Bandeira</span><select name="brand">{% for b in sale_card_brands %}<option>{{ b }}</option>{% endfor %}</select></label></div>
-        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Dia do fechamento</span><input name="closing_day" inputmode="numeric" maxlength="2" required placeholder="Ex.: 5"></label><label class="vw-f"><span class="vr-t">Dia do vencimento</span><input name="due_day" inputmode="numeric" maxlength="2" required placeholder="Ex.: 12"></label></div>
+        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Dia do fechamento</span><input name="closing_day" inputmode="numeric" maxlength="2" required autocomplete="off" placeholder="Ex.: 5"></label><label class="vw-f"><span class="vr-t">Dia do vencimento</span><input name="due_day" inputmode="numeric" maxlength="2" required autocomplete="off" placeholder="Ex.: 12"></label></div>
         <label class="vw-f"><span class="vr-t">Conta que paga a fatura <small>opcional</small></span><select name="payment_account_id" data-vr-card-account><option value="">Escolher depois</option>{% for a in finance_accounts %}<option value="{{ a.id }}">{{ a.account_name }}</option>{% endfor %}</select></label>
     {% endcall %}
     {% if sale_quick %}{% set q = sale_quick %}
@@ -263,5 +264,5 @@
     {{ buyer_modal(csrf_token) }}
 </div>
 <script src="{{ url_for('static', path='js/buyer_picker.js') }}?v=20261122bp1" defer></script>
-<script src="{{ url_for('static', path='js/sale_form.js') }}?v=5" defer></script>
+<script src="{{ url_for('static', path='js/sale_form.js') }}?v=6" defer></script>
 {% endblock %}

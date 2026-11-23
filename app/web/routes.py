@@ -22837,9 +22837,10 @@ async def sale_quick_account_action(request: Request, db: Session = Depends(get_
     text = lambda k: str(form.get(k) or "").strip()  # noqa: E731
     existing = repo.list_finance_accounts(farm_id=farm.id)
     try:
-        payload = _finance_accounts_parse_form(text("account_name"), text("initial_balance_date") or today_in_app_timezone().isoformat(),
-                                               str(_float_or_none(text("initial_balance")) or 0), text("bank_code"), "", None, None,
-                                               text("branch_number") or None, text("account_number") or None, not existing, repo)
+        # Nomes neutros no formulário (nome, agencia, numero, saldo): evita o navegador sugerir senha.
+        payload = _finance_accounts_parse_form(text("nome"), text("saldo_em") or today_in_app_timezone().isoformat(),
+                                               str(_float_or_none(text("saldo")) or 0), text("bank_code"), "", None, None,
+                                               text("agencia") or None, text("numero") or None, not existing, repo)
         _validate_finance_account_uniqueness(repo, farm_id=farm.id, branch_number=payload["branch_number"],
                                              account_number=payload["account_number"])
     except ValueError as exc:
@@ -22868,7 +22869,7 @@ async def sale_quick_card_action(request: Request, db: Session = Depends(get_db)
     existing = repo.list_finance_credit_cards(farm_id=farm.id)
     try:
         payload = _finance_credit_cards_parse_form(
-            repo=repo, active_farm=farm, card_name=text("card_name"), issuer=text("issuer"), brand=text("brand") or None,
+            repo=repo, active_farm=farm, card_name=text("nome_cartao"), issuer=text("issuer"), brand=text("brand") or None,
             closing_day=text("closing_day"), due_day=text("due_day"), credit_limit=None,
             payment_account_id=text("payment_account_id") or None, is_default=not existing, is_active=True, notes=None)
     except ValueError as exc:

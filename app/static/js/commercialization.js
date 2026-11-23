@@ -1,3 +1,13 @@
+/* Abre o menu para cima quando não cabe embaixo na tela. */
+window.svPlaceMenu = function (menu) {
+  if (!menu) return;
+  menu.classList.remove('is-up');
+  if (getComputedStyle(menu).position === 'fixed') return;
+  var r = menu.getBoundingClientRect();
+  var trigger = menu.parentElement.getBoundingClientRect();
+  if (r.bottom > window.innerHeight - 8 && trigger.top - r.height - 8 > 0) menu.classList.add('is-up');
+};
+
 /* Comercialização: menu "⋯" de cada venda (fecha ao clicar fora e com Esc). */
 (function () {
   'use strict';
@@ -16,6 +26,7 @@
         e.stopPropagation(); closeAll(w);
         var open = menu.hidden; menu.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false');
         var card = w.closest('.sl-sale'); if (card) card.classList.toggle('is-menu', open);
+        if (open) window.svPlaceMenu(menu);
         if (open) { var first = menu.querySelector('.sl-mi'); if (first) first.focus(); }
       });
       menu.addEventListener('keydown', function (e) {
@@ -51,6 +62,7 @@
       btn.addEventListener('click', function (e) {
         e.stopPropagation(); closePops(w);
         var open = pop.hidden; pop.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) window.svPlaceMenu(pop);
         if (open) { var f = pop.querySelector('.sv-pi:not([disabled]), input:not([disabled])'); if (f) f.focus(); }
       });
     });
