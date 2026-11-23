@@ -22954,7 +22954,24 @@ async def sale_quick_card_action(request: Request, db: Session = Depends(get_db)
         display_order=max((int(c.display_order or 0) for c in existing), default=-1) + 1, notes=None, created_at=app_now())
     db.add(card)
     db.commit()
-    return JSONResponse({"id": card.id, "name": card.card_name + (f" · {card.brand}" if card.brand else "")})
+    return JSONResponse({
+        "id": card.id,
+        "name": card.card_name + (f" · {card.brand}" if card.brand else ""),
+        "closing_day": int(card.closing_day or 0),
+        "due_day": int(card.due_day or 0),
+    })
+
+
+@router.post("/insumos/comprados/conta-rapida")
+async def purchase_quick_account_action(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Cadastra a conta bancária sem sair da Nova compra (gaveta). Responde JSON."""
+    return await sale_quick_account_action(request, db, user)
+
+
+@router.post("/insumos/comprados/cartao-rapido")
+async def purchase_quick_card_action(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Cadastra o cartão de crédito sem sair da Nova compra (gaveta). Responde JSON."""
+    return await sale_quick_card_action(request, db, user)
 
 
 @router.post("/producao/vendas")
@@ -27107,8 +27124,19 @@ def purchase_wizard_page(
             return _redirect(_note_back())
     return templates.TemplateResponse(
         "purchase_wizard.html",
-        _base_context(request, user, csrf_token, "stock", _repo=repo, title="Corrigir compra" if wizard.get("edit") else "Lançar compra",
-                      wizard=wizard, done=done),
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "stock",
+            _repo=repo,
+            title="Corrigir compra" if wizard.get("edit") else "Lançar compra",
+            wizard=wizard,
+            done=done,
+            purchase_banks=FINANCE_BANK_OPTIONS,
+            purchase_card_issuers=FINANCE_CREDIT_CARD_ISSUER_OPTIONS,
+            purchase_card_brands=FINANCE_CREDIT_CARD_BRAND_OPTIONS,
+        ),
     )
 
 

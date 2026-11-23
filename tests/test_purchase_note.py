@@ -238,3 +238,39 @@ def test_item_step_has_search_above_list_and_missing_summary(wiz):
     step2 = html[html.index('data-cw-step="2"'):html.index('data-cw-step="3"')]
     assert step2.index("data-cw-search") < step2.index("data-cw-items")
     assert "data-cw-todo" in step2 and "data-cw-count" in step2
+
+
+def test_purchase_wizard_quick_account_and_card_creation(hub):
+    import asyncio as aio
+    from app.models.finance_account import FinanceAccount
+    from app.models.finance_credit_card import FinanceCreditCard
+    env, x = hub
+    # Sem contas nem cartões: modo cartão liberado, botões "+ Cadastrar conta/cartão" e gavetas rápidas
+    env.db.query(FinanceCreditCard).delete()
+    env.db.query(FinanceAccount).delete()
+    env.db.commit()
+    html = env.routes.purchase_wizard_page(env.request("/insumos/comprados/nova"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert 'data-cw-mode="cartao"' in html and 'data-cw-mode="cartao" disabled' not in html
+    assert 'data-vr-open="conta"' in html and 'data-vr-open="cartao"' in html
+    assert '/insumos/comprados/conta-rapida' in html and '/insumos/comprados/cartao-rapido' in html
+    assert '+ Cadastrar outra conta…' in html and '+ Cadastrar outro cartão…' in html
+
+    # Cadastra conta rápida via endpoint JSON
+    acc_req = env.request("/insumos/comprados/conta-rapida", form=[
+        ("csrf_token", "x"), ("nome", "Sicoob Fazenda"), ("bank_code", "756"), ("saldo", "0,00"), ("saldo_em", "2026-11-22"),
+    ])
+    acc_resp = aio.run(env.routes.purchase_quick_account_action(acc_req, db=env.db, user=env.user))
+    assert acc_resp.status_code == 200
+    acc_data = json.loads(acc_resp.body.decode())
+    assert acc_data["id"] and acc_data["name"] == "Sicoob Fazenda"
+
+    # Cadastra cartão rápido via endpoint JSON (com closing_day e due_day)
+    card_req = env.request("/insumos/comprados/cartao-rapido", form=[
+        ("csrf_token", "x"), ("nome_cartao", "Visa Ourocard"), ("issuer", "Banco do Brasil / Ourocard"), ("brand", "Visa"),
+        ("closing_day", "5"), ("due_day", "12"), ("payment_account_id", str(acc_data["id"])),
+    ])
+    card_resp = aio.run(env.routes.purchase_quick_card_action(card_req, db=env.db, user=env.user))
+    assert card_resp.status_code == 200
+    card_data = json.loads(card_resp.body.decode())
+    assert card_data["id"] and "Visa Ourocard" in card_data["name"]
+    assert card_data["closing_day"] == 5 and card_data["due_day"] == 12

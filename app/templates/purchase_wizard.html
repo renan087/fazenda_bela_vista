@@ -95,13 +95,18 @@
                 <div class="cw-modes" role="radiogroup" aria-label="Forma de pagamento">
                     <button type="button" class="cw-mode" role="radio" data-cw-mode="vista"><strong>À vista</strong><span>Pix, boleto, dinheiro ou transferência</span></button>
                     <button type="button" class="cw-mode" role="radio" data-cw-mode="prazo"><strong>Parcelado</strong><span>Boleto ou prazo com o fornecedor</span></button>
-                    <button type="button" class="cw-mode" role="radio" data-cw-mode="cartao"{% if not wizard.cards %} disabled title="Cadastre um cartão no Financeiro"{% endif %}><strong>Cartão de crédito</strong><span>{{ 'Entra na fatura do cartão' if wizard.cards else 'Nenhum cartão cadastrado' }}</span></button>
+                    <button type="button" class="cw-mode" role="radio" data-cw-mode="cartao"><strong>Cartão de crédito</strong><span data-cw-card-mode-sub>{{ 'Entra na fatura do cartão' if wizard.cards else 'Cadastre um cartão aqui' }}</span></button>
                 </div>
                 <div class="cw-grid3" data-cw-pay="vista prazo">
-                    <label class="io-fld"><span>Conta que paga</span><select data-cw-p="account_id">
-                        <option value="">Não lançar no Financeiro</option>
-                        {% for a in wizard.accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
-                    </select></label>
+                    <div class="io-fld">
+                        <label for="cw-account">Conta que paga</label>
+                        <select id="cw-account" data-cw-p="account_id" data-vr-pick="conta"{% if not wizard.accounts %} hidden{% endif %}>
+                            <option value="">Não lançar no Financeiro</option>
+                            {% for a in wizard.accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+                            <option value="__nova__">+ Cadastrar outra conta…</option>
+                        </select>
+                        {% if not wizard.accounts %}<button type="button" class="vr-add" data-vr-open="conta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Cadastrar conta</button>{% endif %}
+                    </div>
                     <label class="io-fld"><span>Como</span><select data-cw-p="method">{% for m in wizard.methods %}<option>{{ m }}</option>{% endfor %}</select></label>
                 </div>
                 <div class="cw-grid3" data-cw-pay="prazo">
@@ -111,7 +116,14 @@
                 </div>
                 <div class="cw-parcels" data-cw-pay="prazo" data-cw-parcels></div>
                 <div class="cw-grid3" data-cw-pay="cartao">
-                    <label class="io-fld"><span>Cartão</span><select data-cw-p="card_id">{% for c in wizard.cards %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+                    <div class="io-fld">
+                        <label for="cw-card">Cartão</label>
+                        <select id="cw-card" data-cw-p="card_id" data-vr-pick="cartao"{% if not wizard.cards %} hidden{% endif %}>
+                            {% for c in wizard.cards %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                            <option value="__nova__">+ Cadastrar outro cartão…</option>
+                        </select>
+                        {% if not wizard.cards %}<button type="button" class="vr-add" data-vr-open="cartao"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Cadastrar cartão</button>{% endif %}
+                    </div>
                     <label class="io-fld"><span>Parcelas no cartão</span><select data-cw-p="card_count">{% for n in range(1, 13) %}<option value="{{ n }}">{{ n }} {{ 'vez' if n == 1 else 'vezes' }}</option>{% endfor %}</select></label>
                     <div class="io-note io-tone-blue" data-cw-card-info></div>
                 </div>
@@ -138,8 +150,33 @@
 
         <aside class="io-card cw-side io-side" aria-label="Resumo da nota" data-cw-summary></aside>
     </form>
+    {% macro quick_drawer(kind, title, endpoint) %}
+    <div class="sv-dw" hidden data-vr-drawer="{{ kind }}">
+        <button type="button" class="sv-dw-ov" data-vr-close aria-label="Fechar"></button>
+        <form method="post" action="{{ endpoint }}" class="sv-dw-panel" role="dialog" aria-modal="true" aria-labelledby="vr-dw-{{ kind }}" novalidate autocomplete="off" data-vr-quick="{{ kind }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <header class="sv-dw-h"><div><h2 id="vr-dw-{{ kind }}">{{ title }}</h2><p>Fica salvo no Financeiro e já entra escolhido.</p></div>
+                <button type="button" class="sv-x" data-vr-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+            <div class="sv-dw-b qh-body">{{ caller() }}<p class="pd-alert is-error" data-vr-error role="alert" hidden></p></div>
+            <footer class="sv-dw-f"><button type="button" class="sf-btn sf-btn-secondary" data-vr-close>Cancelar</button><button class="sf-btn sf-btn-primary" type="submit">Salvar e usar</button></footer>
+        </form>
+    </div>
+    {% endmacro %}
+    {% call quick_drawer('conta', 'Nova conta', '/insumos/comprados/conta-rapida') %}
+        <label class="vw-f"><span class="vr-t">Nome da conta</span><input name="nome" maxlength="180" required autocomplete="off" data-1p-ignore data-lpignore="true" placeholder="Ex.: Sicoob — conta da fazenda"></label>
+        <label class="vw-f"><span class="vr-t">Banco</span><select name="bank_code" required><option value="">Escolha o banco</option>{% for b in purchase_banks %}<option value="{{ b.code }}">{{ b.code }} · {{ b.name }}</option>{% endfor %}</select></label>
+        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Agência <small>opcional</small></span><input name="agencia" maxlength="30" inputmode="numeric" autocomplete="off" data-1p-ignore data-lpignore="true"></label><label class="vw-f"><span class="vr-t">Nº da conta <small>opcional</small></span><input name="numero" maxlength="60" inputmode="numeric" autocomplete="off" data-1p-ignore data-lpignore="true"></label></div>
+        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Saldo inicial</span><span class="vw-affix"><span>R$</span><input name="saldo" inputmode="numeric" value="0,00" data-mask="decimal" autocomplete="off"></span></label><label class="vw-f"><span class="vr-t">Saldo em</span><input type="date" name="saldo_em" value="{{ wizard.today }}"></label></div>
+    {% endcall %}
+    {% call quick_drawer('cartao', 'Novo cartão', '/insumos/comprados/cartao-rapido') %}
+        <label class="vw-f"><span class="vr-t">Nome do cartão</span><input name="nome_cartao" maxlength="180" required autocomplete="off" data-1p-ignore data-lpignore="true" placeholder="Ex.: Visa Sicoob"></label>
+        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Emissor</span><select name="issuer" required><option value="">Escolha</option>{% for i in purchase_card_issuers %}<option>{{ i }}</option>{% endfor %}</select></label>
+            <label class="vw-f"><span class="vr-t">Bandeira</span><select name="brand">{% for b in purchase_card_brands %}<option>{{ b }}</option>{% endfor %}</select></label></div>
+        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Dia do fechamento</span><input name="closing_day" inputmode="numeric" maxlength="2" required autocomplete="off" placeholder="Ex.: 5"></label><label class="vw-f"><span class="vr-t">Dia do vencimento</span><input name="due_day" inputmode="numeric" maxlength="2" required autocomplete="off" placeholder="Ex.: 12"></label></div>
+        <label class="vw-f"><span class="vr-t">Conta que paga a fatura <small>opcional</small></span><select name="payment_account_id" data-vr-card-account><option value="">Escolher depois</option>{% for a in wizard.accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select></label>
+    {% endcall %}
     <script type="application/json" data-cw-data>{{ wizard|tojson }}</script>
-    <script src="{{ url_for('static', path='js/purchase_wizard.js') }}?v=20261122cw5" defer></script>
+    <script src="{{ url_for('static', path='js/purchase_wizard.js') }}?v=20261123cw6" defer></script>
     {% endif %}
 </div>
 {% if done %}<script>try { localStorage.removeItem('sisfarm.compra.rascunho'); } catch (e) {}</script>{% endif %}

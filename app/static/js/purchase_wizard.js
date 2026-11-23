@@ -250,7 +250,7 @@
   function renderPayment() {
     const p = S.payment;
     if (EDIT && EDIT.paid) {
-      $$('[data-cw-mode], [data-cw-p], [data-cw-parc]').forEach((el) => { el.disabled = true; });
+      $$('[data-cw-mode], [data-cw-p], [data-cw-parc], [data-vr-open]').forEach((el) => { el.disabled = true; });
       const nofin = $('[data-cw-nofin]');
       nofin.textContent = `Esta nota já tem ${EDIT.paid} ${EDIT.paid === 1 ? 'parcela paga' : 'parcelas pagas'}: o pagamento e o total não podem mudar aqui. Para isso, estorne o pagamento no Financeiro.`;
       nofin.classList.remove('io-hidden');
@@ -268,7 +268,9 @@
     }
     if (p.mode === 'cartao') {
       const card = D.cards.find((c) => String(c.id) === String(p.card_id));
-      $('[data-cw-card-info]').innerHTML = card ? `<strong>${esc(card.name)}</strong><br>Fecha dia ${card.closing_day} · vence dia ${card.due_day}. ${p.card_count > 1 ? `${p.card_count} parcelas nas próximas faturas.` : 'Entra na próxima fatura.'}` : 'Escolha o cartão.';
+      $('[data-cw-card-info]').innerHTML = card
+        ? `<strong>${esc(card.name)}</strong><br>Fecha dia ${card.closing_day} · vence dia ${card.due_day}. ${p.card_count > 1 ? `${p.card_count} parcelas nas próximas faturas.` : 'Entra na próxima fatura.'}`
+        : (D.cards.length ? 'Escolha o cartão.' : 'Cadastre um cartão ao lado para lançar a compra direto na fatura.');
     }
   }
 
@@ -471,9 +473,112 @@
   const file = $('[data-cw-file]');
   if (file) file.addEventListener('change', () => { fileName = file.files[0] ? file.files[0].name : ''; $('[data-cw-file-label]').textContent = fileName ? `Anexada: ${fileName}` : 'Opcional. A nota fica anexada a cada item da compra.'; renderSummary(); });
 
+  // ------------------------------------------------------------------ cadastro rápido de conta / cartão (gaveta)
+  const quickDrawers = $$('[data-vr-drawer]');
+  let quickOpener = null;
+  const quickSelectFor = (kind) => $(`[data-vr-pick="${kind}"]`);
+  const openQuickDrawer = (kind, from) => {
+    if (EDIT && EDIT.paid) return;
+    const dw = $(`[data-vr-drawer="${kind}"]`);
+    if (!dw) return;
+    quickOpener = from;
+    dw.hidden = false;
+    document.body.style.overflow = 'hidden';
+    const first = dw.querySelector('input:not([type=hidden]), select');
+    if (first) first.focus();
+  };
+  const closeQuickDrawer = (dw) => {
+    dw.hidden = true;
+    document.body.style.overflow = '';
+    if (quickOpener) quickOpener.focus();
+  };
+  const showQuickToast = (text) => {
+    const t = document.createElement('div');
+    t.className = 'sv-toast';
+    t.setAttribute('role', 'status');
+    t.textContent = text;
+    document.body.appendChild(t);
+    setTimeout(() => { t.classList.add('is-out'); setTimeout(() => t.remove(), 260); }, 4000);
+  };
+  $$('[data-vr-open]').forEach((b) => b.addEventListener('click', () => openQuickDrawer(b.dataset.vrOpen, b)));
+  quickDrawers.forEach((dw) => {
+    dw.querySelectorAll('[data-vr-close]').forEach((b) => b.addEventListener('click', () => closeQuickDrawer(dw)));
+    dw.querySelectorAll('[data-mask="decimal"]').forEach((el) => el.addEventListener('input', () => {
+      const d = el.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 13);
+      el.value = d ? (parseInt(d, 10) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+    }));
+    const qform = dw.querySelector('[data-vr-quick]');
+    const qerr = qform.querySelector('[data-vr-error]');
+    qform.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const missingField = Array.from(qform.querySelectorAll('[required]')).find((el) => !el.value.trim());
+      if (missingField) {
+        const lbl = missingField.closest('.vw-f') && missingField.closest('.vw-f').querySelector('.vr-t');
+        qerr.textContent = 'Preencha ' + (lbl ? lbl.textContent.trim() : 'os campos') + '.';
+        qerr.hidden = false;
+        missingField.focus();
+        return;
+      }
+      const btn = qform.querySelector('[type=submit]');
+      btn.disabled = true;
+      try {
+        const res = await fetch(qform.action, { method: 'POST', body: new FormData(qform), headers: { Accept: 'application/json' } });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.id) {
+          qerr.textContent = data.error || 'Não foi possível salvar. Tente de novo.';
+          qerr.hidden = false;
+          return;
+        }
+        const kind = qform.dataset.vrQuick;
+        const sel = quickSelectFor(kind);
+        if (sel) {
+          const opt = new Option(data.name, String(data.id), true, true);
+          sel.insertBefore(opt, sel.querySelector('option[value="__nova__"]'));
+          sel.value = String(data.id);
+          sel.hidden = false;
+          const addBtn = sel.parentElement && sel.parentElement.querySelector('[data-vr-open]');
+          if (addBtn) addBtn.remove();
+        }
+        if (kind === 'conta') {
+          D.accounts.push({ id: data.id, name: data.name, default: !D.accounts.length });
+          const cardAccSel = $('[data-vr-card-account]');
+          if (cardAccSel) cardAccSel.add(new Option(data.name, String(data.id)));
+          S.payment.account_id = String(data.id);
+        } else if (kind === 'cartao') {
+          D.cards.push({ id: data.id, name: data.name, closing_day: Number(data.closing_day || 0), due_day: Number(data.due_day || 0) });
+          S.payment.card_id = String(data.id);
+          const sub = $('[data-cw-card-mode-sub]');
+          if (sub) sub.textContent = 'Entra na fatura do cartão';
+        }
+        save();
+        renderPayment();
+        renderSummary();
+        showError('');
+        qform.reset();
+        qerr.hidden = true;
+        closeQuickDrawer(dw);
+        quickOpener = sel;
+        if (sel) sel.focus();
+        showQuickToast(`${kind === 'conta' ? 'Conta' : 'Cartão'} ${data.name} criado e escolhido`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const dw = quickDrawers.find((d) => !d.hidden);
+    if (dw) closeQuickDrawer(dw);
+  });
+
   $$('[data-cw-mode]').forEach((b) => b.addEventListener('click', () => { if (b.disabled) return; S.payment.mode = b.dataset.cwMode; save(); renderPayment(); renderSummary(); showError(''); }));
   $$('[data-cw-p]').forEach((el) => {
     const handler = () => {
+      if (el.value === '__nova__' && el.dataset.vrPick) {
+        el.value = String(S.payment[el.dataset.cwP] || '');
+        openQuickDrawer(el.dataset.vrPick, el);
+        return;
+      }
       S.payment[el.dataset.cwP] = el.value;
       if (el.dataset.cwP === 'count' || el.dataset.cwP === 'first_due') S.payment.installments = null;
       save(); renderPayment(); renderSummary();
