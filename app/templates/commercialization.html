@@ -186,10 +186,15 @@
                     {% if g.finance_transaction_id %}<a class="sl-mi" role="menuitem" href="/gestao-financeira/contas?transaction_edit_id={{ g.finance_transaction_id }}">{{ svg('fin') }}Ver no Financeiro</a>{% endif %}
                     {% if can_write_page %}
                     <div class="sl-menu-sep" role="separator"></div>
-                    <form method="post" action="/producao/vendas/{{ g.code }}/excluir" data-confirm="Excluir a venda {{ g.code }}? Os lotes voltam a ter o saldo disponível.">
+                    {% if nf_done %}
+                    <button class="sl-mi is-danger" role="menuitem" type="button" disabled aria-describedby="sv-why-{{ g.code }}">{{ svg('trash') }}Excluir venda</button>
+                    <p class="sl-why" id="sv-why-{{ g.code }}">Tem NF-e autorizada. <a href="/notas-fiscais/{{ nf.id }}">Cancelar a nota</a> antes de excluir.</p>
+                    {% else %}
+                    <form method="post" action="/producao/vendas/{{ g.code }}/excluir" data-confirm="Excluir a venda {{ g.code }}? Os lotes voltam a ter o saldo disponível{% if nf_live %} e o rascunho da nota é descartado{% elif nf %}; a nota cancelada continua em Notas Fiscais{% endif %}.">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <button class="sl-mi is-danger" role="menuitem" type="submit">{{ svg('trash') }}Excluir venda</button>
                     </form>
+                    {% endif %}
                     {% endif %}
                 </div>
             </div>
@@ -270,6 +275,6 @@
     </div>
     {% endif %}
 </div>
-<script src="/static/js/commercialization.js?v=20261123sv2" defer></script>
+<script src="/static/js/commercialization.js?v=20261123sv3" defer></script>
 {% if sale_focus %}<script>document.getElementById({{ ('venda-' ~ sale_focus)|tojson }})?.scrollIntoView({ block: 'center' });</script>{% endif %}
 {% endblock %}

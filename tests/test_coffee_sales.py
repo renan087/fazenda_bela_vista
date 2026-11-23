@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import date, datetime
 from types import SimpleNamespace
 from urllib.parse import urlsplit
@@ -315,3 +316,57 @@ def test_receipt_choice_defines_sale_situation_and_finance(env):
     rec = sale_records(env.db, farm, "V-0001")[0]
     assert rec.finance_transaction_id is None and env.db.get(FinanceTransaction, tx.id) is None
     assert env.session["sale_toast"]["undo"]["fields"]["conta"] == str(env.account.id)
+
+
+def test_quick_account_and_card_from_sale_form(env):
+    from app.models import FinanceAccount
+    from app.models.finance_credit_card import FinanceCreditCard
+    r = env.routes
+    html = r.sale_new_page(env.request("/producao/vendas/nova"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert '+ Cadastrar outra conta…' in html and 'data-vr-open="cartao"' in html and 'Salvar e usar' in html
+    res = asyncio.run(r.sale_quick_account_action(env.request("/x", [("account_name", "Sicredi"), ("bank_code", "748"),
+                                                                     ("initial_balance", "1.234,56")]), db=env.db, user=env.user))
+    data = json.loads(res.body)
+    acc = env.db.get(FinanceAccount, data["id"])
+    assert data["name"] == "Sicredi" and float(acc.initial_balance) == 1234.56
+    bad = asyncio.run(r.sale_quick_card_action(env.request("/x", [("card_name", "Visa"), ("issuer", "Nenhum")]), db=env.db, user=env.user))
+    assert bad.status_code == 422 and "emissor" in json.loads(bad.body)["error"]
+    issuer = r.FINANCE_CREDIT_CARD_ISSUER_OPTIONS[0]
+    res = asyncio.run(r.sale_quick_card_action(env.request("/x", [("card_name", "Visa Sicredi"), ("issuer", issuer), ("brand", "Visa"),
+                                                                  ("closing_day", "5"), ("due_day", "12"), ("payment_account_id", str(acc.id))]),
+                                               db=env.db, user=env.user))
+    card = env.db.get(FinanceCreditCard, json.loads(res.body)["id"])
+    assert card.card_name == "Visa Sicredi" and card.payment_account_id == acc.id and card.is_default
+
+
+def test_sale_with_authorized_invoice_cannot_be_deleted(env, monkeypatch):
+    from app.services.coffee_sales import sale_records
+    r = env.routes
+    asyncio.run(r.sale_create_action(env.request("/producao/vendas", _sale_form(env, [(env.lots[0], "10")])), db=env.db, user=env.user))
+    note = {"id": "d" * 32, "status": "autorizada", "label": "Autorizada", "tone": "green", "number": "000127", "issues": 0}
+    monkeypatch.setattr(r, "_nf_notes_by_sale", lambda *a: {"V-0001": note})
+    page = r.commercialization_page(env.request("/producao/comercializacao"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert "Cancelar a nota</a> antes de excluir" in page
+    r.sale_delete_action("V-0001", env.request("/x"), csrf_token="x", db=env.db, user=env.user)
+    assert sale_records(env.db, env.scope["active_farm_id"], "V-0001")
+    assert "Cancele a nota" in env.session.pop("flash")["message"]
+    note["status"] = "cancelada"
+    r.sale_delete_action("V-0001", env.request("/x"), csrf_token="x", db=env.db, user=env.user)
+    assert not sale_records(env.db, env.scope["active_farm_id"], "V-0001")
+
+
+def test_harvest_delete_removes_analyses_and_is_blocked_by_sales(env, monkeypatch):
+    from app.models.coffee_classification import CoffeeClassification
+    r = env.routes
+    lot_a, lot_b = env.lots
+    env.db.add(CoffeeClassification(harvest_id=lot_b.id, analysis_date=date(2026, 9, 1), source="laudo", beverage="Mole"))
+    env.db.commit()
+    monkeypatch.setattr(r, "_global_scope_context", lambda *a, **k: env.scope)
+    monkeypatch.setattr(r, "_plot_matches_scope", lambda *a: True)
+    asyncio.run(r.sale_create_action(env.request("/producao/vendas", _sale_form(env, [(lot_a, "10")])), db=env.db, user=env.user))
+    r.delete_harvest_action(lot_a.id, env.request("/x"), csrf_token="x", db=env.db, user=env.user)
+    assert env.db.get(HarvestRecord, lot_a.id) is not None
+    env.session.pop("flash", None)
+    r.delete_harvest_action(lot_b.id, env.request("/x"), csrf_token="x", db=env.db, user=env.user)
+    assert env.db.get(HarvestRecord, lot_b.id) is None and env.db.query(CoffeeClassification).count() == 0
+    assert env.session["flash"]["message"] == "Colheita do lote L-011 excluída."

@@ -303,3 +303,68 @@
     toast.querySelector('[data-sv-toast-close]').addEventListener('click', hide); arm();
   }
 })();
+
+/* Cadastrar conta ou cartão sem sair da venda: gaveta → salva no Financeiro → já fica escolhido. */
+(() => {
+    const drawers = document.querySelectorAll('[data-vr-drawer]');
+    if (!drawers.length) return;
+    let opener = null;
+    const selectFor = (kind) => document.querySelector(`[data-vr-pick="${kind}"]`);
+    const open = (kind, from) => {
+        const dw = document.querySelector(`[data-vr-drawer="${kind}"]`);
+        if (!dw) return;
+        opener = from; dw.hidden = false; document.body.style.overflow = 'hidden';
+        dw.querySelector('input:not([type=hidden]), select')?.focus();
+    };
+    const close = (dw) => { dw.hidden = true; document.body.style.overflow = ''; opener?.focus(); };
+    const toast = (text) => {
+        const t = document.createElement('div');
+        t.className = 'sv-toast'; t.setAttribute('role', 'status'); t.textContent = text;
+        document.body.appendChild(t);
+        setTimeout(() => { t.classList.add('is-out'); setTimeout(() => t.remove(), 260); }, 4000);
+    };
+    document.querySelectorAll('[data-vr-open]').forEach((b) => b.addEventListener('click', () => open(b.dataset.vrOpen, b)));
+    ['conta', 'cartao'].forEach((kind) => {
+        const sel = selectFor(kind);
+        if (!sel) return;
+        let last = sel.value;
+        sel.addEventListener('change', () => {
+            if (sel.value === '__nova__') { sel.value = last; open(kind, sel); } else { last = sel.value; }
+        });
+    });
+    drawers.forEach((dw) => {
+        dw.querySelectorAll('[data-vr-close]').forEach((b) => b.addEventListener('click', () => close(dw)));
+        dw.querySelectorAll('[data-mask="decimal"]').forEach((el) => el.addEventListener('input', () => {
+            const d = el.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 13);
+            el.value = d ? (parseInt(d, 10) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+        }));
+        const form = dw.querySelector('[data-vr-quick]');
+        const err = form.querySelector('[data-vr-error]');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const missing = [...form.querySelectorAll('[required]')].find((el) => !el.value.trim());
+            if (missing) { err.textContent = 'Preencha ' + (missing.closest('.vw-f')?.querySelector('.vr-t')?.textContent.trim() || 'os campos') + '.'; err.hidden = false; missing.focus(); return; }
+            const btn = form.querySelector('[type=submit]'); btn.disabled = true;
+            try {
+                const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { Accept: 'application/json' } });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.id) { err.textContent = data.error || 'Não foi possível salvar. Tente de novo.'; err.hidden = false; return; }
+                const kind = form.dataset.vrQuick;
+                const sel = selectFor(kind);
+                const opt = new Option(data.name, data.id, true, true);
+                sel.insertBefore(opt, sel.querySelector('option[value="__nova__"]'));
+                sel.value = String(data.id); sel.hidden = false;
+                sel.parentElement.querySelector('[data-vr-open]')?.remove();
+                if (kind === 'conta') document.querySelector('[data-vr-card-account]')?.add(new Option(data.name, data.id));
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                form.reset(); err.hidden = true; close(dw); opener = sel; sel.focus();
+                toast(`${kind === 'conta' ? 'Conta' : 'Cartão'} ${data.name} criado e escolhido`);
+            } finally { btn.disabled = false; }
+        });
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const dw = [...drawers].find((d) => !d.hidden);
+        if (dw) close(dw);
+    });
+})();

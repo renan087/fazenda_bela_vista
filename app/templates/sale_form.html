@@ -112,14 +112,16 @@
                         <div class="vr-g3">
                             <label class="vw-f" data-vr-only="sim"><span class="vr-t">Recebido em</span><input type="date" name="received_on" value="{{ p.get('received_on') or today.isoformat() }}"></label>
                             <label class="vw-f" data-vr-only="parc"><span class="vr-t">Primeira parcela em</span><input type="date" name="first_installment_date" value="{{ p.get('first_installment_date') or '' }}" data-vw-first></label>
-                            <label class="vw-f"><span class="vr-t">Conta que recebe</span>
-                                <select name="finance_account_id" data-vw-account>
+                            <div class="vw-f"><label class="vr-t" for="vr-account">Conta que recebe</label>
+                                <select name="finance_account_id" id="vr-account" data-vw-account data-vr-pick="conta" {% if not finance_accounts %}hidden{% endif %}>
                                     <option value="">Não lançar no Financeiro</option>
                                     {% for account in finance_accounts %}
                                     <option value="{{ account.id }}" {% if (p.get('finance_account_id')|string) == (account.id|string) or (not sale_exists and not p.get('finance_account_id') and account.id == sale_default_account_id) %}selected{% endif %}>{{ account.account_name }}</option>
                                     {% endfor %}
+                                    <option value="__nova__">+ Cadastrar outra conta…</option>
                                 </select>
-                            </label>
+                                {% if not finance_accounts %}<button type="button" class="vr-add" data-vr-open="conta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Cadastrar conta</button>{% endif %}
+                            </div>
                             <label class="vw-f"><span class="vr-t">Forma</span>
                                 <select name="payment_method" data-vr-method>
                                     <option value="">Selecione</option>
@@ -128,12 +130,13 @@
                                     {% endfor %}
                                 </select>
                             </label>
-                            <label class="vw-f" data-vr-card hidden><span class="vr-t">Cartão</span>
-                                <select name="credit_card_id">
-                                    {% for card in sale_cards %}<option value="{{ card.id }}" {% if (p.get('credit_card_id')|string) == (card.id|string) %}selected{% endif %}>{{ card.card_name }}{% if card.brand %} · {{ card.brand }}{% endif %}</option>
-                                    {% else %}<option value="">Nenhum cartão cadastrado no Financeiro</option>{% endfor %}
+                            <div class="vw-f" data-vr-card hidden><label class="vr-t" for="vr-card">Cartão</label>
+                                <select name="credit_card_id" id="vr-card" data-vr-pick="cartao" {% if not sale_cards %}hidden{% endif %}>
+                                    {% for card in sale_cards %}<option value="{{ card.id }}" {% if (p.get('credit_card_id')|string) == (card.id|string) %}selected{% endif %}>{{ card.card_name }}{% if card.brand %} · {{ card.brand }}{% endif %}</option>{% endfor %}
+                                    <option value="__nova__">+ Cadastrar outro cartão…</option>
                                 </select>
-                            </label>
+                                {% if not sale_cards %}<button type="button" class="vr-add" data-vr-open="cartao"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Cadastrar cartão</button>{% endif %}
+                            </div>
                         </div>
                         <div class="vr-g3" data-vr-only="parc">
                             <div class="vw-f"><span class="vr-t">Parcelas</span>
@@ -192,6 +195,31 @@
             <p class="pd-note">Nada é registrado até você confirmar no passo 3.</p>
         </aside>
     </form>
+    {% macro quick_drawer(kind, title, endpoint) %}
+    <div class="sv-dw" hidden data-vr-drawer="{{ kind }}">
+        <button type="button" class="sv-dw-ov" data-vr-close aria-label="Fechar"></button>
+        <form method="post" action="{{ endpoint }}" class="sv-dw-panel" role="dialog" aria-modal="true" aria-labelledby="vr-dw-{{ kind }}" novalidate data-vr-quick="{{ kind }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <header class="sv-dw-h"><div><h2 id="vr-dw-{{ kind }}">{{ title }}</h2><p>Fica salvo no Financeiro e já entra escolhido.</p></div>
+                <button type="button" class="sv-x" data-vr-close aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+            <div class="sv-dw-b qh-body">{{ caller() }}<p class="pd-alert is-error" data-vr-error role="alert" hidden></p></div>
+            <footer class="sv-dw-f"><button type="button" class="sf-btn sf-btn-secondary" data-vr-close>Cancelar</button><button class="sf-btn sf-btn-primary" type="submit">Salvar e usar</button></footer>
+        </form>
+    </div>
+    {% endmacro %}
+    {% call quick_drawer('conta', 'Nova conta', '/producao/vendas/conta-rapida') %}
+        <label class="vw-f"><span class="vr-t">Nome da conta</span><input name="account_name" maxlength="180" required placeholder="Ex.: Sicoob — conta da fazenda"></label>
+        <label class="vw-f"><span class="vr-t">Banco</span><select name="bank_code" required><option value="">Escolha o banco</option>{% for b in sale_banks %}<option value="{{ b.code }}">{{ b.code }} · {{ b.name }}</option>{% endfor %}</select></label>
+        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Agência <small>opcional</small></span><input name="branch_number" maxlength="30" inputmode="numeric"></label><label class="vw-f"><span class="vr-t">Conta <small>opcional</small></span><input name="account_number" maxlength="60"></label></div>
+        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Saldo inicial</span><span class="vw-affix"><span>R$</span><input name="initial_balance" inputmode="numeric" value="0,00" data-mask="decimal"></span></label><label class="vw-f"><span class="vr-t">Saldo em</span><input type="date" name="initial_balance_date" value="{{ today.isoformat() }}"></label></div>
+    {% endcall %}
+    {% call quick_drawer('cartao', 'Novo cartão', '/producao/vendas/cartao-rapido') %}
+        <label class="vw-f"><span class="vr-t">Nome do cartão</span><input name="card_name" maxlength="180" required placeholder="Ex.: Visa Sicoob"></label>
+        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Emissor</span><select name="issuer" required><option value="">Escolha</option>{% for i in sale_card_issuers %}<option>{{ i }}</option>{% endfor %}</select></label>
+            <label class="vw-f"><span class="vr-t">Bandeira</span><select name="brand">{% for b in sale_card_brands %}<option>{{ b }}</option>{% endfor %}</select></label></div>
+        <div class="vr-g2"><label class="vw-f"><span class="vr-t">Dia do fechamento</span><input name="closing_day" inputmode="numeric" maxlength="2" required placeholder="Ex.: 5"></label><label class="vw-f"><span class="vr-t">Dia do vencimento</span><input name="due_day" inputmode="numeric" maxlength="2" required placeholder="Ex.: 12"></label></div>
+        <label class="vw-f"><span class="vr-t">Conta que paga a fatura <small>opcional</small></span><select name="payment_account_id" data-vr-card-account><option value="">Escolher depois</option>{% for a in finance_accounts %}<option value="{{ a.id }}">{{ a.account_name }}</option>{% endfor %}</select></label>
+    {% endcall %}
     {% if sale_quick %}{% set q = sale_quick %}
     <div class="sv-dw" hidden data-qh>
         <button type="button" class="sv-dw-ov" data-qh-close aria-label="Fechar"></button>
@@ -235,5 +263,5 @@
     {{ buyer_modal(csrf_token) }}
 </div>
 <script src="{{ url_for('static', path='js/buyer_picker.js') }}?v=20261122bp1" defer></script>
-<script src="{{ url_for('static', path='js/sale_form.js') }}?v=4" defer></script>
+<script src="{{ url_for('static', path='js/sale_form.js') }}?v=5" defer></script>
 {% endblock %}

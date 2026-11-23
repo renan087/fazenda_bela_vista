@@ -21068,6 +21068,7 @@ def lot_detail_page(
             request, user, csrf_token, "harvest", _repo=repo,
             lot=harvest, lot_code=_lot_display_code(harvest), lot_analyses=analyses, lot_latest=analyses[0] if analyses else None,
             lot_sales=lot_groups, lot_timeline=timeline(harvest, analyses, groups, today),
+            lot_season_total=_season_sacks_total(repo, scope),
             fiscal_note_by_sale=_nf_notes_by_sale(db, user, scope.get("active_farm_id"), _nf_drafts_by_sale(db, user, scope.get("active_farm_id"), groups)),
             new_sale=next((g for g in groups if g["code"] == request.query_params.get("venda_nova")), None),
             lot_produced=produced, lot_sold=sold, lot_negotiated=negotiated, lot_delivered=sold - negotiated,
@@ -21575,12 +21576,22 @@ def delete_harvest_action(
             "Nao e possivel excluir: existem registros de comercializacao vinculados a este lote.",
         )
         return _redirect("/producao")
-    if db.query(CoffeeClassification.id).filter_by(harvest_id=harvest.id).first():
-        _flash(request, "error", "Não é possível excluir uma colheita com análises de classificação vinculadas.")
-        return _redirect("/producao")
+    code = _lot_display_code(harvest)
+    # As análises do lote saem junto (a confirmação mostra quantas).
+    for analysis in db.query(CoffeeClassification).filter_by(harvest_id=harvest.id).all():
+        db.delete(analysis)
+    db.flush()
     repo.delete(harvest)
-    _flash(request, "success", "Colheita excluida com sucesso.")
+    _flash(request, "success", f"Colheita do lote {code} excluída.")
     return _redirect("/producao")
+
+
+def _season_sacks_total(repo, scope) -> float | None:
+    season = scope.get("active_season")
+    if not season:
+        return None
+    return round(sum(float(h.sacks_produced or 0) for h in repo.list_harvests()
+                     if harvest_matches_season(h, season) and h.plot and h.plot.farm_id == scope.get("active_farm_id")), 2)
 
 
 def _classification_harvests(repo, scope):
@@ -22656,6 +22667,8 @@ def _sale_form_render(request: Request, db: Session, user: User, csrf_token: str
             sale_avg_price=avg_price, sale_origin_lot=lote, today=today_in_app_timezone(),
             sale_quick=_sale_quick_harvest(request, repo, scope) if not existing else None,
             sale_cards=[c for c in repo.list_finance_credit_cards(farm_id=scope["active_farm_id"]) if c.is_active],
+            sale_banks=FINANCE_BANK_OPTIONS, sale_card_issuers=FINANCE_CREDIT_CARD_ISSUER_OPTIONS,
+            sale_card_brands=FINANCE_CREDIT_CARD_BRAND_OPTIONS,
             sale_toast=request.session.pop("sale_toast", None),
         ),
     )
@@ -22802,6 +22815,72 @@ async def _sale_save(request: Request, db: Session, user: User, csrf_token: str,
     if origin_lot and origin_lot in raw_lines:
         return _redirect_with_query(f"/producao/lotes/{origin_lot}", venda_nova=None if sale_code else code)
     return _redirect_with_query("/producao/comercializacao", venda=code, nova=None if sale_code else "1")
+
+
+def _quick_finance_scope(request: Request, db: Session, form) -> tuple:
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/vendas/nova")
+    if denied or not scope.get("active_farm"):
+        return repo, None
+    return repo, scope["active_farm"]
+
+
+@router.post("/producao/vendas/conta-rapida")
+async def sale_quick_account_action(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Cadastra a conta que recebe sem sair da Nova venda (gaveta). Responde JSON."""
+    del user
+    form = await request.form()
+    repo, farm = _quick_finance_scope(request, db, form)
+    if farm is None:
+        return JSONResponse({"error": "Selecione uma fazenda ativa."}, status_code=400)
+    text = lambda k: str(form.get(k) or "").strip()  # noqa: E731
+    existing = repo.list_finance_accounts(farm_id=farm.id)
+    try:
+        payload = _finance_accounts_parse_form(text("account_name"), text("initial_balance_date") or today_in_app_timezone().isoformat(),
+                                               str(_float_or_none(text("initial_balance")) or 0), text("bank_code"), "", None, None,
+                                               text("branch_number") or None, text("account_number") or None, not existing, repo)
+        _validate_finance_account_uniqueness(repo, farm_id=farm.id, branch_number=payload["branch_number"],
+                                             account_number=payload["account_number"])
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    custom_bank = payload.get("custom_bank")
+    account = FinanceAccount(
+        farm_id=farm.id, account_name=payload["account_name"], initial_balance_date=payload["initial_balance_date"],
+        initial_balance=payload["initial_balance"], bank_code=payload["bank_code"], bank_name=payload["bank_name"],
+        custom_bank_id=custom_bank.id if custom_bank is not None and not isinstance(custom_bank, dict) else None,
+        branch_number=payload["branch_number"], account_number=payload["account_number"], is_default=payload["is_default"],
+        display_order=max((int(a.display_order or 0) for a in existing), default=-1) + 1, created_at=app_now())
+    db.add(account)
+    db.commit()
+    return JSONResponse({"id": account.id, "name": account.account_name})
+
+
+@router.post("/producao/vendas/cartao-rapido")
+async def sale_quick_card_action(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Cadastra o cartão sem sair da Nova venda (gaveta). Responde JSON."""
+    del user
+    form = await request.form()
+    repo, farm = _quick_finance_scope(request, db, form)
+    if farm is None:
+        return JSONResponse({"error": "Selecione uma fazenda ativa."}, status_code=400)
+    text = lambda k: str(form.get(k) or "").strip()  # noqa: E731
+    existing = repo.list_finance_credit_cards(farm_id=farm.id)
+    try:
+        payload = _finance_credit_cards_parse_form(
+            repo=repo, active_farm=farm, card_name=text("card_name"), issuer=text("issuer"), brand=text("brand") or None,
+            closing_day=text("closing_day"), due_day=text("due_day"), credit_limit=None,
+            payment_account_id=text("payment_account_id") or None, is_default=not existing, is_active=True, notes=None)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    card = FinanceCreditCard(
+        farm_id=farm.id, card_name=payload["card_name"], issuer=payload["issuer"], brand=payload["brand"],
+        closing_day=payload["closing_day"], due_day=payload["due_day"], credit_limit=payload["credit_limit"],
+        payment_account_id=payload["payment_account_id"], is_default=payload["is_default"], is_active=True,
+        display_order=max((int(c.display_order or 0) for c in existing), default=-1) + 1, notes=None, created_at=app_now())
+    db.add(card)
+    db.commit()
+    return JSONResponse({"id": card.id, "name": card.card_name + (f" · {card.brand}" if card.brand else "")})
 
 
 @router.post("/producao/vendas")
@@ -23959,7 +24038,6 @@ def sale_delete_action(
 ):
     from app.services.coffee_sales import sale_records
 
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
@@ -23969,6 +24047,24 @@ def sale_delete_action(
     if not records or not all(_commercialization_record_matches_scope(r, scope) for r in records):
         _flash(request, "error", "Venda não encontrada na fazenda ativa.")
         return _redirect("/producao/comercializacao")
+    # Venda com NF-e autorizada (ou em envio) não sai: primeiro cancela a nota. Rascunho é descartado junto.
+    from app.models.nfe_draft import NfeDraft
+    from app.services.coffee_sales import group_sales
+    from app.services.nfe_notes import delete_draft
+    farm_id = scope["active_farm_id"]
+    notes = _nf_notes_by_sale(db, user, farm_id, _nf_drafts_by_sale(db, user, farm_id, group_sales(records)))
+    note = notes.get(sale_code) or {}
+    if note.get("status") in ("autorizada", "enviando"):
+        _flash(request, "error", f"A venda {sale_code} tem NF-e {note.get('number') or ''} autorizada. Cancele a nota antes de excluir a venda.".replace("  ", " "))
+        return _redirect_with_query("/producao/comercializacao", venda=sale_code)
+    discarded = 0
+    if user.organization_id:
+        for draft in db.query(NfeDraft).filter_by(organization_id=user.organization_id, farm_id=farm_id, sale_code=sale_code).all():
+            try:
+                delete_draft(db, draft=draft)
+                discarded += 1
+            except ValueError:
+                pass  # nota cancelada: fica no histórico de Notas Fiscais
     tx_ids = {r.finance_transaction_id for r in records if r.finance_transaction_id}
     for record in records:
         db.delete(record)
@@ -23977,7 +24073,8 @@ def sale_delete_action(
         if tx:
             db.delete(tx)
     db.commit()
-    _flash(request, "success", f"Venda {sale_code} excluída. O saldo voltou para os lotes.")
+    _flash(request, "success", f"Venda {sale_code} excluída. O saldo voltou para os lotes."
+           + (" O rascunho da nota foi descartado." if discarded else ""))
     return _redirect("/producao/comercializacao")
 
 

@@ -12347,3 +12347,22 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .vw-page .vr-stp input:focus { box-shadow:none !important; border:0 !important; }
 .bp-search input, .bp-search input:focus, .bp-search input:focus-visible { outline:none !important; box-shadow:none !important; border:0 !important; --tw-ring-shadow:0 0 #0000; }
 .bp-search:focus-within { border-color:#446A36; box-shadow:0 0 0 3px #CFE5B7; }
+/* Menu ⋯ com motivo quando a ação está bloqueada; confirmação de exclusão do lote */
+.sl-mi[disabled], .sl-mi[disabled] svg { color:#A3ADA6; cursor:not-allowed; } .sl-mi[disabled]:hover { background:transparent; }
+.sl-why { margin:0; padding:0 12px 8px 40px; font-size:12px; line-height:1.4; color:#7A857E; }
+.sl-why a { color:#446A36; font-weight:600; }
+.pd-head-actions .sl-more { align-self:center; }
+.lt-del { width:440px; max-width:calc(100vw - 32px); border:0; border-radius:16px; padding:20px 22px; box-shadow:0 18px 40px rgba(15,21,19,.2); }
+.lt-del::backdrop { background:rgba(15,21,19,.35); }
+.lt-del form { display:flex; flex-direction:column; gap:12px; margin:0; }
+.lt-del h2 { margin:0; font-size:17px; font-weight:700; color:#16201A; }
+.lt-del p { margin:0; font-size:13px; color:#5B6660; }
+.lt-del-imp { margin:0; display:flex; flex-direction:column; gap:6px; padding:12px 14px; border-radius:12px; background:#F6F8F5; border:1px solid #EEF1ED; font-size:13px; }
+.lt-del-imp div { display:flex; justify-content:space-between; gap:10px; } .lt-del-imp dt { color:#5B6660; } .lt-del-imp dd { margin:0; font-weight:600; }
+.lt-del-foot { display:flex; justify-content:space-between; gap:10px; }
+.lt-del-go { background:#B42318; border-color:#B42318; color:#fff; } .lt-del-go:hover { background:#912018; color:#fff; }
+.vr-g2 { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; align-items:end; }
+.vr-add { display:flex; align-items:center; gap:8px; height:44px; width:100%; padding:0 12px; border:1.5px dashed #C9D2C6; border-radius:12px; background:#fff; color:#294127; font:inherit; font-size:14px; font-weight:600; cursor:pointer; box-sizing:border-box; }
+.vr-add:hover { border-color:#446A36; background:#F6F8F5; } .vr-add svg { width:16px; height:16px; color:#446A36; }
+.vr-add:focus-visible { outline:3px solid #9BCB6B; outline-offset:2px; }
+.vw-f select[hidden] { display:none; }

@@ -161,3 +161,24 @@
     }
   });
 })();
+
+/* Confirmação antes de excluir (forms com data-confirm). */
+(function () {
+  'use strict';
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form.matches || !form.matches('form[data-confirm]') || form.dataset.confirmed === '1') return;
+    e.preventDefault();
+    var dlg = document.createElement('dialog');
+    dlg.className = 'lt-del';
+    dlg.innerHTML = '<form method="dialog"><h2></h2><div class="lt-del-foot"><button type="submit" value="no" class="sf-btn sf-btn-secondary">Cancelar</button><button type="submit" value="yes" class="sf-btn lt-del-go">Excluir</button></div></form>';
+    dlg.querySelector('h2').textContent = form.dataset.confirm;
+    document.body.appendChild(dlg);
+    dlg.addEventListener('close', function () {
+      var ok = dlg.returnValue === 'yes';
+      dlg.remove();
+      if (ok) { form.dataset.confirmed = '1'; form.submit(); }
+    });
+    dlg.showModal();
+  }, true);
+})();

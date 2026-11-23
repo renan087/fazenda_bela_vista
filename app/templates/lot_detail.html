@@ -17,11 +17,26 @@
             </div>
         </div>
         <div class="pd-head-actions">
-            <a class="sf-btn sf-btn-secondary" href="/producao/colheitas/{{ lot.id }}/editar">{{ 'Ver colheita' if lot_has_sales else 'Editar colheita' }}</a>
-            <a class="sf-btn sf-btn-secondary" href="/producao/classificacao?harvest_id={{ lot.id }}&amp;novo=1&amp;origem=producao">Nova análise</a>
             {% if lot_can_sell %}
             <a class="sf-btn sf-btn-primary" href="/producao/vendas/nova?lote={{ lot.id }}">Vender deste lote</a>
             {% endif %}
+            <div class="sl-more" data-sl-more>
+                <button type="button" class="sl-more-btn" data-sl-more-btn aria-haspopup="menu" aria-expanded="false" aria-label="Mais ações do lote {{ lot_code }}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></button>
+                <div class="sl-menu" role="menu" hidden>
+                    <p class="sl-menu-h">Lote {{ lot_code }}</p>
+                    <a class="sl-mi" role="menuitem" href="/producao/colheitas/{{ lot.id }}/editar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg>{{ 'Ver colheita' if lot_has_sales else 'Editar colheita' }}</a>
+                    <a class="sl-mi" role="menuitem" href="/producao/classificacao?harvest_id={{ lot.id }}&amp;novo=1&amp;origem=producao"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l3 3v15H6zM9 9h6M9 13h6M9 17h4"/></svg>Nova análise</a>
+                    {% if can_write_page %}
+                    <div class="sl-menu-sep" role="separator"></div>
+                    {% if lot_has_sales %}
+                    <button class="sl-mi is-danger" role="menuitem" type="button" disabled aria-describedby="lt-del-why"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Excluir colheita</button>
+                    <p class="sl-why" id="lt-del-why">Tem {{ lot_sales|length }} venda{{ 's' if lot_sales|length != 1 }} deste lote. <a href="/producao/comercializacao?harvest_id={{ lot.id }}">Ver vendas</a> e exclua-as antes.</p>
+                    {% else %}
+                    <button class="sl-mi is-danger" role="menuitem" type="button" data-lt-delete-open><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Excluir colheita</button>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </header>
 
@@ -162,6 +177,32 @@
         </aside>
     </div>
 </div>
+{% if can_write_page and not lot_has_sales %}
+<dialog class="lt-del" data-lt-delete aria-labelledby="lt-del-title">
+    <form method="post" action="/producao/{{ lot.id }}/excluir">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <h2 id="lt-del-title">Excluir a colheita do lote {{ lot_code }}?</h2>
+        <dl class="lt-del-imp">
+            <div><dt>Talhão</dt><dd>{{ lot.plot.name if lot.plot else 'Setor removido' }} · {{ lot.harvest_date.strftime('%d/%m/%Y') }}</dd></div>
+            <div><dt>Sacas</dt><dd>{{ (lot.sacks_produced or 0)|decimal_br }} sc</dd></div>
+            {% if lot_analyses %}<div><dt>Análises que saem junto</dt><dd>{{ lot_analyses|length }}</dd></div>{% endif %}
+            {% if lot_season_total is not none %}<div><dt>Produção da safra</dt><dd>{{ lot_season_total|decimal_br }} → {{ (lot_season_total - ((lot.sacks_produced or 0)|float))|decimal_br }} sc</dd></div>{% endif %}
+        </dl>
+        <p>Não dá para desfazer.</p>
+        <div class="lt-del-foot"><button type="button" class="sf-btn sf-btn-secondary" data-lt-delete-close>Cancelar</button><button type="submit" class="sf-btn lt-del-go">Excluir colheita</button></div>
+    </form>
+</dialog>
+{% endif %}
+<script src="/static/js/commercialization.js?v=20261123sv3" defer></script>
+<script>
+(function () {
+  var dlg = document.querySelector('[data-lt-delete]'); var open = document.querySelector('[data-lt-delete-open]');
+  if (!dlg || !open) return;
+  open.addEventListener('click', function () { dlg.showModal(); });
+  dlg.querySelector('[data-lt-delete-close]').addEventListener('click', function () { dlg.close(); });
+  dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+})();
+</script>
 {% if new_sale %}{{ sale_toast(new_sale, (fiscal_note_by_sale or {}).get(new_sale.code), csrf_token, can_write_page) }}{% endif %}
 <script>
 document.querySelectorAll('[data-stage-form]').forEach((form) => {
