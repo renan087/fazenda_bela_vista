@@ -107,7 +107,9 @@ def _is_consumption(output) -> bool:
 # ---------------------------------------------------------------- estoque
 def build_stock_items(repo, farm_id: int | None, today: date) -> list[dict]:
     """Saldo de cada item (insumos, combustível e suprimentos) com lotes, cobertura e movimentos."""
-    catalog = [item for item in repo.list_input_catalog() if item.item_type in STOCK_TYPES]
+    farm = repo.get_farm(farm_id) if farm_id else None
+    org_id = farm.organization_id if farm else None
+    catalog = [item for item in repo.list_input_catalog(organization_id=org_id) if item.item_type in STOCK_TYPES]
     entries_by_item: dict[int, list] = defaultdict(list)
     for entry in repo.list_purchased_inputs(include_stock_adjustments=True):
         if entry.input_id and _in_farm(entry, farm_id):

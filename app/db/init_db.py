@@ -69,6 +69,291 @@ def _ensure_default_organization(db: Session) -> Organization:
     return organization
 
 
+def _reassign_input_catalog_refs_for_org(connection, *, old_id: int, new_id: int, org_id: int) -> None:
+    params = {"old_id": old_id, "new_id": new_id, "org_id": org_id}
+    connection.execute(
+        text(
+            """
+            UPDATE purchased_inputs
+            SET input_id = :new_id
+            WHERE input_id = :old_id
+              AND farm_id IN (SELECT id FROM farms WHERE organization_id = :org_id)
+            """
+        ),
+        params,
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE stock_outputs
+            SET input_id = :new_id
+            WHERE input_id = :old_id
+              AND farm_id IN (SELECT id FROM farms WHERE organization_id = :org_id)
+            """
+        ),
+        params,
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE equipment_fuelings
+            SET input_id = :new_id
+            WHERE input_id = :old_id
+              AND farm_id IN (SELECT id FROM farms WHERE organization_id = :org_id)
+            """
+        ),
+        params,
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE stock_inventory_items
+            SET input_id = :new_id
+            WHERE input_id = :old_id
+              AND session_id IN (
+                  SELECT s.id
+                  FROM stock_inventory_sessions s
+                  JOIN farms f ON f.id = s.farm_id
+                  WHERE f.organization_id = :org_id
+              )
+            """
+        ),
+        params,
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE input_recommendation_items
+            SET input_id = :new_id
+            WHERE input_id = :old_id
+              AND recommendation_id IN (
+                  SELECT r.id
+                  FROM input_recommendations r
+                  LEFT JOIN plots p ON p.id = r.plot_id
+                  JOIN farms f ON f.id = COALESCE(r.farm_id, p.farm_id)
+                  WHERE f.organization_id = :org_id
+              )
+            """
+        ),
+        params,
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE fertilization_items
+            SET input_id = :new_id
+            WHERE input_id = :old_id
+              AND fertilization_record_id IN (
+                  SELECT r.id
+                  FROM fertilization_records r
+                  JOIN plots p ON p.id = r.plot_id
+                  JOIN farms f ON f.id = p.farm_id
+                  WHERE f.organization_id = :org_id
+              )
+            """
+        ),
+        params,
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE fertilization_schedule_items
+            SET input_id = :new_id
+            WHERE input_id = :old_id
+              AND schedule_id IN (
+                  SELECT s.id
+                  FROM fertilization_schedules s
+                  JOIN plots p ON p.id = s.plot_id
+                  JOIN farms f ON f.id = p.farm_id
+                  WHERE f.organization_id = :org_id
+              )
+            """
+        ),
+        params,
+    )
+    connection.execute(
+        text(
+            """
+            UPDATE stock_assistant_drafts
+            SET input_id = :new_id
+            WHERE input_id = :old_id
+              AND (
+                  organization_id = :org_id
+                  OR (
+                      organization_id IS NULL
+                      AND farm_id IN (SELECT id FROM farms WHERE organization_id = :org_id)
+                  )
+              )
+            """
+        ),
+        params,
+    )
+
+
+def _input_catalog_has_any_refs(connection, catalog_id: int) -> bool:
+    for table in (
+        "purchased_inputs",
+        "stock_outputs",
+        "equipment_fuelings",
+        "stock_inventory_items",
+        "input_recommendation_items",
+        "fertilization_items",
+        "fertilization_schedule_items",
+        "stock_assistant_drafts",
+    ):
+        found = connection.execute(
+            text(f"SELECT 1 FROM {table} WHERE input_id = :cid LIMIT 1"),
+            {"cid": catalog_id},
+        ).first()
+        if found:
+            return True
+    return False
+
+
+def backfill_input_catalog_organizations(connection) -> int:
+    """Isola registros legados de input_catalog por organização de forma idempotente.
+
+    - Se um insumo foi usado por apenas 1 organização, vincula-o a essa organização.
+    - Se foi compartilhado por 2+ organizações, mantém o registro original na primeira
+      e cria uma cópia isolada para cada organização adicional, reatribuindo todas as FKs.
+    - Itens sem uso vão para a organização padrão (slug 'sisfarm' ou primeira existente).
+    """
+    pending = connection.execute(
+        text(
+            """
+            SELECT id, name, normalized_name, item_type, category, default_unit, low_stock_threshold, is_active
+            FROM input_catalog
+            WHERE organization_id IS NULL
+            ORDER BY id ASC
+            """
+        )
+    ).mappings().all()
+    if not pending:
+        return 0
+
+    default_org_row = connection.execute(
+        text("SELECT id FROM organizations WHERE slug = 'sisfarm' LIMIT 1")
+    ).first()
+    if not default_org_row:
+        default_org_row = connection.execute(
+            text("SELECT id FROM organizations ORDER BY id ASC LIMIT 1")
+        ).first()
+    default_org_id = int(default_org_row[0]) if default_org_row else None
+
+    org_lookup_queries = (
+        "SELECT DISTINCT f.organization_id FROM purchased_inputs t JOIN farms f ON f.id = t.farm_id WHERE t.input_id = :cid AND f.organization_id IS NOT NULL",
+        "SELECT DISTINCT f.organization_id FROM stock_outputs t JOIN farms f ON f.id = t.farm_id WHERE t.input_id = :cid AND f.organization_id IS NOT NULL",
+        "SELECT DISTINCT f.organization_id FROM equipment_fuelings t JOIN farms f ON f.id = t.farm_id WHERE t.input_id = :cid AND f.organization_id IS NOT NULL",
+        "SELECT DISTINCT f.organization_id FROM stock_inventory_items t JOIN stock_inventory_sessions s ON s.id = t.session_id JOIN farms f ON f.id = s.farm_id WHERE t.input_id = :cid AND f.organization_id IS NOT NULL",
+        "SELECT DISTINCT f.organization_id FROM input_recommendation_items t JOIN input_recommendations r ON r.id = t.recommendation_id LEFT JOIN plots p ON p.id = r.plot_id JOIN farms f ON f.id = COALESCE(r.farm_id, p.farm_id) WHERE t.input_id = :cid AND f.organization_id IS NOT NULL",
+        "SELECT DISTINCT f.organization_id FROM fertilization_items t JOIN fertilization_records r ON r.id = t.fertilization_record_id JOIN plots p ON p.id = r.plot_id JOIN farms f ON f.id = p.farm_id WHERE t.input_id = :cid AND f.organization_id IS NOT NULL",
+        "SELECT DISTINCT f.organization_id FROM fertilization_schedule_items t JOIN fertilization_schedules s ON s.id = t.schedule_id JOIN plots p ON p.id = s.plot_id JOIN farms f ON f.id = p.farm_id WHERE t.input_id = :cid AND f.organization_id IS NOT NULL",
+        "SELECT DISTINCT COALESCE(t.organization_id, f.organization_id) FROM stock_assistant_drafts t LEFT JOIN farms f ON f.id = t.farm_id WHERE t.input_id = :cid AND COALESCE(t.organization_id, f.organization_id) IS NOT NULL",
+    )
+
+    migrated = 0
+    for row in pending:
+        cid = int(row["id"])
+        norm = row["normalized_name"]
+        org_ids_set: set[int] = set()
+        for q in org_lookup_queries:
+            for (oid,) in connection.execute(text(q), {"cid": cid}).all():
+                if oid is not None:
+                    org_ids_set.add(int(oid))
+        org_ids = sorted(org_ids_set)
+
+        if not org_ids:
+            if default_org_id is None:
+                continue
+            existing = connection.execute(
+                text(
+                    "SELECT id FROM input_catalog WHERE organization_id = :org_id AND normalized_name = :norm LIMIT 1"
+                ),
+                {"org_id": default_org_id, "norm": norm},
+            ).first()
+            if existing:
+                if not _input_catalog_has_any_refs(connection, cid):
+                    connection.execute(text("DELETE FROM input_catalog WHERE id = :cid"), {"cid": cid})
+            else:
+                connection.execute(
+                    text("UPDATE input_catalog SET organization_id = :org_id WHERE id = :cid"),
+                    {"org_id": default_org_id, "cid": cid},
+                )
+            migrated += 1
+            continue
+
+        primary_org = org_ids[0]
+        extra_orgs = org_ids[1:]
+
+        # Cria/reutiliza cópias isoladas para cada organização adicional antes de atualizar o registro original.
+        for extra_org in extra_orgs:
+            existing_extra = connection.execute(
+                text(
+                    "SELECT id FROM input_catalog WHERE organization_id = :org_id AND normalized_name = :norm LIMIT 1"
+                ),
+                {"org_id": extra_org, "norm": norm},
+            ).first()
+            if existing_extra:
+                target_id = int(existing_extra[0])
+            else:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO input_catalog (
+                            organization_id, name, normalized_name, item_type, category,
+                            default_unit, low_stock_threshold, is_active
+                        )
+                        VALUES (
+                            :organization_id, :name, :normalized_name, :item_type, :category,
+                            :default_unit, :low_stock_threshold, :is_active
+                        )
+                        """
+                    ),
+                    {
+                        "organization_id": extra_org,
+                        "name": row["name"],
+                        "normalized_name": norm,
+                        "item_type": row["item_type"] or "insumo_agricola",
+                        "category": row["category"] or "Geral",
+                        "default_unit": row["default_unit"] or "kg",
+                        "low_stock_threshold": row["low_stock_threshold"],
+                        "is_active": bool(row["is_active"]) if row["is_active"] is not None else True,
+                    },
+                )
+                created_row = connection.execute(
+                    text(
+                        "SELECT id FROM input_catalog WHERE organization_id = :org_id AND normalized_name = :norm LIMIT 1"
+                    ),
+                    {"org_id": extra_org, "norm": norm},
+                ).first()
+                target_id = int(created_row[0])
+            _reassign_input_catalog_refs_for_org(connection, old_id=cid, new_id=target_id, org_id=extra_org)
+
+        existing_primary = connection.execute(
+            text(
+                "SELECT id FROM input_catalog WHERE organization_id = :org_id AND normalized_name = :norm AND id <> :cid LIMIT 1"
+            ),
+            {"org_id": primary_org, "norm": norm, "cid": cid},
+        ).first()
+        if existing_primary:
+            _reassign_input_catalog_refs_for_org(
+                connection,
+                old_id=cid,
+                new_id=int(existing_primary[0]),
+                org_id=primary_org,
+            )
+            if not _input_catalog_has_any_refs(connection, cid):
+                connection.execute(text("DELETE FROM input_catalog WHERE id = :cid"), {"cid": cid})
+        else:
+            connection.execute(
+                text("UPDATE input_catalog SET organization_id = :org_id WHERE id = :cid"),
+                {"org_id": primary_org, "cid": cid},
+            )
+        migrated += 1
+
+    return migrated
+
+
 def create_tables() -> None:
     Base.metadata.create_all(bind=engine)
     _sync_schema()
@@ -272,13 +557,15 @@ def _sync_schema() -> None:
         """
         CREATE TABLE IF NOT EXISTS input_catalog (
             id SERIAL PRIMARY KEY,
+            organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
             name VARCHAR(160) NOT NULL,
-            normalized_name VARCHAR(180) UNIQUE NOT NULL,
+            normalized_name VARCHAR(180) NOT NULL,
             item_type VARCHAR(40) NOT NULL DEFAULT 'insumo_agricola',
             category VARCHAR(120) NOT NULL DEFAULT 'Geral',
             default_unit VARCHAR(20) NOT NULL DEFAULT 'kg',
             low_stock_threshold NUMERIC(10,2),
-            is_active BOOLEAN NOT NULL DEFAULT TRUE
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            CONSTRAINT uq_input_catalog_organization_normalized_name UNIQUE (organization_id, normalized_name)
         )
         """,
         """
@@ -828,8 +1115,25 @@ def _sync_schema() -> None:
         "ALTER TABLE agronomic_profiles ADD COLUMN IF NOT EXISTS last_organic_matter_date DATE",
         "ALTER TABLE agronomic_profiles ADD COLUMN IF NOT EXISTS pruning_history TEXT",
         "ALTER TABLE agronomic_profiles ADD COLUMN IF NOT EXISTS current_limitations TEXT",
+        "ALTER TABLE input_catalog ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL",
         "ALTER TABLE input_catalog ADD COLUMN IF NOT EXISTS item_type VARCHAR(40) DEFAULT 'insumo_agricola'",
         "ALTER TABLE input_catalog ADD COLUMN IF NOT EXISTS category VARCHAR(120) DEFAULT 'Geral'",
+        "CREATE INDEX IF NOT EXISTS ix_input_catalog_organization_id ON input_catalog(organization_id)",
+        "ALTER TABLE input_catalog DROP CONSTRAINT IF EXISTS input_catalog_normalized_name_key",
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE schemaname = current_schema()
+                  AND indexname = 'ix_input_catalog_normalized_name'
+                  AND indexdef LIKE 'CREATE UNIQUE INDEX%'
+            ) THEN
+                DROP INDEX ix_input_catalog_normalized_name;
+            END IF;
+        END $$;
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_input_catalog_normalized_name ON input_catalog(normalized_name)",
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS input_id INTEGER",
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS normalized_name VARCHAR(180)",
         "ALTER TABLE input_recommendation_items ADD COLUMN IF NOT EXISTS input_id INTEGER",
@@ -1279,17 +1583,43 @@ def _sync_schema() -> None:
                 """
             )
         )
+        backfill_input_catalog_organizations(connection)
         connection.execute(
             text(
                 """
-                INSERT INTO input_catalog (name, normalized_name, default_unit, low_stock_threshold, is_active)
-                SELECT MIN(name) AS name, normalized_name, MIN(package_unit) AS default_unit, MAX(COALESCE(low_stock_threshold, 0)) AS low_stock_threshold, TRUE
-                FROM purchased_inputs
-                WHERE normalized_name IS NOT NULL AND normalized_name <> ''
-                GROUP BY normalized_name
-                ON CONFLICT (normalized_name) DO UPDATE
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'uq_input_catalog_organization_normalized_name'
+                    ) THEN
+                        ALTER TABLE input_catalog
+                        ADD CONSTRAINT uq_input_catalog_organization_normalized_name UNIQUE (organization_id, normalized_name);
+                    END IF;
+                END $$;
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO input_catalog (organization_id, name, normalized_name, default_unit, low_stock_threshold, is_active)
+                SELECT
+                    f.organization_id,
+                    MIN(entry.name) AS name,
+                    entry.normalized_name,
+                    MIN(entry.package_unit) AS default_unit,
+                    MAX(COALESCE(entry.low_stock_threshold, 0)) AS low_stock_threshold,
+                    TRUE
+                FROM purchased_inputs entry
+                JOIN farms f ON f.id = entry.farm_id
+                WHERE f.organization_id IS NOT NULL
+                  AND entry.normalized_name IS NOT NULL
+                  AND entry.normalized_name <> ''
+                GROUP BY f.organization_id, entry.normalized_name
+                ON CONFLICT (organization_id, normalized_name) DO UPDATE
                 SET
-                    name = EXCLUDED.name,
+                    name = COALESCE(input_catalog.name, EXCLUDED.name),
                     default_unit = COALESCE(input_catalog.default_unit, EXCLUDED.default_unit),
                     low_stock_threshold = GREATEST(COALESCE(input_catalog.low_stock_threshold, 0), COALESCE(EXCLUDED.low_stock_threshold, 0)),
                     is_active = TRUE
@@ -1301,8 +1631,10 @@ def _sync_schema() -> None:
                 """
                 UPDATE purchased_inputs entry
                 SET input_id = catalog.id
-                FROM input_catalog catalog
-                WHERE entry.normalized_name = catalog.normalized_name
+                FROM input_catalog catalog, farms f
+                WHERE entry.farm_id = f.id
+                  AND catalog.organization_id = f.organization_id
+                  AND entry.normalized_name = catalog.normalized_name
                   AND (entry.input_id IS NULL OR entry.input_id <> catalog.id)
                 """
             )

@@ -2454,6 +2454,16 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
     }
 
 
+def _scope_organization_id(scope: dict | None) -> int | None:
+    if not scope:
+        return None
+    org_id = scope.get("active_organization_id")
+    if org_id is not None:
+        return org_id
+    active_farm = scope.get("active_farm")
+    return getattr(active_farm, "organization_id", None) if active_farm else None
+
+
 def _scoped_plot_filters(request: Request, active_season: CropSeason | None) -> tuple[list[int] | None, list[int] | None]:
     farm_ids = [_active_farm_id(request)] if _active_farm_id(request) else getattr(request.state, "context_farm_ids", None)
     variety_ids = [active_season.variety_id] if active_season and active_season.variety_id else None
@@ -2830,6 +2840,7 @@ def _build_stock_context(
     end_date: date | None = None,
     movement_type: str = "all",
     item_type: str | None = None,
+    organization_id: int | None = None,
 ):
     def _stock_priority(row: dict) -> tuple[int, float, str]:
         threshold = float(row.get("low_stock_threshold") or 0)
@@ -2844,7 +2855,12 @@ def _build_stock_context(
     def _is_inventory_item(catalog_item) -> bool:
         return bool(catalog_item and getattr(catalog_item, "item_type", None) in {"insumo_agricola", "combustivel"})
 
-    catalog_inputs = repo.list_input_catalog(item_type=item_type)
+    resolved_org_id = organization_id
+    if resolved_org_id is None and farm_id:
+        active_farm = repo.get_farm(farm_id)
+        resolved_org_id = active_farm.organization_id if active_farm else None
+
+    catalog_inputs = repo.list_input_catalog(item_type=item_type, organization_id=resolved_org_id)
     if not item_type:
         catalog_inputs = [item for item in catalog_inputs if _is_inventory_item(item)]
     if input_id:
@@ -3037,20 +3053,27 @@ def _input_catalog_suggestions_for_purchase_form(
     *,
     farm_id: int | None = None,
     context_farm_ids: list[int] | None = None,
+    organization_id: int | None = None,
 ) -> list:
     allowed_item_types = {"insumo_agricola", "combustivel"}
+    resolved_org_id = organization_id
+    if resolved_org_id is None:
+        probe_farm_id = farm_id or (context_farm_ids[0] if context_farm_ids else None)
+        if probe_farm_id:
+            probe_farm = repo.get_farm(probe_farm_id)
+            resolved_org_id = probe_farm.organization_id if probe_farm else None
     scoped_farm_ids = (
         {farm_id}
         if farm_id
         else (set(context_farm_ids or []) if context_farm_ids is not None else None)
     )
     suggestions_by_id = {}
-    for catalog in repo.list_input_catalog():
+    for catalog in repo.list_input_catalog(organization_id=resolved_org_id):
         if not catalog.is_active or catalog.item_type not in allowed_item_types:
             continue
         entries = list(getattr(catalog, "purchase_entries", []) or [])
         if scoped_farm_ids is not None and not any(
-            entry.farm_id in scoped_farm_ids or entry.farm_id is None
+            entry.farm_id in scoped_farm_ids or (resolved_org_id is None and entry.farm_id is None)
             for entry in entries
         ):
             continue
@@ -5428,15 +5451,28 @@ def _purchase_input_all_units() -> list[str]:
     return units
 
 
-def _input_catalog_primary_unit_from_first_entry(repo: FarmRepository, catalog) -> str:
+def _input_catalog_primary_unit_from_first_entry(
+    repo: FarmRepository,
+    catalog,
+    *,
+    organization_id: int | None = None,
+) -> str:
     catalog_unit = _clean_text(getattr(catalog, "default_unit", None))
     catalog_id = getattr(catalog, "id", None)
     if not catalog_id:
         return catalog_unit
+    resolved_org_id = organization_id if organization_id is not None else getattr(catalog, "organization_id", None)
+    org_farm_ids = (
+        {farm.id for farm in repo.list_farms(organization_id=resolved_org_id)}
+        if resolved_org_id is not None
+        else None
+    )
     entries = [
         entry
         for entry in repo.list_purchased_inputs()
-        if entry.input_id == catalog_id and _clean_text(entry.package_unit)
+        if entry.input_id == catalog_id
+        and _clean_text(entry.package_unit)
+        and (org_farm_ids is None or entry.farm_id in org_farm_ids)
     ]
     if not entries:
         return catalog_unit
@@ -5474,6 +5510,7 @@ def _validate_purchased_entry_package_unit(
     name: str,
     package_unit: str,
     package_unit_override: str | None,
+    organization_id: int | None = None,
 ) -> tuple[str, str, str, str]:
     """Resolve tipo de insumo, categoria e unidade da embalagem.
 
@@ -5486,7 +5523,10 @@ def _validate_purchased_entry_package_unit(
     Retorna ``(item_type, category, package_unit, package_unit_override_flag)``.
     """
 
-    existing = repo.get_input_catalog_by_normalized_name(_normalize_input_name(name))
+    existing = repo.get_input_catalog_by_normalized_name(
+        _normalize_input_name(name),
+        organization_id=organization_id,
+    )
     override = str(package_unit_override or "").strip().lower() in ("1", "true", "on", "yes")
     posted_unit = _clean_text(package_unit)
 
@@ -5496,7 +5536,11 @@ def _validate_purchased_entry_package_unit(
             resolved_item_type,
             existing.category or category,
         )
-        existing_unit = _input_catalog_primary_unit_from_first_entry(repo, existing)
+        existing_unit = _input_catalog_primary_unit_from_first_entry(
+            repo,
+            existing,
+            organization_id=organization_id,
+        )
         if override:
             raw_for_validation = posted_unit or existing_unit or ""
             validated = _resolve_purchase_input_package_unit(
@@ -13565,6 +13609,7 @@ async def create_purchased_input_action(
             name=name,
             package_unit=package_unit,
             package_unit_override=package_unit_override,
+            organization_id=_scope_organization_id(scope),
         )
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -13692,6 +13737,7 @@ async def update_purchased_input_action(
             name=name,
             package_unit=package_unit,
             package_unit_override=package_unit_override,
+            organization_id=_scope_organization_id(scope),
         )
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -17075,7 +17121,10 @@ def input_recommendations_page(
     launch_plots = _season_launch_plots(plots, scope)
     if edit_recommendation and edit_recommendation.plot and _plot_matches_scope(edit_recommendation.plot, scope) and edit_recommendation.plot not in launch_plots:
         launch_plots = [*launch_plots, edit_recommendation.plot]
-    catalog_inputs = repo.list_input_catalog(item_type="insumo_agricola")
+    catalog_inputs = repo.list_input_catalog(
+        item_type="insumo_agricola",
+        organization_id=_scope_organization_id(scope),
+    )
     purchase_entries = repo.list_purchased_inputs(include_stock_adjustments=True)
     input_stock = {
         item.id: {
@@ -19804,7 +19853,13 @@ async def create_fertilization_action(
             return _redirect("/fertilizacao")
         selected_plots.append(plot)
 
-    catalog_by_id = {c.id: c for c in repo.list_input_catalog(item_type="insumo_agricola")}
+    catalog_by_id = {
+        c.id: c
+        for c in repo.list_input_catalog(
+            item_type="insumo_agricola",
+            organization_id=_scope_organization_id(scope),
+        )
+    }
     legacy_items = _parse_fertilization_items(form) if wiz_payload is None else None
     if wiz_payload is None and not legacy_items:
         _flash(request, "error", "Adicione ao menos um insumo na atividade.")
@@ -19895,7 +19950,13 @@ async def update_fertilization_action(
         return _redirect(f"/fertilizacao/{record_id}/editar")
 
     if wiz_payload is not None:
-        catalog_by_id = {c.id: c for c in repo.list_input_catalog(item_type="insumo_agricola")}
+        catalog_by_id = {
+        c.id: c
+        for c in repo.list_input_catalog(
+            item_type="insumo_agricola",
+            organization_id=_scope_organization_id(scope),
+        )
+    }
         items = _compute_items_for_plot_from_wizard(wiz_payload.get("items") or [], plot, dose_mode, catalog_by_id)
     else:
         items = _parse_fertilization_items(form)
@@ -20551,7 +20612,13 @@ async def create_fertilization_schedule_action(
         _flash(request, "error", "Selecione apenas talhões vinculados à safra ativa.")
         return _redirect("/fertilizacao/agendamentos/novo" if wiz_payload is not None else "/fertilizacao/agendamentos")
 
-    catalog_by_id = {c.id: c for c in repo.list_input_catalog(item_type="insumo_agricola")}
+    catalog_by_id = {
+        c.id: c
+        for c in repo.list_input_catalog(
+            item_type="insumo_agricola",
+            organization_id=_scope_organization_id(scope),
+        )
+    }
     legacy_items = _parse_recommendation_items(form) if wiz_payload is None else None
     if not selected_plots or not scheduled_dates or (wiz_payload is None and not legacy_items):
         _flash(request, "error", "Selecione ao menos um talhão, uma data e um insumo.")
@@ -20730,7 +20797,13 @@ async def update_fertilization_schedule_action(
         return _redirect(f"/fertilizacao/agendamentos/{schedule_id}/editar")
 
     if wiz_payload is not None:
-        catalog_by_id = {c.id: c for c in repo.list_input_catalog(item_type="insumo_agricola")}
+        catalog_by_id = {
+        c.id: c
+        for c in repo.list_input_catalog(
+            item_type="insumo_agricola",
+            organization_id=_scope_organization_id(scope),
+        )
+    }
         items = _compute_items_for_plot_from_wizard(wiz_payload.get("items") or [], plot, dose_mode, catalog_by_id)
     else:
         items = _parse_recommendation_items(form)
@@ -25632,10 +25705,10 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         _save_thread(db, thread, history + [item])
         return thread, item
 
-    # Itens que esta organizacao ja comprou (o catalogo e compartilhado; nao expor itens de outras contas).
+    # Itens que esta organizacao ja comprou (isolados por organization_id e pelas fazendas da conta).
     org_farm_ids = {row[0] for row in db.query(Farm.id).filter(Farm.organization_id == user.organization_id)} | {farm.id}
     products, balances = [], {}
-    for item in repo.list_input_catalog():
+    for item in repo.list_input_catalog(organization_id=user.organization_id):
         if not item.is_active or item.item_type not in STOCK_ITEM_TYPES:
             continue
         org_lots = [entry for entry in item.purchase_entries if entry.farm_id in org_farm_ids]
@@ -26550,7 +26623,11 @@ def _assistant_resolve_draft(db, user, repo, scope, draft, action, thread, chann
         payload = json.loads(draft.payload_json or "{}")
         if draft.movement_date > today_in_app_timezone():
             raise ValueError("A data da compra não pode ser futura.")
-        catalog = db.get(InputCatalog, draft.input_id) if draft.input_id else None
+        catalog = (
+            repo.get_input_catalog(draft.input_id, organization_id=user.organization_id)
+            if draft.input_id
+            else None
+        )
         if catalog is not None:  # item ja cadastrado: identidade vem do cadastro
             resolved_type, resolved_category = catalog.item_type, catalog.category
             resolved_unit = stock_unit(catalog, payload["package_unit"])
@@ -26558,6 +26635,7 @@ def _assistant_resolve_draft(db, user, repo, scope, draft, action, thread, chann
             resolved_type, resolved_category, resolved_unit, _ = _validate_purchased_entry_package_unit(
                 repo, item_type=payload["item_type"], category=payload["category"], name=payload["name"],
                 package_unit=payload["package_unit"], package_unit_override=None,
+                organization_id=user.organization_id,
             )
         if resolved_unit != payload["package_unit"]:
             raise ValueError("A unidade cadastrada desse item mudou. Peça um novo lançamento ao assistente.")
@@ -26966,12 +27044,13 @@ def _purchase_wizard_units(category: str, item_type: str) -> list[str]:
 def _purchase_wizard_data(repo: FarmRepository, scope: dict) -> dict:
     farm = scope.get("active_farm")
     farm_id = scope.get("active_farm_id")
+    org_id = _scope_organization_id(scope)
     stock = {i["id"]: i for i in _ih.build_stock_items(repo, farm_id, today_in_app_timezone())} if farm_id else {}
     catalog = []
-    for item in repo.list_input_catalog():
+    for item in repo.list_input_catalog(organization_id=org_id):
         if item.item_type not in _ih.STOCK_TYPES or not item.is_active:
             continue
-        unit = _input_catalog_primary_unit_from_first_entry(repo, item) or item.default_unit
+        unit = _input_catalog_primary_unit_from_first_entry(repo, item, organization_id=org_id) or item.default_unit
         row = stock.get(item.id)
         catalog.append({
             "name": item.name, "item_type": item.item_type, "category": item.category, "unit": unit,
@@ -27037,7 +27116,14 @@ def edit_of_safe(payload) -> bool:
     return bool(_int_or_none((payload or {}).get("edit_of")))
 
 
-def _resolve_wizard_item(repo: FarmRepository, raw: dict, number: int, many: bool) -> dict:
+def _resolve_wizard_item(
+    repo: FarmRepository,
+    raw: dict,
+    number: int,
+    many: bool,
+    *,
+    organization_id: int | None = None,
+) -> dict:
     prefix = f"Item {number}: " if many else ""
     name = _clean_text(raw.get("name"))
     if not name:
@@ -27045,12 +27131,15 @@ def _resolve_wizard_item(repo: FarmRepository, raw: dict, number: int, many: boo
     item_type = (raw.get("item_type") or "").strip()
     category = (raw.get("category") or "").strip()
     unit = _clean_text(raw.get("unit"))
-    existing = repo.get_input_catalog_by_normalized_name(_normalize_input_name(name))
+    existing = repo.get_input_catalog_by_normalized_name(
+        _normalize_input_name(name),
+        organization_id=organization_id,
+    )
     try:
         if (existing and existing.item_type == "suprimento") or (not existing and item_type == "suprimento"):
             if existing:
                 category = existing.category
-                unit = _input_catalog_primary_unit_from_first_entry(repo, existing) or existing.default_unit
+                unit = _input_catalog_primary_unit_from_first_entry(repo, existing, organization_id=organization_id) or existing.default_unit
             elif category not in SUPPLY_CATEGORY_OPTIONS:
                 raise ValueError("escolha a categoria do suprimento.")
             if unit not in SUPPLY_PURCHASE_UNITS and not existing:
@@ -27061,7 +27150,7 @@ def _resolve_wizard_item(repo: FarmRepository, raw: dict, number: int, many: boo
                 raise ValueError("escolha o tipo do item novo.")
             resolved = _validate_purchased_entry_package_unit(
                 repo, item_type=item_type or "insumo_agricola", category=category, name=name,
-                package_unit=unit, package_unit_override=None,
+                package_unit=unit, package_unit_override=None, organization_id=organization_id,
             )
     except ValueError as exc:
         raise ValueError(f"{prefix}{exc}")
@@ -27096,7 +27185,11 @@ async def register_purchase_note_action(
         back = f"/insumos/comprados/nova?editar={_int_or_none(payload.get('edit_of'))}"
     try:
         purchase_date = _pn._date(note.get("date"), "data da compra") or today_in_app_timezone()
-        items = [_resolve_wizard_item(repo, raw, n, len(raw_items) > 1) for n, raw in enumerate(raw_items, start=1)]
+        org_id = _scope_organization_id(scope)
+        items = [
+            _resolve_wizard_item(repo, raw, n, len(raw_items) > 1, organization_id=org_id)
+            for n, raw in enumerate(raw_items, start=1)
+        ]
         mode = payment.get("mode")
         finance_account = None
         credit_card = None
@@ -27278,7 +27371,9 @@ async def stock_count_action(
                 raise ValueError("Confira as quantidades contadas: use só números maiores ou iguais a zero.")
             if value > _ih.MAX_COUNT_QUANTITY:
                 raise ValueError("Uma das quantidades contadas está grande demais. O máximo é 9.999.999,99.")
-            catalog = repo.get_input_catalog(int(key))
+            catalog = repo.get_input_catalog(int(key), organization_id=_scope_organization_id(scope))
+            if not catalog:
+                raise ValueError("Um dos itens contados não pertence a esta organização.")
             if catalog and _ih.is_integer_unit(catalog.default_unit) and abs(value - round(value)) > 1e-9:
                 raise ValueError(f"{catalog.name} é contado em {catalog.default_unit}: use número inteiro, sem vírgula.")
             items.append({"input_id": int(key), "counted_quantity": value})

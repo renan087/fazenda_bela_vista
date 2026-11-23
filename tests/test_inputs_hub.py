@@ -16,8 +16,8 @@ from app.services.forms import _normalize_input_name
 from tests.test_coffee_sales import env  # noqa: F401
 
 
-def _item(db, name, item_type="insumo_agricola", category="Fertilizantes", unit="sc", threshold=None):
-    item = InputCatalog(name=name, normalized_name=_normalize_input_name(name), item_type=item_type, category=category, default_unit=unit,
+def _item(db, name, item_type="insumo_agricola", category="Fertilizantes", unit="sc", threshold=None, organization_id=None):
+    item = InputCatalog(organization_id=organization_id, name=name, normalized_name=_normalize_input_name(name), item_type=item_type, category=category, default_unit=unit,
                         low_stock_threshold=threshold, is_active=True)
     db.add(item)
     db.flush()
@@ -40,13 +40,14 @@ def hub(env, monkeypatch):
     farm = db.get(Farm, farm_id)
     monkeypatch.setattr(env.routes, "_global_scope_context", lambda *a, **k: {**scope, "context_farms": [farm], "active_farm": farm})
     plot = db.query(Plot).filter(Plot.farm_id == farm_id).first()
-    kcl = _item(db, "Cloreto de potássio", unit="sc", threshold=20)
+    org_id = farm.organization_id
+    kcl = _item(db, "Cloreto de potássio", unit="sc", threshold=20, organization_id=org_id)
     _entry(db, kcl, farm_id, 8, "sc", 190)
-    fung = _item(db, "Fungicida azoxistrobina", category="Fungicida", unit="L")
+    fung = _item(db, "Fungicida azoxistrobina", category="Fungicida", unit="L", organization_id=org_id)
     _entry(db, fung, farm_id, 12, "L", 240, expires=date.today() + timedelta(days=20), batch="2304-A")
-    diesel = _item(db, "Diesel S10", item_type="combustivel", category="Combustíveis", unit="L")
+    diesel = _item(db, "Diesel S10", item_type="combustivel", category="Combustíveis", unit="L", organization_id=org_id)
     _entry(db, diesel, farm_id, 420, "L", 6)
-    luva = _item(db, "Luva nitrílica", item_type="suprimento", category="EPIs", unit="par")
+    luva = _item(db, "Luva nitrílica", item_type="suprimento", category="EPIs", unit="par", organization_id=org_id)
     _entry(db, luva, farm_id, 14, "par", 14)
     trator = EquipmentAsset(farm_id=farm_id, name="Trator 4x4", category="Máquina", subtype="trator", status="ativo")
     galpao = EquipmentAsset(farm_id=farm_id, name="Galpão", category="Benfeitoria", status="ativo")

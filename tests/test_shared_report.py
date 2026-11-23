@@ -149,7 +149,7 @@ def test_followup_report_requeries_current_data(monkeypatch):
     thread, first = routes._assistant_turn(db, user, routes._repository(db), scope, None, "Minhas compras de gasolina")
     assert first["share_query"]["tool"] == "consultar_compras"
     purchase.total_cost = 999
-    diesel = InputCatalog(name="Diesel", normalized_name="diesel", item_type="combustivel", default_unit="L")
+    diesel = InputCatalog(organization_id=user.organization_id, name="Diesel", normalized_name="diesel", item_type="combustivel", default_unit="L")
     db.add(diesel)
     db.flush()
     db.add(PurchasedInput(farm_id=scope["active_farm_id"], input_id=diesel.id, name="Diesel", purchase_date=date(2026, 11, 15),

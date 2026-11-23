@@ -566,30 +566,45 @@ class FarmRepository:
             .first()
         )
 
-    def list_input_catalog(self, item_type: str | None = None) -> list[InputCatalog]:
+    def list_input_catalog(
+        self,
+        item_type: str | None = None,
+        organization_id: int | None = None,
+    ) -> list[InputCatalog]:
         query = (
             self.db.query(InputCatalog)
             .options(joinedload(InputCatalog.purchase_entries))
             .order_by(InputCatalog.name.asc())
         )
+        if organization_id is not None:
+            query = query.filter(InputCatalog.organization_id == organization_id)
         if item_type:
             query = query.filter(InputCatalog.item_type == item_type)
         return query.all()
 
-    def get_input_catalog(self, input_id: int) -> InputCatalog | None:
-        return (
+    def get_input_catalog(
+        self,
+        input_id: int,
+        organization_id: int | None = None,
+    ) -> InputCatalog | None:
+        query = (
             self.db.query(InputCatalog)
             .options(joinedload(InputCatalog.purchase_entries))
             .filter(InputCatalog.id == input_id)
-            .first()
         )
+        if organization_id is not None:
+            query = query.filter(InputCatalog.organization_id == organization_id)
+        return query.first()
 
-    def get_input_catalog_by_normalized_name(self, normalized_name: str) -> InputCatalog | None:
-        return (
-            self.db.query(InputCatalog)
-            .filter(InputCatalog.normalized_name == normalized_name)
-            .first()
-        )
+    def get_input_catalog_by_normalized_name(
+        self,
+        normalized_name: str,
+        organization_id: int | None = None,
+    ) -> InputCatalog | None:
+        query = self.db.query(InputCatalog).filter(InputCatalog.normalized_name == normalized_name)
+        if organization_id is not None:
+            query = query.filter(InputCatalog.organization_id == organization_id)
+        return query.first()
 
     def list_equipment_assets(self, farm_id: int | None = None, farm_ids: list[int] | None = None) -> list[EquipmentAsset]:
         query = (

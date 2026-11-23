@@ -398,7 +398,7 @@ def _route_env(monkeypatch, replies):
     db.add_all([user, farm]); db.flush()
     season = CropSeason(name="Café 2026", farm_id=farm.id, culture="Café", start_date=date(2026, 1, 1),
                         end_date=date(2026, 12, 31), cultivated_area=0, area_unit="ha", status="ativa")
-    fuel = InputCatalog(name="Gasolina", normalized_name="gasolina", item_type="combustivel", default_unit="L")
+    fuel = InputCatalog(organization_id=org.id, name="Gasolina", normalized_name="gasolina", item_type="combustivel", default_unit="L")
     db.add_all([season, fuel]); db.flush()
     db.add(PurchasedInput(farm_id=farm.id, input_id=fuel.id, name="Gasolina", quantity_purchased=1, package_size=50,
                           package_unit="L", unit_price=300, total_quantity=50, available_quantity=50, total_cost=300))

@@ -20,6 +20,7 @@ from app.services.forms import (
     _build_installments,
     _lot_tracking_fields,
     _resolve_input_catalog,
+    _resolve_organization_id_for_farm,
 )
 from app.services.inputs_hub import parse_br_number
 
@@ -137,9 +138,11 @@ def _payment_fields(plan: dict) -> dict:
 
 def _new_entry(repo, line: dict, prefix: str, *, farm_id, supplier, purchase_date, note_text, plan) -> PurchasedInput:
     packs, size, price, minimum = _line_numbers(line, prefix)
+    org_id = _resolve_organization_id_for_farm(repo, farm_id)
     catalog = _resolve_input_catalog(
         repo, line["name"], line["package_unit"], line["item_type"], line["category"],
         minimum if minimum > 0 else None, override_primary_unit=bool(line.get("override")),
+        organization_id=org_id,
     )
     total_quantity = round(packs * size, 2)
     entry = PurchasedInput(

@@ -54,7 +54,9 @@ def _seed_stock_and_drip_plot(env):
                 season.plots.append(p)
         env.scope["active_season"] = season
 
+    farm = env.db.get(env.routes.Farm, farm_id)
     ureia = InputCatalog(
+        organization_id=farm.organization_id if farm else None,
         name="Ureia 45%",
         normalized_name="ureia 45%",
         item_type="insumo_agricola",

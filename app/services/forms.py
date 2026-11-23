@@ -707,6 +707,19 @@ def propagate_input_catalog_primary_unit(session, *, catalog_id: int, new_unit: 
     session.execute(update(InputRecommendationItem).where(InputRecommendationItem.input_id == catalog_id).values(unit=nu))
 
 
+def _resolve_organization_id_for_farm(
+    repository: FarmRepository,
+    farm_id: int | None,
+    organization_id: int | None = None,
+) -> int | None:
+    if organization_id is not None:
+        return organization_id
+    if not farm_id:
+        return None
+    farm = repository.get_farm(farm_id)
+    return farm.organization_id if farm else None
+
+
 def _resolve_input_catalog(
     repository: FarmRepository,
     name: str,
@@ -716,10 +729,14 @@ def _resolve_input_catalog(
     low_stock_threshold: float | None = None,
     *,
     override_primary_unit: bool = False,
+    organization_id: int | None = None,
 ) -> InputCatalog:
     normalized_name = _normalize_input_name(name)
     proposed = (default_unit or "").strip() or "kg"
-    existing = repository.get_input_catalog_by_normalized_name(normalized_name)
+    existing = repository.get_input_catalog_by_normalized_name(
+        normalized_name,
+        organization_id=organization_id,
+    )
     if existing:
         # Identidade do produto: tipo de insumo e categoria são definidos
         # no cadastro primário e não devem mudar por causa de uma nova compra.
@@ -741,6 +758,7 @@ def _resolve_input_catalog(
         repository.db.flush()
         return existing
     catalog = InputCatalog(
+        organization_id=organization_id,
         name=" ".join((name or "").strip().split()),
         normalized_name=normalized_name,
         item_type=item_type or "insumo_agricola",
@@ -791,6 +809,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
     low_stock_threshold = float(form.get("low_stock_threshold") or 0)
     item_type = form.get("item_type") or "insumo_agricola"
     override_primary = str(form.get("package_unit_override") or "").strip().lower() in ("1", "true", "on", "yes")
+    org_id = _resolve_organization_id_for_farm(repository, form.get("farm_id"), form.get("organization_id"))
     catalog = _resolve_input_catalog(
         repository,
         form["name"],
@@ -799,6 +818,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         form.get("category"),
         low_stock_threshold if low_stock_threshold > 0 else None,
         override_primary_unit=override_primary,
+        organization_id=org_id,
     )
     lot_tracking = _lot_tracking_fields(form)
 
@@ -887,6 +907,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
     credit_card = _resolve_credit_card(repository, form)
     should_create_financial_transaction = bool(form.get("finance_account_id") or credit_card)
     override_primary = str(form.get("package_unit_override") or "").strip().lower() in ("1", "true", "on", "yes")
+    org_id = _resolve_organization_id_for_farm(repository, form.get("farm_id"), form.get("organization_id"))
     catalog = _resolve_input_catalog(
         repository,
         form["name"],
@@ -895,6 +916,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
         form.get("category"),
         low_stock_threshold if low_stock_threshold > 0 else None,
         override_primary_unit=override_primary,
+        organization_id=org_id,
     )
     lot_tracking = _lot_tracking_fields(form)
 
@@ -2475,8 +2497,9 @@ def _resolve_season_for_farm(
 def _current_average_cost(repository: FarmRepository, farm_id: int | None, input_name: str, unit: str) -> float:
     input_id = None
     normalized_name = _normalize_input_name(input_name)
+    org_id = _resolve_organization_id_for_farm(repository, farm_id)
     if normalized_name:
-        catalog = repository.get_input_catalog_by_normalized_name(normalized_name)
+        catalog = repository.get_input_catalog_by_normalized_name(normalized_name, organization_id=org_id)
         input_id = catalog.id if catalog else None
     lots = [
         item for item in repository.list_purchased_inputs(include_stock_adjustments=True)
@@ -2503,7 +2526,8 @@ def _find_candidate_lots(repository: FarmRepository, input_id: int | None, purch
         direct = next((item for item in purchased_inputs if item.id == purchased_input_id), None)
         target_input_id = direct.input_id if direct else None
     if target_input_id is None and name:
-        catalog = repository.get_input_catalog_by_normalized_name(_normalize_input_name(name))
+        org_id = _resolve_organization_id_for_farm(repository, farm_id)
+        catalog = repository.get_input_catalog_by_normalized_name(_normalize_input_name(name), organization_id=org_id)
         target_input_id = catalog.id if catalog else None
     return [
         item for item in purchased_inputs
