@@ -28052,34 +28052,26 @@ def _nf_create_draft_for_sale(db: Session, user: User, farm: Farm, sale_code: st
 @router.post("/notas-fiscais/{draft_id}/duplicar")
 def fiscal_note_duplicate(draft_id: str, request: Request, csrf_token: str = Form(...),
                           db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
-    from app.services.nfe_notes import copy_draft_preparation, has_active_note_for_sale, inspect_sale_link
+    from app.models.nfe_draft import NfeIssuerProfile
+    from app.services.nfe_notes import copy_draft_preparation, load_note
 
     validate_csrf(request, csrf_token)
     repo, scope, farm, denied = _nf_scope(request, db, user)
     if denied:
         return denied
     draft = _nf_draft(db, user, farm, draft_id)
-    sale_link = inspect_sale_link(db, draft)
-    if sale_link["state"] == "cancelada":
-        _flash(
-            request,
-            "error",
-            f"Não é possível duplicar: a venda {draft.sale_code} foi cancelada. Registre uma nova venda para emitir outra nota.",
-        )
-        return _redirect(f"/notas-fiscais/{draft_id}")
-    if sale_link["state"] == "excluida":
-        _flash(
-            request,
-            "error",
-            f"Não é possível duplicar: a venda de origem ({draft.sale_code}) não existe mais. Registre uma nova venda para emitir outra nota.",
-        )
-        return _redirect(f"/notas-fiscais/{draft_id}")
-    if has_active_note_for_sale(db, draft, origin_ids=sale_link["origin_ids"]):
-        _flash(
-            request,
-            "error",
-            f"A venda {draft.sale_code} já possui uma NF-e autorizada ou em envio. Cancele a nota ativa antes de emitir outra.",
-        )
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    note = load_note(db, draft, issuer=issuer)
+    if not note["can_duplicate"]:
+        if note["status"] != "cancelada":
+            msg = f"Só é possível duplicar uma nota cancelada ({note['duplicate_reason']})."
+        elif note["sale_state"] == "cancelada":
+            msg = f"Não é possível duplicar: a venda {draft.sale_code} foi cancelada. Registre uma nova venda para emitir outra nota."
+        elif note["sale_state"] == "excluida":
+            msg = f"Não é possível duplicar: a venda de origem ({draft.sale_code}) não existe mais. Registre uma nova venda para emitir outra nota."
+        else:
+            msg = f"Não é possível duplicar: {note['duplicate_reason']}."
+        _flash(request, "error", msg)
         return _redirect(f"/notas-fiscais/{draft_id}")
     try:
         new_draft = _nf_create_draft_for_sale(db, user, farm, draft.sale_code, scope)

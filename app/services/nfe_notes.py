@@ -103,39 +103,52 @@ def inspect_sale_link(db, draft: NfeDraft) -> dict:
     return {'state': 'ativa', 'records': records, 'origin_ids': origin_ids}
 
 
-def _draft_is_live_fiscal(db, draft: NfeDraft) -> bool:
-    """True se o rascunho está autorizado ou aguardando retorno da SEFAZ (e não cancelado)."""
+def _draft_sibling_block_reason(db, draft: NfeDraft) -> str | None:
+    """Retorna motivo de bloqueio se o rascunho/nota irmão não estiver cancelado."""
     cancel_ev = (db.query(NfeDraftEvent.id)
                  .filter_by(draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id,
                             event_type='cancelamento_simulado').first())
     if cancel_ev:
-        return False
+        return None
     proc = (db.query(NfeStoredDocument.id)
             .filter_by(draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id,
                        document_type='nfe_proc_simulacao').first())
     if proc:
-        return True
+        return 'venda já tem NF-e autorizada'
     attempt = (db.query(NfeTransmissionAttempt)
                .filter_by(draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id)
                .order_by(NfeTransmissionAttempt.created_at.desc()).first())
-    return bool(attempt and attempt.status_category not in ('rejeitada', 'denegada'))
+    if attempt and attempt.status_category in ('rejeitada', 'denegada'):
+        return 'venda já tem NF-e rejeitada para corrigir'
+    if attempt:
+        return 'venda já tem NF-e em envio'
+    return 'venda já tem rascunho em aberto'
 
 
-def has_active_note_for_sale(db, draft: NfeDraft, *, origin_ids: list[int] | None = None) -> bool:
-    """True se a mesma venda já possui alguma NF-e autorizada ou em envio."""
+def non_cancelled_note_reason_for_sale(db, draft: NfeDraft, *, origin_ids: list[int] | None = None) -> str | None:
+    """Retorna o motivo se a mesma venda já possui qualquer outro rascunho/nota não cancelado."""
     if not draft.sale_code:
-        return False
+        return None
     siblings = (db.query(NfeDraft)
                 .filter_by(organization_id=draft.organization_id, farm_id=draft.farm_id, sale_code=draft.sale_code)
                 .all())
     for sibling in siblings:
+        if sibling.id == draft.id:
+            continue
         if origin_ids is not None:
             sib_origins = _draft_origin_ids(sibling)
             if sib_origins is not None and sib_origins != origin_ids:
                 continue
-        if _draft_is_live_fiscal(db, sibling):
-            return True
-    return False
+        reason = _draft_sibling_block_reason(db, sibling)
+        if reason:
+            return reason
+    return None
+
+
+def has_active_note_for_sale(db, draft: NfeDraft, *, origin_ids: list[int] | None = None) -> bool:
+    """True se a mesma venda já possui alguma NF-e autorizada ou em envio."""
+    reason = non_cancelled_note_reason_for_sale(db, draft, origin_ids=origin_ids)
+    return reason in ('venda já tem NF-e autorizada', 'venda já tem NF-e em envio')
 
 
 def copy_draft_preparation(db, *, source: NfeDraft, target: NfeDraft, user_id: int) -> None:
@@ -239,14 +252,24 @@ def load_note(db, draft: NfeDraft, *, issuer=None, now: datetime | None = None) 
     can_cancel = status == 'autorizada' and deadline is not None and now <= deadline
     sale_link = inspect_sale_link(db, draft)
     sale_state = sale_link['state']
-    if sale_state == 'cancelada':
+    if status in ('rascunho', 'pendente'):
+        can_duplicate, duplicate_reason = False, 'rascunho já está em aberto'
+    elif status == 'rejeitada':
+        can_duplicate, duplicate_reason = False, 'corrija e reenvie esta nota'
+    elif status == 'enviando':
+        can_duplicate, duplicate_reason = False, 'nota em envio'
+    elif status == 'autorizada':
+        can_duplicate, duplicate_reason = False, 'venda já tem NF-e autorizada'
+    elif sale_state == 'cancelada':
         can_duplicate, duplicate_reason = False, 'venda cancelada'
     elif sale_state == 'excluida':
         can_duplicate, duplicate_reason = False, 'venda excluída'
-    elif status in ('autorizada', 'enviando') or has_active_note_for_sale(db, draft, origin_ids=sale_link['origin_ids']):
-        can_duplicate, duplicate_reason = False, 'venda já tem NF-e autorizada'
     else:
-        can_duplicate, duplicate_reason = True, ''
+        sibling_reason = non_cancelled_note_reason_for_sale(db, draft, origin_ids=sale_link['origin_ids'])
+        if sibling_reason:
+            can_duplicate, duplicate_reason = False, sibling_reason
+        else:
+            can_duplicate, duplicate_reason = True, ''
     return {
         'draft': draft, 'id': draft.id, 'status': status, 'meta': STATUS_META[status],
         'number': f'{ident.number:06d}' if numbered else '', 'series': ident.series if numbered else None,

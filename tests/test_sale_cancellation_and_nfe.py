@@ -79,11 +79,18 @@ def test_cancel_sale_never_reuses_code_and_blocks_duplicating_cancelled_invoice(
     asyncio.run(r.sale_create_action(env.request("/producao/vendas", _sale_form(env, [(lot_a, "10")])), db=db, user=env.user))
     assert sale_records(db, farm_id, "V-0001")
 
-    # 2. Cria rascunho de NF-e para V-0001, emite e depois cancela a NF-e
+    # 2. Cria rascunho de NF-e para V-0001: em rascunho, Duplicar deve estar DESABILITADO
     draft_resp = r.create_fiscal_draft_action("V-0001", env.request("/producao/vendas/V-0001/rascunho-fiscal"), csrf_token="x", db=db, user=env.user)
     draft_id = draft_resp.headers["location"].rsplit("/", 1)[-1]
     draft = db.get(NfeDraft, draft_id)
     issuer = _seed_issuer_and_details(db, draft, env.user.id)
+    draft_note = load_note(db, draft, issuer=issuer)
+    assert draft_note["status"] == "rascunho" and draft_note["can_duplicate"] is False
+    dup_draft_resp = r.fiscal_note_duplicate(draft.id, env.request(f"/notas-fiscais/{draft.id}/duplicar"), csrf_token="x", db=db, user=env.user)
+    assert dup_draft_resp.status_code == 303 and dup_draft_resp.headers["location"] == f"/notas-fiscais/{draft.id}"
+    assert "cancelada" in env.session.pop("flash")["message"].lower()
+    assert db.query(NfeDraft).count() == 1
+
     confirm_emission(db, draft=draft, user_id=env.user.id)
     assert load_note(db, draft, issuer=issuer)["status"] == "autorizada"
 
@@ -177,3 +184,8 @@ def test_duplicate_blocked_on_legacy_hard_deleted_sale_and_allowed_on_active_sal
     assert load_note(db, new_draft, issuer=issuer)["status"] == "rascunho"
     new_details = json.loads(db.query(NfeDraftDetails).filter_by(draft_id=new_draft.id).one().data_json)
     assert new_details.get("cfop") or new_details.get("recipient_name")
+    # Após duplicar 1 vez, tentar duplicar novamente a mesma NF cancelada é bloqueado (já há rascunho aberto)
+    assert load_note(db, draft_v3, issuer=issuer)["can_duplicate"] is False
+    second_dup = r.fiscal_note_duplicate(draft_v3.id, env.request(f"/notas-fiscais/{draft_v3.id}/duplicar"), csrf_token="x", db=db, user=env.user)
+    assert second_dup.status_code == 303 and second_dup.headers["location"] == f"/notas-fiscais/{draft_v3.id}"
+    assert "rascunho em aberto" in env.session.pop("flash")["message"].lower()
