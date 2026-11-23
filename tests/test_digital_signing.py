@@ -326,6 +326,29 @@ def test_signing_web_workflow_and_external_validation_without_certificate(author
     client = LocalTestClient(web)
     original = _original()
     headers = login_headers(client, 1)
+    with sessions() as db:
+        new_cert = certificates.store_a1(db, organization_id=1, farm_id=1, user_id=1,
+                                         pfx=make(45, "Responsável pela web").pfx, password=PASSWORD)
+        db.commit()
+        binding_url = f"/certificados-digitais/{new_cert.id}/vinculo"
+        new_id = new_cert.id
+    assert client.post(binding_url, headers=headers, json={"cpf": CPF, "password": PASSWORD, "consent": True}).status_code == 201
+    with sessions() as db:
+        pending = db.get(certificates.CertificateHolderRequest, (new_id, 1))
+        revision = pending.revision
+        assert db.get(certificates.CertificatePurpose, (new_id, certificates.DOCUMENTS)) is None
+    decision = {"user_id": 1, "revision": revision, "reference": "protocolo-web", "consent": True, "approve": True}
+    assert client.post(binding_url + "/revisao", headers=headers, json=decision).status_code == 403
+    reviewer = LocalTestClient(web)
+    review_headers = login_headers(reviewer, 2)
+    assert "Conferir vínculo de Pessoa 1" in reviewer.get("/certificados-digitais").text
+    approval = reviewer.post(binding_url + "/revisao", headers=review_headers, json=decision)
+    assert approval.status_code == 200, approval.text
+    with sessions() as db:
+        grant = db.get(certificates.CertificatePurpose, (new_id, certificates.DOCUMENTS))
+        assert grant.user_id == 1
+        assert grant.enabled_at is None
+        assert db.get(certificates.CertificateHolderRequest, (new_id, 1)) is None
     assert client.get("/assinatura-digital").status_code == 200
     assert client.get("/certificados-digitais").status_code == 200
     assert client.post("/assinatura-digital/documentos", content=original,

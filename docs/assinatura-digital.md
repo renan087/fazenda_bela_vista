@@ -11,18 +11,9 @@ A Central de Certificados fica em `/certificados-digitais`. A área de assinatur
 
 ## Vínculo do titular ou responsável
 
-Um operador autorizado a verificar identidade deve conferir, por canal independente, a identidade da pessoa, o controle da conta individual, o vínculo com o certificado e a política da certificadora. Para e-CPF, deve conferir o titular. Para e-CNPJ, deve conferir o responsável de uso. Use uma referência do atendimento sem CPF, senha ou documento pessoal no texto.
-
-O comando abaixo é executado na implantação em que o certificado foi cadastrado. A pessoa verificada informa o CPF e a senha do A1 em prompts locais sem eco. O comando confere o CPF com o campo ICP-Brasil do certificado e grava a referência da verificação.
-
-```sh
-python -m scripts.verify_digital_certificate_holder \
-  --certificate ID_DA_CENTRAL \
-  --user titular@example.com \
-  --reference PROTOCOLO_DA_VERIFICACAO
-```
-
-O vínculo habilita a conta a decidir sobre cada finalidade. A própria pessoa deve entrar na Central e autorizar o uso desejado. Alterar o vínculo invalida as autorizações da Central e requer novo consentimento. O fluxo fiscal legado usa a seleção da NF-e e mantém o escopo de fazenda e ambiente.
+1. O titular do e-CPF, ou o responsável de uso do e-CNPJ, entra na própria conta e seleciona a fazenda. Na Central de Certificados, usa **Solicitar vínculo para minha conta**, ou informa o ID obtido em **Dados do certificado**. O SiSFarm confere o CPF e a senha do A1. Esses dados de entrada não são gravados no pedido.
+2. Outra conta da organização com permissão de gestão de certificados abre **Conferir vínculo** na Central. Essa pessoa confere a identidade e o controle da conta solicitante por canal independente, registra a referência da conferência e aprova o pedido.
+3. O titular ou responsável volta à Central e usa **Autorizar uso** na finalidade desejada. O vínculo por si só não autoriza a emissão fiscal nem a assinatura de documentos.
 
 ## Homologação obrigatória no VALIDAR
 

@@ -2,7 +2,8 @@
 import base64
 import hmac
 import secrets
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from asn1crypto.core import BMPString, IA5String, OctetString, PrintableString, UTF8String
@@ -11,7 +12,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy import or_, select
 
 from app.core.config import get_settings
-from app.models.digital_certificate import CertificatePurpose, DigitalCertificate, FiscalCertificateSelection
+from app.models.digital_certificate import CertificateHolderRequest, CertificatePurpose, DigitalCertificate, FiscalCertificateSelection
 from app.models.farm import Farm
 from app.models.user import User
 from app.services.certificate_a1 import parse_and_validate_pfx
@@ -20,6 +21,7 @@ CENTRAL = "central"
 DOCUMENTS = "documents"
 FISCAL = "fiscal"
 FISCAL_ENVIRONMENTS = ("homologacao", "producao")
+HOLDER_REQUEST_WINDOW = timedelta(days=7)
 HOLDER_OID = x509.ObjectIdentifier("2.16.76.1.3.1")
 REPRESENTATIVE_OID = x509.ObjectIdentifier("2.16.76.1.3.4")
 LEGAL_ENTITY_OID = x509.ObjectIdentifier("2.16.76.1.3.3")
@@ -117,13 +119,60 @@ def _responsible_cpf(certificate: x509.Certificate) -> str:
 
 def verify_responsible_identity(db, *, cert: DigitalCertificate, user: User, cpf: str, password: str, reference: str):
     """Called by the identity verification operator after validating identity outside the application."""
-    parsed = _open_pkcs12(cert, password)
+    check_responsible_identity(cert, user, cpf, password)
+    lock_fiscal_farm(db, cert.organization_id, cert.farm_id)
+    _bind_responsible_identity(db, cert, user, reference)
+
+
+def check_responsible_identity(cert, user, cpf, password):
     if not user.is_active or user.organization_id != cert.organization_id:
         raise ValueError("A conta ativa precisa pertencer à organização do certificado.")
-    if len(cpf) != 11 or not hmac.compare_digest(_responsible_cpf(parsed["certificate"]), cpf):
-        raise ValueError("O CPF verificado diverge do titular ou responsável identificado no certificado.")
-    now = datetime.now(timezone.utc)
+    if not re.fullmatch(r"[0-9]{11}|[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}", cpf):
+        raise ValueError("Informe o CPF com 11 dígitos.")
+    cpf = cpf.replace(".", "").replace("-", "")
+    parsed = _open_pkcs12(cert, password)
+    if not hmac.compare_digest(_responsible_cpf(parsed["certificate"]), cpf):
+        raise ValueError("O CPF diverge do titular ou responsável identificado no certificado.")
+
+
+def request_holder_binding(db, cert, user, cpf, password):
+    check_responsible_identity(cert, user, cpf, password)
     lock_fiscal_farm(db, cert.organization_id, cert.farm_id)
+    if db.get(CertificatePurpose, (cert.id, DOCUMENTS)) is not None:
+        raise ValueError("Este certificado já tem um responsável vinculado.")
+    pending = db.get(CertificateHolderRequest, (cert.id, user.id))
+    if pending is None:
+        pending = CertificateHolderRequest(certificate_id=cert.id, user_id=user.id)
+        db.add(pending)
+    pending.email = user.email
+    pending.requested_at = datetime.now(timezone.utc)
+    pending.revision = uuid4().hex
+
+
+def review_holder_binding(db, cert, reviewer, user_id, revision, approve, reference):
+    if reviewer.id == user_id or reviewer.organization_id != cert.organization_id:
+        raise PermissionError("A conferência requer outra conta autorizada da organização.")
+    lock_fiscal_farm(db, cert.organization_id, cert.farm_id)
+    pending = db.get(CertificateHolderRequest, (cert.id, user_id), populate_existing=True)
+    now = datetime.now(timezone.utc)
+    if pending is None or pending.revision != revision or now - utc(pending.requested_at) > HOLDER_REQUEST_WINDOW:
+        raise ValueError("A solicitação mudou ou expirou. Atualize a página.")
+    if not approve:
+        db.delete(pending)
+        return
+    user = db.get(User, user_id, populate_existing=True)
+    if (user is None or not user.is_active or user.organization_id != cert.organization_id or user.email != pending.email):
+        raise ValueError("A conta solicitante mudou. Peça ao responsável para solicitar um novo vínculo.")
+    if not utc(cert.valid_from) <= now <= utc(cert.valid_until):
+        raise ValueError("O certificado precisa estar vigente.")
+    if db.get(CertificatePurpose, (cert.id, DOCUMENTS)) is not None:
+        raise ValueError("Este certificado já tem um responsável vinculado.")
+    _bind_responsible_identity(db, cert, user, reference)
+    db.query(CertificateHolderRequest).filter_by(certificate_id=cert.id).delete()
+
+
+def _bind_responsible_identity(db, cert, user, reference):
+    now = datetime.now(timezone.utc)
     for purpose in (DOCUMENTS, FISCAL):
         grant = db.get(CertificatePurpose, (cert.id, purpose), with_for_update=True)
         if grant is None:

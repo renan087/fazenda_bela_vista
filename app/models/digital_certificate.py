@@ -50,3 +50,13 @@ class FiscalCertificateSelection(Base):
     farm_id: Mapped[int] = mapped_column(Integer, index=True)
     environment: Mapped[str] = mapped_column(String(20))
     secret_ciphertext: Mapped[str] = mapped_column(Text)
+
+
+class CertificateHolderRequest(Base):
+    __tablename__ = "digital_certificate_holder_requests"
+
+    certificate_id: Mapped[str] = mapped_column(ForeignKey("nfe_certificate_vaults.id"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    email: Mapped[str] = mapped_column(String(120))
+    revision: Mapped[str] = mapped_column(String(32))
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

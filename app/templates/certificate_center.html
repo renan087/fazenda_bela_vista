@@ -38,6 +38,25 @@
             {% endif %}
           </div>
         </div>
+        {% if entry.can_request_holder and entry.valid and not entry.pending_mine %}
+        <button type="button" class="ds-inline-action" data-ds-bind-cert="{{ cert.id }}">Solicitar vínculo para minha conta</button>
+        {% endif %}
+        {% if entry.pending_mine %}<p class="ds-note">Seu pedido de vínculo aguarda conferência.</p>{% endif %}
+        {% for item, person in entry.pending_reviews %}
+        {% if entry.can_request_holder %}
+        <details class="ds-cert-details">
+          <summary>Conferir vínculo de {{ person.display_name or person.name }} · {{ item.email }}</summary>
+          <form class="ds-side-card" data-ds-review="{{ cert.id }}" data-user-id="{{ person.id }}" data-revision="{{ item.revision }}" method="post">
+            <p>Confira a identidade do titular ou responsável de uso e se ele controla a conta indicada. Registre apenas a referência da conferência, sem CPF ou senha.</p>
+            <label class="ds-label">Referência da conferência <input name="reference" maxlength="160"></label>
+            <label class="ds-check"><input name="confirmed" type="checkbox"> Confirmei a identidade e o controle da conta.</label>
+            <div><button type="submit" data-approve="yes" class="sf-btn sf-btn-primary">Aprovar vínculo</button>
+              <button type="submit" data-approve="no" class="sf-btn sf-btn-secondary">Recusar pedido</button></div>
+            <p class="ds-feedback" data-ds-binding-status role="status" hidden></p>
+          </form>
+        </details>
+        {% endif %}
+        {% endfor %}
         <details class="ds-cert-details"><summary>Dados do certificado</summary><dl><dt>ID para vincular o responsável</dt><dd>{{ cert.id }}</dd><dt>Impressão digital SHA-256</dt><dd>{{ cert.fingerprint_sha256 }}</dd></dl></details>
       </article>
       {% else %}
@@ -54,7 +73,19 @@
         <button type="submit" class="sf-btn sf-btn-primary ds-full">{{ icon('upload', 17) }} Cadastrar A1</button>
         <p class="ds-feedback" data-ds-status role="status" hidden></p>
       </form>
-      <div class="ds-note ds-note--small">{{ icon('shield', 18) }} Após o cadastro, solicite à equipe do SiSFarm o vínculo da conta do titular ou responsável. A autorização é dada por essa conta.</div>
+      <details class="ds-cert-details" data-ds-binding-panel>
+        <summary>Solicitar vínculo do responsável</summary>
+        <form data-ds-binding method="post">
+          <p>Entre na sua própria conta. Use o ID em Dados do certificado ou peça esse ID a quem cadastrou o A1.</p>
+          <label class="ds-label">ID do certificado <input name="certificate" required maxlength="32" pattern="[a-fA-F0-9]{32}"></label>
+          <label class="ds-label">CPF do titular ou responsável de uso <input name="cpf" inputmode="numeric" required maxlength="14"></label>
+          <label class="ds-label">Senha do A1 <input name="password" type="password" autocomplete="off" maxlength="1024" required></label>
+          <label class="ds-check"><input name="confirmed" type="checkbox" required> Solicito o vínculo deste A1 à minha conta.</label>
+          <button class="sf-btn sf-btn-primary" type="submit">Solicitar vínculo</button>
+          <p class="ds-hint">Outra conta autorizada a gerenciar certificados precisa conferir o pedido. Após a aprovação, autorize cada finalidade na Central.</p>
+          <p class="ds-feedback" data-ds-binding-status role="status" hidden></p>
+        </form>
+      </details>
     </aside>
   </div>
 
@@ -73,5 +104,5 @@
   </dialog>
   {% endif %}
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=1"></script>
+<script type="module" src="/static/js/digital_signing.js?v=2"></script>
 {% endblock %}
