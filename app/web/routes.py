@@ -23172,10 +23172,11 @@ def fiscal_draft_page(draft_id: str, request: Request, db: Session = Depends(get
     if step == "conferir" and note["status"] == "pendente":
         _flash(request, "error", "Resolva as pendências antes de conferir.")
         step = "preencher"
+    today_app = today_in_app_timezone()
     return templates.TemplateResponse("nfe_draft.html", _base_context(
         request, user, csrf_token, "commercialization", title="Emitir nota fiscal", draft=draft,
         farm_name=farm.name if farm else "", buyer=buyer, has_active_cert=has_active_cert,
-        today_iso=today_in_app_timezone().isoformat(),
+        today_iso=today_app.isoformat(), today_br=today_app.strftime("%d/%m/%Y"),
         tax_profiles=tax_profiles, sale_meta=map_sale_payment_and_freight(snapshot),
         issuer=issuer, details=prepared, snapshot=snapshot, technical=technical, technical_items=technical_items,
         identification=identification, key_summary=key_summary, extra_data=extra_data, snapshots=snapshots, draft_events=draft_events,
@@ -28399,7 +28400,9 @@ async def fiscal_draft_save_all(draft_id: str, request: Request, db: Session = D
         return _redirect(f"/notas-fiscais/{draft.id}")
     # Dados fiscais vêm só do cadastro (produto e operação): o formulário não os altera.
     prev_details, prev_tech = _nf_saved_json(db, user, farm, draft)
+    today_app = today_in_app_timezone()
     data = {k: form.get(k) for k in form.keys()}
+    data["emission_date"] = today_app.isoformat()
     _nf_map_form(data, prev_details)
     for key in ("product_description", "product_ncm", "operation_nature", "operation_cfop"):
         data[key] = prev_details.get(key, "")
@@ -28409,7 +28412,7 @@ async def fiscal_draft_save_all(draft_id: str, request: Request, db: Session = D
                 data[f"item_{row.get('item_index')}_{key}"] = value
     try:
         details_values = clean_draft_details(data)
-        tech_values = clean_technical_data(data, json.loads(draft.snapshot_json))
+        tech_values = clean_technical_data(data, json.loads(draft.snapshot_json), today=today_app)
         extra_values = clean_extra_data(data)
     except (ValueError, TypeError) as exc:
         _flash(request, "error", str(exc))

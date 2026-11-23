@@ -539,15 +539,14 @@ def test_note_buyer_modal_can_update_buyer_register_and_production_lists_nf_pend
     db.close()
 
 
-def test_emission_date_defaults_to_today_and_blocks_past_or_future_on_emission():
+def test_emission_date_is_always_current_date_on_setup_and_emission():
     from app.core.timezone import today_in_app_timezone
     today = today_in_app_timezone()
     past_iso = (today - timedelta(days=5)).isoformat()
-    future_iso = (today + timedelta(days=2)).isoformat()
 
     db = _db()
     draft = _seed(db)
-    # Venda antiga: apply_setup_to_draft deve preencher emission_date com a data atual, não com a data da venda
+    # Mesmo que a venda e o rascunho tenham data antiga, ao emitir a data gravada é sempre a de hoje
     snap = json.loads(draft.snapshot_json)
     snap['data_venda'] = past_iso
     draft.snapshot_json = json.dumps(snap)
@@ -557,21 +556,7 @@ def test_emission_date_defaults_to_today_and_blocks_past_or_future_on_emission()
     tech_row.data_json = json.dumps(tech_data)
     db.commit()
 
-    # Ao tentar emitir com data passada, deve bloquear
-    with pytest.raises(ValueError, match='não pode ser anterior à data atual'):
-        notes.confirm_emission(db, draft=draft, user_id=USER)
-
-    # Ao tentar emitir com data futura, deve bloquear (Rejeição 703 SEFAZ)
-    tech_data['emission_date'] = future_iso
-    tech_row.data_json = json.dumps(tech_data)
-    db.commit()
-    with pytest.raises(ValueError, match='não pode ser posterior à data atual'):
-        notes.confirm_emission(db, draft=draft, user_id=USER)
-
     # Ao aplicar setup fiscal em rascunho com data antiga, atualiza automaticamente para hoje
-    tech_data['emission_date'] = past_iso
-    tech_row.data_json = json.dumps(tech_data)
-    db.commit()
     product = setup.create_product_from_template(db, organization_id=ORG, farm_id=FARM, user_id=USER, key='arabica')
     op = setup.save_operation(db, organization_id=ORG, farm_id=FARM, user_id=USER,
                               data={'name': 'Venda', 'nature': 'Venda de produção', 'cfop_in': '5101', 'icms_cst': '41'})
@@ -579,4 +564,14 @@ def test_emission_date_defaults_to_today_and_blocks_past_or_future_on_emission()
     setup.apply_setup_to_draft(db, draft=draft, product=product, operation=op, buyer=None, issuer_state='BA', user_id=USER)
     updated_tech = json.loads(db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id).first().data_json)
     assert updated_tech['emission_date'] == today.isoformat()
+
+    # Mesmo se o rascunho ficasse parado e tivesse data antiga no banco, confirm_emission grava a data atual
+    tech_row = db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id).first()
+    tech_data = json.loads(tech_row.data_json)
+    tech_data['emission_date'] = past_iso
+    tech_row.data_json = json.dumps(tech_data)
+    db.commit()
+    notes.confirm_emission(db, draft=draft, user_id=USER)
+    emitted_tech = json.loads(db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id).first().data_json)
+    assert emitted_tech['emission_date'] == today.isoformat()
     db.close()

@@ -184,9 +184,13 @@
         <section class="nx-cardx" aria-labelledby="h-ship" data-nx-ship>
           <div class="nx-hd"><h2 id="h-ship">Emissão e transporte</h2><span class="nx-auto">Pagamento preenchido da venda</span></div>
           <div class="nx-g">
-            {% set saved_emission = technical.get('emission_date') or '' %}
-            {% set emission_value = saved_emission if saved_emission and saved_emission >= today_iso else today_iso %}
-            <label class="nx-f">Data de emissão<input type="date" name="emission_date" value="{{ emission_value }}" min="{{ today_iso }}" class="nx-in"></label>
+            <div class="nx-f">
+              <span>Data de emissão</span>
+              <input type="hidden" name="emission_date" value="{{ today_iso }}">
+              <div class="nx-in" title="A emissão da nota fiscal considera sempre a data atual." style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;background:#f6f8f5;color:#16201a;cursor:default">
+                <strong style="font-weight:600">{{ today_br }}</strong>
+              </div>
+            </div>
             <div class="nx-f">
               <span>Pagamento da venda</span>
               <input type="hidden" name="payment_indicator" value="{{ sale_meta.ind_pag if sale_meta else '0' }}">
@@ -364,7 +368,7 @@
         <section class="nx-rv">
           <div class="nx-rv-h"><span class="nx-rv-t"><span class="nx-rv-i">{{ nxi('truck') }}</span>Entrega e pagamento</span><a class="nx-link-btn" href="/producao/rascunhos-fiscais/{{ draft.id }}">Editar</a></div>
           <strong>{{ extra.get('carrier_name') or {'9': 'Sem transporte', '0': 'Frete da fazenda', '1': 'Frete do comprador'}.get(freight_code, 'Transporte informado') }}{% if extra.get('vehicle_plate') %} · {{ extra.get('vehicle_plate') }}{% endif %}</strong>
-          <span class="s">{{ sale_meta.payment_label if sale_meta else '' }} · emissão {{ technical.get('emission_date') }}</span>
+          <span class="s">{{ sale_meta.payment_label if sale_meta else '' }} · emissão {{ today_br }}</span>
         </section>
       </div>
     </div>
