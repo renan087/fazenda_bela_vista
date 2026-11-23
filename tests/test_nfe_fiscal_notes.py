@@ -627,12 +627,14 @@ def test_correction_letter_flow_limits_routes_and_isolation(monkeypatch):
     pdf_resp = routes.fiscal_note_cce_pdf(draft.id, SimpleNamespace(query_params={'seq': '2'}), db, user)
     assert pdf_resp.body.startswith(b'%PDF-')
 
-    # Template renderiza cartão e modal de CC-e
+    # Template renderiza cartão, menu Carta de correção (PDF) e modal de CC-e
     public = routes._nf_public(loaded)
+    assert any(t['label'] == 'Carta de correção (PDF)' and t['href'].endswith('/cce.pdf') for t in public['actions']['tiles'])
     html = _render('nota_fiscal.html', note=loaded, pub=public, issuer=issuer, buyer=None,
                    events=notes.history(db, draft=draft), sources={'operation': None, 'product': None},
                    open_cancel=False, open_cce=True, freight_labels={'9': 'Sem transporte'})
     assert 'Cartas de correção' in html and 'CC-e #2' in html and 'id="nx-cce"' in html
+    assert 'Carta de correção (PDF)' in html
     assert 'Copiar texto da carta #2' in html
 
     # Limite de 20 cartas bloqueia a 21ª

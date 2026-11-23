@@ -119,7 +119,7 @@
             {% for n in notes_public %}
             <tr class="nx-row" data-nx-id="{{ n.id }}" data-status="{{ n.status }}" data-day="{{ n.day }}" data-buyer="{{ n.buyer }}" data-value="{{ n.value }}" data-search="{{ (n.title ~ ' ' ~ n.buyer ~ ' ' ~ n.doc ~ ' ' ~ n.sale)|lower }}">
               <td style="padding-left:1.125rem"><label class="dt-chk"><input type="checkbox" class="dt-check" data-nx-check value="{{ n.id }}" aria-label="Selecionar nota {{ n.title }}"></label></td>
-              <td><button type="button" class="nx-num" data-nx-open>{{ n.title }}</button><span class="nx-sub">{{ n.subtitle }}</span></td>
+              <td><a class="nx-num" href="{{ n.detail }}">{{ n.title }}</a><span class="nx-sub">{{ n.subtitle }}</span></td>
               <td style="white-space:nowrap;color:#5b6660">{{ n.emission }}</td>
               <td><span style="font-weight:500">{{ n.buyer }}</span><span class="nx-sub">{{ n.doc }}</span></td>
               <td style="color:#5b6660">{{ n.product }}</td>
@@ -186,5 +186,5 @@
   </div>
 </div>
 <script type="application/json" id="nx-data">{{ notes_public|tojson }}</script>
-<script src="/static/js/notas_fiscais.js?v=20261123ex3" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261123ex5" defer></script>
 {% endblock %}

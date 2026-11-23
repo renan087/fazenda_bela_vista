@@ -124,6 +124,7 @@
         node._wrap = f;
       } else if (a.href && !a.soon && !a.disabled) {
         node = el('a'); node.href = a.href;
+        if (a.blank) { node.target = '_blank'; node.rel = 'noopener'; }
       } else {
         node = el('button'); node.type = 'button'; node.setAttribute('aria-disabled', 'true'); node.disabled = kind === 'menu';
       }

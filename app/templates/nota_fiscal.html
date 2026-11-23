@@ -41,6 +41,9 @@
             <button type="button" class="nx-mi" role="menuitem" disabled>{{ nxi('cce') }}<span>Carta de correção</span><em>{{ n.cce_reason }}</em></button>
             {% endif %}
           {% endif %}
+          {% if n.latest_cce %}
+          <a class="nx-mi" role="menuitem" href="/notas-fiscais/{{ n.id }}/cce.pdf" target="_blank" rel="noopener">{{ nxi('download') }}<span>Carta de correção (PDF)</span><em>#{{ '%02d'|format(n.latest_cce.seq) }}</em></a>
+          {% endif %}
           <a class="nx-mi" role="menuitem" href="/notas-fiscais/{{ n.id }}/danfe.pdf" target="_blank" rel="noopener">{{ nxi('print') }}<span>Imprimir DANFE</span></a>
           {% elif n.status in ('rascunho', 'pendente') %}
           <a class="nx-mi" role="menuitem" href="/notas-fiscais/{{ n.id }}/danfe.pdf" target="_blank" rel="noopener">{{ nxi('eye') }}<span>Prévia do DANFE</span></a>
@@ -279,5 +282,5 @@
   </dialog>
   {% endif %}
 </div>
-<script src="/static/js/notas_fiscais.js?v=20261123ex4" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261123ex5" defer></script>
 {% endblock %}

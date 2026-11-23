@@ -11437,7 +11437,7 @@ dialog.nf-dialog::backdrop { background: rgba(15, 21, 19, 0.45); }
 .nx-row:hover { background: #fafbf9; }
 .nx-row.is-selected { background: #f6f8f5; box-shadow: inset 3px 0 0 #446a36; }
 .nx-row[hidden], .nx-card[hidden] { display: none; }
-.nx-num { border: 0; background: none; padding: 0; font-size: .875rem; font-weight: 700; color: #16201a; cursor: pointer; text-align: left; }
+.nx-num { border: 0; background: none; padding: 0; font-size: .875rem; font-weight: 700; color: #16201a; cursor: pointer; text-align: left; text-decoration: none; display: inline-block; }
 .nx-num:hover { color: #446a36; text-decoration: underline; }
 .nx-sub { display: block; font-size: .75rem; color: #7a857e; }
 .nx-chip { display: inline-flex; align-items: center; gap: .375rem; height: 1.625rem; padding: 0 .625rem; border-radius: 999px; font-size: .75rem; font-weight: 700; white-space: nowrap; }

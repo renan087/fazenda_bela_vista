@@ -27720,7 +27720,10 @@ def _nf_actions(note: dict) -> dict:
                     "hint": cce_hint, "disabled": not note.get("can_cce")}
         tiles = [{"label": "Baixar XML", "icon": "code", "href": xml},
                  {"label": "Enviar ao comprador", "icon": "send", "soon": True},
-                 cce_tile, duplicate]
+                 cce_tile]
+        if note.get("cce_count"):
+            tiles.append({"label": "Carta de correção (PDF)", "icon": "download", "href": f"{detail}/cce.pdf", "blank": True})
+        tiles.append(duplicate)
         danger = {"label": "Cancelar nota", "icon": "x", "href": detail + "?cancelar=1",
                   "hint": ("até " + _nf_br_dt(note["cancel_deadline"], short=True)) if note["can_cancel"] else "prazo de 24 h encerrado",
                   "disabled": not note["can_cancel"]}
