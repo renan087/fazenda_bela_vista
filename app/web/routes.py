@@ -27715,9 +27715,12 @@ def _nf_actions(note: dict) -> dict:
         danger = None
     elif st == "autorizada":
         primary = {"label": "Baixar DANFE (PDF)", "icon": "download", "href": danfe}
+        cce_hint = (f"{note['cce_count']}/20 emitida{'s' if note['cce_count'] != 1 else ''}" if note.get("cce_count") else "") if note.get("can_cce") else note.get("cce_reason", "")
+        cce_tile = {"label": "Carta de correção", "icon": "cce", "href": detail + "?cce=1",
+                    "hint": cce_hint, "disabled": not note.get("can_cce")}
         tiles = [{"label": "Baixar XML", "icon": "code", "href": xml},
                  {"label": "Enviar ao comprador", "icon": "send", "soon": True},
-                 {"label": "Carta de correção", "icon": "cce", "soon": True}, duplicate]
+                 cce_tile, duplicate]
         danger = {"label": "Cancelar nota", "icon": "x", "href": detail + "?cancelar=1",
                   "hint": ("até " + _nf_br_dt(note["cancel_deadline"], short=True)) if note["can_cancel"] else "prazo de 24 h encerrado",
                   "disabled": not note["can_cancel"]}
@@ -27816,6 +27819,7 @@ def fiscal_note_detail_page(draft_id: str, request: Request, db: Session = Depen
         request, user, csrf_token, "fiscal_notes", _repo=repo, title="NF-e " + note["title"],
         note=note, pub=public, issuer=issuer, buyer=buyer, events=history(db, draft=draft),
         sources=draft_sources(db, draft=draft), open_cancel=request.query_params.get("cancelar") == "1",
+        open_cce=request.query_params.get("cce") == "1",
         freight_labels={"0": "Por conta da fazenda (CIF)", "1": "Por conta do comprador (FOB)", "2": "Por conta de terceiros",
                         "3": "Transporte próprio da fazenda", "4": "Transporte próprio do comprador", "9": "Sem transporte"},
     ))
@@ -27837,6 +27841,25 @@ def fiscal_note_cancel(draft_id: str, request: Request, csrf_token: str = Form(.
         _flash(request, "error", str(exc))
         return _redirect(f"/notas-fiscais/{draft.id}?cancelar=1")
     _flash(request, "success", "Nota cancelada no ambiente de teste. A venda voltou a ficar sem nota.")
+    return _redirect(f"/notas-fiscais/{draft.id}")
+
+
+@router.post("/notas-fiscais/{draft_id}/carta-correcao")
+def fiscal_note_correction_letter(draft_id: str, request: Request, csrf_token: str = Form(...), correction_text: str = Form(""),
+                                  db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.nfe_notes import issue_correction_letter
+    validate_csrf(request, csrf_token)
+    repo, scope, farm, denied = _nf_scope(request, db, user)
+    if denied:
+        return denied
+    draft = _nf_draft(db, user, farm, draft_id)
+    try:
+        res = issue_correction_letter(db, draft=draft, user_id=user.id, correction_text=correction_text)
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(f"/notas-fiscais/{draft.id}?cce=1")
+    _flash(request, "success", f"Carta de correção #{res['seq']} registrada no ambiente de teste.")
     return _redirect(f"/notas-fiscais/{draft.id}")
 
 
@@ -28089,11 +28112,33 @@ def fiscal_note_duplicate(draft_id: str, request: Request, csrf_token: str = For
 @router.get("/notas-fiscais/{draft_id}/xml")
 def fiscal_note_xml(draft_id: str, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
     from app.models.nfe_draft import NfeStoredDocument
+    from app.services.nfe_notes import load_note
     repo, scope, farm, denied = _nf_scope(request, db, user)
     if denied:
         return denied
     draft = _nf_draft(db, user, farm, draft_id)
-    doc_type = "evento_simulacao" if request.query_params.get("tipo") == "cancelamento" else "nfe_proc_simulacao"
+    tipo = (request.query_params.get("tipo") or "").strip().lower()
+    if tipo == "cce":
+        note = load_note(db, draft)
+        letters = note.get("correction_letters") or []
+        seq_param = (request.query_params.get("seq") or "").strip()
+        selected = None
+        if seq_param.isdigit():
+            selected = next((c for c in letters if c["seq"] == int(seq_param)), None)
+        elif letters:
+            selected = letters[0]
+        if not selected or not selected.get("document_id"):
+            raise HTTPException(status_code=404, detail="Carta de correção não encontrada.")
+        doc = db.query(NfeStoredDocument).filter_by(
+            id=selected["document_id"], draft_id=draft.id, organization_id=user.organization_id,
+            farm_id=farm.id, document_type="cce_simulacao"
+        ).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail="XML da carta de correção não encontrado.")
+        return Response(doc.xml_content.encode("utf-8"), media_type="application/xml", headers={
+            "Content-Disposition": f'attachment; filename="NFe{doc.access_key}-cce-{selected["seq"]:02d}-teste.xml"',
+            "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+    doc_type = "evento_simulacao" if tipo == "cancelamento" else "nfe_proc_simulacao"
     doc = (db.query(NfeStoredDocument).filter_by(draft_id=draft.id, organization_id=user.organization_id, farm_id=farm.id,
                                                  document_type=doc_type)
            .order_by(NfeStoredDocument.created_at.desc()).first())
@@ -28102,6 +28147,32 @@ def fiscal_note_xml(draft_id: str, request: Request, db: Session = Depends(get_d
     suffix = "-cancelamento" if doc_type == "evento_simulacao" else ""
     return Response(doc.xml_content.encode("utf-8"), media_type="application/xml", headers={
         "Content-Disposition": f'attachment; filename="NFe{doc.access_key}{suffix}-teste.xml"',
+        "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
+@router.get("/notas-fiscais/{draft_id}/cce.pdf")
+def fiscal_note_cce_pdf(draft_id: str, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.models.nfe_draft import NfeIssuerProfile
+    from app.services.nfe_cce_pdf import build_cce_pdf
+    from app.services.nfe_notes import load_note
+    repo, scope, farm, denied = _nf_scope(request, db, user)
+    if denied:
+        return denied
+    draft = _nf_draft(db, user, farm, draft_id)
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=user.organization_id, farm_id=farm.id).first()
+    note = load_note(db, draft, issuer=issuer)
+    letters = note.get("correction_letters") or []
+    seq_param = (request.query_params.get("seq") or "").strip()
+    selected = None
+    if seq_param.isdigit():
+        selected = next((c for c in letters if c["seq"] == int(seq_param)), None)
+    elif letters:
+        selected = letters[0]
+    if not selected:
+        raise HTTPException(status_code=404, detail="Carta de correção não encontrada.")
+    pdf_bytes = build_cce_pdf(issuer=issuer, note=note, cce=selected, test_mode=True)
+    return Response(pdf_bytes, media_type="application/pdf", headers={
+        "Content-Disposition": f'inline; filename="CCe-{selected["seq"]:02d}-NFe-{note["title"]}.pdf"',
         "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 

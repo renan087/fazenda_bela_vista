@@ -12398,3 +12398,14 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 .sl-mi-tip { position:absolute; bottom:calc(100% + 6px); right:0; width:228px; max-width:calc(100vw - 24px); background:#16201A; color:#fff; font-size:12px; font-weight:500; line-height:1.4; padding:7px 10px; border-radius:8px; box-shadow:0 10px 24px rgba(15,21,19,.22); pointer-events:none; opacity:0; visibility:hidden; transition:opacity .15s ease; z-index:50; }
 .sl-mi-tipwrap:hover .sl-mi-tip, .sl-mi-tipwrap:focus-within .sl-mi-tip { opacity:1; visibility:visible; }
 @media (max-width: 639px) { .sv-pop.is-sub { z-index:45; } }
+/* Carta de Correção Eletrônica (CC-e) em Notas Fiscais */
+.nx-cce-head { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; }
+.nx-cce-list { display:flex; flex-direction:column; gap:10px; }
+.nx-cce-item { border:1px solid #E3E8E2; border-radius:12px; padding:12px 14px; background:#FAFBF9; }
+.nx-cce-item.is-current { border-color:#C9D6C3; background:#F6F8F5; }
+.nx-cce-top { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.nx-cce-acts { display:flex; align-items:center; gap:12px; }
+.nx-cce-text { margin:0; font-size:14px; line-height:1.55; color:#16201A; white-space:pre-wrap; word-break:break-word; }
+.nx-cce-rules { padding:10px 12px; border-radius:10px; background:#F6F8F5; border:1px solid #E3E8E2; font-size:12.5px; line-height:1.5; color:#46514A; display:flex; flex-direction:column; gap:4px; }
+.nx-cce-rules p { margin:0; }
+.nx-cce-warn { padding:10px 12px; border-radius:10px; background:#FFF6E5; border:1px solid #F0D9A6; font-size:12.5px; line-height:1.5; color:#7A4F00; display:flex; flex-direction:column; align-items:flex-start; gap:6px; }

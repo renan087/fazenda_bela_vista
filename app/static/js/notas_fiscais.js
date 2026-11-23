@@ -276,14 +276,29 @@
   function initCounters(root) {
     root.querySelectorAll('[data-nx-min]').forEach(function (input) {
       var min = parseInt(input.getAttribute('data-nx-min'), 10);
+      var max = parseInt(input.getAttribute('maxlength') || '0', 10);
+      var okLabel = input.getAttribute('data-nx-ok-label') || 'Motivo ok';
       var out = root.querySelector('[data-nx-counter="' + input.id + '"]');
       var target = root.querySelector('[data-nx-enable="' + input.id + '"]');
       function update() {
-        var n = input.value.trim().length; var ok = n >= min;
-        if (out) { out.textContent = ok ? 'Motivo ok' : 'Mínimo de ' + min + ' caracteres (' + n + '/' + min + ')'; out.classList.toggle('is-ok', ok); }
+        var n = input.value.trim().length; var ok = n >= min && (!max || n <= max);
+        if (out) {
+          if (ok) out.textContent = max ? okLabel + ' (' + n + '/' + max + ')' : okLabel;
+          else out.textContent = 'Mínimo de ' + min + ' caracteres (' + n + '/' + min + ')';
+          out.classList.toggle('is-ok', ok);
+        }
         if (target) target.disabled = !ok;
       }
       input.addEventListener('input', update); update();
+    });
+    root.querySelectorAll('[data-nx-copy-into]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var target = document.getElementById(btn.getAttribute('data-nx-copy-into'));
+        if (!target) return;
+        target.value = btn.getAttribute('data-nx-copy-val') || '';
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+        target.focus();
+      });
     });
     root.querySelectorAll('[data-nx-len]').forEach(function (input) {
       var out = root.querySelector('[data-nx-len-out="' + input.id + '"]'); var max = input.getAttribute('maxlength');

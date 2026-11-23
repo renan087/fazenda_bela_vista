@@ -21,6 +21,8 @@ from app.models.nfe_draft import (
 )
 
 CANCEL_WINDOW = timedelta(hours=24)
+CCE_WINDOW = timedelta(days=30)
+CCE_MAX_SEQ = 20
 STATUS_META = {
     'rascunho': {'label': 'Rascunho', 'tone': 'neutral'},
     'pendente': {'label': 'Pendente', 'tone': 'amber'},
@@ -250,6 +252,42 @@ def load_note(db, draft: NfeDraft, *, issuer=None, now: datetime | None = None) 
         emission_br, emission_day = emission, ''
     deadline = authorized_at + CANCEL_WINDOW if authorized_at else None
     can_cancel = status == 'autorizada' and deadline is not None and now <= deadline
+    cce_deadline = authorized_at + CCE_WINDOW if authorized_at else None
+    cce_events = (
+        db.query(NfeDraftEvent)
+        .filter_by(draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id, event_type='cce_simulada')
+        .order_by(NfeDraftEvent.created_at.desc())
+        .all()
+    )
+    local_tz = timezone(timedelta(hours=-3))
+    correction_letters = []
+    for ev in cce_events:
+        meta = json.loads(ev.metadata_json or '{}')
+        seq_val = int(meta.get('seq') or 0)
+        when_dt = _aware(ev.created_at)
+        correction_letters.append({
+            'seq': seq_val,
+            'text': meta.get('text') or '',
+            'event_id': meta.get('event_id') or '',
+            'document_id': meta.get('document_id') or '',
+            'protocol': meta.get('protocol') or '',
+            'when': when_dt.astimezone(local_tz).strftime('%d/%m/%Y %H:%M') if when_dt else '',
+            'when_iso': when_dt.isoformat() if when_dt else '',
+            'is_current': False,
+        })
+    correction_letters.sort(key=lambda item: item['seq'], reverse=True)
+    if correction_letters:
+        correction_letters[0]['is_current'] = True
+    cce_count = len(correction_letters)
+    cce_next_seq = (correction_letters[0]['seq'] + 1) if correction_letters else 1
+    if status != 'autorizada':
+        can_cce, cce_reason = False, 'disponível só para nota autorizada'
+    elif cce_count >= CCE_MAX_SEQ or cce_next_seq > CCE_MAX_SEQ:
+        can_cce, cce_reason = False, 'limite de 20 cartas atingido'
+    elif cce_deadline is None or now > cce_deadline:
+        can_cce, cce_reason = False, 'prazo de 30 dias encerrado'
+    else:
+        can_cce, cce_reason = True, ''
     sale_link = inspect_sale_link(db, draft)
     sale_state = sale_link['state']
     if status in ('rascunho', 'pendente'):
@@ -288,6 +326,9 @@ def load_note(db, draft: NfeDraft, *, issuer=None, now: datetime | None = None) 
         'protocol': (proc.protocol_number if proc else ''),
         'authorized_at': authorized_at, 'cancel_deadline': deadline, 'can_cancel': can_cancel,
         'cancel_late': status == 'autorizada' and not can_cancel,
+        'correction_letters': correction_letters, 'latest_cce': correction_letters[0] if correction_letters else None,
+        'cce_count': cce_count, 'cce_next_seq': cce_next_seq, 'cce_deadline': cce_deadline,
+        'can_cce': can_cce, 'cce_reason': cce_reason,
         'reject_reason': (f'Rejeição {attempt.c_stat} — {attempt.x_motivo}' if status == 'rejeitada' and attempt else ''),
         'cancel_reason': json.loads(cancel_ev.metadata_json or '{}').get('reason', '') if cancel_ev else '',
         'snapshot': snapshot, 'details': details, 'technical': technical, 'extra': extra, 'identification': ident,
@@ -425,6 +466,77 @@ def cancel_note(db, *, draft: NfeDraft, user_id: int, reason: str, now: datetime
     _sync_sale(db, draft, authorized=False)
 
 
+def issue_correction_letter(
+    db, *, draft: NfeDraft, user_id: int, correction_text: str, now: datetime | None = None
+) -> dict:
+    """Emite Carta de Correção Eletrônica (evento 110110) no ambiente de teste (até 20 por NF-e em 30 dias)."""
+    from app.services.nfe_document_store import store_simulated_document
+    from app.services.nfe_events import build_correction_letter_event
+    from app.services.nfe_snapshots import record_draft_event
+
+    now = now or datetime.now(timezone.utc)
+    ensure_test_environment(_get_cfg(db, draft))
+    issuer = db.query(NfeIssuerProfile).filter_by(organization_id=draft.organization_id, farm_id=draft.farm_id).first()
+    note = load_note(db, draft, issuer=issuer, now=now)
+    if note['status'] != 'autorizada':
+        raise ValueError('Só uma nota autorizada pode receber Carta de Correção.')
+    if note['cce_count'] >= CCE_MAX_SEQ or note['cce_next_seq'] > CCE_MAX_SEQ:
+        raise ValueError('Esta nota já atingiu o limite máximo de 20 Cartas de Correção.')
+    if not note['can_cce']:
+        raise ValueError('O prazo de 30 dias após a autorização para emitir Carta de Correção terminou.')
+    text = ' '.join(str(correction_text or '').split())
+    if not 15 <= len(text) <= 1000:
+        raise ValueError('Escreva o texto da correção com 15 a 1.000 caracteres.')
+    seq = note['cce_next_seq']
+    event_dt = now.astimezone(timezone(timedelta(hours=-3))).replace(microsecond=0).isoformat()
+    built = build_correction_letter_event(
+        state_uf=issuer.state,
+        author_document=issuer.cpf,
+        author_type='cpf',
+        access_key=note['access_key'],
+        correction_text=text,
+        seq=seq,
+        event_datetime=event_dt,
+    )
+    protocol = f"1352600{seq:02d}{(note['number'] or '000001')[-6:]}"[:15]
+    stored = store_simulated_document(
+        db,
+        draft_id=draft.id,
+        organization_id=draft.organization_id,
+        farm_id=draft.farm_id,
+        document_type='cce_simulacao',
+        access_key=note['access_key'],
+        xml_bytes=built['xml_bytes'],
+        user_id=user_id,
+        protocol_number=protocol,
+    )
+    record_draft_event(
+        db,
+        draft_id=draft.id,
+        organization_id=draft.organization_id,
+        farm_id=draft.farm_id,
+        event_type='cce_simulada',
+        summary=f'Carta de correção #{seq} registrada (ambiente de teste).',
+        user_id=user_id,
+        metadata={
+            'seq': seq,
+            'text': text,
+            'event_id': built['event_id'],
+            'document_id': stored.id,
+            'protocol': protocol,
+            'event_datetime': event_dt,
+        },
+        commit=True,
+    )
+    return {
+        'seq': seq,
+        'text': text,
+        'event_id': built['event_id'],
+        'document_id': stored.id,
+        'protocol': protocol,
+    }
+
+
 def delete_draft(db, *, draft: NfeDraft) -> None:
     """Exclui só rascunho sem número reservado e sem envio."""
     from app.models.nfe_draft import NfeDraftSnapshot
@@ -445,22 +557,23 @@ def delete_draft(db, *, draft: NfeDraft) -> None:
 _HISTORY_GROUPS = {'complementos_salvos': 'edit', 'dados_tecnicos_salvos': 'edit', 'emitente_salvo': 'edit',
                    'detalhes_salvos': 'fisc'}
 _HISTORY_ICONS = {'rascunho_criado': 'plus', 'snapshot_congelado': 'cce', 'simulacao_ciclo_offline': 'ok',
-                  'cancelamento_simulado': 'ban', 'identificacao_teste_salva': 'list', 'detalhes_salvos': 'list'}
+                  'cancelamento_simulado': 'ban', 'cce_simulada': 'cce', 'identificacao_teste_salva': 'list', 'detalhes_salvos': 'list'}
 
 
 def history(db, *, draft: NfeDraft) -> list[dict]:
     """Linha do tempo amigável (mais recente primeiro), com ações repetidas em sequência agrupadas."""
     tone = {'rascunho_criado': 'base', 'detalhes_salvos': 'base', 'snapshot_congelado': 'info',
-            'simulacao_ciclo_offline': 'ok', 'cancelamento_simulado': 'bad', 'complementos_salvos': 'base',
-            'dados_tecnicos_salvos': 'base', 'identificacao_teste_salva': 'base', 'emitente_salvo': 'base'}
+            'simulacao_ciclo_offline': 'ok', 'cancelamento_simulado': 'bad', 'cce_simulada': 'info',
+            'complementos_salvos': 'base', 'dados_tecnicos_salvos': 'base',
+            'identificacao_teste_salva': 'base', 'emitente_salvo': 'base'}
     titles = {'rascunho_criado': 'Rascunho criado', 'detalhes_salvos': 'Dados fiscais aplicados',
               'snapshot_congelado': 'Conferida e confirmada', 'simulacao_ciclo_offline': 'Enviada e autorizada (teste)',
-              'cancelamento_simulado': 'Nota cancelada', 'complementos_salvos': 'Transporte e pagamento salvos',
-              'dados_tecnicos_salvos': 'Detalhes fiscais do item salvos', 'identificacao_teste_salva': 'Número reservado',
-              'emitente_salvo': 'Dados do produtor salvos'}
+              'cancelamento_simulado': 'Nota cancelada', 'cce_simulada': 'Carta de correção registrada',
+              'complementos_salvos': 'Transporte e pagamento salvos', 'dados_tecnicos_salvos': 'Detalhes fiscais do item salvos',
+              'identificacao_teste_salva': 'Número reservado', 'emitente_salvo': 'Dados do produtor salvos'}
     events = (db.query(NfeDraftEvent).filter_by(draft_id=draft.id, organization_id=draft.organization_id, farm_id=draft.farm_id)
               .order_by(NfeDraftEvent.created_at.desc()).limit(300).all())
-    rank = {'rascunho_criado': 0, 'snapshot_congelado': 3, 'simulacao_ciclo_offline': 4, 'cancelamento_simulado': 5}
+    rank = {'rascunho_criado': 0, 'snapshot_congelado': 3, 'simulacao_ciclo_offline': 4, 'cce_simulada': 4, 'cancelamento_simulado': 5}
     events.sort(key=lambda ev: (_aware(ev.created_at) or datetime.min.replace(tzinfo=timezone.utc), rank.get(ev.event_type, 1)),
                 reverse=True)
     local = timezone(timedelta(hours=-3))
@@ -472,8 +585,16 @@ def history(db, *, draft: NfeDraft) -> list[dict]:
     for ev in events:
         meta = json.loads(ev.metadata_json or '{}')
         text = ev.summary
+        title = titles.get(ev.event_type, 'Atualização')
         if ev.event_type == 'cancelamento_simulado' and meta.get('reason'):
             text = 'Motivo: ' + meta['reason']
+        elif ev.event_type == 'cce_simulada':
+            seq_num = meta.get('seq')
+            if seq_num:
+                title = f'Carta de correção #{seq_num}'
+            raw_txt = str(meta.get('text') or '').strip()
+            if raw_txt:
+                text = raw_txt if len(raw_txt) <= 180 else raw_txt[:179].rstrip() + '…'
         elif ev.event_type == 'snapshot_congelado':
             text = f"Dados travados para o envio (versão {meta.get('version', '')})."
         elif ev.event_type == 'simulacao_ciclo_offline':
@@ -482,7 +603,7 @@ def history(db, *, draft: NfeDraft) -> list[dict]:
             text = 'Dados salvos na tela de emissão.'
         when = _aware(ev.created_at)
         group = _HISTORY_GROUPS.get(ev.event_type)
-        entry = {'title': titles.get(ev.event_type, 'Atualização'), 'text': text, 'when': fmt(when),
+        entry = {'title': title, 'text': text, 'when': fmt(when),
                  'when_short': fmt(when, short=True), 'day': fmt(when)[:10]}
         last = out[-1] if out else None
         if group and last and last.get('group') == group:

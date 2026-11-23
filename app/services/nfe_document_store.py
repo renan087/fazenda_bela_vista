@@ -17,6 +17,7 @@ ALLOWED_DOCUMENT_TYPES = frozenset({
     'nfe_simulacao',
     'nfe_proc_simulacao',
     'evento_simulacao',
+    'cce_simulacao',
 })
 
 

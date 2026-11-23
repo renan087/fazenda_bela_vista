@@ -34,7 +34,13 @@
         <div class="nx-menu" role="menu" aria-label="Mais ações" hidden>
           {% if n.status == 'autorizada' %}
           <button type="button" class="nx-mi" role="menuitem" disabled>{{ nxi('send') }}<span>Enviar ao comprador</span><span class="nx-soon">Em breve</span></button>
-          <button type="button" class="nx-mi" role="menuitem" disabled>{{ nxi('cce') }}<span>Carta de correção</span><span class="nx-soon">Em breve</span></button>
+          {% if can_write_page %}
+            {% if n.can_cce %}
+            <button type="button" class="nx-mi" role="menuitem" data-nx-dialog-open="nx-cce">{{ nxi('cce') }}<span>Carta de correção</span>{% if n.cce_count %}<em>{{ n.cce_count }}/20</em>{% endif %}</button>
+            {% else %}
+            <button type="button" class="nx-mi" role="menuitem" disabled>{{ nxi('cce') }}<span>Carta de correção</span><em>{{ n.cce_reason }}</em></button>
+            {% endif %}
+          {% endif %}
           <a class="nx-mi" role="menuitem" href="/notas-fiscais/{{ n.id }}/danfe.pdf" target="_blank" rel="noopener">{{ nxi('print') }}<span>Imprimir DANFE</span></a>
           {% elif n.status in ('rascunho', 'pendente') %}
           <a class="nx-mi" role="menuitem" href="/notas-fiscais/{{ n.id }}/danfe.pdf" target="_blank" rel="noopener">{{ nxi('eye') }}<span>Prévia do DANFE</span></a>
@@ -140,6 +146,38 @@
         <h2>Informações complementares</h2>
         <p class="nx-muted" style="color:#46514a">{{ x.get('additional_info') or 'Nenhuma informação complementar.' }}</p>
       </section>
+
+      {% if n.correction_letters %}
+      <section class="nx-cardx" aria-labelledby="h-cce">
+        <div class="nx-cce-head">
+          <div>
+            <h2 id="h-cce" style="margin:0">Cartas de correção</h2>
+            <p class="nx-muted" style="margin:.25rem 0 0">{{ n.cce_count }} de 20 emitida{{ 's' if n.cce_count != 1 }} · a carta mais recente substitui as anteriores</p>
+          </div>
+          {% if can_write_page and n.can_cce %}
+          <button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-open="nx-cce">{{ nxi('cce') }}Nova carta</button>
+          {% endif %}
+        </div>
+        <div class="nx-cce-list">
+          {% for c in n.correction_letters %}
+          <article class="nx-cce-item{% if c.is_current %} is-current{% endif %}">
+            <div class="nx-cce-top">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:.5rem">
+                <strong>CC-e #{{ c.seq }}</strong>
+                {% if c.is_current %}<span class="nx-chip is-green" style="height:1.375rem;font-size:.75rem">Vigente</span>{% else %}<span class="nx-chip is-muted" style="height:1.375rem;font-size:.75rem">Substituída</span>{% endif %}
+                <span class="nx-muted" style="font-size:.8125rem">{{ c.when }}{% if c.protocol %} · protocolo {{ c.protocol }}{% endif %}</span>
+              </div>
+              <div class="nx-cce-acts">
+                <a class="nx-link-btn" href="/notas-fiscais/{{ n.id }}/cce.pdf?seq={{ c.seq }}" target="_blank" rel="noopener">PDF (DACCE)</a>
+                <a class="nx-link-btn" href="/notas-fiscais/{{ n.id }}/xml?tipo=cce&amp;seq={{ c.seq }}">XML</a>
+              </div>
+            </div>
+            <p class="nx-cce-text">{{ c.text }}</p>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
     </div>
 
     <aside style="flex:1 1 21.25rem;min-width:0;display:flex;flex-direction:column;gap:1.25rem">
@@ -212,6 +250,34 @@
     </form>
   </dialog>
   {% endif %}
+  {% if n.status == 'autorizada' and n.can_cce and can_write_page %}
+  <dialog class="nx-dialog" id="nx-cce" aria-labelledby="nx-cce-title" {% if open_cce %}data-nx-autoopen{% endif %}>
+    <form method="post" action="/notas-fiscais/{{ n.id }}/carta-correcao">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <h2 id="nx-cce-title">Emitir Carta de Correção #{{ n.cce_next_seq }}</h2>
+      <p class="nx-muted" style="color:#46514a;font-size:.875rem;line-height:1.55">NF-e {{ n.title }} · sequência {{ n.cce_next_seq }} de 20.</p>
+      <div class="nx-cce-rules">
+        <p><strong>Pode corrigir:</strong> endereço, transportadora, placa, peso, volumes, dados adicionais e observações que não alterem impostos.</p>
+        <p><strong>Não pode corrigir:</strong> valores, base de cálculo, alíquotas, preço, quantidade, mudança de remetente/destinatário ou data de emissão/saída.</p>
+      </div>
+      {% if n.latest_cce %}
+      <div class="nx-cce-warn">
+        <span><strong>Atenção:</strong> esta carta (#{{ n.cce_next_seq }}) substituirá a CC-e #{{ n.latest_cce.seq }}. Inclua aqui todas as correções que devem continuar valendo.</span>
+        <button type="button" class="nx-link-btn" data-nx-copy-into="nx-cce-text" data-nx-copy-val="{{ n.latest_cce.text }}">Copiar texto da carta #{{ n.latest_cce.seq }}</button>
+      </div>
+      {% endif %}
+      <label class="nx-f" for="nx-cce-text">Texto da correção
+        <textarea id="nx-cce-text" name="correction_text" rows="5" maxlength="1000" class="nx-textarea" data-nx-min="15" data-nx-ok-label="Texto pronto" placeholder="Ex.: Corrigir a placa do veículo transportador para ABC1D23 e o peso bruto para 6.030 kg." required></textarea>
+        <span class="nx-counter" data-nx-counter="nx-cce-text"></span>
+      </label>
+      <div style="display:flex;flex-wrap:wrap;gap:.625rem;justify-content:flex-end">
+        <button type="button" class="sf-btn sf-btn-secondary" data-nx-dialog-close>Voltar</button>
+        <button type="submit" class="sf-btn sf-btn-primary" data-nx-enable="nx-cce-text" disabled>Emitir carta de correção</button>
+      </div>
+      <p class="nx-muted" style="font-size:.75rem">Ambiente de teste: o evento 110110 não é enviado à SEFAZ.</p>
+    </form>
+  </dialog>
+  {% endif %}
 </div>
-<script src="/static/js/notas_fiscais.js?v=20261123ex3" defer></script>
+<script src="/static/js/notas_fiscais.js?v=20261123ex4" defer></script>
 {% endblock %}

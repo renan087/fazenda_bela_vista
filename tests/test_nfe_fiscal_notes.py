@@ -575,3 +575,84 @@ def test_emission_date_is_always_current_date_on_setup_and_emission():
     emitted_tech = json.loads(db.query(NfeDraftTechnicalData).filter_by(draft_id=draft.id).first().data_json)
     assert emitted_tech['emission_date'] == today.isoformat()
     db.close()
+
+
+def test_correction_letter_flow_limits_routes_and_isolation(monkeypatch):
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+
+    routes, db, user, scope, draft, flashes = _routes_env(monkeypatch)
+    req = SimpleNamespace(query_params={})
+
+    # Rascunho não pode receber CC-e
+    with pytest.raises(ValueError, match='nota autorizada'):
+        notes.issue_correction_letter(db, draft=draft, user_id=user.id, correction_text='Corrigir placa do veículo para ABC1D23.')
+
+    # Autoriza a nota
+    notes.confirm_emission(db, draft=draft, user_id=user.id)
+
+    # Texto curto ou muito longo é rejeitado
+    with pytest.raises(ValueError, match='15 a 1.000'):
+        notes.issue_correction_letter(db, draft=draft, user_id=user.id, correction_text='curto demais')
+    with pytest.raises(ValueError, match='15 a 1.000'):
+        notes.issue_correction_letter(db, draft=draft, user_id=user.id, correction_text='x' * 1001)
+
+    # Fora do prazo de 30 dias é rejeitado
+    too_late = datetime.now(timezone.utc) + timedelta(days=31)
+    with pytest.raises(ValueError, match='30 dias'):
+        notes.issue_correction_letter(db, draft=draft, user_id=user.id,
+                                      correction_text='Corrigir placa do veículo para ABC1D23.', now=too_late)
+
+    # Emissão via rota POST (#1 e #2)
+    resp1 = routes.fiscal_note_correction_letter(
+        draft.id, req, 'x', 'Corrigir a placa do veículo transportador para ABC1D23.', db, user
+    )
+    assert resp1.status_code == 303 and resp1.headers['location'] == f'/notas-fiscais/{draft.id}'
+    assert '#1' in flashes[-1][1]
+
+    resp2 = routes.fiscal_note_correction_letter(
+        draft.id, req, 'x', 'Corrigir a placa do veículo para ABC1D23 e peso bruto para 6.030 kg.', db, user
+    )
+    assert resp2.status_code == 303 and '#2' in flashes[-1][1]
+
+    issuer = db.query(NfeIssuerProfile).first()
+    loaded = notes.load_note(db, draft, issuer=issuer)
+    assert loaded['cce_count'] == 2 and loaded['cce_next_seq'] == 3 and loaded['can_cce'] is True
+    assert loaded['correction_letters'][0]['seq'] == 2 and loaded['correction_letters'][0]['is_current'] is True
+    assert loaded['correction_letters'][1]['seq'] == 1 and loaded['correction_letters'][1]['is_current'] is False
+
+    # Download XML e PDF da CC-e
+    xml_resp = routes.fiscal_note_xml(draft.id, SimpleNamespace(query_params={'tipo': 'cce', 'seq': '2'}), db, user)
+    assert b'110110' in xml_resp.body and b'6.030 kg' in xml_resp.body
+    pdf_resp = routes.fiscal_note_cce_pdf(draft.id, SimpleNamespace(query_params={'seq': '2'}), db, user)
+    assert pdf_resp.body.startswith(b'%PDF-')
+
+    # Template renderiza cartão e modal de CC-e
+    public = routes._nf_public(loaded)
+    html = _render('nota_fiscal.html', note=loaded, pub=public, issuer=issuer, buyer=None,
+                   events=notes.history(db, draft=draft), sources={'operation': None, 'product': None},
+                   open_cancel=False, open_cce=True, freight_labels={'9': 'Sem transporte'})
+    assert 'Cartas de correção' in html and 'CC-e #2' in html and 'id="nx-cce"' in html
+    assert 'Copiar texto da carta #2' in html
+
+    # Limite de 20 cartas bloqueia a 21ª
+    for i in range(3, 21):
+        notes.issue_correction_letter(db, draft=draft, user_id=user.id,
+                                      correction_text=f'Correção sequencial número {i} para teste de limite.')
+    with pytest.raises(ValueError, match='limite máximo de 20'):
+        notes.issue_correction_letter(db, draft=draft, user_id=user.id,
+                                      correction_text='Tentativa de emitir a vigésima primeira carta.')
+
+    # Isolamento multi-tenant
+    other = NfeDraft(id='y' * 32, organization_id=user.organization_id + 99, farm_id=scope['active_farm_id'],
+                     sale_code='V-88', created_by=user.id, snapshot_json='{"itens": []}')
+    db.add(other)
+    db.commit()
+    for call in (
+        lambda: routes.fiscal_note_correction_letter(other.id, req, 'x', 'Correção não autorizada em outra org.', db, user),
+        lambda: routes.fiscal_note_cce_pdf(other.id, req, db, user),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            call()
+        assert exc.value.status_code == 404
+    db.close()
