@@ -1,5 +1,6 @@
 """PDF inspection, incremental PAdES signing and independently verifiable results."""
 import asyncio
+import binascii
 import logging
 import math
 from dataclasses import replace
@@ -10,7 +11,7 @@ from io import BytesIO
 from uuid import uuid4
 
 from pyhanko.keys.internal import translate_pyca_cryptography_cert_to_asn1, translate_pyca_cryptography_key_to_asn1
-from pyhanko.pdf_utils import generic
+from pyhanko.pdf_utils import content as pdf_content, generic, layout as pdf_layout
 from pyhanko.pdf_utils.extensions import DeveloperExtension, DevExtensionMultivalued
 from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
 from pyhanko.pdf_utils.reader import PdfFileReader
@@ -23,9 +24,12 @@ from pyhanko.sign.validation import DocumentSecurityStore, PdfSignatureStatus, a
 from pyhanko.sign.validation.generic_cms import cms_basic_validation, collect_timing_info
 from pyhanko.sign.validation.pdf_embedded import EmbeddedPdfSignature, report_seed_value_validation
 from pyhanko.sign.validation.status import SignatureCoverageLevel
-from pyhanko.stamp import TextStampStyle
+from pyhanko.stamp import StaticStampStyle, TextStampStyle
 from pyhanko_certvalidator.errors import RevokedError
 from pyhanko_certvalidator.registry import SimpleCertificateStore
+from reportlab.lib.colors import HexColor
+from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfgen import canvas as rl_canvas
 
 from app.services.document_signing.policy import FILTER, SUBFILTER, POLICY_OID, policy_identifier
 from app.services.document_signing.trust import validation_context
@@ -393,7 +397,171 @@ async def _assert_preserved(reader, previous):
             raise ValueError("A nova revisão violaria uma assinatura ou restrição existente.")
 
 
-def _build_stamp_style(signer, style: str = "full") -> TextStampStyle:
+class _MemoryPdfPage(pdf_content.PdfContent):
+    """Imports a single-page vector PDF from memory as an XObject."""
+
+    def __init__(self, pdf_bytes: bytes):
+        self._pdf_bytes = pdf_bytes
+        super().__init__()
+
+    def render(self) -> bytes:
+        w = self._ensure_writer
+        r = PdfFileReader(BytesIO(self._pdf_bytes))
+        xobj = w.import_page_as_xobject(r, page_ix=0)
+        resource_name = b"/SiSFarmStamp" + binascii.hexlify(uuid4().bytes)
+        self.resources.xobject[resource_name.decode("ascii")] = xobj
+        x1, y1, x2, y2 = xobj.get_object()["/BBox"]
+        self.box = pdf_layout.BoxConstraints(width=abs(x1 - x2), height=abs(y1 - y2))
+        return resource_name + b" Do"
+
+
+def _fit_font_size(text: str, font_name: str, max_size: float, max_width: float, min_size: float = 4.2) -> float:
+    size = max_size
+    if not text or max_width <= 0:
+        return size
+    measured = stringWidth(text, font_name, size)
+    if measured > max_width:
+        size = max(min_size, size * (max_width / measured))
+    return size
+
+
+def _draw_shield_icon(c: rl_canvas.Canvas, x: float, y: float, size: float, color: HexColor) -> None:
+    """Draws a crisp vector shield + checkmark icon matching the SiSFarm UI stamp."""
+    c.saveState()
+    c.setStrokeColor(color)
+    c.setLineWidth(max(0.65, size * 0.13))
+    c.setLineCap(1)
+    c.setLineJoin(1)
+    # Shield outline
+    p = c.beginPath()
+    p.moveTo(x + size * 0.5, y + size * 0.96)
+    p.lineTo(x + size * 0.12, y + size * 0.78)
+    p.lineTo(x + size * 0.12, y + size * 0.45)
+    p.curveTo(x + size * 0.12, y + size * 0.22, x + size * 0.28, y + size * 0.09, x + size * 0.5, y + size * 0.03)
+    p.curveTo(x + size * 0.72, y + size * 0.09, x + size * 0.88, y + size * 0.22, x + size * 0.88, y + size * 0.45)
+    p.lineTo(x + size * 0.88, y + size * 0.78)
+    p.close()
+    c.drawPath(p, stroke=1, fill=0)
+    # Checkmark inside shield
+    chk = c.beginPath()
+    chk.moveTo(x + size * 0.30, y + size * 0.49)
+    chk.lineTo(x + size * 0.45, y + size * 0.34)
+    chk.lineTo(x + size * 0.72, y + size * 0.62)
+    c.drawPath(chk, stroke=1, fill=0)
+    c.restoreState()
+
+
+def _render_stamp_pdf(
+    width: float,
+    height: float,
+    *,
+    signer_name: str,
+    doc_label: str,
+    cert_type: str,
+    now_br: datetime,
+    style: str = "full",
+) -> bytes:
+    """Renders a crisp vector PDF stamp identical to the SiSFarm visual preview."""
+    w = max(80.0, float(width))
+    h = max(28.0, float(height))
+    is_compact = style == "compact"
+
+    buf = BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=(w, h))
+
+    bg_color = HexColor("#EEF3EB")
+    border_color = HexColor("#446A36")
+    divider_color = HexColor("#C7D6C0")
+    ok_color = HexColor("#1F7A3A")
+    ink_color = HexColor("#16201A")
+    meta_color = HexColor("#354A39")
+    brand_color = HexColor("#446A36")
+
+    stroke_w = max(0.8, min(1.4, min(w, h) * 0.02))
+    inset = stroke_w / 2.0
+    radius = min(8.0, h * 0.14, w * 0.05)
+
+    # Soft green rounded card + crisp green border
+    c.setFillColor(bg_color)
+    c.setStrokeColor(border_color)
+    c.setLineWidth(stroke_w)
+    c.roundRect(inset, inset, w - stroke_w, h - stroke_w, radius, stroke=1, fill=1)
+
+    pad_x = max(6.0, min(11.0, w * 0.045))
+    pad_y = max(4.0, min(8.0, h * (0.09 if is_compact else 0.10)))
+    inner_w = max(20.0, w - pad_x * 2)
+    inner_h = max(16.0, h - pad_y * 2)
+
+    head_text = "ASSINADO DIGITALMENTE - ICP-BRASIL"
+    if is_compact:
+        meta_text = " · ".join(part for part in (doc_label, now_br.strftime("%d/%m/%Y %H:%M")) if part)
+        url_text = "validar.iti.gov.br"
+        rows = [
+            ("head", head_text, "Helvetica-Bold", ok_color, 0.175),
+            ("name", signer_name, "Helvetica-Bold", ink_color, 0.255),
+            ("meta", meta_text, "Helvetica", meta_color, 0.205),
+            ("url", url_text, "Helvetica-Bold", brand_color, 0.195),
+        ]
+    else:
+        doc_line = " · ".join(part for part in (doc_label, cert_type) if part)
+        date_line = f"Data: {now_br.strftime('%d/%m/%Y, %H:%M')} (BRT)"
+        url_text = "Verifique em validar.iti.gov.br"
+        rows = [
+            ("head", head_text, "Helvetica-Bold", ok_color, 0.135),
+            ("name", signer_name, "Helvetica-Bold", ink_color, 0.185),
+        ]
+        if doc_line:
+            rows.append(("meta", doc_line, "Helvetica", meta_color, 0.150))
+        rows.append(("meta", date_line, "Helvetica", meta_color, 0.150))
+        rows.append(("url", url_text, "Helvetica-Bold", brand_color, 0.145))
+
+    # Scale row heights so the entire block fits cleanly inside inner_h and centers vertically
+    total_ratio = sum(r[4] for r in rows)
+    gap_ratio = 0.038 if is_compact else 0.042
+    divider_extra = 0.055 if not is_compact else 0.0
+    total_units = total_ratio + gap_ratio * (len(rows) - 1) + divider_extra
+    scale = inner_h / total_units
+
+    block_h = total_units * scale
+    cursor_top = pad_y + (inner_h + block_h) / 2.0
+
+    for idx, (kind, text, font_name, color, ratio) in enumerate(rows):
+        line_h = ratio * scale
+        target_size = min(line_h * 0.92, 9.5 if kind == "name" else 7.8)
+        if kind == "head":
+            icon_size = max(5.2, min(9.0, target_size * 1.15))
+            icon_gap = max(2.5, icon_size * 0.4)
+            avail_w = max(12.0, inner_w - icon_size - icon_gap)
+            font_size = _fit_font_size(text, font_name, target_size, avail_w, min_size=3.8)
+            baseline = cursor_top - line_h * 0.80
+            _draw_shield_icon(c, pad_x, baseline - icon_size * 0.16, icon_size, color)
+            c.setFillColor(color)
+            c.setFont(font_name, font_size)
+            c.drawString(pad_x + icon_size + icon_gap, baseline, text)
+            cursor_top -= line_h
+            if not is_compact:
+                div_y = cursor_top - (divider_extra * scale) * 0.45
+                c.setStrokeColor(divider_color)
+                c.setLineWidth(0.55)
+                c.line(pad_x, div_y, w - pad_x, div_y)
+                cursor_top -= divider_extra * scale
+        else:
+            font_size = _fit_font_size(text, font_name, target_size, inner_w, min_size=4.0)
+            baseline = cursor_top - line_h * 0.80
+            c.setFillColor(color)
+            c.setFont(font_name, font_size)
+            c.drawString(pad_x, baseline, text)
+            cursor_top -= line_h
+
+        if idx < len(rows) - 1:
+            cursor_top -= gap_ratio * scale
+
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def _build_stamp_style(signer, style: str = "full", box: tuple | list | None = None):
     cn = ""
     try:
         cn = signer.signing_cert.subject.native.get("common_name") or ""
@@ -401,35 +569,46 @@ def _build_stamp_style(signer, style: str = "full") -> TextStampStyle:
         cn = ""
     display_name = cn.strip()
     doc_label = ""
+    cert_type = "Certificado A1"
     if ":" in display_name:
         left, right = display_name.rsplit(":", 1)
         digits = "".join(ch for ch in right if ch.isdigit())
         if len(digits) == 11:
             display_name = left.strip() or display_name
-            doc_label = f"CPF ***.{digits[3:6]}.{digits[6:9]}-**"
+            doc_label = f"CPF •••.{digits[3:6]}.{digits[6:9]}-••"
+            cert_type = "e-CPF A1"
         elif len(digits) == 14:
             display_name = left.strip() or display_name
             doc_label = f"CNPJ {digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:]}"
+            cert_type = "e-CNPJ A1"
     now_br = datetime.now(ZoneInfo("America/Sao_Paulo"))
-    signer_line = display_name.upper() if display_name else "%(signer)s"
-    if style == "compact":
-        id_line = f"{signer_line} - {doc_label}" if doc_label else signer_line
-        text = (
-            "ASSINADO DIGITALMENTE - ICP-BRASIL\n"
-            f"{id_line}\n"
-            f"{now_br.strftime('%d/%m/%Y %H:%M')} - validar.iti.gov.br"
-        )
+    signer_line = display_name.upper() if display_name else "ASSINATURA DIGITAL"
+
+    if box and len(box) == 4:
+        width = abs(float(box[2]) - float(box[0]))
+        height = abs(float(box[3]) - float(box[1]))
     else:
-        lines = [
-            "ASSINADO DIGITALMENTE - ICP-BRASIL",
-            signer_line,
-        ]
-        if doc_label:
-            lines.append(doc_label)
-        lines.append(f"Data: {now_br.strftime('%d/%m/%Y %H:%M')} (BRT)")
-        lines.append("Verifique em validar.iti.gov.br")
-        text = "\n".join(lines)
-    return TextStampStyle(stamp_text=text, border_width=1)
+        width, height = (190.0, 48.0) if style == "compact" else (220.0, 76.0)
+
+    stamp_pdf = _render_stamp_pdf(
+        width,
+        height,
+        signer_name=signer_line,
+        doc_label=doc_label,
+        cert_type=cert_type,
+        now_br=now_br,
+        style=style,
+    )
+    return StaticStampStyle(
+        background=_MemoryPdfPage(stamp_pdf),
+        border_width=0,
+        background_opacity=1.0,
+        background_layout=pdf_layout.SimpleBoxLayoutRule(
+            x_align=pdf_layout.AxisAlignment.ALIGN_MID,
+            y_align=pdf_layout.AxisAlignment.ALIGN_MID,
+            margins=pdf_layout.Margins.uniform(0),
+        ),
+    )
 
 
 async def _sign(data, signer, appearance, field_name):
@@ -450,7 +629,7 @@ async def _sign(data, signer, appearance, field_name):
         cades_signed_attr_spec=CAdESSignedAttrSpec(signature_policy_identifier=policy_identifier()),
     )
     writer = IncrementalPdfFileWriter(BytesIO(data), prev=reader)
-    stamp_style = _build_stamp_style(signer, approved.get("style", "full"))
+    stamp_style = _build_stamp_style(signer, approved.get("style", "full"), approved.get("box"))
     result = await _PbadSigner(metadata, signer, stamp_style=stamp_style, new_field_spec=spec).async_sign_pdf(
         writer, existing_fields_only=bool(existing_field),
     )
