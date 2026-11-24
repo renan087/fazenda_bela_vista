@@ -1,5 +1,6 @@
 """PDF inspection, incremental PAdES signing and independently verifiable results."""
 import asyncio
+import logging
 import math
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -28,6 +29,8 @@ from pyhanko_certvalidator.registry import SimpleCertificateStore
 
 from app.services.document_signing.policy import FILTER, SUBFILTER, POLICY_OID, policy_identifier
 from app.services.document_signing.trust import validation_context
+
+logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 MAX_PDF_BYTES = 16 * 1024 * 1024
@@ -439,7 +442,8 @@ async def _sign(data, signer, appearance, field_name):
         field_name, on_page=approved.get("page", 0), box=tuple(approved["box"]) if "box" in approved else None,
     )
     name = existing_field or field_name
-    context = validation_context()
+    embedded_chain = list(signer.cert_registry) if getattr(signer, "cert_registry", None) else []
+    context = validation_context(other_certs=embedded_chain)
     metadata = signers.PdfSignatureMetadata(
         field_name=name, md_algorithm="sha256", subfilter=fields.SigSeedSubFilter.PADES,
         validation_context=context, signer_key_usage={"non_repudiation"},
@@ -458,6 +462,11 @@ async def _sign(data, signer, appearance, field_name):
     sig = EmbeddedPdfSignature(final_reader, dict(_signatures(final_reader))[name], name)
     status = await _validate_signature(sig, context)
     if not status.trusted or not _proof_of_integrity(status) or _policy_oid(sig) != POLICY_OID:
+        logger.warning(
+            "Assinatura local nao aprovada: trusted=%s intact=%s valid=%s problem=%s policy=%s",
+            status.trusted, status.intact, status.valid,
+            getattr(status, "trust_problem_indic", None), _policy_oid(sig),
+        )
         raise ValueError("A nova assinatura não passou na verificação local de integridade, política e confiança.")
     report = await _report(final_reader, context=context)
     return signed, name, report
@@ -465,12 +474,14 @@ async def _sign(data, signer, appearance, field_name):
 
 def sign_document(data, signer, appearance):
     try:
-        return asyncio.run(asyncio.wait_for(_sign(data, signer, appearance, "SiSFarm#" + uuid4().hex), timeout=30))
+        return asyncio.run(asyncio.wait_for(_sign(data, signer, appearance, "SiSFarm#" + uuid4().hex), timeout=60))
     except SigningError as exc:
+        logger.warning("SigningError ao assinar PDF: %s | cause=%r", exc, exc.__cause__)
         if isinstance(exc.__cause__, RevokedError):
             raise ValueError("A revogação do certificado impede esta assinatura.") from exc
         raise ValueError("Não foi possível usar o certificado neste PDF. Confira a cadeia, a revogação e as restrições.") from exc
     except ValueError:
         raise
     except Exception as exc:
+        logger.warning("Erro inesperado ao assinar PDF (%s): %s", type(exc).__name__, exc)
         raise ValueError("Não foi possível concluir a assinatura. Verifique a cadeia, a revogação e as restrições do PDF.") from exc

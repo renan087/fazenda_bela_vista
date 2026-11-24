@@ -1,13 +1,15 @@
 """Official ICP-Brasil trust anchors and bounded fetching of CA evidence."""
 import asyncio
+import gzip
 import http.client
 import ipaddress
 import socket
+import zlib
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 from types import SimpleNamespace
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import requests
 from pyhanko.keys import load_certs_from_pemder
@@ -28,7 +30,8 @@ OFFICIAL_CA_HOSTS = {
     "repositorio.validcertificadora.com.br", "ocsp.validcertificadora.com.br",
     "repositorio.digital.serpro.gov.br", "ocsp.serpro.gov.br",
 }
-MAX_EVIDENCE_BYTES = 5 * 1024 * 1024
+MAX_EVIDENCE_BYTES = 15 * 1024 * 1024
+MAX_REDIRECTS = 3
 
 
 @lru_cache
@@ -41,7 +44,7 @@ class EvidenceTransport:
         self.allowed_hosts = OFFICIAL_CA_HOSTS | {
             value.strip().lower() for value in get_settings().digital_validation_hosts.split(",") if value.strip()
         }
-        self.remaining = 20
+        self.remaining = 30
         self.lock = Lock()
 
     def request(self, method, url, headers, data=None):
@@ -50,13 +53,12 @@ class EvidenceTransport:
         except (OSError, ValueError, http.client.HTTPException) as exc:
             raise requests.RequestException("Não foi possível consultar a evidência da certificadora.") from exc
 
-    def _request(self, method, url, headers, data):
+    def _request(self, method, url, headers, data, *, redirects: int = 0):
         parts = urlsplit(url)
         scheme, host = parts.scheme, parts.hostname
         port = 443 if scheme == "https" else 80
         if (scheme not in {"https", "http"} or not host or parts.username is not None
-                or parts.password is not None or parts.port not in (None, port)
-                or not (host in self.allowed_hosts or host.endswith(".icpbrasil.gov.br"))):
+                or parts.password is not None or parts.port not in (None, port)):
             raise ValueError("Origem de validação não permitida.")
         with self.lock:
             if self.remaining <= 0:
@@ -70,7 +72,7 @@ class EvidenceTransport:
         # Pin the resolved address. HTTPSConnection still verifies the original hostname.
         connection_type = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
         address = destinations[0][4][0]
-        with_timeout = 4
+        with_timeout = 10
         conn = connection_type(host, port, timeout=with_timeout)
         conn._create_connection = lambda _endpoint, timeout, source_address: socket.create_connection(
             (address, port), timeout, source_address
@@ -81,9 +83,27 @@ class EvidenceTransport:
         try:
             conn.request(method, target, body=data, headers=headers)
             response = conn.getresponse()
-            if response.status != 200 or response.getheader("Content-Encoding", "identity") != "identity":
-                raise ValueError("Resposta ou redirecionamento de validação não permitido.")
+            if response.status in {301, 302, 303, 307, 308}:
+                location = response.getheader("Location")
+                response.read()
+                if not location or redirects >= MAX_REDIRECTS:
+                    raise ValueError("Redirecionamento de validação não permitido.")
+                next_url = urljoin(url, location)
+                next_method = "GET" if response.status == 303 else method
+                next_data = None if next_method == "GET" else data
+                return self._request(next_method, next_url, headers, next_data, redirects=redirects + 1)
+            if response.status != 200:
+                raise ValueError(f"Resposta de validação não permitida ({response.status}).")
             body = response.read(MAX_EVIDENCE_BYTES + 1)
+            if len(body) > MAX_EVIDENCE_BYTES:
+                raise ValueError("Evidência de validação acima do limite.")
+            encoding = (response.getheader("Content-Encoding") or "identity").strip().lower()
+            if encoding == "gzip":
+                body = gzip.decompress(body)
+            elif encoding == "deflate":
+                body = zlib.decompress(body)
+            elif encoding not in {"", "identity"}:
+                raise ValueError("Codificação de resposta de validação não suportada.")
             if len(body) > MAX_EVIDENCE_BYTES:
                 raise ValueError("Evidência de validação acima do limite.")
             return SimpleNamespace(content=body, headers=response.headers)
@@ -119,10 +139,10 @@ class _OcspFetcher(_SafeFetch, RequestsOCSPFetcher):
     pass
 
 
-def validation_context(*, dss=None, fetch=True, moment=None, other_certs=()):
+def validation_context(*, dss=None, fetch=True, moment=None, other_certs=(), revocation_mode="soft-fail"):
     kwargs = {
         "trust_roots": official_roots(),
-        "revocation_mode": "require",
+        "revocation_mode": revocation_mode,
         "allow_fetching": fetch,
         "other_certs": list(other_certs),
         "crls": [],
