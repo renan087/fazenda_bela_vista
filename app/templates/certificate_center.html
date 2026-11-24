@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=1">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=2">{% endblock %}
 {% block content %}
 <main class="sf-page ds-page" data-ds-certificates data-csrf="{{ csrf_token }}">
   <header class="ds-hero">
@@ -29,35 +29,31 @@
         <div class="ds-purpose-list">
           <div><strong>Emissão fiscal</strong><span class="ds-status ds-status--{{ 'valid' if entry.fiscal_active else 'unsigned' }}">{{ 'Em uso' if entry.fiscal_active else 'Inativa' }}</span>
             {% if entry.can_set_fiscal and (entry.valid or entry.fiscal_active) %}
-            <button class="ds-inline-action" type="button" data-ds-purpose="fiscal" data-cert="{{ cert.id }}" data-enable="{{ 'no' if entry.fiscal_active else 'yes' }}" data-env="{{ cert.environment if cert.environment in ('producao', 'homologacao') else 'homologacao' }}" data-holder="{{ cert.subject_cn }}">{{ 'Revogar uso' if entry.fiscal_active else 'Autorizar uso' }}</button>
+            <button class="ds-inline-action" type="button" data-ds-purpose="fiscal" data-cert="{{ cert.id }}" data-cpf="{{ 'yes' if entry.confirm_cpf else 'no' }}" data-enable="{{ 'no' if entry.fiscal_active else 'yes' }}" data-env="{{ cert.environment if cert.environment in ('producao', 'homologacao') else 'homologacao' }}" data-holder="{{ cert.subject_cn }}">{{ 'Revogar uso' if entry.fiscal_active else 'Autorizar uso' }}</button>
             {% endif %}
           </div>
           <div><strong>Assinatura de documentos</strong><span class="ds-status ds-status--{{ 'valid' if entry.docs_enabled else 'unsigned' }}">{{ 'Autorizada para você' if entry.docs_enabled else 'Disponível após autorização' if entry.can_set_docs else 'Requer vínculo do responsável' }}</span>
             {% if entry.can_set_docs and (entry.valid or entry.docs_enabled) %}
-            <button class="ds-inline-action" type="button" data-ds-purpose="documents" data-cert="{{ cert.id }}" data-enable="{{ 'no' if entry.docs_enabled else 'yes' }}" data-holder="{{ cert.subject_cn }}">{{ 'Revogar uso' if entry.docs_enabled else 'Autorizar uso' }}</button>
+            <button class="ds-inline-action" type="button" data-ds-purpose="documents" data-cert="{{ cert.id }}" data-cpf="{{ 'yes' if entry.confirm_cpf else 'no' }}" data-enable="{{ 'no' if entry.docs_enabled else 'yes' }}" data-holder="{{ cert.subject_cn }}">{{ 'Revogar uso' if entry.docs_enabled else 'Autorizar uso' }}</button>
             {% endif %}
           </div>
         </div>
-        {% if entry.can_request_holder and entry.valid and not entry.pending_mine %}
-        <button type="button" class="ds-inline-action" data-ds-bind-cert="{{ cert.id }}">Solicitar vínculo para minha conta</button>
+        {% if organization_users %}
+        <form data-ds-binding="{{ cert.id }}" data-current-holder="{{ entry.holder_id or '' }}" method="post">
+          <label class="ds-label" for="ds-holder-{{ cert.id }}">Responsável pelo certificado</label>
+          <div class="ds-holder-select">
+            <select id="ds-holder-{{ cert.id }}" name="holder" required>
+              <option value="">Selecione um usuário ativo</option>
+              {% for person in organization_users %}
+              <option value="{{ person.id }}" {% if person.id == entry.holder_id %}selected{% endif %}>{{ person.display_name or person.name }} · {{ person.email }}</option>
+              {% endfor %}
+            </select>
+            <button class="sf-btn sf-btn-primary" type="submit">Vincular responsável</button>
+          </div>
+          <p class="ds-feedback" data-ds-binding-status role="status" hidden></p>
+        </form>
         {% endif %}
-        {% if entry.pending_mine %}<p class="ds-note">Seu pedido de vínculo aguarda conferência.</p>{% endif %}
-        {% for item, person in entry.pending_reviews %}
-        {% if entry.can_request_holder %}
-        <details class="ds-cert-details">
-          <summary>Conferir vínculo de {{ person.display_name or person.name }} · {{ item.email }}</summary>
-          <form class="ds-side-card" data-ds-review="{{ cert.id }}" data-user-id="{{ person.id }}" data-revision="{{ item.revision }}" method="post">
-            <p>Confira a identidade do titular ou responsável de uso e se ele controla a conta indicada. Registre apenas a referência da conferência, sem CPF ou senha.</p>
-            <label class="ds-label">Referência da conferência <input name="reference" maxlength="160"></label>
-            <label class="ds-check"><input name="confirmed" type="checkbox"> Confirmei a identidade e o controle da conta.</label>
-            <div><button type="submit" data-approve="yes" class="sf-btn sf-btn-primary">Aprovar vínculo</button>
-              <button type="submit" data-approve="no" class="sf-btn sf-btn-secondary">Recusar pedido</button></div>
-            <p class="ds-feedback" data-ds-binding-status role="status" hidden></p>
-          </form>
-        </details>
-        {% endif %}
-        {% endfor %}
-        <details class="ds-cert-details"><summary>Dados do certificado</summary><dl><dt>ID para vincular o responsável</dt><dd>{{ cert.id }}</dd><dt>Impressão digital SHA-256</dt><dd>{{ cert.fingerprint_sha256 }}</dd></dl></details>
+        <details class="ds-cert-details"><summary>Dados do certificado</summary><dl><dt>ID do certificado</dt><dd>{{ cert.id }}</dd><dt>Impressão digital SHA-256</dt><dd>{{ cert.fingerprint_sha256 }}</dd></dl></details>
       </article>
       {% else %}
       <div class="ds-empty">{{ icon('key', 25) }}<strong>Nenhum certificado disponível</strong><p>Cadastre um arquivo A1 para habilitar o uso após a verificação do responsável.</p></div>
@@ -73,19 +69,6 @@
         <button type="submit" class="sf-btn sf-btn-primary ds-full">{{ icon('upload', 17) }} Cadastrar A1</button>
         <p class="ds-feedback" data-ds-status role="status" hidden></p>
       </form>
-      <details class="ds-cert-details" data-ds-binding-panel>
-        <summary>Solicitar vínculo do responsável</summary>
-        <form data-ds-binding method="post">
-          <p>Entre na sua própria conta. Use o ID em Dados do certificado ou peça esse ID a quem cadastrou o A1.</p>
-          <label class="ds-label">ID do certificado <input name="certificate" required maxlength="32" pattern="[a-fA-F0-9]{32}"></label>
-          <label class="ds-label">CPF do titular ou responsável de uso <input name="cpf" inputmode="numeric" required maxlength="14"></label>
-          <label class="ds-label">Senha do A1 <input name="password" type="password" autocomplete="off" maxlength="1024" required></label>
-          <label class="ds-check"><input name="confirmed" type="checkbox" required> Solicito o vínculo deste A1 à minha conta.</label>
-          <button class="sf-btn sf-btn-primary" type="submit">Solicitar vínculo</button>
-          <p class="ds-hint">Outra conta autorizada a gerenciar certificados precisa conferir o pedido. Após a aprovação, autorize cada finalidade na Central.</p>
-          <p class="ds-feedback" data-ds-binding-status role="status" hidden></p>
-        </form>
-      </details>
     </aside>
   </div>
 
@@ -93,6 +76,10 @@
     <form data-ds-purpose-form>
       <div class="ds-dialog-heading"><span class="ds-tile">{{ icon('key', 23) }}</span><button type="button" class="ds-icon-button" data-ds-close aria-label="Fechar">{{ icon('close', 19) }}</button></div>
       <h2 data-ds-purpose-title></h2><p data-ds-purpose-holder></p>
+      <div data-ds-purpose-cpf hidden>
+        <label class="ds-label" for="ds-purpose-cpf">CPF do titular ou responsável de uso</label>
+        <input id="ds-purpose-cpf" name="cpf" inputmode="numeric" maxlength="14" autocomplete="off" disabled>
+      </div>
       <div data-ds-purpose-password>
         <label class="ds-label" for="ds-purpose-pw">Senha do certificado A1</label>
         <input id="ds-purpose-pw" name="password" type="password" autocomplete="off" maxlength="1024">
@@ -104,5 +91,5 @@
   </dialog>
   {% endif %}
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=2"></script>
+<script type="module" src="/static/js/digital_signing.js?v=3"></script>
 {% endblock %}

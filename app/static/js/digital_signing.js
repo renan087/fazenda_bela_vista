@@ -513,38 +513,25 @@ function initCertificates(root) {
   const purposeStatus = root.querySelector("[data-ds-purpose-status]");
   let selection;
 
-  const binding = root.querySelector("[data-ds-binding]");
-  for (const button of root.querySelectorAll("[data-ds-bind-cert]")) {
-    button.addEventListener("click", () => {
-      root.querySelector("[data-ds-binding-panel]").open = true;
-      binding.elements.certificate.value = button.dataset.dsBindCert;
-      binding.elements.cpf.focus();
-    });
-  }
-  for (const action of root.querySelectorAll("form[data-ds-binding], form[data-ds-review]")) {
-    action.addEventListener("submit", async (event) => {
+  for (const binding of root.querySelectorAll("form[data-ds-binding]")) {
+    binding.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const review = Boolean(action.dataset.dsReview);
-      const certificateId = review ? action.dataset.dsReview : action.elements.certificate.value.trim().toLowerCase();
-      const message = action.querySelector("[data-ds-binding-status]");
-      const button = event.submitter || action.querySelector("[type=submit]");
-      const payload = review ? {
-        user_id: Number(action.dataset.userId), revision: action.dataset.revision,
-        approve: button.dataset.approve === "yes", reference: action.elements.reference.value.trim(),
-        consent: action.elements.confirmed.checked,
-      } : {
-        cpf: action.elements.cpf.value, password: action.elements.password.value,
-        consent: action.elements.confirmed.checked,
-      };
+      const userId = binding.elements.holder.value;
+      const message = binding.querySelector("[data-ds-binding-status]");
+      const button = binding.querySelector("button");
+      const previousHolder = binding.dataset.currentHolder;
+      if (previousHolder && previousHolder !== userId &&
+          !window.confirm("Trocar o responsável encerra as autorizações da Central para este certificado. Confirmar a troca?")) return;
       button.disabled = true;
-      feedback(message, "Enviando…");
+      feedback(message, "Vinculando responsável…");
       try {
-        await request(root, `/certificados-digitais/${certificateId}/vinculo${review ? "/revisao" : ""}`, {json: payload});
+        await request(root, `/certificados-digitais/${binding.dataset.dsBinding}/vinculo`, {json: {user_id: Number(userId)}});
+        binding.dataset.currentHolder = userId;
+        feedback(message, "Responsável vinculado.");
         location.reload();
       } catch (error) {
         feedback(message, error.message, true);
       } finally {
-        if (!review) action.elements.password.value = "";
         button.disabled = false;
       }
     });
@@ -584,6 +571,10 @@ function initCertificates(root) {
       dialog.querySelector("[data-ds-purpose-holder]").textContent = selection.holder;
       dialog.querySelector("[data-ds-purpose-password]").hidden = !enable;
       purposeForm.elements.password.required = enable;
+      const confirmCpf = enable && selection.cpf === "yes";
+      dialog.querySelector("[data-ds-purpose-cpf]").hidden = !confirmCpf;
+      purposeForm.elements.cpf.disabled = !confirmCpf;
+      purposeForm.elements.cpf.required = confirmCpf;
       dialog.querySelector("[data-ds-purpose-consent]").textContent = enable
         ? `Autorizo expressamente o uso deste certificado para ${purpose}${environment}.`
         : `Confirmo a revogação do uso para ${purpose}.`;
@@ -600,13 +591,14 @@ function initCertificates(root) {
     try {
       await request(root, `/certificados-digitais/${selection.cert}/finalidades`, {
         json: {purpose: selection.dsPurpose, enable: selection.enable === "yes", environment: selection.env,
-          password: purposeForm.elements.password.value, consent: purposeForm.elements.consent.checked},
+          password: purposeForm.elements.password.value, cpf: purposeForm.elements.cpf.value, consent: purposeForm.elements.consent.checked},
       });
       location.reload();
     } catch (error) {
       feedback(purposeStatus, error.message, true);
     } finally {
       purposeForm.elements.password.value = "";
+      purposeForm.elements.cpf.value = "";
       button.disabled = false;
     }
   });

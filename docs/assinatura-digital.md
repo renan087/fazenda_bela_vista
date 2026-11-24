@@ -11,9 +11,9 @@ A Central de Certificados fica em `/certificados-digitais`. A área de assinatur
 
 ## Vínculo do titular ou responsável
 
-1. O titular do e-CPF, ou o responsável de uso do e-CNPJ, entra na própria conta e seleciona a fazenda. Na Central de Certificados, usa **Solicitar vínculo para minha conta**, ou informa o ID obtido em **Dados do certificado**. O SiSFarm confere o CPF e a senha do A1. Esses dados de entrada não são gravados no pedido.
-2. Outra conta da organização com permissão de gestão de certificados abre **Conferir vínculo** na Central. Essa pessoa confere a identidade e o controle da conta solicitante por canal independente, registra a referência da conferência e aprova o pedido.
-3. O titular ou responsável volta à Central e usa **Autorizar uso** na finalidade desejada. O vínculo por si só não autoriza a emissão fiscal nem a assinatura de documentos.
+Na Central de Certificados, selecione a fazenda, escolha um usuário ativo da organização no campo **Responsável pelo certificado** e clique em **Vincular responsável**. A lista está disponível a contas com permissão para gerenciar certificados. Selecione o titular do e-CPF ou o responsável de uso do e-CNPJ.
+
+A pessoa selecionada entra na própria conta e clica em **Autorizar uso** na finalidade desejada. Para confirmar o primeiro uso após um novo vínculo, o SiSFarm compara o CPF com o certificado e confere a senha do A1. A troca de responsável encerra as autorizações anteriores da Central para o certificado.
 
 ## Homologação obrigatória no VALIDAR
 

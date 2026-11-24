@@ -94,7 +94,7 @@
 .ds-stamp-handle { position: absolute; right: 0; bottom: 0; width: 1.2rem; height: 1.2rem; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, #287145 50%); }
 .ds-stamp.is-fixed .ds-stamp-handle { display: none; }
 .ds-side-card form, .ds-dialog form { display: grid; gap: .7rem; }
-.ds-side-card select, .ds-side-card input:not([type=checkbox]), .ds-dialog input:not([type=checkbox]) { width: 100%; border: 1px solid #cfdbd0; border-radius: .55rem; min-height: 2.62rem; padding: .48rem .56rem; background: white; color: #203327; font-size: .83rem; }
+.ds-holder-select select, .ds-side-card select, .ds-side-card input:not([type=checkbox]), .ds-dialog input:not([type=checkbox]) { width: 100%; border: 1px solid #cfdbd0; border-radius: .55rem; min-height: 2.62rem; padding: .48rem .56rem; background: white; color: #203327; font-size: .83rem; }
 .ds-label { color: #293e31; font-size: .8rem; font-weight: 690; }
 .ds-check { display: flex; gap: .45rem; align-items: start; line-height: 1.45; font-size: .82rem; color: #31483a; }
 .ds-check input { accent-color: #426c47; flex: 0 0 auto; margin-top: .15rem; width: .95rem; height: .95rem; }
@@ -104,6 +104,8 @@
 .ds-person, .ds-cert-id, .ds-purpose-list > div { display: flex; gap: .65rem; align-items: center; flex-wrap: wrap; }
 .ds-person { justify-content: space-between; padding-block: .45rem; border-bottom: 1px solid var(--ds-line); }
 .ds-person strong, .ds-person small { display: block; overflow-wrap: anywhere; }
+.ds-holder-select { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; margin-block: .35rem; }
+.ds-holder-select select { flex: 1 1 14rem; min-width: 0; }
 .ds-person strong, .ds-purpose-list strong { font-size: .81rem; }
 .ds-cert-row { display: grid; gap: .8rem; padding: 1rem 1.2rem; }
 .ds-cert-row + .ds-cert-row { border-top: 1px solid var(--ds-line); }

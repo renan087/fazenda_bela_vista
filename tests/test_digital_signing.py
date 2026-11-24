@@ -332,23 +332,36 @@ def test_signing_web_workflow_and_external_validation_without_certificate(author
         db.commit()
         binding_url = f"/certificados-digitais/{new_cert.id}/vinculo"
         new_id = new_cert.id
-    assert client.post(binding_url, headers=headers, json={"cpf": CPF, "password": PASSWORD, "consent": True}).status_code == 201
     with sessions() as db:
-        pending = db.get(certificates.CertificateHolderRequest, (new_id, 1))
-        revision = pending.revision
+        db.get(User, 2).is_admin = False
+        db.commit()
+
+    central = client.get("/certificados-digitais").text
+    assert "Vincular responsável" in central and "conta2@example.test" in central
+    assert "conta3@example.test" not in central
+    assert client.post(binding_url, headers=headers, json={"user_id": 3}).status_code == 404
+    holder_client = LocalTestClient(web)
+    holder_headers = login_headers(holder_client, 2)
+    assert holder_client.post(binding_url, headers=holder_headers, json={"user_id": 2}).status_code == 403
+    assert client.post(binding_url, headers=headers, json={"user_id": 2}).status_code == 200
+    assert "Responsável pela web" in holder_client.get("/certificados-digitais").text
+    with sessions() as db:
+        selected = db.get(certificates.CertificateHolderAssignment, new_id)
+        assert selected.user_id == 2
         assert db.get(certificates.CertificatePurpose, (new_id, certificates.DOCUMENTS)) is None
-    decision = {"user_id": 1, "revision": revision, "reference": "protocolo-web", "consent": True, "approve": True}
-    assert client.post(binding_url + "/revisao", headers=headers, json=decision).status_code == 403
-    reviewer = LocalTestClient(web)
-    review_headers = login_headers(reviewer, 2)
-    assert "Conferir vínculo de Pessoa 1" in reviewer.get("/certificados-digitais").text
-    approval = reviewer.post(binding_url + "/revisao", headers=review_headers, json=decision)
-    assert approval.status_code == 200, approval.text
+    purpose_url = binding_url.removesuffix("/vinculo") + "/finalidades"
+    authorization = {"purpose": "documents", "enable": True, "consent": True, "password": PASSWORD}
+    assert client.post(purpose_url, headers=headers, json={**authorization, "cpf": CPF}).status_code == 403
+    assert holder_client.post(purpose_url, headers=holder_headers, json=authorization).status_code == 422
+    enabled = holder_client.post(purpose_url, headers=holder_headers, json={**authorization, "cpf": CPF})
+    assert enabled.status_code == 200, enabled.text
+    assert client.post(binding_url, headers=headers, json={"user_id": 2}).status_code == 200
     with sessions() as db:
         grant = db.get(certificates.CertificatePurpose, (new_id, certificates.DOCUMENTS))
-        assert grant.user_id == 1
-        assert grant.enabled_at is None
-        assert db.get(certificates.CertificateHolderRequest, (new_id, 1)) is None
+        assert grant.user_id == 2 and grant.enabled_at is not None and grant.disabled_at is None
+    assert client.post(binding_url, headers=headers, json={"user_id": 1}).status_code == 200
+    with sessions() as db:
+        assert db.get(certificates.CertificatePurpose, (new_id, certificates.DOCUMENTS)).disabled_at is not None
     assert client.get("/assinatura-digital").status_code == 200
     assert client.get("/certificados-digitais").status_code == 200
     assert client.post("/assinatura-digital/documentos", content=original,

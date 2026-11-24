@@ -18,7 +18,7 @@ from app.core.csrf import ensure_csrf_token, validate_csrf
 from app.core.deps import get_current_user_web
 from app.db.session import get_db
 from app.models import Farm, User
-from app.models.digital_certificate import CertificateHolderRequest, CertificatePurpose, DigitalCertificate
+from app.models.digital_certificate import CertificateHolderAssignment, CertificatePurpose, DigitalCertificate
 from app.models.signed_document import SigningDocument, SigningParticipant, SigningRevision
 from app.services import digital_certificates as certificates, login_throttle
 from app.services.audit_log_service import client_ip
@@ -279,42 +279,37 @@ def certificate_center(request: Request, db: Session = Depends(get_db), user: Us
     farm = _farm(request, db, user, required=False)
     manage = has_fiscal_permission(user, "nfe.certificate.manage")
     rows = []
+    organization_users = []
     if farm:
         inventory = select(DigitalCertificate).filter_by(organization_id=user.organization_id, farm_id=farm.id)
-        if not manage:
+        if manage:
+            organization_users = db.scalars(
+                select(User).filter_by(organization_id=user.organization_id, is_active=True).order_by(User.name, User.id)
+            ).all()
+        else:
             relevant = select(CertificatePurpose.certificate_id).filter_by(user_id=user.id, identity_email=user.email)
-            requested = select(CertificateHolderRequest.certificate_id).filter_by(user_id=user.id, email=user.email)
+            assigned = select(CertificateHolderAssignment.certificate_id).filter_by(user_id=user.id, email=user.email)
             inventory = inventory.where(or_(DigitalCertificate.uploaded_by == user.id, DigitalCertificate.id.in_(relevant),
-                                            DigitalCertificate.id.in_(requested)))
-        pending = db.execute(
-            select(CertificateHolderRequest, User).join(User, User.id == CertificateHolderRequest.user_id)
-            .join(DigitalCertificate, DigitalCertificate.id == CertificateHolderRequest.certificate_id)
-            .where(DigitalCertificate.organization_id == user.organization_id, DigitalCertificate.farm_id == farm.id,
-                   User.organization_id == user.organization_id, User.is_active.is_(True),
-                   User.email == CertificateHolderRequest.email,
-                   CertificateHolderRequest.requested_at >= datetime.now(timezone.utc) - certificates.HOLDER_REQUEST_WINDOW)
-        ).all() if manage else []
-        mine = set(db.scalars(
-            select(CertificateHolderRequest.certificate_id).filter_by(user_id=user.id, email=user.email)
-            .where(CertificateHolderRequest.requested_at >= datetime.now(timezone.utc) - certificates.HOLDER_REQUEST_WINDOW)
-        ))
+                                            DigitalCertificate.id.in_(assigned)))
         active_fiscal = {cert.id for cert in certificates.fiscal_certificate_query(
             db, user.organization_id, farm.id, active=True,
         )}
         for cert in db.scalars(inventory.order_by(DigitalCertificate.created_at.desc())).all():
             docs = certificates.purpose_for_user(db, cert, user, certificates.DOCUMENTS, farm_id=farm.id, enabled=False)
             fiscal = certificates.purpose_for_user(db, cert, user, certificates.FISCAL, farm_id=farm.id, enabled=False)
+            assigned = certificates.assigned_to_user(db, cert, user)
+            assignment = db.get(CertificateHolderAssignment, cert.id)
+            existing = db.get(CertificatePurpose, (cert.id, certificates.DOCUMENTS))
             now = datetime.now(timezone.utc)
             rows.append({
-                "cert": cert, "fiscal_active": cert.id in active_fiscal, "can_set_fiscal": bool(fiscal and manage),
-                "pending_mine": cert.id in mine,
-                "can_request_holder": db.get(CertificatePurpose, (cert.id, certificates.DOCUMENTS)) is None,
-                "pending_reviews": [(item, person) for item, person in pending if item.certificate_id == cert.id and person.id != user.id],
-                "can_set_docs": bool(docs), "docs_enabled": bool(docs and docs.enabled_at and not docs.disabled_at),
+                "cert": cert, "fiscal_active": cert.id in active_fiscal, "can_set_fiscal": bool(manage and (fiscal or (assigned and cert.id not in active_fiscal))),
+                "holder_id": assignment.user_id if assignment else existing.user_id if existing else None,
+                "confirm_cpf": assigned and docs is None,
+                "can_set_docs": bool(docs or assigned), "docs_enabled": bool(docs and docs.enabled_at and not docs.disabled_at),
                 "valid": certificates.utc(cert.valid_from) <= now <= certificates.utc(cert.valid_until),
             })
     return _page(request, user, db, "certificate_center", "certificate_center.html", "Central de Certificados",
-                 farm=farm, inventory=rows)
+                 farm=farm, inventory=rows, organization_users=organization_users)
 
 
 @router.post("/certificados-digitais")
@@ -343,9 +338,10 @@ async def set_certificate_purpose(certificate_id: str, request: Request, db: Ses
     purpose = data.get("purpose")
     enable = data.get("enable")
     password = data.get("password", "")
+    cpf = data.get("cpf", "")
     environment = data.get("environment", "homologacao")
     if (purpose not in (certificates.DOCUMENTS, certificates.FISCAL) or type(enable) is not bool
-            or not isinstance(password, str) or not isinstance(environment, str)
+            or not isinstance(password, str) or not isinstance(cpf, str) or not isinstance(environment, str)
             or enable and data.get("consent") is not True):
         raise HTTPException(400, "Confirme a finalidade e a autorização para usar o certificado.")
     source = db.scalar(select(DigitalCertificate).filter_by(
@@ -358,75 +354,48 @@ async def set_certificate_purpose(certificate_id: str, request: Request, db: Ses
             raise HTTPException(403, "Sua conta precisa da permissão de gestão fiscal.")
         if environment == "producao" and source.environment != "producao":
             raise HTTPException(403, "O cadastro fiscal do SiSFarm está habilitado para homologação.")
+    email = f"certificado:{user.email}"
+    ip = f"certificado:{client_ip(request)}"
+    if enable and login_throttle.blocked_for(email, ip):
+        raise HTTPException(429, "Aguarde alguns minutos antes de tentar novamente.")
     try:
         await run_in_threadpool(_limited, certificates.authorize_purpose, db, cert=source, user=user, farm_id=farm.id,
-                                purpose=purpose, enable=enable, password=password, environment=environment)
+                                purpose=purpose, enable=enable, password=password, cpf=cpf.strip(), environment=environment)
         workflow.audit(db, user, "finalidade_certificado", farm_id=farm.id, purpose=purpose,
                        enabled=enable, fingerprint=source.fingerprint_sha256)
         db.commit()
+        if enable:
+            login_throttle.register_success(email)
         return _json({"ok": True})
     except (ValueError, PermissionError, InvalidTag, workflow.WorkflowError, IntegrityError) as exc:
         db.rollback()
+        if enable and isinstance(exc, ValueError) and not isinstance(exc, certificates.EncryptionConfigurationError):
+            login_throttle.register_failure(email, ip)
         return _error(exc)
+
 
 @router.post("/certificados-digitais/{certificate_id}/vinculo")
-async def request_certificate_holder(certificate_id: str, request: Request, db: Session = Depends(get_db),
-                                     user: User = Depends(get_current_user_web)):
-    farm = _farm(request, db, user)
-    data = await _payload(request)
-    cpf, password = data.get("cpf"), data.get("password")
-    if data.get("consent") is not True or not isinstance(cpf, str) or not isinstance(password, str):
-        raise HTTPException(400, "Confirme a solicitação e informe o CPF e a senha do A1.")
-    email = f"certificado:{user.email}"
-    ip = f"certificado:{client_ip(request)}"
-    if login_throttle.blocked_for(email, ip):
-        raise HTTPException(429, "Aguarde alguns minutos antes de tentar novamente.")
-    cert = db.scalar(select(DigitalCertificate).filter_by(
-        id=certificate_id, organization_id=user.organization_id, farm_id=farm.id,
-    ))
-    if cert is None:
-        raise HTTPException(404, "Certificado não encontrado nesta fazenda.")
-    try:
-        await run_in_threadpool(_limited, certificates.request_holder_binding, db, cert, user, cpf.strip(), password)
-        workflow.audit(db, user, "solicitar_vinculo", farm_id=farm.id, certificate_id=cert.id)
-        db.commit()
-        login_throttle.register_success(email)
-        return _json({"ok": True}, 201)
-    except certificates.EncryptionConfigurationError as exc:
-        db.rollback()
-        return _error(exc)
-    except ValueError as exc:
-        db.rollback()
-        login_throttle.register_failure(email, ip)
-        return _error(exc)
-    except (InvalidTag, workflow.WorkflowError, IntegrityError) as exc:
-        db.rollback()
-        return _error(exc)
-
-
-@router.post("/certificados-digitais/{certificate_id}/vinculo/revisao")
-async def review_certificate_holder(certificate_id: str, request: Request, db: Session = Depends(get_db),
-                                    user: User = Depends(get_current_user_web)):
+async def bind_certificate_holder(certificate_id: str, request: Request, db: Session = Depends(get_db),
+                                  user: User = Depends(get_current_user_web)):
     farm = _farm(request, db, user)
     if not has_fiscal_permission(user, "nfe.certificate.manage"):
         raise HTTPException(403, "Sua conta precisa da permissão de gestão de certificados.")
-    data = await _payload(request)
-    user_id, revision, approve, reference = (data.get(name) for name in ("user_id", "revision", "approve", "reference"))
-    if (type(user_id) is not int or not isinstance(revision, str) or type(approve) is not bool
-            or (approve and (data.get("consent") is not True or not isinstance(reference, str)
-                             or not 1 <= len(reference.strip()) <= 160))):
-        raise HTTPException(400, "Informe a referência da conferência e confirme a revisão.")
+    user_id = (await _payload(request)).get("user_id")
+    if type(user_id) is not int:
+        raise HTTPException(400, "Selecione um usuário da organização.")
     cert = db.scalar(select(DigitalCertificate).filter_by(
         id=certificate_id, organization_id=user.organization_id, farm_id=farm.id,
     ))
     if cert is None:
         raise HTTPException(404, "Certificado não encontrado nesta fazenda.")
+    holder = db.scalar(select(User).filter_by(id=user_id, organization_id=user.organization_id, is_active=True))
+    if holder is None:
+        raise HTTPException(404, "Selecione um usuário ativo da organização.")
     try:
-        certificates.review_holder_binding(db, cert, user, user_id, revision, approve, reference.strip() if approve else "")
-        workflow.audit(db, user, "revisar_vinculo", farm_id=farm.id, certificate_id=cert.id, verified_user_id=user_id,
-                       approved=approve)
+        certificates.assign_certificate_holder(db, cert, holder)
+        workflow.audit(db, user, "vincular_responsavel", farm_id=farm.id, certificate_id=cert.id, holder_user_id=holder.id)
         db.commit()
         return _json({"ok": True})
-    except (ValueError, PermissionError, IntegrityError) as exc:
+    except (ValueError, IntegrityError) as exc:
         db.rollback()
         return _error(exc)
