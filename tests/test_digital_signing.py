@@ -784,11 +784,18 @@ def test_electronic_signing_manifesto_and_public_validation(web_db, monkeypatch)
     assert body["seal_mode"] == "internal_hmac"
     assert body["remaining"] == 0
 
-    # Sealed PDF has automatic Manifesto appended (original pages + 1) and remains compact
+    # Sealed PDF has automatic Manifesto appended (original pages + 1), remains compact,
+    # and ALWAYS embeds official domain app.sisfarm.com.br (never testserver or onrender.com)
     from app.services.document_signing.pdf import read_pdf, signing_options
     sealed_pdf = client.get(f"{endpoint}/revisoes/{body['revision']}/pdf").content
-    assert signing_options(read_pdf(sealed_pdf))["pages"] == signing_options(read_pdf(original))["pages"] + 1
+    reader_sealed = read_pdf(sealed_pdf)
+    assert signing_options(reader_sealed)["pages"] == signing_options(read_pdf(original))["pages"] + 1
     assert len(sealed_pdf) - len(original) < 35_000
+    last_page = reader_sealed.root["/Pages"]["/Kids"][-1].get_object()
+    manifesto_stream = last_page["/Resources"]["/XObject"]["/SFManifesto"].get_object().data
+    assert b"https://app.sisfarm.com.br/validar/" in manifesto_stream
+    assert b"testserver" not in manifesto_stream
+    assert b"onrender.com" not in manifesto_stream
 
     # Public validation works WITHOUT login, with or without hyphens, masks CPF (LGPD), and checks PDF integrity
     anon = LocalTestClient(web)

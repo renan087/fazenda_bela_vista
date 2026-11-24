@@ -50,13 +50,14 @@ SESSION_NONCE = "document_signing_session"
 
 
 def _public_base_url(request: Request) -> str:
-    """Resolve a URL publica em HTTPS para links de assinatura, e-mail, WhatsApp e QR Code."""
+    """Resolve a URL publica oficial em HTTPS (sempre app.sisfarm.com.br fora de testes locais)."""
     req_url = str(request.base_url).rstrip("/")
     host = (request.headers.get("x-forwarded-host") or request.url.hostname or "").lower()
     if host not in ("", "testserver", "localhost", "127.0.0.1"):
         configured = (get_settings().app_public_url or "").strip().rstrip("/")
-        if configured.startswith("https://") or configured.startswith("http://"):
+        if (configured.startswith("https://") or configured.startswith("http://")) and ".onrender.com" not in configured.lower():
             return configured
+        return electronic.OFFICIAL_PUBLIC_BASE_URL
     proto = (request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip().lower()
     if proto == "https" and req_url.startswith("http://"):
         return "https://" + req_url[len("http://"):]

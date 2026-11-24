@@ -65,6 +65,12 @@ CHALLENGE_MINUTES = 5
 MAX_ATTEMPTS = 5
 EXTERNAL_TOKEN_DAYS = 15
 SP_TZ = ZoneInfo("America/Sao_Paulo")
+OFFICIAL_PUBLIC_BASE_URL = "https://app.sisfarm.com.br"
+
+
+def public_validation_url(verification_code: str) -> str:
+    """Endereco oficial fixo impresso no selo visual, QR Code e Manifesto do PDF."""
+    return f"{OFFICIAL_PUBLIC_BASE_URL}/validar/{verification_code}"
 
 
 # ---------------------------------------------------------------------------
@@ -1325,7 +1331,7 @@ def finalize_electronic_document_if_complete(
         return None
 
     code = ensure_document_verification_code(db, doc)
-    verify_url = f"{base_url.rstrip('/')}/validar/{code}"
+    verify_url = public_validation_url(code)
     now_utc = datetime.now(timezone.utc)
     now_br = now_utc.astimezone(SP_TZ)
     original_sha = doc.original_sha256 or (evidences[0].document_sha256_before if evidences else sha256(current_pdf_bytes).hexdigest())
@@ -1432,7 +1438,7 @@ def confirm_electronic_signature(
 
     challenge.consumed_at = now
     ver_code = ensure_document_verification_code(db, doc)
-    verify_url = f"{base_url.rstrip('/')}/validar/{ver_code}"
+    verify_url = public_validation_url(ver_code)
     now_br = now.astimezone(SP_TZ)
     appearance = challenge.appearance or {}
     chan_label = "Via WhatsApp" if challenge.auth_channel == "whatsapp" else "Via E-mail"

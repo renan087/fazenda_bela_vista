@@ -1109,7 +1109,7 @@ function initWorkspace(root) {
             stampDate.textContent = `Data: ${nowStr} (BRT)`;
             stampDate.hidden = false;
           }
-          if (stampUrl) stampUrl.textContent = `Validar: /validar/${verCode}`;
+          if (stampUrl) stampUrl.textContent = `app.sisfarm.com.br/validar/${verCode}`;
         }
       } else {
         if (stampHead) stampHead.textContent = "ASSINADO DIGITALMENTE · ICP-BRASIL";
