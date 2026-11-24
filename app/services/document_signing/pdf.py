@@ -121,19 +121,19 @@ def _appearance_for_field(reader, ref):
 def _eligible(reader, signatures):
     acroform = reader.root.get("/AcroForm")
     names = reader.root.get("/Names")
-    if (acroform is not None and "/XFA" in acroform.get_object()
-            or names is not None and "/JavaScript" in names.get_object()):
-        logger.info("PDF bloqueado para novas assinaturas: contem XFA ou JavaScript.")
-        return False, []
+    if acroform is not None and "/XFA" in acroform.get_object():
+        logger.info("PDF bloqueado para novas assinaturas: contem formulario XFA.")
+        return False, [], "Este PDF usa formulário dinâmico (XFA), que não aceita assinatura incremental."
+    if names is not None and "/JavaScript" in names.get_object():
+        js_obj = names.get_object().get("/JavaScript")
+        js_dict = js_obj.get_object() if hasattr(js_obj, "get_object") else js_obj
+        if isinstance(js_dict, dict) and (js_dict.get("/Names") or js_dict.get("/Kids")):
+            logger.info("PDF bloqueado para novas assinaturas: contem JavaScript embarcado.")
+            return False, [], "Este PDF contém scripts internos (JavaScript) que impedem novas assinaturas."
     if any(sig.docmdp_level == fields.MDPPerm.NO_CHANGES for sig in signatures):
         logger.info("PDF bloqueado para novas assinaturas: DocMDP NO_CHANGES (/P 1).")
-        return False, []
+        return False, [], "A assinatura existente travou este PDF contra qualquer alteração (DocMDP nível 1)."
     locks = [lock for sig in signatures if (lock := _field_lock(sig)) is not None]
-    # DocMDP ANNOTATE (/P 3, usado p.ex. pelo Gov.br) permite acrescentar novas assinaturas e carimbos.
-    free_position = not any(
-        sig.docmdp_level in (fields.MDPPerm.NO_CHANGES, fields.MDPPerm.FILL_FORMS) for sig in signatures
-    )
-    free_position = free_position and not any(lock.is_locked("SiSFarm#" + "0" * 32) for lock in locks)
     eligible = []
     for name, _, ref in fields.enumerate_sig_fields(reader, filled_status=False):
         if any(lock.is_locked(name) for lock in locks):
@@ -144,23 +144,36 @@ def _eligible(reader, signatures):
         except (ValueError, TypeError):
             continue
         eligible.append({"name": name, "location": appearance})
+    # DocMDP FILL_FORMS (/P 2, usado pelo Gov.br) e ANNOTATE (/P 3) permitem novas assinaturas:
+    # se o PDF já trouxer campos vazios de assinatura elegíveis, respeitamos esses campos;
+    # se não houver campos vazios (como nos PDFs do Gov.br), liberamos posição livre incremental.
+    has_fill_forms = any(sig.docmdp_level == fields.MDPPerm.FILL_FORMS for sig in signatures)
+    locked_new_field = any(lock.is_locked("SiSFarm#" + "0" * 32) for lock in locks)
+    free_position = (not locked_new_field) and (not (has_fill_forms and len(eligible) > 0))
+    reason = None
     if not free_position and not eligible:
         logger.info(
             "PDF sem posicao livre/campos elegiveis: docmdp=%s locks=%s",
             [getattr(sig.docmdp_level, "name", None) for sig in signatures],
             [(getattr(lk.action, "name", None), list(lk.fields or ())) for lk in locks],
         )
-    return free_position, eligible
+        reason = "A assinatura existente bloqueou todos os campos deste PDF contra novas assinaturas."
+    return free_position, eligible, reason
 
 
 def signing_options(reader):
     try:
         signatures = [EmbeddedPdfSignature(reader, ref, name) for name, ref in _signatures(reader)]
-        free, eligible = _eligible(reader, signatures)
+        free, eligible, reason = _eligible(reader, signatures)
     except Exception as exc:
         logger.warning("Falha ao inspecionar elegibilidade do PDF (%s): %s", type(exc).__name__, exc)
-        free, eligible = False, []
-    return {"pages": int(reader.root["/Pages"]["/Count"]), "free_position": free, "fields": eligible}
+        free, eligible, reason = False, [], f"Não foi possível verificar as permissões deste PDF ({type(exc).__name__})."
+    return {
+        "pages": int(reader.root["/Pages"]["/Count"]),
+        "free_position": free,
+        "fields": eligible,
+        "blocked_reason": reason,
+    }
 
 
 def _rect(values):
@@ -319,10 +332,14 @@ def _policy_oid(sig):
 
 
 def _proof_of_integrity(status, sig=None):
-    # pyHanko's StandardDiffPolicy explicitly does not implement DocMDP level 3 (MDPPerm.ANNOTATE),
-    # which Gov.br uses when allowing subsequent approval signatures and visual stamps.
-    allow_annotate = sig is not None and getattr(sig, "docmdp_level", None) == fields.MDPPerm.ANNOTATE
-    docmdp_ok = True if allow_annotate else status.docmdp_ok is not False
+    # pyHanko's StandardDiffPolicy flags adding a new approval signature field after a DocMDP
+    # certification signature (FILL_FORMS /P 2 or ANNOTATE /P 3, used by Gov.br) even though
+    # VALIDAR/ITI and Adobe Acrobat accept incremental co-signing while bytes remain intact.
+    allow_cosign_mdp = sig is not None and getattr(sig, "docmdp_level", None) in (
+        fields.MDPPerm.FILL_FORMS,
+        fields.MDPPerm.ANNOTATE,
+    )
+    docmdp_ok = True if allow_cosign_mdp else status.docmdp_ok is not False
     return status.valid and status.intact and status.coverage in COMPLETE_COVERAGE and docmdp_ok
 
 

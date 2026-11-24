@@ -222,7 +222,7 @@
             <button type="button" class="ds-inline-action" data-ds-place-current hidden>Trazer carimbo para esta página</button>
           </div>
           {% elif not options.fields %}
-          <div class="ds-banner is-warn ds-banner--sm">{{ icon('alert', 16) }}<span>Este PDF não permite acrescentar novas assinaturas nesta versão.</span></div>
+          <div class="ds-banner is-warn ds-banner--sm">{{ icon('alert', 16) }}<span>{{ options.blocked_reason or 'Este PDF não permite acrescentar novas assinaturas nesta versão.' }}</span></div>
           {% endif %}
 
           <div class="ds-mobile-viewer-slot" data-ds-mobile-viewer-slot hidden></div>

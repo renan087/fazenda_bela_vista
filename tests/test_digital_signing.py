@@ -155,12 +155,13 @@ def test_respect_external_certification_and_sign_existing_slot(authority, permis
         assert all(item["integrity"] for item in outcome["signatures"])
 
 
-def test_cosign_govbr_style_docmdp_annotate_pdf(authority):
+@pytest.mark.parametrize("perm", [fields.MDPPerm.FILL_FORMS, fields.MDPPerm.ANNOTATE])
+def test_cosign_govbr_style_docmdp_pdf_without_empty_slots(authority, perm):
     make, _ = authority
     writer = IncrementalPdfFileWriter(BytesIO(_original()))
     govbr_pdf = signers.sign_pdf(
         writer,
-        signers.PdfSignatureMetadata(field_name="AssinaturaGovBr", certify=True, docmdp_permissions=fields.MDPPerm.ANNOTATE),
+        signers.PdfSignatureMetadata(field_name="AssinaturaGovBr", certify=True, docmdp_permissions=perm),
         signer=make(25, "Assinatura Gov.br").signer,
     ).getvalue()
     options = pdf.signing_options(pdf.read_pdf(govbr_pdf))
