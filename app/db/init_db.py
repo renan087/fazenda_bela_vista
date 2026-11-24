@@ -1576,6 +1576,9 @@ def _sync_schema() -> None:
         connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS scheduler_locked_at TIMESTAMPTZ"))
         connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()"))
         connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()"))
+        connection.execute(text("ALTER TABLE digital_certificate_purposes ADD COLUMN IF NOT EXISTS secret_ciphertext TEXT"))
+        connection.execute(text("ALTER TABLE signing_documents ADD COLUMN IF NOT EXISTS title VARCHAR(180)"))
+        connection.execute(text("ALTER TABLE signing_documents ADD COLUMN IF NOT EXISTS category VARCHAR(48)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_runs_deleted_from_storage_at ON backup_runs(deleted_from_storage_at)"))
         connection.execute(
             text(

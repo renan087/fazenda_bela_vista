@@ -27,6 +27,14 @@ from app.services.email_service import send_plain_email
 CHALLENGE_MINUTES = 5
 MAX_ATTEMPTS = 5
 CRYPTO_SLOTS = BoundedSemaphore(2)
+DOCUMENT_CATEGORIES = (
+    "Venda de café",
+    "Parceria / Arrendamento",
+    "Recibos",
+    "Trabalhista / Serviço",
+    "Agronômico / Laudo",
+    "Outros",
+)
 
 
 class WorkflowError(Exception):
@@ -104,19 +112,45 @@ def _filename(name):
     return f"{name[:170] or 'Documento'}.pdf"
 
 
-def import_pdf(db, user, farm_id, name, data):
+def _clean_text(value: str | None, limit: int) -> str | None:
+    if not value:
+        return None
+    cleaned = re.sub(r"[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]", "", value).strip()
+    return cleaned[:limit] if cleaned else None
+
+
+def import_pdf(db, user, farm_id, name, data, *, title: str | None = None, category: str | None = None):
     if len(data) > MAX_UPLOAD_BYTES:
         raise WorkflowError("O PDF ultrapassa o limite de 12 MB.", 413)
     # Existing signatures are inspected on import without keeping network requests inside this transaction.
     validation = validate_pdf(data, network=False)
-    doc = SigningDocument(id=uuid4().hex, organization_id=user.organization_id, farm_id=farm_id,
-                          owner_id=user.id, filename=_filename(name), current_revision=1, validation=validation)
+    safe_filename = _filename(name)
+    safe_title = _clean_text(title, 180) or safe_filename[:-4]
+    safe_category = category.strip() if isinstance(category, str) and category.strip() in DOCUMENT_CATEGORIES else None
+    doc = SigningDocument(
+        id=uuid4().hex, organization_id=user.organization_id, farm_id=farm_id,
+        owner_id=user.id, filename=safe_filename, title=safe_title, category=safe_category,
+        current_revision=1, validation=validation,
+    )
     db.add(doc)
     db.flush()
     revision = _store_revision(db, doc, user, data)
     audit(db, user, "importar", farm_id=farm_id, document_id=doc.id, sha256=revision.sha256)
     db.commit()
     return doc.id
+
+
+def delete_document(db, user, farm_id, document_id):
+    doc = accessible_document(db, user, farm_id, document_id, lock=True, owner=True)
+    signatures = (doc.validation or {}).get("signatures") or []
+    if doc.current_revision > 1 or signatures:
+        raise WorkflowError("Documentos já assinados não podem ser excluídos.", 409)
+    db.query(SigningChallenge).filter_by(document_id=doc.id).delete(synchronize_session="fetch")
+    db.query(SigningParticipant).filter_by(document_id=doc.id).delete(synchronize_session="fetch")
+    db.query(SigningRevision).filter_by(document_id=doc.id).delete(synchronize_session="fetch")
+    audit(db, user, "excluir", farm_id=farm_id, document_id=doc.id, filename=doc.filename)
+    db.delete(doc)
+    db.commit()
 
 
 def document_certificate(db, user, farm_id, certificate_id, *, lock=False):
@@ -232,7 +266,12 @@ def confirm_signature(db, user, farm_id, document_id, challenge_id, code, passwo
             challenge.consumed_at = now
         audit(db, user, "autorizar", outcome="denied", farm_id=farm_id, document_id=doc.id)
         db.commit()
-        raise WorkflowError("Confira o código e a senha do A1 ou solicite uma nova autorização.", 403) from exc
+        detail = (
+            "Código de autorização incorreto. Confira o código enviado ao seu e-mail ou solicite um novo."
+            if not password
+            else "Confira o código e a senha do A1 ou solicite uma nova autorização."
+        )
+        raise WorkflowError(detail, 403) from exc
 
     data = revision_bytes(doc, revision)
     challenge.consumed_at = now

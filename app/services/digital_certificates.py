@@ -14,6 +14,7 @@ from sqlalchemy import or_, select
 from app.core.config import get_settings
 from app.models.digital_certificate import CertificateHolderAssignment, CertificatePurpose, DigitalCertificate, FiscalCertificateSelection
 from app.models.farm import Farm
+from app.models.signed_document import SigningChallenge
 from app.models.user import User
 from app.services.certificate_a1 import parse_and_validate_pfx
 
@@ -155,6 +156,7 @@ def assign_certificate_holder(db, cert, user):
         if grant is not None:
             grant.user_id = None
             grant.generation = uuid4().hex
+            grant.secret_ciphertext = None
             grant.disabled_at = now
     if cert.environment == CENTRAL:
         selection = db.get(FiscalCertificateSelection, cert.id, with_for_update=True)
@@ -180,6 +182,7 @@ def _bind_responsible_identity(db, cert, user, reference):
         grant.verification_reference = reference
         grant.verified_at = now
         grant.generation = uuid4().hex
+        grant.secret_ciphertext = None
         grant.enabled_at = None
         grant.disabled_at = now
     if cert.environment == CENTRAL:
@@ -219,6 +222,16 @@ def authorize_purpose(db, *, cert, user, farm_id, purpose, enable, password="", 
     if purpose == FISCAL:
         _configure_fiscal(db, cert, enable, password, environment)
     grant.generation = uuid4().hex
+    if purpose == DOCUMENTS:
+        if enable:
+            sealed = seal(
+                password.encode(),
+                encryption_key("digital_certificate_key"),
+                _cert_context(cert, f"documents:{grant.generation}"),
+            )
+            grant.secret_ciphertext = base64.b64encode(sealed).decode()
+        else:
+            grant.secret_ciphertext = None
     grant.enabled_at = now if enable else grant.enabled_at
     grant.disabled_at = None if enable else now
 
@@ -317,4 +330,69 @@ def open_for_documents(db, cert, user, farm_id, password, generation):
     grant = purpose_for_user(db, cert, user, DOCUMENTS, farm_id=farm_id, lock=True)
     if grant is None or grant.generation != generation:
         raise PermissionError("O titular ou responsável precisa autorizar o uso deste certificado.")
-    return _open_pkcs12(cert, password)
+    resolved_password = password or ""
+    if not resolved_password:
+        if grant.secret_ciphertext:
+            resolved_password = unseal(
+                base64.b64decode(grant.secret_ciphertext, validate=True),
+                encryption_key("digital_certificate_key"),
+                _cert_context(cert, f"documents:{grant.generation}"),
+            ).decode()
+        elif cert.environment != CENTRAL:
+            from app.services.nfe_certificate_vault import decrypt_certificate_from_vault
+            _, resolved_password = decrypt_certificate_from_vault(cert)
+        else:
+            raise ValueError("Reative o uso deste certificado na aba Certificados A1 para assinar sem digitar a senha.")
+    return _open_pkcs12(cert, resolved_password)
+
+
+def friendly_cert_info(cert: DigitalCertificate) -> dict:
+    raw_cn = (cert.subject_cn or "").strip()
+    name_part = raw_cn
+    doc_part = ""
+    if ":" in raw_cn:
+        left, right = raw_cn.rsplit(":", 1)
+        digits = re.sub(r"\D", "", right)
+        if len(digits) in (11, 14):
+            name_part = left.strip() or raw_cn
+            doc_part = digits
+    if len(doc_part) == 14:
+        cert_type = "e-CNPJ A1"
+        masked_doc = f"CNPJ {doc_part[:2]}.{doc_part[2:5]}.{doc_part[5:8]}/{doc_part[8:12]}-{doc_part[12:]}"
+    elif len(doc_part) == 11:
+        cert_type = "e-CPF A1"
+        masked_doc = f"CPF •••.{doc_part[3:6]}.{doc_part[6:9]}-••"
+    else:
+        cert_type = "Certificado A1"
+        masked_doc = ""
+    issuer = (cert.issuer_cn or "").strip()
+    return {
+        "display_name": name_part or "Certificado A1",
+        "cert_type": cert_type,
+        "masked_doc": masked_doc,
+        "issuer": issuer,
+    }
+
+
+def delete_certificate(db, *, cert: DigitalCertificate, user: User, farm_id: int, can_manage_fiscal: bool = False) -> None:
+    if cert.organization_id != user.organization_id or cert.farm_id != farm_id:
+        raise PermissionError("Certificado não pertence a esta fazenda.")
+    lock_fiscal_farm(db, cert.organization_id, cert.farm_id)
+    active_fiscal_ids = {
+        row.id for row in fiscal_certificate_query(db, user.organization_id, farm_id, active=True).all()
+    }
+    is_fiscal_active = cert.id in active_fiscal_ids
+    if is_fiscal_active and not can_manage_fiscal:
+        raise PermissionError("Sua conta precisa da permissão fiscal para remover um certificado ativo na Nota Fiscal.")
+    is_related_user = (
+        cert.uploaded_by == user.id
+        or assigned_to_user(db, cert, user)
+        or purpose_for_user(db, cert, user, DOCUMENTS, farm_id=farm_id, enabled=False) is not None
+    )
+    if not can_manage_fiscal and not is_related_user:
+        raise PermissionError("Você não tem permissão para remover este certificado.")
+    db.query(SigningChallenge).filter_by(certificate_id=cert.id).delete(synchronize_session="fetch")
+    db.query(FiscalCertificateSelection).filter_by(certificate_id=cert.id).delete(synchronize_session="fetch")
+    db.query(CertificatePurpose).filter_by(certificate_id=cert.id).delete(synchronize_session="fetch")
+    db.query(CertificateHolderAssignment).filter_by(certificate_id=cert.id).delete(synchronize_session="fetch")
+    db.delete(cert)

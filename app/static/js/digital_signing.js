@@ -23,51 +23,65 @@ function formatted(value, formatter) {
 }
 
 function badge(state) {
-  return element("span", states[state] || "A verificar", `ds-status ds-status--${states[state] ? state : "unsigned"}`);
+  return element("span", states[state] || "A verificar", `ds-pill ds-pill--${states[state] ? state : "unsigned"}`);
+}
+
+function cleanText(value) {
+  return (value || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
 
 function reportInto(container, report, filename) {
   const content = element("div", "", "ds-result-content");
-  const title = element("div", "", "ds-result-title");
-  if (filename) title.append(element("strong", filename));
-  title.append(badge(report.state));
-  content.append(title);
-  if (report.checked_at) content.append(element("p", `Verificado em ${formatted(report.checked_at, formatTime)}`, "ds-hint"));
-  if (report.message) content.append(element("p", report.message, "ds-hint"));
-  if (report.state === "unsigned") content.append(element("p", "Nenhuma assinatura digital encontrada neste PDF.", "ds-hint"));
+  const bannerTone = report.state === "valid" ? "is-valid" : report.state === "invalid" ? "is-invalid" : "is-warn";
+  const banner = element("div", "", `ds-result-banner ${bannerTone}`);
+  const bannerBody = element("div");
+  const headline = {
+    valid: "Documento autêntico e íntegro",
+    invalid: "Atenção: assinatura inválida ou documento alterado",
+    indeterminate: "Validação pendente ou indeterminada",
+    unsigned: "Nenhuma assinatura digital encontrada",
+  }[report.state] || "Resultado da conferência";
+  bannerBody.append(element("strong", filename ? `${headline} — ${filename}` : headline));
+  const detailText = report.message || (
+    report.state === "valid"
+      ? "Nenhuma alteração foi feita após a assinatura. Compatível com o VALIDAR do ITI."
+      : report.state === "unsigned"
+      ? "Este PDF ainda não possui assinaturas criptográficas."
+      : "Verifique a origem do arquivo antes de aceitá-lo."
+  );
+  bannerBody.append(element("span", detailText));
+  banner.append(bannerBody);
+  content.append(banner);
+
+  if (report.checked_at) {
+    content.append(element("p", `Verificado em ${formatted(report.checked_at, formatTime)}`, "ds-hint"));
+  }
 
   for (const [index, signature] of (report.signatures || []).entries()) {
-    const details = element("details", "", "ds-signature");
-    const summary = element("summary", "");
-    summary.append(element("span", signature.holder || `Assinatura ${index + 1}`), " ", badge(signature.state));
-    details.append(summary, element("p", signature.message));
-    const keyValues = [
-      ["Autoridade certificadora", signature.issuer],
-      ["Vigência do certificado", signature.valid_from && signature.valid_until
-        ? `${formatted(signature.valid_from, formatDate)} a ${formatted(signature.valid_until, formatDate)}` : ""],
-      ["Integridade da revisão", signature.integrity ? "Verificada" : "Não comprovada"],
-      ["Cadeia de confiança", signature.chain ? "Verificada" : "Não comprovada"],
-      ["Revogação", {checked: "Verificada", revoked: "Evidência de revogação", unknown: "Não comprovada"}[signature.revocation]],
-      ["Carimbo de tempo verificado", formatted(signature.signed_at, formatTime)],
-      ["Política de assinatura", signature.policy],
-      ["Impressão digital SHA-256", signature.fingerprint],
-    ];
-    const values = element("dl");
-    for (const [label, value] of keyValues) {
-      if (value) values.append(element("dt", label), element("dd", value));
-    }
-    details.append(values);
-    content.append(details);
+    const item = element("div", "", "ds-sig-item");
+    const head = element("div", "", "ds-sig-item-head");
+    head.append(element("strong", signature.holder || `Assinatura ${index + 1}`), badge(signature.state));
+    item.append(head);
+    const parts = [];
+    if (signature.issuer) parts.push(signature.issuer);
+    if (signature.signed_at) parts.push(`Assinado em ${formatted(signature.signed_at, formatTime)}`);
+    if (signature.valid_until) parts.push(`Certificado válido até ${formatted(signature.valid_until, formatDate)}`);
+    if (parts.length) item.append(element("p", parts.join(" · ")));
+    if (signature.message) item.append(element("p", signature.message));
+    content.append(item);
   }
+
   container.replaceChildren(content);
   container.hidden = false;
 }
 
-async function request(root, path, {method = "POST", json, pdf, name} = {}) {
+async function request(root, path, {method = "POST", json, pdf, name, title, category} = {}) {
   const headers = {"X-CSRF-Token": root.dataset.csrf, Accept: "application/json"};
   if (json) headers["Content-Type"] = "application/json";
   if (pdf) headers["Content-Type"] = "application/pdf";
   if (name) headers["X-Document-Name"] = encodeURIComponent(name);
+  if (title) headers["X-Document-Title"] = encodeURIComponent(title);
+  if (category) headers["X-Document-Category"] = encodeURIComponent(category);
   const response = await fetch(path, {
     method, headers, body: json ? JSON.stringify(json) : pdf, cache: "no-store",
   });
@@ -75,73 +89,272 @@ async function request(root, path, {method = "POST", json, pdf, name} = {}) {
     throw new Error("Sua sessão terminou. Entre no SiSFarm novamente.");
   }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || response.redirected) throw new Error(typeof data.detail === "string" ? data.detail : "A operação não pôde ser concluída. Tente novamente.");
+  if (!response.ok || response.redirected) {
+    throw new Error(typeof data.detail === "string" ? data.detail : "A operação não pôde ser concluída. Tente novamente.");
+  }
   return data;
 }
 
-function initHome(root) {
-  const status = root.querySelector("[data-ds-status]");
-  const result = root.querySelector("[data-ds-result]");
-  let busy = false;
+function initActionMenus() {
+  const closeAll = (except = null) => {
+    for (const wrap of document.querySelectorAll("[data-nx-more]")) {
+      if (wrap === except) continue;
+      const btn = wrap.querySelector("[data-nx-more-btn]");
+      const menu = wrap.querySelector(".nx-menu");
+      if (btn) btn.setAttribute("aria-expanded", "false");
+      if (menu) menu.hidden = true;
+    }
+  };
 
-  for (const drop of root.querySelectorAll("[data-ds-drop]")) {
-    const input = drop.querySelector("input");
-    const importMode = drop.dataset.dsDrop === "import";
-    const useFile = async (file) => {
-      if (!file || busy) return;
-      if (!file.name.toLowerCase().endsWith(".pdf") || file.size > 12 * 1024 * 1024) {
-        feedback(status, "Escolha um PDF de até 12 MB.", true);
-        return;
-      }
-      busy = true;
-      drop.setAttribute("aria-busy", "true");
-      feedback(status, importMode ? "Importando PDF…" : "Verificando as assinaturas…");
-      if (!importMode) result.hidden = true;
-      try {
-        const path = importMode ? "/assinatura-digital/documentos" : "/assinatura-digital/validar";
-        const data = await request(root, path, {pdf: file, name: file.name});
-        if (importMode) {
-          location.assign(data.url);
-          return;
-        }
-        reportInto(result, data, file.name);
-        result.focus();
-        feedback(status);
-      } catch (error) {
-        feedback(status, error.message, true);
-      } finally {
-        input.value = "";
-        busy = false;
-        drop.removeAttribute("aria-busy");
-      }
-    };
-    input.addEventListener("change", () => useFile(input.files?.[0]));
-    drop.addEventListener("dragover", (event) => {
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-nx-more-btn]");
+    if (trigger) {
       event.preventDefault();
-      drop.classList.add("is-dragging");
-    });
-    drop.addEventListener("dragleave", (event) => {
-      if (!drop.contains(event.relatedTarget)) drop.classList.remove("is-dragging");
-    });
-    drop.addEventListener("drop", (event) => {
+      const wrap = trigger.closest("[data-nx-more]");
+      const menu = wrap.querySelector(".nx-menu");
+      const opening = menu.hidden;
+      closeAll(opening ? wrap : null);
+      menu.hidden = !opening;
+      trigger.setAttribute("aria-expanded", String(opening));
+      return;
+    }
+    if (!event.target.closest("[data-nx-more]")) {
+      closeAll();
+    } else if (event.target.closest(".nx-mi")) {
+      closeAll();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeAll();
+  });
+}
+
+function initHome(root) {
+  const panels = {
+    overview: root.querySelector('[data-ds-panel="overview"]'),
+    validate: root.querySelector('[data-ds-panel="validate"]'),
+  };
+  const overviewTabLink = root.querySelector('.ds-tabs a[href="/assinatura-digital"]');
+  const validateLinks = root.querySelectorAll("[data-ds-tab-validate]");
+
+  function switchTab(tab) {
+    const targetTab = tab === "validate" ? "validate" : "overview";
+    if (panels.overview) panels.overview.hidden = targetTab !== "overview";
+    if (panels.validate) panels.validate.hidden = targetTab !== "validate";
+    if (overviewTabLink) {
+      if (targetTab === "overview") overviewTabLink.setAttribute("aria-current", "page");
+      else overviewTabLink.removeAttribute("aria-current");
+    }
+    for (const link of root.querySelectorAll(".ds-tabs [data-ds-tab-validate]")) {
+      if (targetTab === "validate") link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    }
+    const nextUrl = targetTab === "validate" ? "/assinatura-digital?aba=validar" : "/assinatura-digital";
+    window.history.replaceState({}, "", nextUrl);
+  }
+
+  overviewTabLink?.addEventListener("click", (event) => {
+    event.preventDefault();
+    switchTab("overview");
+  });
+  for (const link of validateLinks) {
+    link.addEventListener("click", (event) => {
       event.preventDefault();
-      drop.classList.remove("is-dragging");
-      useFile(event.dataTransfer.files?.[0]);
+      switchTab("validate");
     });
   }
 
-  const search = root.querySelector("[data-ds-search]");
-  if (search) {
-    const rows = root.querySelectorAll("[data-ds-list-row]");
-    const clean = (value) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
-    search.addEventListener("input", () => {
-      const query = clean(search.value);
-      let visible = 0;
-      for (const row of rows) {
-        row.hidden = !clean(row.querySelector("strong").textContent).includes(query);
-        if (!row.hidden) visible++;
+  // Filters & search
+  const rows = [...root.querySelectorAll("[data-ds-list-row]")];
+  const filterChips = [...root.querySelectorAll("[data-ds-filter]")];
+  const categorySelect = root.querySelector("[data-ds-category-filter]");
+  const searchInput = root.querySelector("[data-ds-search]");
+  const visibleCount = root.querySelector("[data-ds-visible-count]");
+  const emptySearch = root.querySelector("[data-ds-search-empty]");
+  let activeFilter = "todos";
+
+  function applyFilters() {
+    const query = cleanText(searchInput?.value);
+    const category = categorySelect?.value || "todas";
+    let shown = 0;
+    for (const row of rows) {
+      const matchStatus = activeFilter === "todos" || row.dataset.status === activeFilter;
+      const matchCategory = category === "todas" || row.dataset.category === category;
+      const matchSearch = !query || cleanText(row.dataset.searchText).includes(query);
+      row.hidden = !(matchStatus && matchCategory && matchSearch);
+      if (!row.hidden) shown++;
+    }
+    if (visibleCount) visibleCount.textContent = `(${shown})`;
+    if (emptySearch) emptySearch.hidden = shown !== 0 || rows.length === 0;
+    for (const chip of filterChips) {
+      chip.setAttribute("aria-pressed", String(chip.dataset.dsFilter === activeFilter));
+    }
+  }
+
+  for (const chip of filterChips) {
+    chip.addEventListener("click", () => {
+      activeFilter = chip.dataset.dsFilter;
+      applyFilters();
+    });
+  }
+  for (const trigger of root.querySelectorAll("[data-ds-filter-trigger]")) {
+    trigger.addEventListener("click", () => {
+      activeFilter = trigger.dataset.dsFilterTrigger;
+      switchTab("overview");
+      applyFilters();
+      root.querySelector(".ds-list-card")?.scrollIntoView({behavior: "smooth", block: "start"});
+    });
+  }
+  categorySelect?.addEventListener("change", applyFilters);
+  searchInput?.addEventListener("input", applyFilters);
+  root.querySelector("[data-ds-reset-filters]")?.addEventListener("click", () => {
+    activeFilter = "todos";
+    if (categorySelect) categorySelect.value = "todas";
+    if (searchInput) searchInput.value = "";
+    applyFilters();
+  });
+
+  // Delete unsigned document from (...) menu
+  const listStatus = root.querySelector("[data-ds-list-status]");
+  for (const btn of root.querySelectorAll("[data-ds-delete-doc]")) {
+    btn.addEventListener("click", async () => {
+      const docTitle = btn.dataset.dsDeleteTitle || "este documento";
+      if (!window.confirm(`Excluir "${docTitle}"? Esta ação não pode ser desfeita.`)) return;
+      feedback(listStatus, "Excluindo documento…");
+      try {
+        await request(root, `/assinatura-digital/documentos/${btn.dataset.dsDeleteDoc}`, {method: "DELETE"});
+        location.reload();
+      } catch (error) {
+        feedback(listStatus, error.message, true);
       }
-      root.querySelector("[data-ds-search-empty]").hidden = visible !== 0;
+    });
+  }
+
+  // Validate PDF tab
+  const validateDrop = root.querySelector('[data-ds-drop="validate"]');
+  const validateStatus = root.querySelector("[data-ds-validate-status]");
+  const validatePlaceholder = root.querySelector("[data-ds-validate-placeholder]");
+  const validateResult = root.querySelector("[data-ds-result]");
+  if (validateDrop) {
+    const input = validateDrop.querySelector("input");
+    let busy = false;
+    const runValidation = async (file) => {
+      if (!file || busy) return;
+      if (!file.name.toLowerCase().endsWith(".pdf") || file.size > 12 * 1024 * 1024) {
+        feedback(validateStatus, "Escolha um PDF de até 12 MB.", true);
+        return;
+      }
+      busy = true;
+      validateDrop.setAttribute("aria-busy", "true");
+      feedback(validateStatus, "Verificando as assinaturas do PDF…");
+      try {
+        const data = await request(root, "/assinatura-digital/validar", {pdf: file, name: file.name});
+        if (validatePlaceholder) validatePlaceholder.hidden = true;
+        reportInto(validateResult, data, file.name);
+        validateResult.focus();
+        feedback(validateStatus);
+      } catch (error) {
+        feedback(validateStatus, error.message, true);
+      } finally {
+        input.value = "";
+        busy = false;
+        validateDrop.removeAttribute("aria-busy");
+      }
+    };
+    input.addEventListener("change", () => runValidation(input.files?.[0]));
+    validateDrop.addEventListener("dragover", (event) => { event.preventDefault(); validateDrop.classList.add("is-dragging"); });
+    validateDrop.addEventListener("dragleave", (event) => { if (!validateDrop.contains(event.relatedTarget)) validateDrop.classList.remove("is-dragging"); });
+    validateDrop.addEventListener("drop", (event) => {
+      event.preventDefault();
+      validateDrop.classList.remove("is-dragging");
+      runValidation(event.dataTransfer.files?.[0]);
+    });
+  }
+
+  // New document modal
+  const newDialog = root.querySelector("[data-ds-new-dialog]");
+  const newForm = root.querySelector("[data-ds-new-form]");
+  if (newDialog && newForm) {
+    const fileInput = newForm.elements.file;
+    const titleInput = newForm.querySelector("[data-ds-new-title]");
+    const fileLabel = newForm.querySelector("[data-ds-new-file-label]");
+    const fileSub = newForm.querySelector("[data-ds-new-file-sub]");
+    const newDrop = newForm.querySelector("[data-ds-new-drop]");
+    const newStatus = newForm.querySelector("[data-ds-new-status]");
+    const submitBtn = newForm.querySelector("[data-ds-new-submit]");
+    let selectedFile = null;
+
+    const pickFile = (file) => {
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith(".pdf") || file.size > 12 * 1024 * 1024) {
+        feedback(newStatus, "Escolha um arquivo PDF de até 12 MB.", true);
+        return;
+      }
+      selectedFile = file;
+      feedback(newStatus);
+      fileLabel.textContent = file.name;
+      fileSub.textContent = `${Math.max(1, Math.round(file.size / 1024))} KB · Pronto para enviar`;
+      if (!titleInput.value.trim()) {
+        titleInput.value = file.name.replace(/\.pdf$/i, "");
+      }
+    };
+
+    for (const openBtn of root.querySelectorAll("[data-ds-open-new]")) {
+      openBtn.addEventListener("click", () => {
+        newForm.reset();
+        selectedFile = null;
+        fileLabel.textContent = "Arraste o PDF aqui ou clique para escolher";
+        fileSub.textContent = "Aceita PDFs de até 12 MB e 120 páginas (inclusive já assinados por outra parte).";
+        feedback(newStatus);
+        newDialog.showModal();
+      });
+    }
+    for (const closeBtn of newDialog.querySelectorAll("[data-ds-close-new]")) {
+      closeBtn.addEventListener("click", () => newDialog.close());
+    }
+    fileInput.addEventListener("change", () => pickFile(fileInput.files?.[0]));
+    newDrop.addEventListener("dragover", (event) => { event.preventDefault(); newDrop.classList.add("is-dragging"); });
+    newDrop.addEventListener("dragleave", (event) => { if (!newDrop.contains(event.relatedTarget)) newDrop.classList.remove("is-dragging"); });
+    newDrop.addEventListener("drop", (event) => {
+      event.preventDefault();
+      newDrop.classList.remove("is-dragging");
+      const file = event.dataTransfer.files?.[0];
+      if (file) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInput.files = dt.files;
+        pickFile(file);
+      }
+    });
+
+    newForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const file = selectedFile || fileInput.files?.[0];
+      if (!file) {
+        feedback(newStatus, "Escolha um arquivo PDF antes de continuar.", true);
+        return;
+      }
+      submitBtn.disabled = true;
+      feedback(newStatus, "Enviando e preparando documento…");
+      try {
+        const created = await request(root, "/assinatura-digital/documentos", {
+          pdf: file,
+          name: file.name,
+          title: titleInput.value.trim(),
+          category: newForm.elements.category.value,
+        });
+        const colleagueInputs = [...newForm.querySelectorAll('input[name="colleagues"]:checked')];
+        for (const item of colleagueInputs) {
+          await request(root, `${created.url}/participantes`, {
+            json: {email: item.value, consent: true},
+          }).catch(() => {});
+        }
+        location.assign(created.url);
+      } catch (error) {
+        feedback(newStatus, error.message, true);
+        submitBtn.disabled = false;
+      }
     });
   }
 }
@@ -161,6 +374,7 @@ function initWorkspace(root) {
   const next = find("[data-ds-next]");
   const stamp = find("[data-ds-stamp]");
   const stampLabel = find("[data-ds-stamp-label]");
+  const jumpStamp = find("[data-ds-jump-stamp]");
   const certificate = find("[data-ds-certificate]");
   const target = find("[data-ds-target]");
   const visible = find("[data-ds-visible]");
@@ -171,9 +385,34 @@ function initWorkspace(root) {
   const authorize = find("[data-ds-authorize]");
   const status = find("[data-ds-status]");
   const report = find("[data-ds-result]");
-  const dialog = find("[data-ds-confirm]");
   const confirmForm = find("[data-ds-sign-form]");
   const dialogStatus = find("[data-ds-confirm-status]");
+
+  // Workspace view tabs (Assinar documento vs Detalhes/participantes/versões)
+  const wsTabs = [...root.querySelectorAll("[data-ds-ws-tab]")];
+  const wsPanels = [...root.querySelectorAll("[data-ds-ws-panel]")];
+  for (const btn of wsTabs) {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.dsWsTab;
+      for (const b of wsTabs) b.setAttribute("aria-current", b.dataset.dsWsTab === tab ? "page" : "false");
+      for (const p of wsPanels) p.hidden = p.dataset.dsWsPanel !== tab;
+      if (tab === "assinar" && pdf) render();
+    });
+  }
+
+  // Ceremony step switcher (1: Revisar -> 2: Código por e-mail -> 3: Sucesso)
+  function setCeremonyStep(step) {
+    for (const pane of root.querySelectorAll("[data-ds-step-pane]")) {
+      pane.hidden = Number(pane.dataset.dsStepPane) !== step;
+    }
+    for (const pill of root.querySelectorAll("[data-ds-step-pill]")) {
+      const num = Number(pill.dataset.dsStepPill);
+      pill.classList.toggle("is-done", num < step);
+      if (num === step) pill.setAttribute("aria-current", "step");
+      else pill.removeAttribute("aria-current");
+    }
+  }
+
   let pdf;
   let pageNumber = 1;
   let renderedPage = 0;
@@ -204,9 +443,9 @@ function initWorkspace(root) {
 
   function defaultLocation() {
     if (!viewport) return;
-    const width = viewport.width * .32;
-    const height = Math.min(viewport.height * .25, Math.max(viewport.height * .1, width * .27));
-    chosenLocation = fromPixels(viewport.width * .62, viewport.height * .82, width, height);
+    const width = viewport.width * 0.32;
+    const height = Math.min(viewport.height * 0.25, Math.max(viewport.height * 0.1, width * 0.27));
+    chosenLocation = fromPixels(viewport.width * 0.62, viewport.height * 0.82, width, height);
   }
 
   const selectedField = () => options.fields.find((field) => field.name === target?.value);
@@ -217,14 +456,15 @@ function initWorkspace(root) {
     stamp.hidden = !viewport || !location || location.page + 1 !== renderedPage;
     stamp.classList.toggle("is-fixed", Boolean(fixedField));
     stamp.tabIndex = fixedField ? -1 : 0;
+    if (jumpStamp) jumpStamp.hidden = !location;
     if (!stamp.hidden) {
       const [left, top, width, height] = pixelRect(location);
       Object.assign(stamp.style, {left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`});
       stampLabel.textContent = certificate.selectedOptions[0]?.dataset.holder || "Assinatura digital";
     }
     if (placement) placement.hidden = Boolean(fixedField);
-    if (placementHint) placementHint.hidden = !visible.checked;
-    if (placeOnPage) placeOnPage.hidden = !visible.checked || !chosenLocation || chosenLocation.page + 1 === renderedPage;
+    if (placementHint) placementHint.hidden = !visible?.checked;
+    if (placeOnPage) placeOnPage.hidden = !visible?.checked || !chosenLocation || chosenLocation.page + 1 === renderedPage;
     syncAuthorization();
   }
 
@@ -237,9 +477,10 @@ function initWorkspace(root) {
       if (version !== drawVersion) return;
       const raw = page.getViewport({scale: 1});
       const padding = parseFloat(getComputedStyle(view).paddingLeft) * 2;
-      const fitted = Math.min((view.clientWidth - padding) / raw.width, 1.32);
+      const availableWidth = Math.max(220, view.clientWidth - padding);
+      const fitted = Math.min(availableWidth / raw.width, 1.32);
       const scale = Math.min(fitted * zoom, 2000 / Math.max(raw.width, raw.height));
-      const nextViewport = page.getViewport({scale: Math.max(.02, scale)});
+      const nextViewport = page.getViewport({scale: Math.max(0.02, scale)});
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.round(nextViewport.width * ratio);
       canvas.height = Math.round(nextViewport.height * ratio);
@@ -295,7 +536,7 @@ function initWorkspace(root) {
       await page.render({canvas: thumb, viewport: tiny}).promise;
       button.prepend(thumb);
     } catch {
-      // The page number remains available when a thumbnail cannot be drawn.
+      // Page number remains visible.
     }
   }
 
@@ -336,13 +577,11 @@ function initWorkspace(root) {
     }
   }
 
-  window.addEventListener("resize", () => {
-    if (pdf) render();
-  });
+  window.addEventListener("resize", () => { if (pdf) render(); });
   previous.addEventListener("click", () => changePage(pageNumber - 1));
   next.addEventListener("click", () => changePage(pageNumber + 1));
   pageInput.addEventListener("change", () => changePage(Number(pageInput.value)));
-  thumbnailToggle.addEventListener("click", () => {
+  thumbnailToggle?.addEventListener("click", () => {
     if (!pdf) return;
     thumbnails.hidden = !thumbnails.hidden;
     thumbnailToggle.setAttribute("aria-expanded", String(!thumbnails.hidden));
@@ -351,11 +590,23 @@ function initWorkspace(root) {
   });
   for (const control of root.querySelectorAll("[data-ds-zoom]")) {
     control.addEventListener("click", () => {
-      zoom = Math.max(.65, Math.min(2.75, zoom + Number(control.dataset.dsZoom) * .2));
+      zoom = Math.max(0.65, Math.min(2.75, zoom + Number(control.dataset.dsZoom) * 0.2));
       render();
     });
   }
-  find("[data-ds-fit]").addEventListener("click", () => { zoom = 1; render(); });
+  find("[data-ds-fit]")?.addEventListener("click", () => { zoom = 1; render(); });
+
+  jumpStamp?.addEventListener("click", () => {
+    const fixedField = selectedField();
+    const loc = fixedField ? fixedField.location : chosenLocation;
+    if (!loc) return;
+    if (loc.page + 1 !== renderedPage) {
+      changePage(loc.page + 1);
+    } else {
+      stamp.scrollIntoView({behavior: "smooth", block: "center"});
+      stamp.focus();
+    }
+  });
 
   function resizeOrMove(dx, dy, start, resize) {
     let [left, top, width, height] = start;
@@ -392,6 +643,7 @@ function initWorkspace(root) {
     event.preventDefault();
     resizeOrMove(...moves[event.key], pixelRect(chosenLocation), event.shiftKey);
   });
+
   certificate.addEventListener("change", syncChange);
   visible?.addEventListener("change", () => {
     if (visible.checked && !chosenLocation) defaultLocation();
@@ -403,21 +655,24 @@ function initWorkspace(root) {
     syncChange();
   });
   consent.addEventListener("change", syncAuthorization);
+
+  // Step 1 -> Step 2 (request email authorization code)
   authorize.addEventListener("click", async () => {
     const field = selectedField();
     const appearance = field ? {field: field.name} : visible?.checked ? {visible: true, ...chosenLocation} : {visible: false};
     busy = true;
     syncAuthorization();
-    feedback(status, "Solicitando o código de autorização…");
+    feedback(status, "Enviando código de autorização para seu e-mail…");
     try {
       const data = await request(root, endpoint + "/autorizar", {
         json: {certificate_id: certificate.value, appearance, consent: consent.checked, sha256: options.sha256},
       });
       challengeId = data.challenge_id;
-      find("[data-ds-confirm-holder]").textContent = data.holder;
-      find("[data-ds-confirm-hash]").textContent = `SHA-256 ${data.sha256}`;
+      find("[data-ds-confirm-holder]").textContent = certificate.selectedOptions[0]?.dataset.holder || data.holder;
       feedback(status);
-      dialog.showModal();
+      feedback(dialogStatus);
+      confirmForm.reset();
+      setCeremonyStep(2);
       confirmForm.elements.code.focus();
     } catch (error) {
       feedback(status, error.message, true);
@@ -427,58 +682,75 @@ function initWorkspace(root) {
     }
   });
 
-  find("[data-ds-close]").addEventListener("click", () => dialog.close());
-  dialog.addEventListener("close", () => {
-    confirmForm.reset();
+  find("[data-ds-back-step1]")?.addEventListener("click", () => {
     feedback(dialogStatus);
+    setCeremonyStep(1);
   });
+
+  // Step 2 -> Sign with email OTP only (no A1 password prompt!)
   confirmForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = confirmForm.querySelector("[type=submit]");
     button.disabled = true;
-    feedback(dialogStatus, "Assinando e conferindo o PDF…");
+    feedback(dialogStatus, "Aplicando assinatura digital e validando o PDF…");
     try {
-      await request(root, endpoint + "/assinar", {
-        json: {consent: true, challenge_id: challengeId, code: confirmForm.elements.code.value,
-          password: confirmForm.elements.password.value},
+      const result = await request(root, endpoint + "/assinar", {
+        json: {consent: true, challenge_id: challengeId, code: confirmForm.elements.code.value.trim()},
       });
-      location.reload();
+      const dlLink = find("[data-ds-signed-download]");
+      if (dlLink && result.revision) {
+        dlLink.href = `${endpoint}/revisoes/${result.revision}/pdf`;
+      }
+      setCeremonyStep(3);
     } catch (error) {
       feedback(dialogStatus, error.message, true);
     } finally {
-      confirmForm.elements.password.value = "";
       button.disabled = false;
     }
   });
 
+  find("[data-ds-reload-page]")?.addEventListener("click", () => location.reload());
+
+  // Validation report & revalidation
   function drawReport(data) {
     reportInto(report, data);
-    find("[data-ds-overview]").textContent = `${data.signatures.length} ${data.signatures.length === 1 ? "assinatura" : "assinaturas"} no PDF`;
+    const count = (data.signatures || []).length;
+    find("[data-ds-overview]").textContent = `${count} ${count === 1 ? "assinatura registrada" : "assinaturas registradas"} neste PDF`;
   }
   drawReport(JSON.parse(find("[data-ds-report]").textContent));
-  const revalidate = find("[data-ds-revalidate]");
-  revalidate.addEventListener("click", async () => {
-    revalidate.disabled = true;
-    revalidate.textContent = "Verificando…";
+
+  const runRevalidate = async (button) => {
+    const origText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Verificando…";
     try {
       drawReport(await request(root, endpoint + "/validar"));
     } catch (error) {
       report.append(element("p", error.message, "ds-feedback is-error"));
     } finally {
-      revalidate.disabled = false;
-      revalidate.textContent = "Revalidar PDF";
+      button.disabled = false;
+      button.textContent = origText;
     }
-  });
+  };
+  for (const btn of root.querySelectorAll("[data-ds-revalidate], [data-ds-revalidate-secondary]")) {
+    btn.addEventListener("click", () => runRevalidate(btn));
+  }
 
+  // Share with organization colleagues
   const share = find("[data-ds-share]");
   const shareStatus = find("[data-ds-share-status]");
+  const colleaguePick = find("[data-ds-colleague-pick]");
+  colleaguePick?.addEventListener("change", () => {
+    if (colleaguePick.value && share) share.elements.email.value = colleaguePick.value;
+  });
   share?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const button = share.querySelector("button");
+    const button = share.querySelector('button[type="submit"]');
     button.disabled = true;
     try {
-      await request(root, endpoint + "/participantes", {json: {email: share.elements.email.value,
-        consent: share.elements.consent.checked}});
+      await request(root, endpoint + "/participantes", {
+        json: {email: share.elements.email.value, consent: share.elements.consent.checked},
+      });
       location.reload();
     } catch (error) {
       feedback(shareStatus, error.message, true);
@@ -505,93 +777,163 @@ function initWorkspace(root) {
 }
 
 function initCertificates(root) {
-  const form = root.querySelector("[data-ds-register]");
-  if (!form) return;
-  const status = root.querySelector("[data-ds-status]");
-  const dialog = root.querySelector("[data-ds-purpose-dialog]");
-  const purposeForm = root.querySelector("[data-ds-purpose-form]");
-  const purposeStatus = root.querySelector("[data-ds-purpose-status]");
-  let selection;
+  const currentUserId = root.dataset.currentUserId || "";
+  const regDialog = root.querySelector("[data-ds-register-dialog]");
+  const regForm = root.querySelector("[data-ds-register]");
+  const regStatus = root.querySelector("[data-ds-status]");
+  const regHolder = root.querySelector("[data-ds-reg-holder]");
+  const regEnableWrap = root.querySelector("[data-ds-reg-enable-wrap]");
+  const regEnable = root.querySelector("[data-ds-reg-enable]");
+  const regCpfWrap = root.querySelector("[data-ds-reg-cpf-wrap]");
+  const regCpf = root.querySelector("[data-ds-reg-cpf]");
 
-  for (const binding of root.querySelectorAll("form[data-ds-binding]")) {
-    binding.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const userId = binding.elements.holder.value;
-      const message = binding.querySelector("[data-ds-binding-status]");
-      const button = binding.querySelector("button");
-      const previousHolder = binding.dataset.currentHolder;
-      if (previousHolder && previousHolder !== userId &&
-          !window.confirm("Trocar o responsável encerra as autorizações da Central para este certificado. Confirmar a troca?")) return;
-      button.disabled = true;
-      feedback(message, "Vinculando responsável…");
-      try {
-        await request(root, `/certificados-digitais/${binding.dataset.dsBinding}/vinculo`, {json: {user_id: Number(userId)}});
-        binding.dataset.currentHolder = userId;
-        feedback(message, "Responsável vinculado.");
-        location.reload();
-      } catch (error) {
-        feedback(message, error.message, true);
-      } finally {
-        button.disabled = false;
-      }
-    });
+  // Generic close buttons on all dialogs
+  for (const closeBtn of root.querySelectorAll("[data-ds-close-dialog]")) {
+    closeBtn.addEventListener("click", () => closeBtn.closest("dialog")?.close());
   }
 
-  form.addEventListener("submit", async (event) => {
+  // Register A1 dialog
+  function syncRegFields() {
+    if (!regHolder || !regEnableWrap || !regEnable || !regCpfWrap || !regCpf) return;
+    const isSelf = regHolder.value === currentUserId;
+    regEnableWrap.hidden = !isSelf;
+    if (!isSelf) regEnable.checked = false;
+    const needCpf = isSelf && regEnable.checked;
+    regCpfWrap.hidden = !needCpf;
+    regCpf.required = needCpf;
+    regCpf.disabled = !needCpf;
+  }
+
+  for (const btn of root.querySelectorAll("[data-ds-open-register]")) {
+    btn.addEventListener("click", () => {
+      regForm?.reset();
+      feedback(regStatus);
+      syncRegFields();
+      regDialog?.showModal();
+    });
+  }
+  regHolder?.addEventListener("change", syncRegFields);
+  regEnable?.addEventListener("change", syncRegFields);
+
+  regForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const file = form.elements.file.files[0];
+    const file = regForm.elements.file.files?.[0];
     if (!file || file.size > 200_000) {
-      feedback(status, "Selecione um certificado A1 de até 200 KB.", true);
+      feedback(regStatus, "Selecione um certificado A1 (.pfx ou .p12) de até 200 KB.", true);
       return;
     }
-    const button = form.querySelector("button");
+    const button = regForm.querySelector('button[type="submit"]');
     button.disabled = true;
-    feedback(status, "Cadastrando o certificado no cofre…");
+    feedback(regStatus, "Validando e salvando certificado no cofre…");
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       let binary = "";
       for (const byte of bytes) binary += String.fromCharCode(byte);
-      await request(root, "/certificados-digitais", {json: {file: btoa(binary), password: form.elements.password.value}});
+      const payload = {
+        file: btoa(binary),
+        password: regForm.elements.password.value,
+      };
+      if (regHolder?.value) payload.holder_user_id = Number(regHolder.value);
+      if (regEnable?.checked && !regEnableWrap.hidden) {
+        payload.enable_documents = true;
+        payload.cpf = regCpf.value.trim();
+      }
+      await request(root, "/certificados-digitais", {json: payload});
       location.reload();
     } catch (error) {
-      feedback(status, error.message, true);
+      feedback(regStatus, error.message, true);
     } finally {
-      form.elements.password.value = "";
+      regForm.elements.password.value = "";
       button.disabled = false;
     }
   });
+
+  // Change / bind responsible modal
+  const bindDialog = root.querySelector("[data-ds-binding-dialog]");
+  const bindForm = root.querySelector("[data-ds-binding-form]");
+  const bindSelect = root.querySelector("[data-ds-binding-select]");
+  const bindSub = root.querySelector("[data-ds-binding-sub]");
+  const bindStatus = root.querySelector("[data-ds-binding-status]");
+  let activeBindCertId = null;
+  let activeBindPrevious = "";
+
+  for (const btn of root.querySelectorAll("[data-ds-open-binding]")) {
+    btn.addEventListener("click", () => {
+      activeBindCertId = btn.dataset.dsOpenBinding;
+      activeBindPrevious = btn.dataset.currentHolder || "";
+      if (bindSub) bindSub.textContent = `${btn.dataset.certName || ""} · ${btn.dataset.certSub || ""}`;
+      if (bindSelect) bindSelect.value = activeBindPrevious;
+      feedback(bindStatus);
+      bindDialog?.showModal();
+    });
+  }
+
+  bindForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!activeBindCertId) return;
+    const userId = bindSelect.value;
+    if (!userId) return;
+    if (activeBindPrevious && activeBindPrevious !== userId &&
+        !window.confirm("Trocar o responsável encerra as autorizações anteriores deste certificado. Confirmar a troca?")) {
+      return;
+    }
+    const button = bindForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    feedback(bindStatus, "Vinculando responsável…");
+    try {
+      await request(root, `/certificados-digitais/${activeBindCertId}/vinculo`, {json: {user_id: Number(userId)}});
+      location.reload();
+    } catch (error) {
+      feedback(bindStatus, error.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  // Authorize / Revoke purpose modal
+  const purposeDialog = root.querySelector("[data-ds-purpose-dialog]");
+  const purposeForm = root.querySelector("[data-ds-purpose-form]");
+  const purposeStatus = root.querySelector("[data-ds-purpose-status]");
+  let selection = null;
 
   for (const control of root.querySelectorAll("[data-ds-purpose]")) {
     control.addEventListener("click", () => {
       selection = control.dataset;
       const enable = selection.enable === "yes";
-      const purpose = selection.dsPurpose === "fiscal" ? "emissão fiscal" : "assinatura de documentos";
+      const purpose = selection.dsPurpose === "fiscal" ? "emissão de Nota Fiscal" : "assinatura de documentos";
       const environment = selection.dsPurpose === "fiscal" ? ` em ${selection.env === "producao" ? "produção" : "homologação"}` : "";
-      dialog.querySelector("[data-ds-purpose-title]").textContent = enable ? "Autorizar finalidade" : "Revogar finalidade";
-      dialog.querySelector("[data-ds-purpose-holder]").textContent = selection.holder;
-      dialog.querySelector("[data-ds-purpose-password]").hidden = !enable;
+      purposeDialog.querySelector("[data-ds-purpose-title]").textContent = enable ? `Liberar ${purpose}` : `Desativar ${purpose}`;
+      purposeDialog.querySelector("[data-ds-purpose-holder]").textContent = selection.holder;
+      purposeDialog.querySelector("[data-ds-purpose-password]").hidden = !enable;
       purposeForm.elements.password.required = enable;
       const confirmCpf = enable && selection.cpf === "yes";
-      dialog.querySelector("[data-ds-purpose-cpf]").hidden = !confirmCpf;
+      purposeDialog.querySelector("[data-ds-purpose-cpf]").hidden = !confirmCpf;
       purposeForm.elements.cpf.disabled = !confirmCpf;
       purposeForm.elements.cpf.required = confirmCpf;
-      dialog.querySelector("[data-ds-purpose-consent]").textContent = enable
+      purposeDialog.querySelector("[data-ds-purpose-consent]").textContent = enable
         ? `Autorizo expressamente o uso deste certificado para ${purpose}${environment}.`
-        : `Confirmo a revogação do uso para ${purpose}.`;
-      dialog.querySelector("[data-ds-purpose-submit]").textContent = enable ? "Autorizar uso" : "Revogar uso";
-      dialog.showModal();
+        : `Confirmo a desativação do uso para ${purpose}.`;
+      purposeDialog.querySelector("[data-ds-purpose-submit]").textContent = enable ? "Liberar uso" : "Desativar uso";
+      feedback(purposeStatus);
+      purposeDialog.showModal();
     });
   }
-  dialog.querySelector("[data-ds-close]").addEventListener("click", () => dialog.close());
-  dialog.addEventListener("close", () => { purposeForm.reset(); feedback(purposeStatus); });
-  purposeForm.addEventListener("submit", async (event) => {
+  purposeDialog?.addEventListener("close", () => { purposeForm.reset(); feedback(purposeStatus); });
+  purposeForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const button = purposeForm.querySelector("[type=submit]");
+    if (!selection) return;
+    const button = purposeForm.querySelector('button[type="submit"]');
     button.disabled = true;
     try {
       await request(root, `/certificados-digitais/${selection.cert}/finalidades`, {
-        json: {purpose: selection.dsPurpose, enable: selection.enable === "yes", environment: selection.env,
-          password: purposeForm.elements.password.value, cpf: purposeForm.elements.cpf.value, consent: purposeForm.elements.consent.checked},
+        json: {
+          purpose: selection.dsPurpose,
+          enable: selection.enable === "yes",
+          environment: selection.env,
+          password: purposeForm.elements.password.value,
+          cpf: purposeForm.elements.cpf.value,
+          consent: purposeForm.elements.consent.checked,
+        },
       });
       location.reload();
     } catch (error) {
@@ -602,8 +944,41 @@ function initCertificates(root) {
       button.disabled = false;
     }
   });
+
+  // Delete certificate modal
+  const delDialog = root.querySelector("[data-ds-delete-cert-dialog]");
+  const delForm = root.querySelector("[data-ds-delete-cert-form]");
+  const delSub = root.querySelector("[data-ds-delete-cert-sub]");
+  const delFiscalWarn = root.querySelector("[data-ds-delete-fiscal-warn]");
+  const delStatus = root.querySelector("[data-ds-delete-cert-status]");
+  let deleteCertId = null;
+
+  for (const btn of root.querySelectorAll("[data-ds-open-delete-cert]")) {
+    btn.addEventListener("click", () => {
+      deleteCertId = btn.dataset.dsOpenDeleteCert;
+      if (delSub) delSub.textContent = `${btn.dataset.certName || ""} · ${btn.dataset.certSub || ""}`;
+      if (delFiscalWarn) delFiscalWarn.hidden = btn.dataset.fiscalActive !== "yes";
+      feedback(delStatus);
+      delDialog?.showModal();
+    });
+  }
+  delForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!deleteCertId) return;
+    const button = delForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    feedback(delStatus, "Removendo certificado do cofre…");
+    try {
+      await request(root, `/certificados-digitais/${deleteCertId}`, {method: "DELETE"});
+      location.reload();
+    } catch (error) {
+      feedback(delStatus, error.message, true);
+      button.disabled = false;
+    }
+  });
 }
 
+initActionMenus();
 const home = document.querySelector("[data-ds-home]");
 const workspace = document.querySelector("[data-ds-workspace]");
 const center = document.querySelector("[data-ds-certificates]");

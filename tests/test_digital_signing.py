@@ -435,3 +435,107 @@ def test_release_requires_three_approved_artifacts(monkeypatch, tmp_path):
     settings.is_production = False
     assert policy.signing_mode(1) == "pilot"
     assert policy.signing_mode(2) == "blocked"
+
+
+def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_documents(authority, web_db, monkeypatch):
+    make, _ = authority
+    sessions, _ = web_db
+    emails = []
+    monkeypatch.setattr(workflow, "send_plain_email", lambda *args: emails.append(args))
+    web = FastAPI()
+    web.add_middleware(SessionMiddleware, secret_key="secret-for-tests-2")
+    web.include_router(router)
+    web.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+    def db_dependency():
+        with sessions() as db:
+            yield db
+
+    def user_dependency(request: Request):
+        with sessions() as db:
+            return db.get(User, request.session["user_id"])
+
+    @web.get("/test-login")
+    def login(request: Request, user_id: int, farm_id: int = 1):
+        request.session.clear()
+        request.session["user_id"] = user_id
+        request.session["active_farm_id"] = farm_id
+        request.session["user_email"] = f"conta{user_id}@example.test"
+        return {"csrf": ensure_csrf_token(request)}
+
+    web.dependency_overrides[get_db] = db_dependency
+    web.dependency_overrides[get_current_user_web] = user_dependency
+
+    client = LocalTestClient(web)
+    headers = {"X-CSRF-Token": client.get("/test-login", params={"user_id": 1, "farm_id": 1}).json()["csrf"]}
+
+    # 1) Register A1 certificate with responsible binding + immediate documents activation in one step
+    pfx_b64 = base64.b64encode(make(55, "João Produtor:12345678901").pfx).decode()
+    reg = client.post("/certificados-digitais", headers=headers, json={
+        "file": pfx_b64, "password": PASSWORD, "holder_user_id": 1, "enable_documents": True, "cpf": CPF,
+    })
+    assert reg.status_code == 201, reg.text
+    cert_id = reg.json()["id"]
+
+    # Certificates page hides technical SHA-256 and shows friendly name + (...) menu
+    cert_html = client.get("/certificados-digitais").text
+    assert "João Produtor" in cert_html
+    assert "e-CPF A1" in cert_html
+    assert "Impressão digital SHA-256" not in cert_html
+    assert "data-ds-open-delete-cert" in cert_html
+
+    # 2) Import document with custom title & category
+    original = _original()
+    created = client.post("/assinatura-digital/documentos", content=original, headers={
+        **headers,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "contrato_cafe.pdf",
+        "X-Document-Title": "Contrato%20Venda%202026",
+        "X-Document-Category": "Venda%20de%20caf%C3%A9",
+    })
+    assert created.status_code == 201, created.text
+    endpoint = created.json()["url"]
+
+    # Home page renders clean count, title, and (...) menu
+    home_html = client.get("/assinatura-digital").text
+    assert "Contrato Venda 2026" in home_html
+    assert "data-nx-more-btn" in home_html
+
+    # Workspace page does NOT ask for A1 password during signing
+    ws_html = client.get(endpoint).text
+    assert "Senha do certificado A1" not in ws_html
+
+    # 3) Authorize and sign using ONLY the email code (no password field!)
+    issue = client.post(endpoint + "/autorizar", headers=headers, json={
+        "consent": True, "certificate_id": cert_id, "appearance": {"visible": False}, "sha256": sha256(original).hexdigest(),
+    })
+    assert issue.status_code == 201, issue.text
+    code = re.search(r"Código de autorização: (\d{8})", emails[-1][2]).group(1)
+    signed = client.post(endpoint + "/assinar", headers=headers, json={
+        "consent": True, "challenge_id": issue.json()["challenge_id"], "code": code,
+    })
+    assert signed.status_code == 200, signed.text
+    assert signed.json()["validation"]["state"] == "valid"
+
+    # Signed document cannot be deleted
+    assert client.delete(endpoint, headers=headers).status_code == 409
+
+    # 4) Delete certificate and verify signed PDF remains valid and downloadable
+    removed = client.delete(f"/certificados-digitais/{cert_id}", headers=headers)
+    assert removed.status_code == 200, removed.text
+    signed_pdf = client.get(endpoint + "/revisoes/2/pdf").content
+    validation = client.post("/assinatura-digital/validar", content=signed_pdf, headers={
+        **headers, "Content-Type": "application/pdf",
+    })
+    assert validation.status_code == 200
+    assert validation.json()["state"] == "valid"
+
+    # 5) Unsigned document can be deleted by owner
+    draft = client.post("/assinatura-digital/documentos", content=original, headers={
+        **headers, "Content-Type": "application/pdf", "X-Document-Name": "rascunho.pdf",
+    })
+    assert draft.status_code == 201
+    draft_url = draft.json()["url"]
+    assert client.delete(draft_url, headers=headers).status_code == 200
+    assert client.get(draft_url).status_code == 404
+

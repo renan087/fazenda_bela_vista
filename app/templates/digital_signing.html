@@ -1,60 +1,379 @@
 {% extends "base.html" %}
-{% from "partials/digital_signing_ui.html" import icon, status, dropzone %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=1">{% endblock %}
+{% from "partials/digital_signing_ui.html" import icon, doc_chip, module_tabs, dropzone %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=4">{% endblock %}
 {% block content %}
-<main class="sf-page ds-page" data-ds-home data-csrf="{{ csrf_token }}">
-  <header class="ds-hero">
+{% set c = doc_counts %}
+<main class="sf-page pd-page ds-page" data-ds-home data-csrf="{{ csrf_token }}" data-active-tab="{{ active_tab }}">
+  <header class="pd-head ds-head">
     <div>
-      {% if farm %}<div class="ds-context">{{ farm.name }}</div>{% endif %}
-      <h1>Assinatura de documentos</h1>
-      <p>Assine PDFs com certificados ICP-Brasil ou confira a validade de um documento recebido.</p>
+      <h1 class="sf-page-title">Documentos</h1>
+      <p class="sf-page-subtitle ds-hide-mobile">Contratos, recibos e termos{% if farm %} da {{ farm.name }}{% endif %} — assine com certificado A1 e acompanhe tudo em um só lugar.</p>
     </div>
-    <a class="sf-btn sf-btn-secondary ds-hero-action" href="/certificados-digitais">{{ icon('key', 18) }} Central de Certificados</a>
+    <div class="pd-head-actions ds-head-actions">
+      <a class="sf-btn sf-btn-secondary ds-hide-mobile" href="/assinatura-digital?aba=validar" data-ds-tab-validate>{{ icon('shield', 16) }} Validar PDF</a>
+      {% if farm and can_write_page %}
+      <button type="button" class="sf-btn sf-btn-primary" data-ds-open-new>
+        {{ icon('plus', 16) }} <span class="ds-hide-mobile">Novo documento</span><span class="ds-only-mobile">Novo</span>
+      </button>
+      {% endif %}
+    </div>
   </header>
 
-  <div class="ds-home-grid">
-    <section class="ds-card ds-action-card" aria-labelledby="ds-new-title">
-      <header class="ds-card-heading"><span class="ds-tile">{{ icon('pen', 19) }}</span><div><h2 id="ds-new-title">Preparar assinatura</h2><p>Use um PDF novo ou acrescente assinaturas a um arquivo já assinado.</p></div></header>
-      {% if farm %}
-        {{ dropzone('import', 'ds-import-file', 'Arraste o PDF para cá', 'Abra o arquivo para revisar as páginas e configurar a assinatura.', 'Escolher PDF') }}
-      {% else %}
-        <div class="ds-note">Selecione uma fazenda no topo para importar e guardar documentos.</div>
-      {% endif %}
-      {% if mode == 'blocked' %}<p class="ds-note ds-note--small">{{ icon('clock', 17) }} A assinatura aguarda homologação no VALIDAR do ITI.</p>{% endif %}
-    </section>
-    <section class="ds-card ds-action-card" aria-labelledby="ds-validate-title">
-      <header class="ds-card-heading"><span class="ds-tile ds-tile--blue">{{ icon('shield', 19) }}</span><div><h2 id="ds-validate-title">Validar assinaturas</h2><p>Confira a integridade do PDF e a situação dos certificados.</p></div></header>
-      {{ dropzone('validate', 'ds-validate-file', 'Arraste um PDF assinado', 'A validação é feita no SiSFarm e não exige certificado próprio.', 'Validar PDF') }}
-      <p class="ds-hint ds-note--small">O PDF externo é descartado após a análise.</p>
-    </section>
-  </div>
-  <p class="ds-feedback" data-ds-status role="status" aria-live="polite" hidden></p>
-  <section class="ds-card ds-result" data-ds-result tabindex="-1" aria-label="Resultado da validação" hidden></section>
+  {{ module_tabs(active_tab, c.your_turn, cert_count) }}
 
-  <section class="ds-card ds-history" aria-labelledby="ds-history-title">
-    <header class="ds-history-header">
-      <div><h2 id="ds-history-title">Histórico de documentos</h2><p>Seus arquivos e os que foram compartilhados com você nesta fazenda.</p></div>
-      {% if history %}<label class="ds-search">{{ icon('search', 18) }}<input type="search" placeholder="Buscar documento" aria-label="Buscar documento" data-ds-search></label>{% endif %}
-    </header>
-    {% if history %}
-    <ul class="ds-list">
-      {% for doc in history %}
-      <li data-ds-list-row>
-        <a href="/assinatura-digital/documentos/{{ doc.id }}">
-          <span class="ds-file-icon">{{ icon('file', 20) }}</span>
-          <span class="ds-row-name"><strong>{{ doc.filename }}</strong><small>{{ doc.updated_at|datetime_sp }}{% if doc.owner_id != user.id %} · Compartilhado{% endif %}</small></span>
-          <span class="ds-row-count">{{ doc.validation.signatures|length }} {{ 'assinatura' if doc.validation.signatures|length == 1 else 'assinaturas' }}</span>
-          {{ status(doc.validation.state) }}
-          <span class="ds-row-arrow">{{ icon('arrow', 18) }}</span>
-        </a>
-      </li>
-      {% endfor %}
-    </ul>
-    <p class="ds-empty" data-ds-search-empty hidden>Nenhum documento corresponde à busca.</p>
-    {% else %}
-    <div class="ds-empty">{{ icon('file', 25) }}<strong>Nenhum documento nesta fazenda</strong><p>Os PDFs importados aparecem aqui.</p></div>
-    {% endif %}
+  {% if not farm %}
+  <section class="pd-card ds-empty-card">
+    <div class="ds-empty">
+      {{ icon('file', 26) }}
+      <strong>Selecione uma fazenda no topo</strong>
+      <p>Escolha uma fazenda para importar, assinar e organizar seus documentos.</p>
+    </div>
   </section>
+  {% endif %}
+
+  {% if mode == 'blocked' %}
+  <div class="ds-banner is-warn" role="status">{{ icon('clock', 17) }}<span>A assinatura aguarda homologação no VALIDAR do ITI. Você já pode importar, organizar, compartilhar e validar PDFs.</span></div>
+  {% elif mode == 'pilot' %}
+  <div class="ds-banner is-info" role="status">{{ icon('clock', 17) }}<span>Ambiente piloto do VALIDAR. Utilize documentos de teste.</span></div>
+  {% endif %}
+
+  <!-- TAB 1: VISÃO GERAL -->
+  <div data-ds-panel="overview" {% if active_tab != 'overview' %}hidden{% endif %}>
+    {% if farm %}
+    <!-- MOBILE-ONLY: Faixa enxuta de 3 mini-KPIs + 1 banner de ação urgente -->
+    <section class="ds-mobile-kpis ds-only-mobile-grid" aria-label="Resumo rápido">
+      <button type="button" class="ds-mkpi{% if c.your_turn %} is-warn{% endif %}" data-ds-filter-trigger="your_turn">
+        <strong class="ds-tabular">{{ c.your_turn }}</strong>
+        <span>Para assinar</span>
+      </button>
+      <button type="button" class="ds-mkpi" data-ds-filter-trigger="waiting">
+        <strong class="ds-tabular">{{ c.waiting }}</strong>
+        <span>Aguardando</span>
+      </button>
+      <button type="button" class="ds-mkpi" data-ds-filter-trigger="done">
+        <strong class="ds-tabular">{{ c.done }}</strong>
+        <span>Concluídos</span>
+      </button>
+    </section>
+
+    {% if next_to_sign %}
+    <a class="ds-mobile-urgent ds-only-mobile-flex" href="/assinatura-digital/documentos/{{ next_to_sign.id }}">
+      <span class="ds-urgent-ic">{{ icon('pen', 16) }}</span>
+      <span class="ds-urgent-txt">
+        <strong>{{ next_to_sign.title }}</strong>
+        <small>Sua vez de assinar</small>
+      </span>
+      <span class="ds-urgent-cta">Assinar →</span>
+    </a>
+    {% endif %}
+
+    <!-- DESKTOP: 3 Cartões de Jornada (padrão produção pv-journey) -->
+    <section class="ds-kpi-grid ds-hide-mobile" aria-label="Resumo de assinaturas">
+      <article class="pd-card ds-kpi{% if c.your_turn %} is-warn-border{% endif %}">
+        <div class="ds-kpi-head">
+          <span class="ds-kpi-num is-warn">1</span>
+          <h2>Para você assinar</h2>
+          <span class="ds-pill ds-pill--{{ 'warn' if c.your_turn else 'done' }}">{{ 'Ação necessária' if c.your_turn else 'Tudo em dia' }}</span>
+        </div>
+        <div>
+          <p class="ds-kpi-big ds-tabular">{{ c.your_turn }} <small>{{ 'documento' if c.your_turn == 1 else 'documentos' }}</small></p>
+          <p class="ds-kpi-sub">{% if next_to_sign %}Próximo: {{ next_to_sign.title }}{% else %}Nenhum documento pendente com você agora.{% endif %}</p>
+        </div>
+        {% if next_to_sign %}
+        <a class="ds-kpi-link" href="/assinatura-digital/documentos/{{ next_to_sign.id }}">Assinar próximo agora →</a>
+        {% elif can_write_page %}
+        <button type="button" class="ds-kpi-link" data-ds-open-new>Enviar novo documento →</button>
+        {% endif %}
+      </article>
+
+      <article class="pd-card ds-kpi">
+        <div class="ds-kpi-head">
+          <span class="ds-kpi-num is-info">2</span>
+          <h2>Aguardando outros</h2>
+          <span class="ds-kpi-aside">Compartilhados</span>
+        </div>
+        <div>
+          <p class="ds-kpi-big ds-tabular">{{ c.waiting }} <small>em andamento</small></p>
+          <p class="ds-kpi-sub">Documentos em que você já assinou e aguarda os demais participantes.</p>
+        </div>
+        <button type="button" class="ds-kpi-link" data-ds-filter-trigger="waiting">Acompanhar pendentes →</button>
+      </article>
+
+      <article class="pd-card ds-kpi">
+        <div class="ds-kpi-head">
+          <span class="ds-kpi-num is-done">3</span>
+          <h2>Concluídos e válidos</h2>
+          <span class="ds-pill ds-pill--brand">Cofre ativo</span>
+        </div>
+        <div>
+          <p class="ds-kpi-big ds-tabular">{{ c.done }} <small>assinados</small></p>
+          <p class="ds-kpi-sub">Arquivados com integridade protegida e validade ICP-Brasil.</p>
+        </div>
+        <button type="button" class="ds-kpi-link" data-ds-filter-trigger="done">Ver concluídos →</button>
+      </article>
+    </section>
+
+    <!-- DESKTOP: Barra de Andamento + Precisa de atenção (oculto no mobile para evitar rolagem longa) -->
+    <section class="ds-overview-row ds-hide-mobile">
+      {% set total = c.total or 1 %}
+      {% set done_pct = (c.done / total * 100)|round(1) %}
+      {% set active_pct = ((c.your_turn + c.waiting) / total * 100)|round(1) %}
+      <article class="pd-card ds-progress-card">
+        <div class="ds-progress-head">
+          <h2>Andamento dos documentos da fazenda</h2>
+          <span class="ds-tabular">{{ c.total }} {{ 'documento' if c.total == 1 else 'documentos' }}</span>
+        </div>
+        <div class="ds-bar" role="img" aria-label="{{ c.done }} concluídos e {{ c.your_turn + c.waiting }} em andamento">
+          <i class="is-done" style="width: {{ done_pct }}%"></i><i class="is-progress" style="width: {{ active_pct }}%"></i>
+        </div>
+        <div class="ds-bar-legend">
+          <div><i class="is-done"></i><p><strong class="ds-tabular">{{ c.done }}</strong><span>Concluídos</span></p></div>
+          <div><i class="is-progress"></i><p><strong class="ds-tabular">{{ c.your_turn + c.waiting }}</strong><span>Em processo</span></p></div>
+          <div><i class="is-alert"></i><p><strong class="ds-tabular">{{ c.attention }}</strong><span>Com alerta</span></p></div>
+        </div>
+        <div class="ds-progress-foot">
+          <span>Recebeu um PDF assinado de fora?</span>
+          <a href="/assinatura-digital?aba=validar" data-ds-tab-validate>{{ icon('shield', 15) }} Validar autenticidade agora →</a>
+        </div>
+      </article>
+
+      <aside class="pd-card ds-attention-card">
+        <h2>Precisa de atenção</h2>
+        <div class="ds-att-list">
+          {% if next_to_sign %}
+          <a class="ds-att is-warn" href="/assinatura-digital/documentos/{{ next_to_sign.id }}">
+            {{ icon('pen', 16) }}
+            <span><strong>{{ next_to_sign.title }}</strong><small>Aguardando sua assinatura</small></span>
+          </a>
+          {% endif %}
+          {% for cert in expiring_certs[:2] %}
+          <a class="ds-att is-neutral" href="/certificados-digitais">
+            {{ icon('key', 16) }}
+            <span><strong>{{ cert.display_name }} ({{ cert.cert_type }})</strong><small>Vence em {{ cert.days_left }} {{ 'dia' if cert.days_left == 1 else 'dias' }} · {{ cert.cert.valid_until.strftime('%d/%m/%Y') }}</small></span>
+          </a>
+          {% endfor %}
+          {% if not next_to_sign and not expiring_certs %}
+          <p class="ds-calm">Tudo em dia por aqui. Nenhum documento ou certificado pendente de ação.</p>
+          {% endif %}
+        </div>
+      </aside>
+    </section>
+
+    <!-- LISTA DE DOCUMENTOS (Desktop + Mobile enxuto de 2 linhas com menu ...) -->
+    <section class="pd-card ds-list-card" aria-labelledby="ds-docs-title">
+      <div class="ds-list-head">
+        <div class="ds-list-top">
+          <h2 id="ds-docs-title">Documentos <span class="ds-count-muted ds-tabular" data-ds-visible-count>({{ history|length }})</span></h2>
+          <div class="ds-list-tools">
+            {% if history %}
+            <select class="ds-select-compact ds-hide-mobile" data-ds-category-filter aria-label="Filtrar por categoria">
+              <option value="todas">Todas as categorias</option>
+              {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+            </select>
+            <label class="ds-search-box">
+              {{ icon('search', 16) }}
+              <span class="sr-only">Buscar documento</span>
+              <input type="search" placeholder="Buscar contrato ou arquivo..." data-ds-search>
+            </label>
+            {% endif %}
+          </div>
+        </div>
+        {% if history %}
+        <div class="ds-chips-row" role="group" aria-label="Filtrar por situação">
+          <button type="button" class="sl-chip" data-ds-filter="todos" aria-pressed="true">Todos <span>{{ c.total }}</span></button>
+          <button type="button" class="sl-chip" data-ds-filter="your_turn" aria-pressed="false">Para assinar <span>{{ c.your_turn }}</span></button>
+          <button type="button" class="sl-chip" data-ds-filter="waiting" aria-pressed="false">Aguardando <span>{{ c.waiting }}</span></button>
+          <button type="button" class="sl-chip" data-ds-filter="done" aria-pressed="false">Concluídos <span>{{ c.done }}</span></button>
+        </div>
+        {% endif %}
+      </div>
+
+      <p class="ds-feedback ds-feedback-inline" data-ds-list-status role="status" aria-live="polite" hidden></p>
+
+      {% if history %}
+      <div class="ds-table-head ds-hide-mobile" aria-hidden="true">
+        <span>Documento</span>
+        <span>Assinaturas</span>
+        <span>Situação</span>
+        <span>Atualização</span>
+        <span></span>
+      </div>
+      <ul class="ds-doc-list" data-ds-doc-list>
+        {% for item in history %}
+        <li class="ds-doc-row" data-ds-list-row data-status="{{ item.status_key }}" data-category="{{ item.category }}" data-search-text="{{ (item.title ~ ' ' ~ item.filename ~ ' ' ~ item.category)|lower }}">
+          <div class="ds-doc-primary">
+            <a class="ds-doc-link" href="/assinatura-digital/documentos/{{ item.id }}">
+              <span class="ds-doc-ic ds-doc-ic--{{ item.status_tone }} ds-hide-mobile">{{ icon('file', 18) }}</span>
+              <span class="ds-doc-title-wrap">
+                <strong>{{ item.title }}</strong>
+                <small>{{ item.category }}{% if item.shared %} · Compartilhado{% endif %}</small>
+              </span>
+            </a>
+            <!-- Botão (...) no mobile na mesma linha do título -->
+            <div class="nx-more ds-only-mobile" data-nx-more>
+              <button type="button" class="sf-icon-btn" data-nx-more-btn aria-label="Mais ações para {{ item.title }}" aria-haspopup="menu" aria-expanded="false">{{ icon('dots', 18) }}</button>
+              <div class="nx-menu" role="menu" aria-label="Ações do documento" hidden>
+                {% if item.status_key == 'your_turn' %}
+                <a class="nx-mi is-primary" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}">{{ icon('pen', 15) }}<span>Assinar agora</span></a>
+                {% endif %}
+                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}?aba=detalhes">{{ icon('eye', 15) }}<span>Abrir detalhes e versões</span></a>
+                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}/revisoes/{{ item.doc.current_revision }}/pdf">{{ icon('download', 15) }}<span>Baixar PDF</span></a>
+                {% if item.can_delete and can_write_page %}
+                <div class="nx-sep"></div>
+                <button type="button" class="nx-mi is-danger" role="menuitem" data-ds-delete-doc="{{ item.id }}" data-ds-delete-title="{{ item.title }}">{{ icon('trash', 15) }}<span>Excluir documento</span></button>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Linha 2 compacta exclusiva do mobile -->
+          <div class="ds-doc-mobile-meta ds-only-mobile-flex">
+            <div class="ds-doc-mobile-left">
+              {{ doc_chip(item.status_tone, item.status_label) }}
+              <span class="ds-sig-mini ds-tabular">{{ item.sig_count }}/{{ item.expected_count }} <small>assin.</small></span>
+            </div>
+            <span class="ds-doc-date">{{ item.updated_at|datetime_sp }}</span>
+          </div>
+
+          <!-- Colunas desktop (somente contagem de assinaturas, sem avatares/nomes!) -->
+          <div class="ds-sig-col ds-hide-mobile">
+            <span class="ds-sig-num ds-tabular"><strong>{{ item.sig_count }} de {{ item.expected_count }}</strong> {{ 'assinou' if item.expected_count == 1 else 'assinaram' }}</span>
+            <span class="ds-mini-bar"><i class="{% if item.sig_count >= item.expected_count and item.sig_count > 0 %}is-done{% endif %}" style="width: {{ item.progress_pct }}%"></i></span>
+          </div>
+
+          <div class="ds-hide-mobile">{{ doc_chip(item.status_tone, item.status_label) }}</div>
+
+          <div class="ds-doc-date-col ds-hide-mobile">
+            <span>{{ item.updated_at|datetime_sp }}</span>
+            <small>Versão {{ item.doc.current_revision }}</small>
+          </div>
+
+          <!-- Botão (...) desktop no padrão Notas Fiscais -->
+          <div class="ds-doc-actions ds-hide-mobile">
+            <div class="nx-more" data-nx-more>
+              <button type="button" class="sf-icon-btn" data-nx-more-btn aria-label="Mais ações para {{ item.title }}" aria-haspopup="menu" aria-expanded="false">{{ icon('dots', 18) }}</button>
+              <div class="nx-menu" role="menu" aria-label="Ações do documento" hidden>
+                {% if item.status_key == 'your_turn' %}
+                <a class="nx-mi is-primary" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}">{{ icon('pen', 15) }}<span>Assinar agora</span></a>
+                {% endif %}
+                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}?aba=detalhes">{{ icon('eye', 15) }}<span>Abrir detalhes e versões</span></a>
+                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}/revisoes/{{ item.doc.current_revision }}/pdf">{{ icon('download', 15) }}<span>Baixar PDF</span></a>
+                {% if item.can_delete and can_write_page %}
+                <div class="nx-sep"></div>
+                <button type="button" class="nx-mi is-danger" role="menuitem" data-ds-delete-doc="{{ item.id }}" data-ds-delete-title="{{ item.title }}">{{ icon('trash', 15) }}<span>Excluir documento</span></button>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="ds-empty" data-ds-search-empty hidden>
+        <strong>Nenhum documento encontrado neste filtro.</strong>
+        <p>Tente limpar a busca ou trocar a situação selecionada.</p>
+        <button type="button" class="sf-btn sf-btn-secondary" data-ds-reset-filters>Limpar filtros</button>
+      </div>
+      {% else %}
+      <div class="ds-empty">
+        {{ icon('file', 28) }}
+        <strong>Nenhum documento nesta fazenda</strong>
+        <p>Envie um contrato, recibo ou termo em PDF para assinar com seu certificado A1 e guardar com segurança.</p>
+        {% if can_write_page %}
+        <button type="button" class="sf-btn sf-btn-primary" data-ds-open-new>{{ icon('plus', 16) }} Enviar primeiro documento</button>
+        {% endif %}
+      </div>
+      {% endif %}
+    </section>
+    {% endif %}
+  </div>
+
+  <!-- TAB 2: VALIDAR PDF (Aba dedicada e limpa) -->
+  <div data-ds-panel="validate" {% if active_tab != 'validate' %}hidden{% endif %}>
+    <div class="ds-validate-grid">
+      <section class="pd-card ds-panel-pad">
+        <header class="ds-card-heading">
+          <span class="ds-tile ds-tile--blue">{{ icon('shield', 19) }}</span>
+          <div>
+            <h2>Conferir autenticidade de um PDF</h2>
+            <p>Verifique se as assinaturas digitais são válidas e se o arquivo não foi alterado. Não exige certificado próprio e o arquivo não fica salvo.</p>
+          </div>
+        </header>
+        {{ dropzone('validate', 'ds-validate-file', 'Arraste um PDF assinado para cá', 'A conferência é feita na hora dentro do SiSFarm.', 'Escolher PDF para validar') }}
+        <p class="ds-feedback" data-ds-validate-status role="status" aria-live="polite" hidden></p>
+      </section>
+
+      <section class="pd-card ds-panel-pad ds-validate-result-card" aria-label="Resultado da validação">
+        <h2>Resultado da verificação</h2>
+        <div class="ds-empty ds-empty--compact" data-ds-validate-placeholder>
+          {{ icon('search', 22) }}
+          <strong>Aguardando um arquivo</strong>
+          <p>Envie um PDF ao lado para verificar se as assinaturas são autênticas.</p>
+        </div>
+        <div class="ds-result" data-ds-result tabindex="-1" hidden></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- MODAL: NOVO DOCUMENTO (Wizard enxuto de envio) -->
+  {% if farm and can_write_page %}
+  <dialog class="ds-dialog ds-dialog--wide" data-ds-new-dialog aria-labelledby="ds-new-dialog-title">
+    <form class="ds-dialog-form" data-ds-new-form>
+      <div class="ds-dialog-head">
+        <div>
+          <h2 id="ds-new-dialog-title">Novo documento</h2>
+          <p>Envie o PDF, dê um nome fácil de encontrar e siga direto para a assinatura.</p>
+        </div>
+        <button type="button" class="ds-icon-btn" data-ds-close-new aria-label="Fechar">{{ icon('close', 18) }}</button>
+      </div>
+
+      <div class="ds-dialog-body">
+        <div class="ds-drop ds-drop--compact" data-ds-new-drop>
+          <span class="ds-drop-icon">{{ icon('upload', 20) }}</span>
+          <strong data-ds-new-file-label>Arraste o PDF aqui ou clique para escolher</strong>
+          <p data-ds-new-file-sub>Aceita PDFs de até 12 MB e 120 páginas (inclusive já assinados por outra parte).</p>
+          <label class="sf-btn sf-btn-secondary ds-pick" for="ds-import-file">
+            Escolher arquivo PDF
+            <input id="ds-import-file" name="file" type="file" accept="application/pdf,.pdf" required>
+          </label>
+        </div>
+
+        <div class="ds-form-grid">
+          <label class="ds-field ds-field--full">
+            <span>Nome do documento</span>
+            <input type="text" name="title" maxlength="180" placeholder="Ex.: Contrato de Venda de Café #2026/045" data-ds-new-title>
+          </label>
+          <label class="ds-field ds-field--full">
+            <span>Categoria</span>
+            <select name="category">
+              {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+            </select>
+          </label>
+        </div>
+
+        {% if org_colleagues %}
+        <div class="ds-colleagues-box">
+          <span class="ds-field-label">Compartilhar também com colegas da fazenda? <small>(opcional)</small></span>
+          <div class="ds-colleagues-list">
+            {% for colleague in org_colleagues %}
+            <label class="ds-check-row">
+              <input type="checkbox" name="colleagues" value="{{ colleague.email }}">
+              <span><strong>{{ colleague.display_name or colleague.name }}</strong><small>{{ colleague.email }}</small></span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <p class="ds-feedback" data-ds-new-status role="status" aria-live="polite" hidden></p>
+      </div>
+
+      <div class="ds-dialog-foot">
+        <button type="button" class="sf-btn sf-btn-secondary" data-ds-close-new>Cancelar</button>
+        <button type="submit" class="sf-btn sf-btn-primary" data-ds-new-submit>Continuar para assinatura →</button>
+      </div>
+    </form>
+  </dialog>
+  {% endif %}
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=1"></script>
+<script type="module" src="/static/js/digital_signing.js?v=4"></script>
 {% endblock %}

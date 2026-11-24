@@ -37,6 +37,7 @@ class CertificatePurpose(Base):
     verification_reference: Mapped[str] = mapped_column(String(160))
     verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     generation: Mapped[str] = mapped_column(String(32))
+    secret_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
     enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
