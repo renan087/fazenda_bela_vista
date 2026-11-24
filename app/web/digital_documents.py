@@ -160,7 +160,8 @@ def _document_summaries(db, user, farm):
         owner_must_sign = bool(getattr(doc, "owner_signs", True))
         expected_list = ([doc.owner_id] if owner_must_sign else []) + participants
         expected_set = {uid for uid in expected_list if uid is not None}
-        expected_count = max(len(expected_set), sig_count, 1)
+        pending_count = len(expected_set - signed_users)
+        expected_count = max(sig_count + pending_count, len(expected_set), 1)
         signed_by_me = user.id in signed_users
         user_must_sign = (user.id in participants) or (doc.owner_id == user.id and owner_must_sign)
 
@@ -170,7 +171,7 @@ def _document_summaries(db, user, farm):
         elif not signed_by_me and user_must_sign:
             status_key, status_label, status_tone = "your_turn", "Sua vez de assinar", "warn"
             counts["your_turn"] += 1
-        elif sig_count < expected_count:
+        elif pending_count > 0:
             status_key, status_label, status_tone = "waiting", "Aguardando outros", "info"
             counts["waiting"] += 1
         else:
@@ -409,12 +410,15 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
     display_title = doc.title or (doc.filename[:-4] if doc.filename.lower().endswith(".pdf") else doc.filename)
     sig_count = len((doc.validation or {}).get("signatures") or [])
     owner_must_sign = bool(getattr(doc, "owner_signs", True))
-    expected_count = max((1 if owner_must_sign else 0) + len(all_participants), sig_count, 1)
     signed_user_ids = {rev.user_id for rev in revisions if rev.signature and rev.user_id is not None}
+    expected_sisfarm_ids = {
+        uid for uid in (([doc.owner_id] if owner_must_sign else []) + [p.id for p in all_participants]) if uid is not None
+    }
+    pending_count = len(expected_sisfarm_ids - signed_user_ids)
+    expected_count = max(sig_count + pending_count, len(expected_sisfarm_ids), 1)
     user_already_signed = user.id in signed_user_ids
     user_must_sign = (doc.owner_id == user.id and owner_must_sign) or any(p.id == user.id for p in all_participants)
-    pending_count = max(0, expected_count - sig_count)
-    all_signed = sig_count >= expected_count and sig_count > 0
+    all_signed = bool(expected_sisfarm_ids) and pending_count == 0
     show_signing_form = (not user_already_signed) and (not all_signed) and user_must_sign
     active_view = "detalhes" if request.query_params.get("aba") == "detalhes" else "assinar"
     wizard_flow = request.query_params.get("fluxo") or ""

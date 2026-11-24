@@ -637,3 +637,39 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
     assert "Aguardando assinaturas" in ws_others
     assert "data-ds-authorize" not in ws_others
 
+    # 8) Importing an already-signed external PDF still opens for the user's signature and preserves BOTH signatures
+    pfx_b64_re = base64.b64encode(make(57, "João Produtor:12345678901").pfx).decode()
+    reg_re = client.post("/certificados-digitais", headers=headers, json={
+        "file": pfx_b64_re, "password": PASSWORD, "holder_user_id": 1, "enable_documents": True, "cpf": CPF,
+    })
+    assert reg_re.status_code == 201, reg_re.text
+    re_cert_id = reg_re.json()["id"]
+
+    pre_signed_upload = client.post("/assinatura-digital/documentos", content=signed_pdf, headers={
+        **headers,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "contrato_ja_assinado.pdf",
+        "X-Document-Title": "Contrato%20Externo%20Assinado",
+    })
+    assert pre_signed_upload.status_code == 201, pre_signed_upload.text
+    pre_url = pre_signed_upload.json()["url"]
+    ws_pre = client.get(pre_url).text
+    assert "data-ds-authorize" in ws_pre
+    assert "1 de 2" in ws_pre
+    assert "Documento já assinado" not in ws_pre
+
+    issue_pre = client.post(pre_url + "/autorizar", headers=headers, json={
+        "consent": True,
+        "certificate_id": re_cert_id,
+        "appearance": {"visible": True, "page": 0, "box": [45, 160, 250, 240], "style": "full"},
+        "sha256": sha256(signed_pdf).hexdigest(),
+    })
+    assert issue_pre.status_code == 201, issue_pre.text
+    code_pre = re.search(r"Código de autorização: (\d{8})", emails[-1][2]).group(1)
+    cosigned = client.post(pre_url + "/assinar", headers=headers, json={
+        "consent": True, "challenge_id": issue_pre.json()["challenge_id"], "code": code_pre,
+    })
+    assert cosigned.status_code == 200, cosigned.text
+    assert [s["state"] for s in cosigned.json()["validation"]["signatures"]] == ["valid", "valid"]
+    assert "Documento já assinado" in client.get(pre_url).text
+
