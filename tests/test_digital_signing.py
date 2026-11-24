@@ -522,13 +522,16 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
     assert "data-nx-more-btn" in home_html
     assert "/assinatura-digital/novo" in home_html
 
-    # New document dedicated Wizard page renders 3-step bar, 3 signer cards, sticky summary and animated dropzone
+    # New document dedicated Wizard page renders segmented control, scalable search, sticky summary and animated dropzone
     wizard_html = client.get("/assinatura-digital/novo").text
     assert "data-ds-wizard" in wizard_html
     assert "Resumo" in wizard_html
-    assert "Só eu vou assinar" in wizard_html
-    assert "Eu e outras pessoas" in wizard_html
-    assert "Apenas outras pessoas" in wizard_html
+    assert "Só eu" in wizard_html
+    assert "Eu + outros" in wizard_html
+    assert "Só outras pessoas" in wizard_html
+    assert "Buscar na equipe, por nome, cargo ou email..." in wizard_html
+    assert "Selecionar da equipe" in wizard_html
+    assert "data-ds-colleagues-data" in wizard_html
     assert "data-ds-drop-btn" in wizard_html
 
     # Workspace page does NOT ask for A1 password during signing

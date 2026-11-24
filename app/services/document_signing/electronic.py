@@ -1071,6 +1071,7 @@ def issue_electronic_challenge(
     appearance: dict,
     consent: bool,
     override_email: str | None = None,
+    override_phone: str | None = None,
 ) -> dict:
     if not consent:
         raise ValueError("Confirme que leu o documento e autoriza a assinatura eletrônica.")
@@ -1094,7 +1095,7 @@ def issue_electronic_challenge(
     elif user is not None:
         dest_email = user.email
         link = db.scalar(select(WhatsAppLink).where(WhatsAppLink.user_id == user.id, WhatsAppLink.wa_id.is_not(None)))
-        dest_phone = (link.wa_id if link and link.wa_id else None) or user.phone
+        dest_phone = (override_phone or "").strip() or (link.wa_id if link and link.wa_id else None) or user.phone
     else:
         raise ValueError("Signatário inválido.")
 

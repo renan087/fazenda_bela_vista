@@ -1,21 +1,28 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=9">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=10">{% endblock %}
 {% block content %}
 <main class="sf-page pd-page ds-page ds-wizard-page" data-ds-wizard data-csrf="{{ csrf_token }}">
+  <script type="application/json" data-ds-colleagues-data>{{ (colleagues_payload or [])|tojson }}</script>
+  <script type="application/json" data-ds-self-data>{{ (self_user_payload or {})|tojson }}</script>
+
   <nav class="pd-crumbs" aria-label="Caminho">
     <a href="/assinatura-digital">Documentos</a><span aria-hidden="true">›</span>
-    <span>Novo documento</span>
+    <span data-ds-wiz-crumb>Novo documento</span>
   </nav>
 
   <header class="pd-head ds-head ds-wiz-head">
-    <div>
-      <h1 class="sf-page-title">Novo documento</h1>
+    <div class="ds-wiz-head-copy">
+      <h1 class="sf-page-title" data-ds-wiz-title-heading>Novo documento</h1>
       <p class="sf-page-subtitle ds-hide-mobile" data-ds-wiz-subtitle>Envie o PDF, escolha a modalidade e defina quem vai assinar.</p>
     </div>
     <ol class="vw-steps ds-wiz-steps" aria-label="Etapas do envio" data-ds-wiz-steps>
-      <li data-wiz-step="doc" aria-current="step"><span>1</span>Documento</li>
-      <li data-wiz-step="signers" hidden><span>2</span>Quem assina</li>
+      <li data-wiz-step="doc" aria-current="step">
+        <button type="button" class="ds-wiz-step-btn" data-ds-goto-step="1"><span>1</span>Documento</button>
+      </li>
+      <li data-wiz-step="signers" hidden>
+        <button type="button" class="ds-wiz-step-btn" data-ds-goto-step="2"><span>2</span>Quem assina</button>
+      </li>
       <li data-wiz-step="review"><span data-wiz-num>2</span>Revisar e assinar</li>
       <li data-wiz-step="confirm"><span data-wiz-num>3</span>Confirmar identidade</li>
       <li data-wiz-step="send_review" hidden><span data-wiz-num>3</span>Conferir e enviar</li>
@@ -35,10 +42,10 @@
   <form class="ds-wizard-grid" data-ds-wiz-form novalidate>
     <!-- COLUNA PRINCIPAL DO PASSO -->
     <section class="pd-card ds-wiz-main">
-      <!-- PASSO 1: DOCUMENTO + MODALIDADE + QUEM ASSINA -->
+      <!-- PASSO 1: DOCUMENTO + QUEM ASSINA + MODALIDADE RECOLHÍVEL -->
       <div class="ds-wiz-pane" data-ds-wiz-pane="1">
         <div class="ds-wiz-pane-head">
-          <h2>1. Qual documento você quer assinar?</h2>
+          <h2>1. Arquivo PDF</h2>
           <p>Envie um arquivo PDF do computador ou celular (até 12 MB e 120 páginas).</p>
         </div>
 
@@ -63,12 +70,12 @@
           <button type="button" class="sf-btn sf-btn-secondary ds-btn-sm" data-ds-wiz-clear-file>Trocar arquivo</button>
         </div>
 
-        <div class="ds-form-grid-2">
-          <label class="ds-field ds-field--span2">
-            <span>Nome do documento <small>(como aparece para quem assina)</small></span>
+        <div class="ds-form-grid-2 ds-form-grid-title">
+          <label class="ds-field">
+            <span>Nome do documento</span>
             <input type="text" name="title" maxlength="180" placeholder="Ex.: Contrato de Venda de Café #2026/052" data-ds-wiz-title>
           </label>
-          <label class="ds-field ds-field--span2">
+          <label class="ds-field">
             <span>Categoria</span>
             <select name="category" data-ds-wiz-category>
               {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
@@ -76,148 +83,166 @@
           </label>
         </div>
 
-        <!-- Modalidade de assinatura -->
-        <fieldset class="ds-who-fieldset">
-          <legend>Modalidade de assinatura aceita</legend>
-          <div class="ds-who-grid" role="radiogroup" aria-label="Modalidade de assinatura aceita">
-            <button type="button" class="ds-who-card" data-ds-policy="flexible" role="radio" aria-checked="true">
-              <span class="ds-who-dot" aria-hidden="true"></span>
+        <hr class="ds-wiz-divider">
+
+        <!-- 2. QUEM VAI ASSINAR (Controle segmentado limpo, sem tag acima) -->
+        <div class="ds-who-block">
+          <h3 class="ds-wiz-sec-title">2. Quem vai assinar?</h3>
+          <div class="ds-seg-track" role="radiogroup" aria-label="Quem vai assinar este documento">
+            <div class="ds-seg-thumb" data-ds-who-thumb aria-hidden="true"></div>
+            <button type="button" class="ds-seg-btn" data-ds-who="only_me" role="radio" aria-checked="true">Só eu</button>
+            <button type="button" class="ds-seg-btn" data-ds-who="me_and_others" role="radio" aria-checked="false">Eu + outros</button>
+            <button type="button" class="ds-seg-btn" data-ds-who="only_others" role="radio" aria-checked="false">
+              <span class="ds-hide-mobile">Só outras pessoas</span>
+              <span class="ds-only-mobile">Só outros</span>
+            </button>
+          </div>
+          <p class="ds-who-hint" data-ds-who-hint>
+            <span class="ds-who-hint-dot" aria-hidden="true"></span>
+            <span data-ds-who-hint-text>Você revisa o PDF e assina agora mesmo na próxima tela.</span>
+          </p>
+        </div>
+
+        <!-- 3. MODALIDADE ACEITA (Barra recolhível no desktop / Bottom Sheet no mobile) -->
+        <div class="ds-policy-block">
+          <div class="ds-policy-bar">
+            <div class="ds-policy-bar-main">
+              <span class="ds-policy-ic" aria-hidden="true">{{ icon('shield', 18) }}</span>
+              <div class="ds-policy-copy">
+                <div class="ds-policy-line">
+                  <span class="ds-policy-kicker">Modalidade aceita:</span>
+                  <strong data-ds-policy-label>Livre escolha</strong>
+                  <span class="ds-policy-badge" data-ds-policy-badge>Padrão recomendado</span>
+                </div>
+                <p class="ds-policy-desc" data-ds-policy-desc>Cada pessoa escolhe entre Eletrônica SiSFarm ou ICP-Brasil A1.</p>
+              </div>
+            </div>
+            <button type="button" class="sf-btn sf-btn-secondary ds-btn-sm ds-policy-alter-btn" data-ds-policy-toggle aria-expanded="false">
+              <span data-ds-policy-toggle-txt>Alterar</span>
+            </button>
+          </div>
+
+          <div class="ds-policy-drawer" data-ds-policy-drawer role="radiogroup" aria-label="Modalidade de assinatura aceita" hidden>
+            <button type="button" class="ds-policy-option" data-ds-policy="flexible" role="radio" aria-checked="true">
+              <span class="ds-radio-dot" aria-hidden="true"></span>
               <span>
                 <strong>Livre escolha <span class="ds-tag-rec">Recomendado</span></strong>
                 <small>Cada pessoa escolhe entre Eletrônica SiSFarm (sem certificado) ou ICP-Brasil A1.</small>
               </span>
             </button>
-            <button type="button" class="ds-who-card" data-ds-policy="electronic" role="radio" aria-checked="false">
-              <span class="ds-who-dot" aria-hidden="true"></span>
+            <button type="button" class="ds-policy-option" data-ds-policy="electronic" role="radio" aria-checked="false">
+              <span class="ds-radio-dot" aria-hidden="true"></span>
               <span>
-                <strong>Eletrônica SiSFarm</strong>
-                <small>Sem certificado digital, com código por WhatsApp/e-mail, QR Code e Manifesto.</small>
+                <strong>Somente Eletrônica SiSFarm</strong>
+                <small>Sem certificado digital · código por WhatsApp/e-mail, QR Code e Manifesto.</small>
               </span>
             </button>
-            <button type="button" class="ds-who-card" data-ds-policy="icp_brasil" role="radio" aria-checked="false">
-              <span class="ds-who-dot" aria-hidden="true"></span>
+            <button type="button" class="ds-policy-option" data-ds-policy="icp_brasil" role="radio" aria-checked="false">
+              <span class="ds-radio-dot" aria-hidden="true"></span>
               <span>
                 <strong>Somente ICP-Brasil A1</strong>
-                <small>Exige certificado digital A1 (assinatura qualificada) de todos os signatários.</small>
+                <small>Exige certificado digital A1 (assinatura qualificada) de todos os participantes.</small>
               </span>
             </button>
           </div>
-        </fieldset>
-
-        <!-- Quem vai assinar -->
-        <fieldset class="ds-who-fieldset">
-          <legend>Quem vai assinar este documento?</legend>
-          <div class="ds-who-grid" role="radiogroup" aria-label="Quem vai assinar este documento">
-            <button type="button" class="ds-who-card" data-ds-who="only_me" role="radio" aria-checked="true">
-              <span class="ds-who-dot" aria-hidden="true"></span>
-              <span>
-                <strong>Só eu vou assinar</strong>
-                <small>Assine agora mesmo, com ou sem certificado A1.</small>
-              </span>
-            </button>
-            <button type="button" class="ds-who-card" data-ds-who="me_and_others" role="radio" aria-checked="false">
-              <span class="ds-who-dot" aria-hidden="true"></span>
-              <span>
-                <strong>Eu e outras pessoas</strong>
-                <small>Convide equipe da fazenda e/ou signatários externos por link.</small>
-              </span>
-            </button>
-            <button type="button" class="ds-who-card" data-ds-who="only_others" role="radio" aria-checked="false">
-              <span class="ds-who-dot" aria-hidden="true"></span>
-              <span>
-                <strong>Apenas outras pessoas</strong>
-                <small>Envie para equipe ou compradores/parceiros externos assinarem.</small>
-              </span>
-            </button>
-          </div>
-        </fieldset>
+        </div>
       </div>
 
-      <!-- PASSO 2: QUEM ASSINA (Internos + Signatários Externos) -->
+      <!-- PASSO 2: QUEM ASSINA (Seletor escalável + Cards explícitos E-mail × WhatsApp) -->
       <div class="ds-wiz-pane" data-ds-wiz-pane="2" hidden>
-        <div class="ds-wiz-pane-head">
-          <h2>2. Quem vai assinar este documento?</h2>
-          <p>Selecione usuários da organização e/ou convide signatários externos por WhatsApp ou e-mail.</p>
+        <div class="ds-wiz-pane-head ds-wiz-pane-head--row">
+          <div>
+            <h2>Adicionar signatários</h2>
+            <p>Busque na equipe cadastrada no SiSFarm ou convide pessoas externas por link.</p>
+          </div>
+          <button type="button" class="ds-link-back" data-ds-goto-step="1">← Voltar ao documento</button>
         </div>
 
-        <div class="ds-subblock">
-          <h3 class="ds-subblock-title">{{ icon('users', 16) }} Equipe cadastrada no SiSFarm</h3>
-          {% if org_colleagues %}
-          <div class="ds-signer-list">
-            {% for colleague in org_colleagues %}
-            <div class="ds-signer-item" data-ds-colleague-card data-name="{{ colleague.display_name or colleague.name }}">
-              <div class="ds-signer-item-head">
-                <div>
-                  <strong>{{ colleague.display_name or colleague.name }}</strong>
-                </div>
-                <input type="checkbox" class="ds-switch-input" role="switch" name="colleagues" value="{{ colleague.email }}" data-ds-colleague-switch aria-label="Incluir {{ colleague.display_name or colleague.name }}">
+        <!-- Barra Desktop: Busca instantânea na equipe + Botão Pessoa externa -->
+        <div class="ds-picker-bar ds-hide-mobile">
+          <div class="ds-picker-row">
+            <div class="ds-picker-wrap" data-ds-picker-wrap>
+              <div class="ds-search-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15.5 15.5 4.5 4.5"/></svg>
+                <input type="search" autocomplete="off" data-ds-team-search
+                       placeholder="Buscar na equipe, por nome, cargo ou email...">
               </div>
-              <div class="ds-signer-item-grid">
-                <label class="ds-field">
-                  <span>Canal de aviso</span>
-                  <select data-ds-colleague-channel>
-                    <option value="email" selected>E-mail da conta</option>
-                    <option value="whatsapp">WhatsApp</option>
-                  </select>
-                </label>
-                <label class="ds-field">
-                  <span data-ds-colleague-contact-label>E-mail</span>
-                  <input type="text" class="ds-input-readonly" readonly value="{{ colleague.email }}" data-email="{{ colleague.email }}" data-phone="{{ colleague.phone or '' }}" data-ds-colleague-contact>
-                </label>
-              </div>
+              <div class="ds-picker-dropdown" data-ds-team-dropdown role="listbox" aria-label="Equipe cadastrada" hidden></div>
             </div>
-            {% endfor %}
+
+            <button type="button" class="sf-btn sf-btn-secondary ds-ext-open-btn" data-ds-toggle-ext-form>
+              {{ icon('plus', 15) }} Pessoa externa
+            </button>
           </div>
-          {% else %}
-          <p class="ds-hint">Não há outros usuários ativos cadastrados nesta organização. Você pode convidar signatários externos abaixo.</p>
-          {% endif %}
+
+          <div class="ds-quick-chips-row" data-ds-quick-wrap {% if not colleagues_payload %}hidden{% endif %}>
+            <span class="ds-quick-label">Acesso rápido:</span>
+            <div class="ds-quick-chips" data-ds-quick-chips></div>
+          </div>
         </div>
 
-        <div class="ds-subblock" data-ds-ext-section>
-          <div class="ds-subblock-head">
-            <h3 class="ds-subblock-title">{{ icon('link', 16) }} Signatários externos <small>(sem conta no SiSFarm)</small></h3>
-            <span class="ds-pill ds-pill--brand">Link exclusivo</span>
-          </div>
-          <p class="ds-hint">Envie um link único por WhatsApp ou e-mail para compradores, parceiros, fornecedores ou testemunhas assinarem pelo celular.</p>
+        <!-- Barra Mobile: 2 botões limpos abrindo Bottom Sheets -->
+        <div class="ds-mob-pickers ds-only-mobile">
+          <button type="button" class="ds-mob-picker-btn is-brand" data-ds-mob-open-team>
+            <strong>+ Da equipe</strong>
+            <small>Buscar cadastrados</small>
+          </button>
+          <button type="button" class="ds-mob-picker-btn" data-ds-mob-open-ext>
+            <strong>+ Pessoa externa</strong>
+            <small>WhatsApp ou e-mail</small>
+          </button>
+        </div>
 
-          <div class="ds-banner is-warn ds-banner--sm" data-ds-ext-icp-warn hidden>
-            {{ icon('alert', 16) }}
-            <span>Signatários externos sem certificado só podem ser convidados quando a modalidade for <strong>Livre escolha</strong> ou <strong>Eletrônica SiSFarm</strong>.</span>
-          </div>
+        <!-- Aviso quando Somente ICP-Brasil bloqueia externos -->
+        <div class="ds-banner is-warn ds-banner--sm" data-ds-ext-icp-warn hidden>
+          {{ icon('alert', 16) }}
+          <span>Modalidade definida como <strong>Somente ICP-Brasil A1</strong>. Para convidar pessoas externas sem certificado, <button type="button" class="ds-inline-link" data-ds-goto-step="1">altere no passo 1</button>.</span>
+        </div>
 
-          <div class="ds-ext-adder" data-ds-ext-adder>
-            <div class="ds-form-grid-2">
-              <label class="ds-field">
-                <span>Nome completo</span>
-                <input type="text" maxlength="160" placeholder="Ex.: João Carlos Ferreira" data-ds-ext-name>
-              </label>
-              <label class="ds-field">
-                <span>Papel no documento</span>
-                <input type="text" maxlength="60" value="Signatário" placeholder="Ex.: Comprador, Testemunha" data-ds-ext-role>
-              </label>
-              <label class="ds-field">
-                <span>Canal de envio do link</span>
-                <select data-ds-ext-channel>
-                  <option value="whatsapp" selected>WhatsApp</option>
-                  <option value="email">E-mail</option>
-                </select>
-              </label>
-              <label class="ds-field" data-ds-ext-phone-wrap>
-                <span>WhatsApp (com DDD)</span>
-                <input type="tel" maxlength="20" placeholder="(35) 99999-0000" data-ds-phone-mask data-ds-ext-phone>
-              </label>
-              <label class="ds-field" data-ds-ext-email-wrap hidden>
-                <span>E-mail do signatário</span>
-                <input type="email" maxlength="160" placeholder="contato@empresa.com.br" data-ds-ext-email>
-              </label>
-            </div>
-            <div class="ds-ext-adder-foot">
-              <button type="button" class="sf-btn sf-btn-secondary ds-btn-sm" data-ds-ext-add-btn>{{ icon('plus', 15) }} Adicionar signatário externo</button>
-              <p class="ds-feedback" data-ds-ext-err role="alert" hidden></p>
-            </div>
+        <!-- Formulário compacto de externo (Desktop - abre sob demanda) -->
+        <div class="ds-ext-adder ds-ext-adder--compact" data-ds-ext-adder hidden>
+          <div class="ds-ext-adder-top">
+            <span class="ds-eyebrow">Convidar pessoa externa (sem conta no SiSFarm)</span>
+            <button type="button" class="ds-inline-link" data-ds-ext-cancel>Fechar</button>
           </div>
+          <div class="ds-form-grid-2">
+            <label class="ds-field">
+              <span>Nome completo</span>
+              <input type="text" maxlength="160" placeholder="Ex.: Carlos Comprador" data-ds-ext-name>
+            </label>
+            <label class="ds-field">
+              <span>Papel no documento</span>
+              <input type="text" maxlength="60" value="Signatário" placeholder="Ex.: Comprador, Testemunha" data-ds-ext-role>
+            </label>
+            <label class="ds-field">
+              <span>Canal de envio do link</span>
+              <select data-ds-ext-channel>
+                <option value="whatsapp" selected>WhatsApp</option>
+                <option value="email">E-mail</option>
+              </select>
+            </label>
+            <label class="ds-field" data-ds-ext-phone-wrap>
+              <span>WhatsApp (com DDD)</span>
+              <input type="tel" maxlength="20" placeholder="(35) 99999-0000" data-ds-phone-mask data-ds-ext-phone>
+            </label>
+            <label class="ds-field" data-ds-ext-email-wrap hidden>
+              <span>E-mail do signatário</span>
+              <input type="email" maxlength="160" placeholder="contato@empresa.com.br" data-ds-ext-email>
+            </label>
+          </div>
+          <div class="ds-ext-adder-foot">
+            <p class="ds-feedback" data-ds-ext-err role="alert" hidden></p>
+            <button type="button" class="sf-btn sf-btn-primary ds-btn-sm" data-ds-ext-add-btn>Adicionar signatário</button>
+          </div>
+        </div>
 
-          <ul class="ds-ext-added-list" data-ds-ext-list hidden></ul>
+        <!-- Lista enxuta dos signatários escolhidos com seletor explícito E-mail × WhatsApp -->
+        <div class="ds-selected-block">
+          <div class="ds-selected-head">
+            <span class="ds-eyebrow" data-ds-selected-title>Signatários deste documento (0)</span>
+            <span class="ds-selected-hint ds-hide-mobile">Escolha onde cada signatário recebe o link e o código</span>
+          </div>
+          <div class="ds-selected-list" data-ds-selected-list></div>
         </div>
 
         <div class="ds-banner is-ok ds-banner--sm" data-ds-manifesto-note>
@@ -228,10 +253,10 @@
 
       <p class="ds-feedback" data-ds-wiz-status role="status" aria-live="polite" hidden></p>
 
-      <!-- Rodapé do Wizard -->
+      <!-- Rodapé do Wizard (Desktop) -->
       <div class="ds-wiz-foot">
         <a class="sf-btn sf-btn-secondary" href="/assinatura-digital" data-ds-wiz-cancel>Cancelar</a>
-        <button type="button" class="sf-btn sf-btn-secondary" data-ds-wiz-back hidden>{{ icon('back', 15) }} Voltar passo</button>
+        <button type="button" class="sf-btn sf-btn-secondary" data-ds-wiz-back hidden>{{ icon('back', 15) }} Voltar</button>
         <button type="button" class="sf-btn sf-btn-primary ds-wiz-cta" data-ds-wiz-next hidden>Continuar para Quem assina →</button>
         <button type="submit" class="sf-btn sf-btn-primary ds-wiz-cta" data-ds-wiz-submit>Continuar para Revisar e assinar →</button>
       </div>
@@ -240,28 +265,28 @@
     <!-- COLUNA DIREITA: QUADRO RESUMO LATERAL STICKY -->
     <aside class="pd-card ds-wiz-summary ds-hide-mobile" aria-label="Resumo do envio">
       <div class="ds-summary-head">
-        <span class="ds-eyebrow">Resumo</span>
+        <span class="ds-eyebrow">Resumo do envio</span>
         <span class="ds-pill ds-pill--brand" data-ds-sum-step>Passo 1 de 3</span>
       </div>
 
       <div class="ds-summary-doc">
         <span class="ds-summary-label">Documento</span>
-        <strong data-ds-sum-title>Nenhum arquivo selecionado</strong>
+        <strong class="ds-safe-wrap" data-ds-sum-title>Nenhum arquivo selecionado</strong>
         <small data-ds-sum-cat>{{ categories[0] }}</small>
       </div>
 
       <dl class="ds-summary-rows">
         <div>
           <dt>Arquivo PDF</dt>
-          <dd data-ds-sum-file>Aguardando envio</dd>
-        </div>
-        <div>
-          <dt>Modalidade</dt>
-          <dd data-ds-sum-policy>Livre escolha</dd>
+          <dd class="ds-safe-wrap" data-ds-sum-file>Aguardando envio</dd>
         </div>
         <div>
           <dt>Quem assina</dt>
           <dd data-ds-sum-who>Apenas você</dd>
+        </div>
+        <div>
+          <dt>Modalidade</dt>
+          <dd data-ds-sum-policy>Livre escolha</dd>
         </div>
         <div>
           <dt>Próxima etapa</dt>
@@ -270,17 +295,109 @@
       </dl>
 
       <div class="ds-summary-people" data-ds-sum-people-wrap hidden>
-        <span class="ds-summary-label">Participantes selecionados</span>
+        <span class="ds-summary-label">Signatários selecionados</span>
         <ul data-ds-sum-people></ul>
       </div>
 
       <div class="ds-summary-shield">
         {{ icon('shield', 16) }}
-        <span>Validade jurídica conforme MP 2.200-2/2001 e Lei 14.063/2020, com código de verificação pública e proteção de privacidade (LGPD).</span>
+        <span>Validade jurídica conforme MP 2.200-2/2001 e Lei 14.063/2020, com validação pública em <strong>app.sisfarm.com.br</strong>.</span>
       </div>
     </aside>
+
+    <!-- BARRA FIXA MOBILE -->
+    <div class="ds-mob-sticky-bar ds-only-mobile" data-ds-mob-bar>
+      <div class="ds-mob-bar-meta">
+        <span class="ds-mob-bar-summary" data-ds-mob-summary>Só eu · Livre escolha</span>
+        <span class="ds-mob-bar-step" data-ds-mob-step-pill>1/3</span>
+      </div>
+      <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-mob-cta>Continuar para Revisar e assinar →</button>
+    </div>
   </form>
+
+  <!-- BOTTOM SHEET MOBILE: MODALIDADE -->
+  <dialog class="ds-dialog ds-sheet-dialog" data-ds-policy-sheet aria-label="Modalidade de assinatura">
+    <div class="ds-sheet-handle" aria-hidden="true"></div>
+    <header class="ds-dialog-head">
+      <div>
+        <h2>Modalidade de assinatura</h2>
+        <p>Escolha como os signatários poderão assinar</p>
+      </div>
+      <button type="button" class="ds-icon-btn" data-ds-close-dialog aria-label="Fechar">✕</button>
+    </header>
+    <div class="ds-dialog-body ds-sheet-options" role="radiogroup" aria-label="Modalidade">
+      <button type="button" class="ds-policy-option" data-ds-policy="flexible" role="radio" aria-checked="true">
+        <span class="ds-radio-dot" aria-hidden="true"></span>
+        <span><strong>Livre escolha</strong><small>Eletrônica SiSFarm ou ICP-Brasil A1.</small></span>
+      </button>
+      <button type="button" class="ds-policy-option" data-ds-policy="electronic" role="radio" aria-checked="false">
+        <span class="ds-radio-dot" aria-hidden="true"></span>
+        <span><strong>Somente Eletrônica SiSFarm</strong><small>Sem certificado · QR Code e Manifesto.</small></span>
+      </button>
+      <button type="button" class="ds-policy-option" data-ds-policy="icp_brasil" role="radio" aria-checked="false">
+        <span class="ds-radio-dot" aria-hidden="true"></span>
+        <span><strong>Somente ICP-Brasil A1</strong><small>Exige certificado digital A1 de todos.</small></span>
+      </button>
+    </div>
+  </dialog>
+
+  <!-- BOTTOM SHEET MOBILE: SELECIONAR DA EQUIPE -->
+  <dialog class="ds-dialog ds-sheet-dialog" data-ds-team-sheet aria-label="Selecionar da equipe">
+    <div class="ds-sheet-handle" aria-hidden="true"></div>
+    <header class="ds-dialog-head">
+      <div>
+        <h2>Selecionar da equipe</h2>
+        <p>Toque para marcar ou desmarcar</p>
+      </div>
+      <button type="button" class="ds-icon-btn" data-ds-close-dialog aria-label="Fechar">✕</button>
+    </header>
+    <div class="ds-dialog-body ds-team-sheet-body">
+      <input type="search" class="ds-sheet-search" data-ds-mob-team-search
+             placeholder="Buscar na equipe, por nome, cargo ou email...">
+      <div class="ds-team-sheet-list" data-ds-mob-team-list></div>
+    </div>
+    <footer class="ds-dialog-foot">
+      <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-close-dialog data-ds-mob-team-confirm>Confirmar seleção</button>
+    </footer>
+  </dialog>
+
+  <!-- BOTTOM SHEET MOBILE: CONVIDAR PESSOA EXTERNA -->
+  <dialog class="ds-dialog ds-sheet-dialog" data-ds-ext-sheet aria-label="Convidar pessoa externa">
+    <div class="ds-sheet-handle" aria-hidden="true"></div>
+    <header class="ds-dialog-head">
+      <div>
+        <h2>Convidar pessoa externa</h2>
+        <p>Link exclusivo para assinar sem conta no SiSFarm</p>
+      </div>
+      <button type="button" class="ds-icon-btn" data-ds-close-dialog aria-label="Fechar">✕</button>
+    </header>
+    <div class="ds-dialog-body ds-sheet-ext-body">
+      <label class="ds-field">
+        <span>Nome completo</span>
+        <input type="text" maxlength="160" placeholder="Ex.: Carlos Comprador" data-ds-mob-ext-name>
+      </label>
+      <label class="ds-field">
+        <span>Papel no documento</span>
+        <input type="text" maxlength="60" value="Signatário" placeholder="Ex.: Comprador, Testemunha" data-ds-mob-ext-role>
+      </label>
+      <div class="ds-field">
+        <span>Canal de envio do link</span>
+        <div class="ds-mob-ext-ch-grid" role="radiogroup" aria-label="Canal externo">
+          <button type="button" class="ds-mob-ext-ch-btn is-wa-active" data-ds-mob-ext-ch="whatsapp" role="radio" aria-checked="true">WhatsApp</button>
+          <button type="button" class="ds-mob-ext-ch-btn" data-ds-mob-ext-ch="email" role="radio" aria-checked="false">E-mail</button>
+        </div>
+      </div>
+      <label class="ds-field">
+        <span data-ds-mob-ext-contact-lbl>WhatsApp (com DDD)</span>
+        <input type="tel" maxlength="160" placeholder="(35) 99999-0000" data-ds-mob-ext-contact>
+      </label>
+      <p class="ds-feedback" data-ds-mob-ext-err role="alert" hidden></p>
+    </div>
+    <footer class="ds-dialog-foot">
+      <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-mob-ext-save>Adicionar signatário</button>
+    </footer>
+  </dialog>
   {% endif %}
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=14"></script>
+<script type="module" src="/static/js/digital_signing.js?v=16"></script>
 {% endblock %}

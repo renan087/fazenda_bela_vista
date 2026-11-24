@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, status %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=9">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=10">{% endblock %}
 {% block content %}
 {% set endpoint = '/assinatura-digital/documentos/' ~ doc.id %}
 {% set pdf_url = endpoint ~ '/revisoes/' ~ doc.current_revision ~ '/pdf' %}
@@ -11,6 +11,7 @@
       data-pdf-url="{{ pdf_url }}"
       data-user-email="{{ user.email }}"
       data-user-name="{{ user.display_name or user.name }}"
+      data-user-phone="{{ user_whatsapp_phone or '' }}"
       data-default-mode="{{ default_sign_mode }}"
       data-allow-electronic="{{ 'yes' if allow_electronic else 'no' }}"
       data-allow-icp="{{ 'yes' if allow_icp else 'no' }}"
@@ -21,12 +22,12 @@
 
   <nav class="pd-crumbs" aria-label="Caminho">
     <a href="/assinatura-digital">Documentos</a><span aria-hidden="true">›</span>
-    <span>{{ display_title }}</span>
+    <span class="ds-crumb-truncate" title="{{ display_title }}">{{ display_title }}</span>
   </nav>
 
   <header class="pd-head ds-head ds-ws-head">
     <div class="ds-ws-title-block">
-      <h1 class="sf-page-title">{{ display_title }}</h1>
+      <h1 class="sf-page-title ds-truncate-line" title="{{ display_title }}">{{ display_title }}</h1>
       <div class="ds-ws-meta-bar">
         {{ status(doc.validation.state) }}
         {% if doc.category %}<span class="ds-pill ds-pill--muted">{{ doc.category }}</span>{% endif %}
@@ -35,7 +36,7 @@
         <span class="ds-ws-meta-item ds-tabular">{{ options.pages }} {{ 'página' if options.pages == 1 else 'páginas' }}</span>
         {% if show_filename_sub %}
         <span class="ds-ws-dot ds-hide-mobile" aria-hidden="true">·</span>
-        <span class="ds-ws-meta-item ds-hide-mobile">{{ doc.filename }}</span>
+        <span class="ds-ws-meta-item ds-hide-mobile ds-truncate-line" title="{{ doc.filename }}">{{ doc.filename }}</span>
         {% endif %}
       </div>
     </div>
@@ -211,7 +212,17 @@
           <!-- PAINEL DE CAMPOS: ASSINATURA ELETRÔNICA SISFARM -->
           {% if allow_electronic %}
           <div class="ds-mode-pane" data-ds-mode-pane="electronic" {% if default_sign_mode != 'electronic' %}hidden{% endif %}>
-            <label class="ds-field">
+            <div class="ds-self-id-card">
+              <div class="ds-self-id-main">
+                <span class="ds-avatar is-self" aria-hidden="true">{{ user_initials or 'US' }}</span>
+                <div class="ds-self-id-copy">
+                  <strong data-ds-el-name-preview>{{ user.display_name or user.name }}</strong>
+                  <small>{{ user.email }} · Dados da conta logada</small>
+                </div>
+              </div>
+              <button type="button" class="ds-inline-link" data-ds-el-name-toggle>Editar nome</button>
+            </div>
+            <label class="ds-field" data-ds-el-name-wrap hidden>
               <span>Nome completo do signatário</span>
               <input type="text" maxlength="160" value="{{ user.display_name or user.name }}" data-ds-el-name required>
             </label>
@@ -220,17 +231,12 @@
               <input type="text" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" data-ds-cpf-mask data-ds-el-cpf required>
               <small class="ds-cpf-hint">Usado para comprovar sua identidade. Exibido apenas de forma mascarada em consultas públicas.</small>
             </label>
-            <label class="ds-field">
+            <div class="ds-field">
               <span>Onde receber o código de 8 dígitos?</span>
-              <select data-ds-el-channel>
-                <option value="email" selected>E-mail ({{ user.email }})</option>
-                {% if user_whatsapp_phone %}
-                <option value="whatsapp">WhatsApp ({{ user_whatsapp_phone }})</option>
-                {% else %}
-                <option value="whatsapp" disabled>WhatsApp (cadastre um telefone no perfil)</option>
-                {% endif %}
-              </select>
-            </label>
+              <input type="hidden" value="email" data-ds-el-channel>
+              <input type="hidden" value="{{ user_whatsapp_phone or '' }}" data-ds-el-phone>
+              <div data-ds-ws-self-channel-box></div>
+            </div>
           </div>
           {% endif %}
 
@@ -631,5 +637,5 @@
     {% endif %}
   </div>
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=15"></script>
+<script type="module" src="/static/js/digital_signing.js?v=16"></script>
 {% endblock %}

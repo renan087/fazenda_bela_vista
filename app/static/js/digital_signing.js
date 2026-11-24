@@ -464,9 +464,100 @@ function initHome(root) {
   }
 }
 
+const DS_MAIL_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>';
+const DS_WA_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>';
+
+function dsEsc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function dsNorm(s) {
+  return String(s || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+}
+
+function dsIsValidPhone(p) {
+  return String(p || "").replace(/\D/g, "").length >= 10;
+}
+
+function dsIsValidEmail(e) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || "").trim());
+}
+
+function renderChannelSelectorHtml({ keyPrefix, activeChannel, email, phone, allowEditEmail = false, editingKey = null }) {
+  const emailKey = `${keyPrefix}:email`;
+  const waKey = `${keyPrefix}:whatsapp`;
+  const emailActive = activeChannel === "email";
+  const waActive = activeChannel === "whatsapp";
+  const hasEmail = dsIsValidEmail(email);
+  const hasWa = dsIsValidPhone(phone);
+
+  const emailBoxCls = emailActive ? (hasEmail ? "is-active" : "is-missing") : "";
+  const waBoxCls = waActive ? (hasWa ? "is-active-wa" : "is-missing") : "";
+  const isEditing = editingKey === emailKey || editingKey === waKey;
+  const editingWa = editingKey === waKey;
+
+  return `
+    <div class="ds-ch-grid" role="radiogroup" aria-label="Canal de entrega">
+      <div class="ds-ch-box ${emailBoxCls}">
+        <button type="button" role="radio" aria-checked="${emailActive}" data-ds-set-ch="${dsEsc(emailKey)}" class="ds-ch-box-btn">
+          <span class="ds-ch-radio" aria-hidden="true"></span>
+          <span class="ds-ch-text">
+            <span class="ds-ch-title">${DS_MAIL_SVG}<span>E-mail</span></span>
+            <span class="ds-ch-dest ${hasEmail ? "" : "is-warn"}">${hasEmail ? dsEsc(email) : "Sem e-mail · informar"}</span>
+          </span>
+        </button>
+        ${allowEditEmail ? `
+          <button type="button" data-ds-edit-contact="${dsEsc(emailKey)}" class="ds-ch-edit-btn ${hasEmail ? "" : "is-warn"}">${hasEmail ? "Editar" : "Informar"}</button>
+        ` : ""}
+      </div>
+      <div class="ds-ch-box ${waBoxCls}">
+        <button type="button" role="radio" aria-checked="${waActive}" data-ds-set-ch="${dsEsc(waKey)}" class="ds-ch-box-btn">
+          <span class="ds-ch-radio" aria-hidden="true"></span>
+          <span class="ds-ch-text">
+            <span class="ds-ch-title">${DS_WA_SVG}<span>WhatsApp</span></span>
+            <span class="ds-ch-dest ${hasWa ? "" : "is-warn"}">${hasWa ? dsEsc(maskPhone(phone)) : "Sem nº cadastrado"}</span>
+          </span>
+        </button>
+        <button type="button" data-ds-edit-contact="${dsEsc(waKey)}" class="ds-ch-edit-btn ${hasWa ? "" : "is-warn"}">${hasWa ? "Editar" : "Informar"}</button>
+      </div>
+    </div>
+    ${isEditing ? `
+      <div class="ds-inline-edit-bar">
+        <input type="${editingWa ? "tel" : "email"}"
+               data-ds-inline-input="${dsEsc(editingKey)}"
+               value="${dsEsc(editingWa ? maskPhone(phone) : email)}"
+               placeholder="${editingWa ? "WhatsApp com DDD: (35) 99999-0000" : "email@empresa.com.br"}">
+        <div class="ds-inline-edit-actions">
+          <button type="button" class="sf-btn sf-btn-secondary ds-btn-sm" data-ds-inline-cancel>Cancelar</button>
+          <button type="button" class="sf-btn sf-btn-primary ds-btn-sm" data-ds-inline-save="${dsEsc(editingKey)}">Salvar</button>
+        </div>
+      </div>
+    ` : ""}
+  `;
+}
+
 function initWizard(root) {
   const form = root.querySelector("[data-ds-wiz-form]");
   if (!form) return;
+
+  const parseJsonScript = (sel, fallback) => {
+    const el = root.querySelector(sel);
+    if (!el) return fallback;
+    try { return JSON.parse(el.textContent || ""); } catch { return fallback; }
+  };
+
+  const colleagues = parseJsonScript("[data-ds-colleagues-data]", []).map((c) => ({
+    id: String(c.id),
+    name: c.name || "",
+    initials: c.initials || "US",
+    role: c.role || "",
+    email: c.email || "",
+    phone: c.phone ? maskPhone(c.phone) : "",
+    selected: false,
+    channel: "email",
+  }));
+  const selfUser = parseJsonScript("[data-ds-self-data]", { name: "Você", initials: "VC", email: "", phone: "" });
+
   const dropEl = root.querySelector("[data-ds-wiz-drop]");
   const fileInput = form.elements.file;
   const loadedBox = root.querySelector("[data-ds-wiz-loaded]");
@@ -475,6 +566,8 @@ function initWizard(root) {
   const clearFileBtn = root.querySelector("[data-ds-wiz-clear-file]");
   const titleInput = root.querySelector("[data-ds-wiz-title]");
   const catSelect = root.querySelector("[data-ds-wiz-category]");
+  const headingEl = root.querySelector("[data-ds-wiz-title-heading]");
+  const crumbEl = root.querySelector("[data-ds-wiz-crumb]");
   const subtitle = root.querySelector("[data-ds-wiz-subtitle]");
   const pane1 = root.querySelector('[data-ds-wiz-pane="1"]');
   const pane2 = root.querySelector('[data-ds-wiz-pane="2"]');
@@ -483,17 +576,26 @@ function initWizard(root) {
   const nextBtn = root.querySelector("[data-ds-wiz-next]");
   const submitBtn = root.querySelector("[data-ds-wiz-submit]");
   const statusEl = root.querySelector("[data-ds-wiz-status]");
-  const whoCards = [...root.querySelectorAll("[data-ds-who]")];
-  const policyCards = [...root.querySelectorAll("[data-ds-policy]")];
 
-  // Top step indicators
+  const whoBtns = [...root.querySelectorAll("[data-ds-who]")];
+  const whoThumb = root.querySelector("[data-ds-who-thumb]");
+  const whoHintText = root.querySelector("[data-ds-who-hint-text]");
+
+  const policyToggleBtn = root.querySelector("[data-ds-policy-toggle]");
+  const policyToggleTxt = root.querySelector("[data-ds-policy-toggle-txt]");
+  const policyDrawer = root.querySelector("[data-ds-policy-drawer]");
+  const policyLabel = root.querySelector("[data-ds-policy-label]");
+  const policyBadge = root.querySelector("[data-ds-policy-badge]");
+  const policyDesc = root.querySelector("[data-ds-policy-desc]");
+  const policyOpts = [...root.querySelectorAll("[data-ds-policy]")];
+  const policySheet = root.querySelector("[data-ds-policy-sheet]");
+
   const stepDoc = root.querySelector('[data-wiz-step="doc"]');
   const stepSigners = root.querySelector('[data-wiz-step="signers"]');
   const stepReview = root.querySelector('[data-wiz-step="review"]');
   const stepConfirm = root.querySelector('[data-wiz-step="confirm"]');
   const stepSendReview = root.querySelector('[data-wiz-step="send_review"]');
 
-  // Summary sidebar elements
   const sumStep = root.querySelector("[data-ds-sum-step]");
   const sumTitle = root.querySelector("[data-ds-sum-title]");
   const sumCat = root.querySelector("[data-ds-sum-cat]");
@@ -504,9 +606,22 @@ function initWizard(root) {
   const sumPeopleWrap = root.querySelector("[data-ds-sum-people-wrap]");
   const sumPeopleList = root.querySelector("[data-ds-sum-people]");
 
-  // External signers elements
+  const mobSummary = root.querySelector("[data-ds-mob-summary]");
+  const mobStepPill = root.querySelector("[data-ds-mob-step-pill]");
+  const mobCta = root.querySelector("[data-ds-mob-cta]");
+
+  const pickerWrap = root.querySelector("[data-ds-picker-wrap]");
+  const teamSearch = root.querySelector("[data-ds-team-search]");
+  const teamDropdown = root.querySelector("[data-ds-team-dropdown]");
+  const quickWrap = root.querySelector("[data-ds-quick-wrap]");
+  const quickChips = root.querySelector("[data-ds-quick-chips]");
+  const selectedTitle = root.querySelector("[data-ds-selected-title]");
+  const selectedList = root.querySelector("[data-ds-selected-list]");
+
+  const toggleExtFormBtn = root.querySelector("[data-ds-toggle-ext-form]");
   const extIcpWarn = root.querySelector("[data-ds-ext-icp-warn]");
   const extAdder = root.querySelector("[data-ds-ext-adder]");
+  const extCancelBtn = root.querySelector("[data-ds-ext-cancel]");
   const extName = root.querySelector("[data-ds-ext-name]");
   const extRole = root.querySelector("[data-ds-ext-role]");
   const extChannel = root.querySelector("[data-ds-ext-channel]");
@@ -516,47 +631,392 @@ function initWizard(root) {
   const extEmail = root.querySelector("[data-ds-ext-email]");
   const extAddBtn = root.querySelector("[data-ds-ext-add-btn]");
   const extErr = root.querySelector("[data-ds-ext-err]");
-  const extListEl = root.querySelector("[data-ds-ext-list]");
   const manifestoNote = root.querySelector("[data-ds-manifesto-note]");
+
+  // Mobile Bottom Sheets
+  const teamSheet = root.querySelector("[data-ds-team-sheet]");
+  const mobOpenTeamBtn = root.querySelector("[data-ds-mob-open-team]");
+  const mobTeamSearch = root.querySelector("[data-ds-mob-team-search]");
+  const mobTeamList = root.querySelector("[data-ds-mob-team-list]");
+  const mobTeamConfirm = root.querySelector("[data-ds-mob-team-confirm]");
+
+  const extSheet = root.querySelector("[data-ds-ext-sheet]");
+  const mobOpenExtBtn = root.querySelector("[data-ds-mob-open-ext]");
+  const mobExtName = root.querySelector("[data-ds-mob-ext-name]");
+  const mobExtRole = root.querySelector("[data-ds-mob-ext-role]");
+  const mobExtChBtns = [...root.querySelectorAll("[data-ds-mob-ext-ch]")];
+  const mobExtContactLbl = root.querySelector("[data-ds-mob-ext-contact-lbl]");
+  const mobExtContact = root.querySelector("[data-ds-mob-ext-contact]");
+  const mobExtErr = root.querySelector("[data-ds-mob-ext-err]");
+  const mobExtSave = root.querySelector("[data-ds-mob-ext-save]");
 
   let selectedFile = null;
   let whoSigns = "only_me";
   let signingPolicy = "flexible";
   let currentStep = 1;
+  let deskPolicyOpen = false;
+  let editingKey = null;
+  let mobExtChannel = "whatsapp";
   const externalSigners = [];
 
-  const POLICY_LABELS = {
-    flexible: "Livre escolha",
-    electronic: "Eletrônica SiSFarm",
-    icp_brasil: "Somente ICP-Brasil A1",
+  const WHO_META = {
+    only_me: {
+      idx: 0,
+      short: "Só eu",
+      hint: "Você revisa o PDF e assina agora mesmo na próxima tela.",
+    },
+    me_and_others: {
+      idx: 1,
+      short: "Eu + outros",
+      hint: "Na próxima tela você adiciona pessoas ou links externos.",
+    },
+    only_others: {
+      idx: 2,
+      short: "Só outros",
+      hint: "Você não assina: na próxima tela você seleciona pessoas ou links externos.",
+    },
   };
 
-  function selectedColleagues() {
-    return [...root.querySelectorAll("[data-ds-colleague-card]")].filter(
-      (card) => card.querySelector("[data-ds-colleague-switch]")?.checked
+  const POLICY_META = {
+    flexible: {
+      label: "Livre escolha",
+      badge: "Padrão recomendado",
+      desc: "Cada pessoa escolhe entre Eletrônica SiSFarm ou ICP-Brasil A1.",
+    },
+    electronic: {
+      label: "Somente Eletrônica SiSFarm",
+      badge: "Sem certificado",
+      desc: "CPF + código por WhatsApp/e-mail, QR Code e Manifesto automático.",
+    },
+    icp_brasil: {
+      label: "Somente ICP-Brasil A1",
+      badge: "Exige A1",
+      desc: "Exige certificado digital A1 de todos os participantes.",
+    },
+  };
+
+  const isMobileViewport = () => window.matchMedia("(max-width: 639px)").matches;
+
+  function renderDesktopDropdown() {
+    if (!teamDropdown) return;
+    const q = dsNorm(teamSearch?.value.trim() || "");
+    const matches = colleagues.filter(
+      (m) => !q || dsNorm(m.name).includes(q) || dsNorm(m.role).includes(q) || dsNorm(m.email).includes(q) || dsNorm(m.phone).includes(q)
     );
+    if (!matches.length) {
+      teamDropdown.innerHTML = `<div class="ds-picker-empty">${colleagues.length ? "Nenhuma pessoa encontrada na equipe." : "Não há outros usuários cadastrados nesta organização."}</div>`;
+      return;
+    }
+    teamDropdown.innerHTML = matches.map((m) => `
+      <button type="button" class="ds-picker-item ${m.selected ? "is-picked" : ""}" data-ds-pick-member="${dsEsc(m.id)}">
+        <span class="ds-picker-item-left">
+          <span class="ds-avatar ${m.selected ? "" : "is-soft"}">${m.selected ? "✓" : dsEsc(m.initials)}</span>
+          <span class="ds-picker-item-copy">
+            <strong>${dsEsc(m.name)}</strong>
+            <small>${m.role ? `${dsEsc(m.role)} · ` : ""}${dsEsc(m.email)}${m.phone ? ` · WhatsApp ${dsEsc(m.phone)}` : " · Sem WhatsApp"}</small>
+          </span>
+        </span>
+        <span class="ds-picker-item-act">${m.selected ? "Adicionado" : "+ Incluir"}</span>
+      </button>
+    `).join("");
+    for (const btn of teamDropdown.querySelectorAll("[data-ds-pick-member]")) {
+      btn.addEventListener("click", () => {
+        const item = colleagues.find((x) => x.id === btn.dataset.dsPickMember);
+        if (item) {
+          item.selected = !item.selected;
+          feedback(statusEl);
+          syncUI();
+          renderDesktopDropdown();
+        }
+      });
+    }
   }
 
-  function renderExternalList() {
-    if (!extListEl) return;
-    extListEl.hidden = externalSigners.length === 0;
-    extListEl.replaceChildren(...externalSigners.map((ext, idx) => {
-      const li = element("li", "", "ds-ext-added-item");
-      const info = element("div");
-      info.append(
-        element("strong", `${ext.name} (${ext.role_label})`),
-        element("small", `${ext.channel === "whatsapp" ? "WhatsApp" : "E-mail"} · ${ext.channel === "whatsapp" ? ext.phone : ext.email}`),
-      );
-      const rmBtn = element("button", "Remover", "ds-inline-action is-danger");
-      rmBtn.type = "button";
-      rmBtn.addEventListener("click", () => {
-        externalSigners.splice(idx, 1);
-        renderExternalList();
+  function renderMobileTeamSheet() {
+    if (!mobTeamList) return;
+    const q = dsNorm(mobTeamSearch?.value.trim() || "");
+    const matches = colleagues.filter(
+      (m) => !q || dsNorm(m.name).includes(q) || dsNorm(m.role).includes(q) || dsNorm(m.email).includes(q) || dsNorm(m.phone).includes(q)
+    );
+    if (!matches.length) {
+      mobTeamList.innerHTML = `<div class="ds-picker-empty">${colleagues.length ? "Nenhuma pessoa encontrada na equipe." : "Não há outros usuários cadastrados nesta organização."}</div>`;
+    } else {
+      mobTeamList.innerHTML = matches.map((m) => `
+        <button type="button" class="ds-sheet-team-item ${m.selected ? "is-picked" : ""}" data-ds-mob-pick="${dsEsc(m.id)}">
+          <span class="ds-picker-item-left">
+            <span class="ds-avatar ${m.selected ? "" : "is-soft"}">${m.selected ? "✓" : dsEsc(m.initials)}</span>
+            <span class="ds-picker-item-copy">
+              <strong>${dsEsc(m.name)}</strong>
+              <small>${m.role ? `${dsEsc(m.role)} · ` : ""}${m.phone ? dsEsc(m.phone) : "Sem WhatsApp"}</small>
+            </span>
+          </span>
+          <span class="ds-picker-item-act">${m.selected ? "Selecionado" : "Selecionar"}</span>
+        </button>
+      `).join("");
+    }
+    const count = colleagues.filter((m) => m.selected).length;
+    if (mobTeamConfirm) mobTeamConfirm.textContent = count ? `Confirmar seleção (${count})` : "Concluir";
+    for (const btn of mobTeamList.querySelectorAll("[data-ds-mob-pick]")) {
+      btn.addEventListener("click", () => {
+        const item = colleagues.find((x) => x.id === btn.dataset.dsMobPick);
+        if (item) {
+          item.selected = !item.selected;
+          feedback(statusEl);
+          renderMobileTeamSheet();
+          syncUI();
+        }
+      });
+    }
+  }
+
+  function focusInlineEditor() {
+    if (!editingKey || !selectedList) return;
+    const inp = selectedList.querySelector(`[data-ds-inline-input="${CSS.escape(editingKey)}"]`);
+    if (inp) {
+      inp.focus();
+      inp.setSelectionRange(inp.value.length, inp.value.length);
+    }
+  }
+
+  function renderSelectedSigners() {
+    const picked = colleagues.filter((m) => m.selected);
+    const activeExt = signingPolicy === "icp_brasil" ? [] : externalSigners;
+    const selfSigns = whoSigns !== "only_others";
+    const total = (selfSigns ? 1 : 0) + picked.length + activeExt.length;
+
+    if (selectedTitle) selectedTitle.textContent = `Signatários deste documento (${total})`;
+
+    if (quickChips && quickWrap) {
+      quickWrap.hidden = colleagues.length === 0;
+      quickChips.innerHTML = colleagues.slice(0, 4).map((m) => `
+        <button type="button" class="ds-quick-chip ${m.selected ? "is-picked" : ""}" data-ds-quick="${dsEsc(m.id)}">
+          ${m.selected ? "✓ " : "+ "}${dsEsc(m.name)}
+        </button>
+      `).join("");
+      for (const btn of quickChips.querySelectorAll("[data-ds-quick]")) {
+        btn.addEventListener("click", () => {
+          const item = colleagues.find((x) => x.id === btn.dataset.dsQuick);
+          if (item) {
+            item.selected = !item.selected;
+            feedback(statusEl);
+            syncUI();
+          }
+        });
+      }
+    }
+
+    if (!selectedList) return;
+    const rows = [];
+    if (selfSigns) {
+      rows.push(`
+        <div class="ds-signer-card is-self">
+          <div class="ds-signer-card-head">
+            <div class="ds-signer-card-person">
+              <span class="ds-avatar is-self">${dsEsc(selfUser.initials || "VC")}</span>
+              <div class="ds-signer-card-copy">
+                <strong>${dsEsc(selfUser.name || "Você")} <span>(Você)</span></strong>
+                <small>Assina na próxima etapa (Revisar e assinar)</small>
+              </div>
+            </div>
+            <span class="ds-policy-badge">Automático</span>
+          </div>
+        </div>
+      `);
+    }
+
+    for (const m of picked) {
+      rows.push(`
+        <div class="ds-signer-card">
+          <div class="ds-signer-card-head">
+            <div class="ds-signer-card-person">
+              <span class="ds-avatar">${dsEsc(m.initials)}</span>
+              <div class="ds-signer-card-copy">
+                <strong>${dsEsc(m.name)}${m.role ? ` <span>· ${dsEsc(m.role)}</span>` : ""}</strong>
+              </div>
+            </div>
+            <button type="button" class="ds-rm-btn" data-ds-rm-team="${dsEsc(m.id)}" aria-label="Remover ${dsEsc(m.name)}" title="Remover">✕</button>
+          </div>
+          <span class="ds-signer-ch-label">Forma de envio do link e código:</span>
+          ${renderChannelSelectorHtml({
+            keyPrefix: `team:${m.id}`,
+            activeChannel: m.channel,
+            email: m.email,
+            phone: m.phone,
+            allowEditEmail: false,
+            editingKey,
+          })}
+        </div>
+      `);
+    }
+
+    activeExt.forEach((ext, idx) => {
+      rows.push(`
+        <div class="ds-signer-card is-ext">
+          <div class="ds-signer-card-head">
+            <div class="ds-signer-card-person">
+              <span class="ds-avatar is-ext">EXT</span>
+              <div class="ds-signer-card-copy">
+                <strong>${dsEsc(ext.name)} <span>· ${dsEsc(ext.role_label || "Signatário")}</span></strong>
+              </div>
+            </div>
+            <button type="button" class="ds-rm-btn" data-ds-rm-ext="${idx}" aria-label="Remover ${dsEsc(ext.name)}" title="Remover">✕</button>
+          </div>
+          <span class="ds-signer-ch-label">Forma de envio do link exclusivo:</span>
+          ${renderChannelSelectorHtml({
+            keyPrefix: `ext:${idx}`,
+            activeChannel: ext.channel,
+            email: ext.email,
+            phone: ext.phone,
+            allowEditEmail: true,
+            editingKey,
+          })}
+        </div>
+      `);
+    });
+
+    selectedList.innerHTML = rows.length
+      ? rows.join("")
+      : '<p class="ds-hint">Nenhuma pessoa selecionada ainda. Use a busca acima ou convide uma pessoa externa.</p>';
+
+    for (const btn of selectedList.querySelectorAll("[data-ds-set-ch]")) {
+      btn.addEventListener("click", () => {
+        const [scope, id, ch] = btn.dataset.dsSetCh.split(":");
+        feedback(statusEl);
+        if (scope === "team") {
+          const item = colleagues.find((x) => x.id === id);
+          if (!item) return;
+          item.channel = ch;
+          if (ch === "whatsapp" && !dsIsValidPhone(item.phone)) {
+            editingKey = `team:${id}:whatsapp`;
+          } else if (editingKey && editingKey.startsWith(`team:${id}:`)) {
+            editingKey = null;
+          }
+        } else if (scope === "ext") {
+          const ext = externalSigners[Number(id)];
+          if (!ext) return;
+          ext.channel = ch;
+          if ((ch === "whatsapp" && !dsIsValidPhone(ext.phone)) || (ch === "email" && !dsIsValidEmail(ext.email))) {
+            editingKey = `ext:${id}:${ch}`;
+          } else if (editingKey && editingKey.startsWith(`ext:${id}:`)) {
+            editingKey = null;
+          }
+        }
+        syncUI();
+        if (editingKey) focusInlineEditor();
+      });
+    }
+
+    for (const btn of selectedList.querySelectorAll("[data-ds-edit-contact]")) {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        editingKey = editingKey === btn.dataset.dsEditContact ? null : btn.dataset.dsEditContact;
+        syncUI();
+        if (editingKey) focusInlineEditor();
+      });
+    }
+
+    for (const btn of selectedList.querySelectorAll("[data-ds-inline-cancel]")) {
+      btn.addEventListener("click", () => {
+        editingKey = null;
         syncUI();
       });
-      li.append(info, rmBtn);
-      return li;
-    }));
+    }
+
+    const saveInline = (key, rawVal) => {
+      const [scope, id, ch] = key.split(":");
+      const val = ch === "whatsapp" ? maskPhone(rawVal) : String(rawVal || "").trim();
+      if (ch === "whatsapp" && !dsIsValidPhone(val)) {
+        feedback(statusEl, "Informe um número de WhatsApp válido com DDD (ex.: (35) 99999-0000).", true);
+        return;
+      }
+      if (ch === "email" && !dsIsValidEmail(val)) {
+        feedback(statusEl, "Informe um e-mail válido.", true);
+        return;
+      }
+      if (scope === "team") {
+        const item = colleagues.find((x) => x.id === id);
+        if (item) {
+          if (ch === "whatsapp") item.phone = val;
+          else item.email = val;
+          item.channel = ch;
+        }
+      } else if (scope === "ext") {
+        const ext = externalSigners[Number(id)];
+        if (ext) {
+          if (ch === "whatsapp") ext.phone = val;
+          else ext.email = val;
+          ext.channel = ch;
+        }
+      }
+      editingKey = null;
+      feedback(statusEl);
+      syncUI();
+    };
+
+    for (const btn of selectedList.querySelectorAll("[data-ds-inline-save]")) {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.dsInlineSave;
+        const inp = selectedList.querySelector(`[data-ds-inline-input="${CSS.escape(key)}"]`);
+        if (inp) saveInline(key, inp.value);
+      });
+    }
+
+    for (const inp of selectedList.querySelectorAll("[data-ds-inline-input]")) {
+      if (inp.dataset.dsInlineInput.endsWith(":whatsapp")) {
+        inp.addEventListener("input", () => { inp.value = maskPhone(inp.value); });
+      }
+      inp.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); saveInline(inp.dataset.dsInlineInput, inp.value); }
+        if (ev.key === "Escape") { editingKey = null; syncUI(); }
+      });
+    }
+
+    for (const btn of selectedList.querySelectorAll("[data-ds-rm-team]")) {
+      btn.addEventListener("click", () => {
+        const item = colleagues.find((x) => x.id === btn.dataset.dsRmTeam);
+        if (item) { item.selected = false; feedback(statusEl); syncUI(); }
+      });
+    }
+
+    for (const btn of selectedList.querySelectorAll("[data-ds-rm-ext]")) {
+      btn.addEventListener("click", () => {
+        externalSigners.splice(Number(btn.dataset.dsRmExt), 1);
+        feedback(statusEl);
+        syncUI();
+      });
+    }
+  }
+
+  function validateStep2Signers() {
+    const picked = colleagues.filter((m) => m.selected);
+    const activeExt = signingPolicy === "icp_brasil" ? [] : externalSigners;
+    for (const m of picked) {
+      if (m.channel === "whatsapp" && !dsIsValidPhone(m.phone)) {
+        editingKey = `team:${m.id}:whatsapp`;
+        feedback(statusEl, `Informe o WhatsApp (com DDD) de ${m.name} ou selecione E-mail.`, true);
+        syncUI();
+        focusInlineEditor();
+        return false;
+      }
+    }
+    for (let i = 0; i < activeExt.length; i++) {
+      const ext = activeExt[i];
+      if (ext.channel === "whatsapp" && !dsIsValidPhone(ext.phone)) {
+        editingKey = `ext:${i}:whatsapp`;
+        feedback(statusEl, `Informe o WhatsApp (com DDD) de ${ext.name} ou selecione E-mail.`, true);
+        syncUI();
+        focusInlineEditor();
+        return false;
+      }
+      if (ext.channel === "email" && !dsIsValidEmail(ext.email)) {
+        editingKey = `ext:${i}:email`;
+        feedback(statusEl, `Informe o e-mail de ${ext.name} ou selecione WhatsApp.`, true);
+        syncUI();
+        focusInlineEditor();
+        return false;
+      }
+    }
+    return true;
   }
 
   function syncUI() {
@@ -564,19 +1024,39 @@ function initWizard(root) {
     if (!needsStep2) currentStep = 1;
     const totalSteps = whoSigns === "me_and_others" ? 4 : 3;
     const allowExternal = signingPolicy !== "icp_brasil";
+    const wMeta = WHO_META[whoSigns] || WHO_META.only_me;
+    const pMeta = POLICY_META[signingPolicy] || POLICY_META.flexible;
 
     pane1.hidden = currentStep !== 1;
     pane2.hidden = currentStep !== 2;
-    cancelBtn.hidden = currentStep !== 1;
-    backBtn.hidden = currentStep !== 2;
-    nextBtn.hidden = !(currentStep === 1 && needsStep2);
-    submitBtn.hidden = currentStep === 1 && needsStep2;
+    if (cancelBtn) cancelBtn.hidden = currentStep !== 1;
+    if (backBtn) backBtn.hidden = currentStep !== 2;
+    if (nextBtn) nextBtn.hidden = !(currentStep === 1 && needsStep2);
+    if (submitBtn) submitBtn.hidden = currentStep === 1 && needsStep2;
+
+    if (headingEl) headingEl.textContent = currentStep === 1 ? "Novo documento" : "Quem vai assinar";
+    if (crumbEl) crumbEl.textContent = currentStep === 1 ? "Novo documento" : "Quem vai assinar";
+    if (subtitle) subtitle.textContent = "Envie o PDF, escolha a modalidade e defina quem vai assinar.";
+
+    if (whoThumb) whoThumb.style.transform = `translateX(${wMeta.idx * 100}%)`;
+    if (whoHintText) whoHintText.textContent = wMeta.hint;
+    for (const btn of whoBtns) btn.setAttribute("aria-checked", String(btn.dataset.dsWho === whoSigns));
+
+    if (policyLabel) policyLabel.textContent = pMeta.label;
+    if (policyBadge) policyBadge.textContent = pMeta.badge;
+    if (policyDesc) policyDesc.textContent = pMeta.desc;
+    if (policyDrawer) policyDrawer.hidden = !deskPolicyOpen;
+    if (policyToggleTxt) policyToggleTxt.textContent = deskPolicyOpen ? "Fechar" : "Alterar";
+    if (policyToggleBtn) policyToggleBtn.setAttribute("aria-expanded", String(deskPolicyOpen));
+    for (const opt of policyOpts) opt.setAttribute("aria-checked", String(opt.dataset.dsPolicy === signingPolicy));
 
     if (extIcpWarn) extIcpWarn.hidden = allowExternal;
-    if (extAdder) extAdder.hidden = !allowExternal;
+    if (toggleExtFormBtn) toggleExtFormBtn.hidden = !allowExternal;
+    if (mobOpenExtBtn) mobOpenExtBtn.hidden = !allowExternal;
+    if (!allowExternal && extAdder) extAdder.hidden = true;
     if (manifestoNote) manifestoNote.hidden = !allowExternal;
 
-    // Adaptive top steps bar
+    // Top step indicators
     stepDoc.classList.toggle("is-done", currentStep > 1);
     if (currentStep === 1) stepDoc.setAttribute("aria-current", "step");
     else stepDoc.removeAttribute("aria-current");
@@ -600,34 +1080,21 @@ function initWizard(root) {
       stepSendReview.querySelector("[data-wiz-num]").textContent = "3";
     }
 
-    if (subtitle) {
-      subtitle.textContent = currentStep === 1
-        ? "Envie o PDF, escolha a modalidade e defina quem vai assinar."
-        : "Selecione equipe da fazenda e/ou convide signatários externos por link.";
-    }
-    if (submitBtn) {
-      submitBtn.textContent = whoSigns === "only_others"
-        ? "Enviar convites e abrir documento →"
-        : "Continuar para Revisar e assinar →";
-    }
+    const submitLabel = whoSigns === "only_others"
+      ? "Enviar convites e abrir documento →"
+      : "Continuar para Revisar e assinar →";
+    if (submitBtn) submitBtn.textContent = submitLabel;
 
-    for (const card of whoCards) {
-      card.setAttribute("aria-checked", String(card.dataset.dsWho === whoSigns));
-    }
-    for (const card of policyCards) {
-      card.setAttribute("aria-checked", String(card.dataset.dsPolicy === signingPolicy));
-    }
-
-    // Update Sticky Summary Card in real time
+    // Summary sidebar
     if (sumStep) sumStep.textContent = `Passo ${currentStep} de ${totalSteps}`;
     const docName = (titleInput?.value || "").trim() || (selectedFile ? selectedFile.name.replace(/\.pdf$/i, "") : "Nenhum arquivo selecionado");
     if (sumTitle) sumTitle.textContent = docName;
     if (sumCat) sumCat.textContent = catSelect?.value || "Outros";
     if (sumFile) sumFile.textContent = selectedFile ? selectedFile.name : "Aguardando envio";
-    if (sumPolicy) sumPolicy.textContent = POLICY_LABELS[signingPolicy] || "Livre escolha";
-    const chosen = selectedColleagues();
+    if (sumPolicy) sumPolicy.textContent = pMeta.label;
+    const picked = colleagues.filter((m) => m.selected);
     const activeExternals = allowExternal ? externalSigners : [];
-    const totalOthers = chosen.length + activeExternals.length;
+    const totalOthers = picked.length + activeExternals.length;
     if (sumWho) {
       if (whoSigns === "only_me") sumWho.textContent = "Apenas você";
       else if (whoSigns === "me_and_others") sumWho.textContent = totalOthers ? `Você + ${totalOthers} pessoa(s)` : "Você e outras pessoas";
@@ -640,11 +1107,28 @@ function initWizard(root) {
     if (sumPeopleWrap && sumPeopleList) {
       sumPeopleWrap.hidden = !needsStep2 || totalOthers === 0;
       const items = [
-        ...chosen.map((card) => element("li", `• ${card.dataset.name}`)),
-        ...activeExternals.map((ext) => element("li", `• ${ext.name} (externo)`)),
+        ...picked.map((m) => {
+          const chTxt = m.channel === "whatsapp" ? (m.phone ? `WhatsApp ${m.phone}` : "WhatsApp pendente") : "E-mail";
+          return element("li", `• ${m.name} (${chTxt})`);
+        }),
+        ...activeExternals.map((ext) => {
+          const chTxt = ext.channel === "whatsapp" ? `WhatsApp ${ext.phone || "pendente"}` : `E-mail ${ext.email || "pendente"}`;
+          return element("li", `• ${ext.name} (externo · ${chTxt})`);
+        }),
       ];
       sumPeopleList.replaceChildren(...items);
     }
+
+    // Mobile sticky bar
+    if (mobSummary) mobSummary.textContent = `${wMeta.short} · ${pMeta.label}`;
+    if (mobStepPill) mobStepPill.textContent = `${currentStep}/${totalSteps}`;
+    if (mobCta) {
+      mobCta.textContent = currentStep === 1 && needsStep2
+        ? "Continuar para Quem assina →"
+        : submitLabel;
+    }
+
+    renderSelectedSigners();
   }
 
   const pickFile = (file) => {
@@ -687,26 +1171,103 @@ function initWizard(root) {
     },
   });
 
-  for (const card of whoCards) {
-    card.addEventListener("click", () => {
-      whoSigns = card.dataset.dsWho;
+  for (const btn of whoBtns) {
+    btn.addEventListener("click", () => {
+      whoSigns = btn.dataset.dsWho || "only_me";
       syncUI();
     });
   }
-  for (const card of policyCards) {
-    card.addEventListener("click", () => {
-      signingPolicy = card.dataset.dsPolicy || "flexible";
+
+  policyToggleBtn?.addEventListener("click", () => {
+    if (isMobileViewport() && policySheet) {
+      policySheet.showModal();
+    } else {
+      deskPolicyOpen = !deskPolicyOpen;
+      syncUI();
+    }
+  });
+
+  for (const opt of policyOpts) {
+    opt.addEventListener("click", () => {
+      signingPolicy = opt.dataset.dsPolicy || "flexible";
+      deskPolicyOpen = false;
+      if (policySheet?.open) policySheet.close();
       syncUI();
     });
   }
+
+  for (const btn of root.querySelectorAll("[data-ds-goto-step]")) {
+    btn.addEventListener("click", () => {
+      const target = Number(btn.dataset.dsGotoStep);
+      if (target === 1) {
+        currentStep = 1;
+        feedback(statusEl);
+        syncUI();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } else if (target === 2 && whoSigns !== "only_me") {
+        const file = selectedFile || fileInput?.files?.[0];
+        if (!file) {
+          feedback(statusEl, "Selecione ou arraste um arquivo PDF antes de continuar.", true);
+          return;
+        }
+        currentStep = 2;
+        feedback(statusEl);
+        syncUI();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+  }
+
+  for (const btn of root.querySelectorAll("[data-ds-close-dialog]")) {
+    btn.addEventListener("click", () => btn.closest("dialog")?.close());
+  }
+  for (const dlg of [policySheet, teamSheet, extSheet].filter(Boolean)) {
+    dlg.addEventListener("click", (ev) => {
+      if (ev.target === dlg) dlg.close();
+    });
+  }
+
+  // Desktop Search Dropdown
+  teamSearch?.addEventListener("focus", () => {
+    renderDesktopDropdown();
+    if (teamDropdown) teamDropdown.hidden = false;
+  });
+  teamSearch?.addEventListener("input", () => {
+    renderDesktopDropdown();
+    if (teamDropdown) teamDropdown.hidden = false;
+  });
+  document.addEventListener("click", (ev) => {
+    if (pickerWrap && teamDropdown && !pickerWrap.contains(ev.target)) {
+      teamDropdown.hidden = true;
+    }
+  });
+
+  // Mobile Team Sheet
+  mobOpenTeamBtn?.addEventListener("click", () => {
+    renderMobileTeamSheet();
+    teamSheet?.showModal();
+  });
+  mobTeamSearch?.addEventListener("input", renderMobileTeamSheet);
+
+  // Desktop External Signer Form
+  toggleExtFormBtn?.addEventListener("click", () => {
+    if (!extAdder) return;
+    extAdder.hidden = !extAdder.hidden;
+    if (!extAdder.hidden) extName?.focus();
+  });
+  extCancelBtn?.addEventListener("click", () => {
+    if (extAdder) extAdder.hidden = true;
+    feedback(extErr);
+  });
   extChannel?.addEventListener("change", () => {
     const isWa = extChannel.value === "whatsapp";
     if (extPhoneWrap) extPhoneWrap.hidden = !isWa;
     if (extEmailWrap) extEmailWrap.hidden = isWa;
     feedback(extErr);
   });
+
   function tryCommitPendingExternal() {
-    if (signingPolicy === "icp_brasil") return true;
+    if (signingPolicy === "icp_brasil" || extAdder?.hidden) return true;
     const name = (extName?.value || "").trim();
     const phone = (extPhone?.value || "").trim();
     const email = (extEmail?.value || "").trim();
@@ -718,22 +1279,28 @@ function initWizard(root) {
       extName?.focus();
       return false;
     }
-    if (channel === "whatsapp" && phone.replace(/\D/g, "").length < 10) {
+    if (channel === "whatsapp" && !dsIsValidPhone(phone)) {
       feedback(extErr, "Informe um número de WhatsApp válido com DDD.", true);
       extPhone?.focus();
       return false;
     }
-    if (channel === "email" && !email.includes("@")) {
+    if (channel === "email" && !dsIsValidEmail(email)) {
       feedback(extErr, "Informe um e-mail válido para o signatário externo.", true);
       extEmail?.focus();
       return false;
     }
-    externalSigners.push({name, role_label, channel, phone: channel === "whatsapp" ? phone : "", email: channel === "email" ? email : ""});
+    externalSigners.push({
+      name,
+      role_label,
+      channel,
+      phone: channel === "whatsapp" ? maskPhone(phone) : "",
+      email: channel === "email" ? email : "",
+    });
     if (extName) extName.value = "";
     if (extPhone) extPhone.value = "";
     if (extEmail) extEmail.value = "";
+    if (extAdder) extAdder.hidden = true;
     feedback(extErr);
-    renderExternalList();
     syncUI();
     return true;
   }
@@ -741,38 +1308,71 @@ function initWizard(root) {
   extAddBtn?.addEventListener("click", () => {
     tryCommitPendingExternal();
   });
+
+  // Mobile External Signer Sheet
+  mobOpenExtBtn?.addEventListener("click", () => {
+    feedback(mobExtErr);
+    extSheet?.showModal();
+  });
+  for (const btn of mobExtChBtns) {
+    btn.addEventListener("click", () => {
+      mobExtChannel = btn.dataset.dsMobExtCh === "email" ? "email" : "whatsapp";
+      for (const b of mobExtChBtns) {
+        const isWa = b.dataset.dsMobExtCh === "whatsapp";
+        const active = b.dataset.dsMobExtCh === mobExtChannel;
+        b.setAttribute("aria-checked", String(active));
+        b.classList.toggle("is-wa-active", active && isWa);
+        b.classList.toggle("is-mail-active", active && !isWa);
+      }
+      if (mobExtContactLbl) mobExtContactLbl.textContent = mobExtChannel === "whatsapp" ? "WhatsApp (com DDD)" : "E-mail do signatário";
+      if (mobExtContact) {
+        mobExtContact.type = mobExtChannel === "whatsapp" ? "tel" : "email";
+        mobExtContact.placeholder = mobExtChannel === "whatsapp" ? "(35) 99999-0000" : "contato@empresa.com.br";
+        mobExtContact.value = "";
+      }
+      feedback(mobExtErr);
+    });
+  }
+  mobExtContact?.addEventListener("input", () => {
+    if (mobExtChannel === "whatsapp") mobExtContact.value = maskPhone(mobExtContact.value);
+  });
+  mobExtSave?.addEventListener("click", () => {
+    const name = (mobExtName?.value || "").trim();
+    const role_label = (mobExtRole?.value || "").trim() || "Signatário";
+    const contact = (mobExtContact?.value || "").trim();
+    if (name.length < 3) {
+      feedback(mobExtErr, "Informe o nome completo do signatário.", true);
+      mobExtName?.focus();
+      return;
+    }
+    if (mobExtChannel === "whatsapp" && !dsIsValidPhone(contact)) {
+      feedback(mobExtErr, "Informe um WhatsApp válido com DDD.", true);
+      mobExtContact?.focus();
+      return;
+    }
+    if (mobExtChannel === "email" && !dsIsValidEmail(contact)) {
+      feedback(mobExtErr, "Informe um e-mail válido.", true);
+      mobExtContact?.focus();
+      return;
+    }
+    externalSigners.push({
+      name,
+      role_label,
+      channel: mobExtChannel,
+      phone: mobExtChannel === "whatsapp" ? maskPhone(contact) : "",
+      email: mobExtChannel === "email" ? contact : "",
+    });
+    if (mobExtName) mobExtName.value = "";
+    if (mobExtContact) mobExtContact.value = "";
+    feedback(mobExtErr);
+    extSheet?.close();
+    syncUI();
+  });
+
   titleInput?.addEventListener("input", syncUI);
   catSelect?.addEventListener("change", syncUI);
 
-  for (const item of root.querySelectorAll("[data-ds-colleague-card]")) {
-    const sw = item.querySelector("[data-ds-colleague-switch]");
-    const sel = item.querySelector("[data-ds-colleague-channel]");
-    const contactInput = item.querySelector("[data-ds-colleague-contact]");
-    const contactLabel = item.querySelector("[data-ds-colleague-contact-label]");
-    sw?.addEventListener("change", syncUI);
-    sel?.addEventListener("change", () => {
-      const isWa = sel.value === "whatsapp";
-      if (contactLabel) contactLabel.textContent = isWa ? "WhatsApp" : "E-mail";
-      if (isWa) {
-        const phone = contactInput.dataset.phone || "";
-        if (phone) {
-          contactInput.value = maskPhone(phone);
-          contactInput.classList.remove("ds-input-warn");
-          contactInput.classList.add("ds-input-readonly");
-        } else {
-          contactInput.value = "Nenhum telefone cadastrado no perfil";
-          contactInput.classList.remove("ds-input-readonly");
-          contactInput.classList.add("ds-input-warn");
-        }
-      } else {
-        contactInput.value = contactInput.dataset.email || "";
-        contactInput.classList.remove("ds-input-warn");
-        contactInput.classList.add("ds-input-readonly");
-      }
-    });
-  }
-
-  nextBtn?.addEventListener("click", () => {
+  const goStep2 = () => {
     const file = selectedFile || fileInput?.files?.[0];
     if (!file) {
       feedback(statusEl, "Selecione ou arraste um arquivo PDF antes de continuar.", true);
@@ -781,12 +1381,18 @@ function initWizard(root) {
     feedback(statusEl);
     currentStep = 2;
     syncUI();
-    window.scrollTo({top: 0, behavior: "smooth"});
-  });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
+  nextBtn?.addEventListener("click", goStep2);
   backBtn?.addEventListener("click", () => {
     currentStep = 1;
+    feedback(statusEl);
     syncUI();
+  });
+  mobCta?.addEventListener("click", () => {
+    if (currentStep === 1 && whoSigns !== "only_me") goStep2();
+    else form.requestSubmit();
   });
 
   form.addEventListener("submit", async (event) => {
@@ -800,13 +1406,16 @@ function initWizard(root) {
       feedback(statusEl, "Corrija os dados do signatário externo antes de continuar.", true);
       return;
     }
-    const chosen = whoSigns !== "only_me" ? selectedColleagues() : [];
+    const chosen = whoSigns !== "only_me" ? colleagues.filter((m) => m.selected) : [];
     const activeExternals = (whoSigns !== "only_me" && signingPolicy !== "icp_brasil") ? externalSigners : [];
     if (whoSigns !== "only_me" && chosen.length === 0 && activeExternals.length === 0) {
       feedback(statusEl, "Selecione pelo menos um usuário da equipe ou adicione um signatário externo.", true);
       return;
     }
-    submitBtn.disabled = true;
+    if (whoSigns !== "only_me" && !validateStep2Signers()) return;
+
+    if (submitBtn) submitBtn.disabled = true;
+    if (mobCta) mobCta.disabled = true;
     feedback(statusEl, "Enviando e preparando o documento…");
     try {
       const created = await request(root, "/assinatura-digital/documentos", {
@@ -818,23 +1427,19 @@ function initWizard(root) {
         signingPolicy,
       });
       const warnings = [];
-      for (const card of chosen) {
-        const email = card.querySelector("[data-ds-colleague-switch]")?.value;
-        const channel = card.querySelector("[data-ds-colleague-channel]")?.value || "email";
-        if (email) {
-          try {
-            const res = await request(root, `${created.url}/participantes`, {
-              json: {email, channel, consent: true},
-            });
-            if (res && res.notification_error) warnings.push(res.notification_error);
-          } catch (err) {
-            warnings.push(err.message || `Não foi possível compartilhar com ${email}.`);
-          }
+      for (const m of chosen) {
+        try {
+          const payload = { email: m.email, channel: m.channel, consent: true };
+          if (m.channel === "whatsapp" && m.phone) payload.phone = m.phone;
+          const res = await request(root, `${created.url}/participantes`, { json: payload });
+          if (res && res.notification_error) warnings.push(res.notification_error);
+        } catch (err) {
+          warnings.push(err.message || `Não foi possível compartilhar com ${m.name}.`);
         }
       }
       for (const ext of activeExternals) {
         try {
-          const res = await request(root, `${created.url}/externos`, {json: ext});
+          const res = await request(root, `${created.url}/externos`, { json: ext });
           if (res && res.notification_error) warnings.push(res.notification_error);
         } catch (err) {
           warnings.push(err.message || `Não foi possível convidar ${ext.name}.`);
@@ -852,7 +1457,8 @@ function initWizard(root) {
       location.assign(`${created.url}?${params.toString()}`);
     } catch (error) {
       feedback(statusEl, error.message, true);
-      submitBtn.disabled = false;
+      if (submitBtn) submitBtn.disabled = false;
+      if (mobCta) mobCta.disabled = false;
     }
   });
 
@@ -900,12 +1506,94 @@ function initWorkspace(root) {
   const modeButtons = [...root.querySelectorAll("[data-ds-sign-mode]")];
   const modePanes = [...root.querySelectorAll("[data-ds-mode-pane]")];
   const elNameInput = find("[data-ds-el-name]");
+  const elNameWrap = find("[data-ds-el-name-wrap]");
+  const elNamePreview = find("[data-ds-el-name-preview]");
+  const elNameToggle = find("[data-ds-el-name-toggle]");
   const elCpfInput = find("[data-ds-el-cpf]");
   const elChannelSelect = find("[data-ds-el-channel]");
+  const elPhoneInput = find("[data-ds-el-phone]");
+  const wsSelfChannelBox = find("[data-ds-ws-self-channel-box]");
   const stampToggleTitle = find("[data-ds-stamp-toggle-title]");
   const stampToggleSub = find("[data-ds-stamp-toggle-sub]");
   const verCode = root.dataset.verificationCode || "";
   const docTitle = root.dataset.docTitle || "este documento";
+
+  elNameToggle?.addEventListener("click", () => {
+    if (!elNameWrap) return;
+    elNameWrap.hidden = !elNameWrap.hidden;
+    elNameToggle.textContent = elNameWrap.hidden ? "Editar nome" : "Ocultar";
+    if (!elNameWrap.hidden) elNameInput?.focus();
+  });
+  elNameInput?.addEventListener("input", () => {
+    if (elNamePreview) elNamePreview.textContent = elNameInput.value.trim() || root.dataset.userName || "";
+  });
+
+  if (wsSelfChannelBox && elChannelSelect) {
+    let wsSelfEditing = null;
+    const renderWsSelfChannels = () => {
+      const ch = elChannelSelect.value === "whatsapp" ? "whatsapp" : "email";
+      const email = root.dataset.userEmail || "";
+      const phone = elPhoneInput ? elPhoneInput.value : (root.dataset.userPhone || "");
+      wsSelfChannelBox.innerHTML = renderChannelSelectorHtml({
+        keyPrefix: "ws:self",
+        activeChannel: ch,
+        email,
+        phone,
+        allowEditEmail: false,
+        editingKey: wsSelfEditing,
+      });
+      for (const btn of wsSelfChannelBox.querySelectorAll("[data-ds-set-ch]")) {
+        btn.addEventListener("click", () => {
+          const nextCh = btn.dataset.dsSetCh.endsWith(":whatsapp") ? "whatsapp" : "email";
+          elChannelSelect.value = nextCh;
+          if (nextCh === "whatsapp" && !dsIsValidPhone(elPhoneInput?.value || "")) {
+            wsSelfEditing = "ws:self:whatsapp";
+          } else {
+            wsSelfEditing = null;
+          }
+          renderWsSelfChannels();
+          if (wsSelfEditing) wsSelfChannelBox.querySelector("[data-ds-inline-input]")?.focus();
+        });
+      }
+      for (const btn of wsSelfChannelBox.querySelectorAll("[data-ds-edit-contact]")) {
+        btn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          wsSelfEditing = wsSelfEditing === btn.dataset.dsEditContact ? null : btn.dataset.dsEditContact;
+          renderWsSelfChannels();
+          if (wsSelfEditing) wsSelfChannelBox.querySelector("[data-ds-inline-input]")?.focus();
+        });
+      }
+      wsSelfChannelBox.querySelector("[data-ds-inline-cancel]")?.addEventListener("click", () => {
+        wsSelfEditing = null;
+        renderWsSelfChannels();
+      });
+      const saveWsPhone = (raw) => {
+        const val = maskPhone(raw);
+        if (!dsIsValidPhone(val)) {
+          feedback(status, "Informe um WhatsApp válido com DDD (ex.: (35) 99999-0000).", true);
+          return;
+        }
+        if (elPhoneInput) elPhoneInput.value = val;
+        elChannelSelect.value = "whatsapp";
+        wsSelfEditing = null;
+        feedback(status);
+        renderWsSelfChannels();
+      };
+      wsSelfChannelBox.querySelector("[data-ds-inline-save]")?.addEventListener("click", () => {
+        const inp = wsSelfChannelBox.querySelector("[data-ds-inline-input]");
+        if (inp) saveWsPhone(inp.value);
+      });
+      const inp = wsSelfChannelBox.querySelector("[data-ds-inline-input]");
+      if (inp) {
+        inp.addEventListener("input", () => { inp.value = maskPhone(inp.value); });
+        inp.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") { ev.preventDefault(); saveWsPhone(inp.value); }
+          if (ev.key === "Escape") { wsSelfEditing = null; renderWsSelfChannels(); }
+        });
+      }
+    };
+    renderWsSelfChannels();
+  }
 
   let activeMode = root.dataset.defaultMode === "icp" ? "icp" : "electronic";
   if (activeMode === "electronic" && root.dataset.allowElectronic !== "yes") activeMode = "icp";
@@ -1381,6 +2069,7 @@ function initWorkspace(root) {
             signer_name: (elNameInput?.value || "").trim(),
             cpf: (elCpfInput?.value || "").trim(),
             channel,
+            phone: channel === "whatsapp" ? (elPhoneInput?.value || "").trim() : "",
             appearance,
             consent: consent.checked,
           },

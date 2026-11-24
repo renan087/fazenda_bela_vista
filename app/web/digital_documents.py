@@ -345,6 +345,26 @@ def signing_home(request: Request, db: Session = Depends(get_db), user: User = D
     )
 
 
+def _format_phone_br(phone: str | None) -> str:
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) in (12, 13) and digits.startswith("55"):
+        digits = digits[2:]
+    if len(digits) == 11:
+        return f"({digits[:2]}) {digits[2:7]}-{digits[7:]}"
+    if len(digits) == 10:
+        return f"({digits[:2]}) {digits[2:6]}-{digits[6:]}"
+    return (phone or "").strip()
+
+
+def _user_initials(name: str | None) -> str:
+    parts = [p for p in (name or "").strip().split() if p]
+    if not parts:
+        return "US"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+
 @router.get("/assinatura-digital/novo")
 def new_document_wizard(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
     farm = _farm(request, db, user, required=False)
@@ -357,9 +377,35 @@ def new_document_wizard(request: Request, db: Session = Depends(get_db), user: U
         if farm
         else []
     )
+    user_ids = [user.id] + [c.id for c in org_colleagues]
+    wa_map: dict[int, str] = {}
+    if user_ids:
+        for link in db.scalars(select(WhatsAppLink).where(WhatsAppLink.user_id.in_(user_ids), WhatsAppLink.wa_id.is_not(None))).all():
+            if link.wa_id and link.user_id not in wa_map:
+                wa_map[link.user_id] = link.wa_id
+    colleagues_payload = []
+    for c in org_colleagues:
+        cname = c.display_name or c.name
+        cphone = _format_phone_br(wa_map.get(c.id) or c.phone)
+        colleagues_payload.append({
+            "id": c.id,
+            "name": cname,
+            "initials": _user_initials(cname),
+            "role": (c.job_title or "").strip(),
+            "email": c.email,
+            "phone": cphone,
+        })
+    self_name = user.display_name or user.name
+    self_user_payload = {
+        "name": self_name,
+        "initials": _user_initials(self_name),
+        "email": user.email,
+        "phone": _format_phone_br(wa_map.get(user.id) or user.phone),
+    }
     return _page(
         request, user, db, "digital_signing", "digital_signing_new.html", "Novo documento",
         farm=farm, categories=workflow.DOCUMENT_CATEGORIES, org_colleagues=org_colleagues,
+        colleagues_payload=colleagues_payload, self_user_payload=self_user_payload,
         mode=signing_mode(farm.id if farm else None),
     )
 
@@ -491,7 +537,8 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
     allow_icp = signing_policy != "electronic"
     default_sign_mode = "icp" if (signing_policy == "icp_brasil" or (allow_icp and cert_choices and signing_policy != "electronic")) else "electronic"
     wa_link = db.scalar(select(WhatsAppLink).where(WhatsAppLink.user_id == user.id, WhatsAppLink.wa_id.is_not(None)))
-    user_whatsapp_phone = (wa_link.wa_id if wa_link and wa_link.wa_id else "") or (user.phone or "")
+    user_whatsapp_phone = _format_phone_br((wa_link.wa_id if wa_link and wa_link.wa_id else "") or (user.phone or ""))
+    user_initials = _user_initials(user.display_name or user.name)
     verification_code = electronic.ensure_document_verification_code(db, doc)
     db.commit()
     active_view = "detalhes" if request.query_params.get("aba") == "detalhes" else "assinar"
@@ -511,6 +558,7 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
         all_signed=all_signed, show_signing_form=show_signing_form,
         signing_policy=signing_policy, allow_electronic=allow_electronic, allow_icp=allow_icp,
         default_sign_mode=default_sign_mode, user_whatsapp_phone=user_whatsapp_phone,
+        user_initials=user_initials,
         verification_code=verification_code,
         notice=notice,
         active_view=active_view, wizard_flow=wizard_flow, mode=signing_mode(farm.id),
@@ -637,6 +685,7 @@ async def request_electronic_code(document_id: str, request: Request, db: Sessio
             auth_channel=str(data.get("channel") or "email"),
             appearance=data.get("appearance") if isinstance(data.get("appearance"), dict) else {"visible": False},
             consent=data.get("consent") is True,
+            override_phone=str(data.get("phone") or "").strip() or None,
         )
         return _json(result, 201)
     except (ValueError, PermissionError, workflow.WorkflowError, IntegrityError) as exc:
@@ -771,12 +820,12 @@ def _normalize_br_whatsapp(phone: str | None) -> str:
     return digits
 
 
-def _notify_participant(db: Session, *, doc: SigningDocument, farm: Farm, sender: User, collaborator: User, channel: str, doc_url: str) -> tuple[bool, str | None]:
+def _notify_participant(db: Session, *, doc: SigningDocument, farm: Farm, sender: User, collaborator: User, channel: str, doc_url: str, phone_override: str | None = None) -> tuple[bool, str | None]:
     doc_title = doc.title or doc.filename
     sender_name = sender.display_name or sender.name
     if channel == "whatsapp":
         link = db.scalar(select(WhatsAppLink).where(WhatsAppLink.user_id == collaborator.id, WhatsAppLink.wa_id.is_not(None)))
-        wa_to = (link.wa_id if link and link.wa_id else "") or _normalize_br_whatsapp(collaborator.phone)
+        wa_to = _normalize_br_whatsapp(phone_override) or (link.wa_id if link and link.wa_id else "") or _normalize_br_whatsapp(collaborator.phone)
         if not wa_to:
             return False, f"{collaborator.display_name or collaborator.name} não possui telefone cadastrado para WhatsApp."
         if not whatsapp_is_configured():
@@ -814,6 +863,7 @@ async def add_participant(document_id: str, request: Request, db: Session = Depe
     data = await _payload(request)
     email = str(data.get("email", "")).strip().lower()
     channel = str(data.get("channel") or "email").strip().lower()
+    phone_override = str(data.get("phone") or "").strip() or None
     if channel not in {"email", "whatsapp"}:
         channel = "email"
     if data.get("consent") is not True:
@@ -828,7 +878,7 @@ async def add_participant(document_id: str, request: Request, db: Session = Depe
         db.commit()
     doc_url = _public_base_url(request) + f"/assinatura-digital/documentos/{doc.id}"
     sent, err = await run_in_threadpool(
-        _notify_participant, db, doc=doc, farm=farm, sender=user, collaborator=collaborator, channel=channel, doc_url=doc_url
+        _notify_participant, db, doc=doc, farm=farm, sender=user, collaborator=collaborator, channel=channel, doc_url=doc_url, phone_override=phone_override
     )
     return _json({"ok": True, "channel": channel, "notification_sent": sent, "notification_error": err})
 
