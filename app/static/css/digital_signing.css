@@ -635,6 +635,10 @@
 .ds-ws-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; margin-bottom: 0.35rem; }
 .ds-ws-sigcount { font-size: 0.78rem; font-weight: 600; color: var(--ds-muted); }
 .ds-ceremony-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(20rem, 0.95fr); gap: 1rem; align-items: start; }
+.ds-ceremony-grid.is-completed { grid-template-columns: minmax(0, 32rem); justify-content: center; }
+.ds-ceremony-grid.is-completed .ds-viewer,
+.ds-ceremony-grid.is-completed .ds-mini-steps { display: none !important; }
+.ds-ceremony-grid.is-completed .ds-ceremony-side { position: static; width: 100%; }
 .ds-viewer { overflow: hidden; padding: 0; }
 .ds-toolbar {
   display: flex;

@@ -152,9 +152,6 @@ def import_pdf(
 
 def delete_document(db, user, farm_id, document_id):
     doc = accessible_document(db, user, farm_id, document_id, lock=True, owner=True)
-    signatures = (doc.validation or {}).get("signatures") or []
-    if doc.current_revision > 1 or signatures:
-        raise WorkflowError("Documentos já assinados não podem ser excluídos.", 409)
     db.query(SigningChallenge).filter_by(document_id=doc.id).delete(synchronize_session="fetch")
     db.query(SigningParticipant).filter_by(document_id=doc.id).delete(synchronize_session="fetch")
     db.query(SigningRevision).filter_by(document_id=doc.id).delete(synchronize_session="fetch")

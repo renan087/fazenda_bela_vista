@@ -756,6 +756,12 @@ function initWorkspace(root) {
       if (num === step) pill.setAttribute("aria-current", "step");
       else pill.removeAttribute("aria-current");
     }
+    const grid = find("[data-ds-ceremony-grid]");
+    const viewer = find("[data-ds-viewer-section]");
+    const isDone = step === 3;
+    if (grid) grid.classList.toggle("is-completed", isDone);
+    if (viewer) viewer.hidden = isDone;
+    if (isDone) window.scrollTo({top: 0, behavior: "smooth"});
   }
 
   let pdf;

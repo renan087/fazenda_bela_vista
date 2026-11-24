@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=7">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=8">{% endblock %}
 {% block content %}
 <main class="sf-page pd-page ds-page ds-wizard-page" data-ds-wizard data-csrf="{{ csrf_token }}">
   <nav class="pd-crumbs" aria-label="Caminho">
@@ -201,5 +201,5 @@
   </form>
   {% endif %}
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=11"></script>
+<script type="module" src="/static/js/digital_signing.js?v=12"></script>
 {% endblock %}

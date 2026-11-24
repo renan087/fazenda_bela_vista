@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, status %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=7">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=8">{% endblock %}
 {% block content %}
 {% set endpoint = '/assinatura-digital/documentos/' ~ doc.id %}
 {% set pdf_url = endpoint ~ '/revisoes/' ~ doc.current_revision ~ '/pdf' %}
@@ -383,5 +383,5 @@
     {% endif %}
   </div>
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=11"></script>
+<script type="module" src="/static/js/digital_signing.js?v=12"></script>
 {% endblock %}

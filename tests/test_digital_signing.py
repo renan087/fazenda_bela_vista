@@ -547,9 +547,6 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
     with sessions() as db:
         assert db.get(User, 2).phone == "(35) 99888-7766"
 
-    # Signed document cannot be deleted
-    assert client.delete(endpoint, headers=headers).status_code == 409
-
     # 4) Delete certificate and verify signed PDF remains valid and downloadable
     removed = client.delete(f"/certificados-digitais/{cert_id}", headers=headers)
     assert removed.status_code == 200, removed.text
@@ -559,6 +556,10 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
     })
     assert validation.status_code == 200
     assert validation.json()["state"] == "valid"
+
+    # Owner can also delete an already-signed document from the list
+    assert client.delete(endpoint, headers=headers).status_code == 200
+    assert client.get(endpoint).status_code == 404
 
     # 5) Unsigned document can be deleted by owner; workspace avoids repeating filename when title == filename stem
     # and keeps consent checkbox disabled when user has no active certificate selected

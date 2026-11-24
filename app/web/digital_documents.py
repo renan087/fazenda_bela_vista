@@ -192,7 +192,7 @@ def _document_summaries(db, user, farm):
             "status_label": status_label,
             "status_tone": status_tone,
             "validation_state": val_state,
-            "can_delete": bool(doc.owner_id == user.id and doc.current_revision == 1 and sig_count == 0),
+            "can_delete": bool(doc.owner_id == user.id),
             "updated_at": doc.updated_at,
         }
         summaries.append(item)
