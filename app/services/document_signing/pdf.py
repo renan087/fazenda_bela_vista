@@ -27,9 +27,12 @@ from pyhanko.sign.validation.status import SignatureCoverageLevel
 from pyhanko.stamp import StaticStampStyle, TextStampStyle
 from pyhanko_certvalidator.errors import RevokedError
 from pyhanko_certvalidator.registry import SimpleCertificateStore
+from reportlab import rl_config
 from reportlab.lib.colors import HexColor
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas as rl_canvas
+
+rl_config.useA85 = 0
 
 from app.services.document_signing.policy import FILTER, SUBFILTER, POLICY_OID, policy_identifier
 from app.services.document_signing.trust import ASSETS, validation_context
@@ -563,7 +566,7 @@ def _render_banknote_stamp_pdf(
     w = max(100.0, float(width))
     h = max(40.0, float(height))
     buf = BytesIO()
-    c = rl_canvas.Canvas(buf, pagesize=(w, h))
+    c = rl_canvas.Canvas(buf, pagesize=(w, h), pageCompression=1)
 
     # Preserve exact 1024x433 aspect ratio centered inside target box
     if (w / h) >= STAMP_BG_RATIO:
@@ -575,7 +578,7 @@ def _render_banknote_stamp_pdf(
     card_x = (w - card_w) / 2.0
     card_y = (h - card_h) / 2.0
 
-    c.drawImage(str(STAMP_BG_PATH), card_x, card_y, width=card_w, height=card_h, preserveAspectRatio=False, mask="auto")
+    c.drawImage(str(STAMP_BG_PATH), card_x, card_y, width=card_w, height=card_h, preserveAspectRatio=False)
 
     ink_color = HexColor("#122D18")
     icon_color = HexColor("#153D1E")
@@ -676,7 +679,7 @@ def _render_compact_banknote_stamp_pdf(
     w = max(90.0, float(width))
     h = max(36.0, float(height))
     buf = BytesIO()
-    c = rl_canvas.Canvas(buf, pagesize=(w, h))
+    c = rl_canvas.Canvas(buf, pagesize=(w, h), pageCompression=1)
 
     if (w / h) >= STAMP_BG_RATIO:
         card_h = h
@@ -688,7 +691,7 @@ def _render_compact_banknote_stamp_pdf(
     card_y = (h - card_h) / 2.0
 
     c.drawImage(
-        str(STAMP_COMPACT_BG_PATH), card_x, card_y, width=card_w, height=card_h, preserveAspectRatio=False, mask="auto"
+        str(STAMP_COMPACT_BG_PATH), card_x, card_y, width=card_w, height=card_h, preserveAspectRatio=False
     )
 
     ink_color = HexColor("#122D18")
