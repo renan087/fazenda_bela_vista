@@ -806,10 +806,11 @@ function initWorkspace(root) {
   function defaultLocation() {
     if (!viewport) return;
     const isCompact = stampStyle === "compact";
-    const width = viewport.width * (isCompact ? 0.34 : 0.42);
-    const height = isCompact
-      ? Math.min(viewport.height * 0.16, Math.max(viewport.height * 0.085, width * 0.24))
-      : Math.min(viewport.height * 0.24, Math.max(viewport.height * 0.12, width * (433 / 1024)));
+    const width = viewport.width * (isCompact ? 0.30 : 0.42);
+    const height = Math.min(
+      viewport.height * (isCompact ? 0.18 : 0.24),
+      Math.max(viewport.height * (isCompact ? 0.095 : 0.12), width * (433 / 1024)),
+    );
     chosenLocation = fromPixels(viewport.width - width - viewport.width * 0.06, viewport.height - height - viewport.height * 0.06, width, height);
   }
 

@@ -36,6 +36,7 @@ from app.services.document_signing.trust import ASSETS, validation_context
 
 logger = logging.getLogger(__name__)
 STAMP_BG_PATH = ASSETS / "icp_stamp_bg.jpg"
+STAMP_COMPACT_BG_PATH = ASSETS / "icp_stamp_compact_bg.jpg"
 STAMP_BG_RATIO = 1024.0 / 433.0
 
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
@@ -646,6 +647,103 @@ def _render_banknote_stamp_pdf(
     return buf.getvalue()
 
 
+def _render_compact_banknote_stamp_pdf(
+    width: float,
+    height: float,
+    *,
+    signer_name: str,
+    doc_label: str,
+    now_br: datetime,
+) -> bytes:
+    """Renders the compact ICP-Brasil guilloché banknote stamp with 2 dynamic vector rows."""
+    w = max(90.0, float(width))
+    h = max(36.0, float(height))
+    buf = BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=(w, h))
+
+    if (w / h) >= STAMP_BG_RATIO:
+        card_h = h
+        card_w = card_h * STAMP_BG_RATIO
+    else:
+        card_w = w
+        card_h = card_w / STAMP_BG_RATIO
+    card_x = (w - card_w) / 2.0
+    card_y = (h - card_h) / 2.0
+
+    c.drawImage(
+        str(STAMP_COMPACT_BG_PATH), card_x, card_y, width=card_w, height=card_h, preserveAspectRatio=False, mask="auto"
+    )
+
+    ink_color = HexColor("#122D18")
+    icon_color = HexColor("#1C5B29")
+    sep_color = HexColor("#2D5F36")
+
+    # Row 1: Signer Name (exact alignment from reference compact stamp)
+    r1_left = card_x + card_w * 0.212
+    r1_max = card_x + card_w * 0.772
+    r1_avail = max(20.0, r1_max - r1_left)
+    name_size = _fit_font_size(signer_name, "Helvetica-Bold", card_h * 0.092, r1_avail, min_size=4.2)
+    name_y = card_y + card_h * 0.576
+    c.setFillColor(ink_color)
+    c.setFont("Helvetica-Bold", name_size)
+    c.drawString(r1_left, name_y, signer_name)
+
+    # Row 2: [ID icon] CPF ...  |  [Calendar icon] DD/MM/YYYY, HH:MM
+    r2_left = card_x + card_w * 0.155
+    r2_max = card_x + card_w * 0.772
+    r2_avail = max(20.0, r2_max - r2_left)
+    date_text = now_br.strftime("%d/%m/%Y, %H:%M")
+    row2_y = card_y + card_h * 0.436
+    base_fs = card_h * 0.072
+
+    def _compact_row2_width(fs: float) -> float:
+        ic_id = fs * 1.18 * 1.28
+        ic_cal = fs * 1.15 * 1.08
+        g = fs * 0.42
+        sp = fs * 0.78
+        total = 0.0
+        if doc_label:
+            total += ic_id + g + stringWidth(doc_label, "Helvetica", fs) + sp * 2
+        total += ic_cal + g + stringWidth(date_text, "Helvetica", fs)
+        return total
+
+    r2_size = base_fs
+    r2_w = _compact_row2_width(r2_size)
+    if r2_w > r2_avail and r2_w > 0:
+        r2_size = max(3.8, r2_size * (r2_avail / r2_w))
+
+    id_sz = r2_size * 1.18
+    cal_sz = r2_size * 1.15
+    gap_ic = r2_size * 0.42
+    sep_pad = r2_size * 0.78
+
+    cx = r2_left
+    c.setFillColor(ink_color)
+    c.setFont("Helvetica", r2_size)
+    if doc_label:
+        _draw_id_card_icon(c, cx, row2_y - r2_size * 0.16, id_sz, icon_color)
+        cx += id_sz * 1.28 + gap_ic
+        c.drawString(cx, row2_y, doc_label)
+        cx += stringWidth(doc_label, "Helvetica", r2_size)
+        cx += sep_pad
+        c.saveState()
+        c.setStrokeColor(sep_color)
+        c.setLineWidth(max(0.5, r2_size * 0.065))
+        c.line(cx, row2_y - r2_size * 0.22, cx, row2_y + r2_size * 0.90)
+        c.restoreState()
+        cx += sep_pad
+
+    _draw_calendar_icon(c, cx, row2_y - r2_size * 0.18, cal_sz, icon_color)
+    cx += cal_sz * 1.08 + gap_ic
+    c.setFillColor(ink_color)
+    c.setFont("Helvetica", r2_size)
+    c.drawString(cx, row2_y, date_text)
+
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
 def _render_stamp_pdf(
     width: float,
     height: float,
@@ -656,7 +754,15 @@ def _render_stamp_pdf(
     now_br: datetime,
     style: str = "full",
 ) -> bytes:
-    """Renders the ICP-Brasil PDF stamp (ornate guilloché banknote for full; compact vector for enxuto)."""
+    """Renders the ICP-Brasil PDF stamp (full or compact guilloché banknote artwork)."""
+    if style == "compact" and STAMP_COMPACT_BG_PATH.is_file():
+        return _render_compact_banknote_stamp_pdf(
+            width,
+            height,
+            signer_name=signer_name,
+            doc_label=doc_label,
+            now_br=now_br,
+        )
     if style != "compact" and STAMP_BG_PATH.is_file():
         return _render_banknote_stamp_pdf(
             width,
@@ -792,7 +898,7 @@ def _build_stamp_style(signer, style: str = "full", box: tuple | list | None = N
         width = abs(float(box[2]) - float(box[0]))
         height = abs(float(box[3]) - float(box[1]))
     else:
-        width, height = (190.0, 48.0) if style == "compact" else (236.0, 100.0)
+        width, height = (180.0, 76.0) if style == "compact" else (236.0, 100.0)
 
     stamp_pdf = _render_stamp_pdf(
         width,
