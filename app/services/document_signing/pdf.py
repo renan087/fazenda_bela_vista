@@ -32,9 +32,11 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas as rl_canvas
 
 from app.services.document_signing.policy import FILTER, SUBFILTER, POLICY_OID, policy_identifier
-from app.services.document_signing.trust import validation_context
+from app.services.document_signing.trust import ASSETS, validation_context
 
 logger = logging.getLogger(__name__)
+STAMP_BG_PATH = ASSETS / "icp_stamp_bg.jpg"
+STAMP_BG_RATIO = 1024.0 / 433.0
 
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 MAX_PDF_BYTES = 16 * 1024 * 1024
@@ -451,6 +453,199 @@ def _draw_shield_icon(c: rl_canvas.Canvas, x: float, y: float, size: float, colo
     c.restoreState()
 
 
+def _draw_id_card_icon(c: rl_canvas.Canvas, x: float, y: float, size: float, color: HexColor) -> None:
+    """Draws a crisp vector ID card icon (rounded card + person + lines)."""
+    w = size * 1.28
+    h = size * 0.92
+    lw = max(0.55, size * 0.095)
+    c.saveState()
+    c.setStrokeColor(color)
+    c.setFillColor(color)
+    c.setLineWidth(lw)
+    c.setLineCap(1)
+    c.setLineJoin(1)
+    c.roundRect(x, y, w, h, size * 0.16, stroke=1, fill=0)
+    # Person head
+    c.circle(x + w * 0.30, y + h * 0.62, size * 0.14, stroke=1, fill=0)
+    # Person shoulders arc
+    p = c.beginPath()
+    p.moveTo(x + w * 0.14, y + h * 0.22)
+    p.curveTo(x + w * 0.16, y + h * 0.42, x + w * 0.44, y + h * 0.42, x + w * 0.46, y + h * 0.22)
+    c.drawPath(p, stroke=1, fill=0)
+    # Three tiny text lines on right side of card
+    for fy in (0.68, 0.48, 0.28):
+        c.line(x + w * 0.56, y + h * fy, x + w * 0.86, y + h * fy)
+    c.restoreState()
+
+
+def _draw_medal_icon(c: rl_canvas.Canvas, x: float, y: float, size: float, color: HexColor) -> None:
+    """Draws a crisp vector certificate rosette/medal ribbon icon."""
+    cx = x + size * 0.50
+    cy = y + size * 0.60
+    r = size * 0.33
+    lw = max(0.55, size * 0.095)
+    c.saveState()
+    c.setStrokeColor(color)
+    c.setFillColor(color)
+    c.setLineWidth(lw)
+    c.setLineCap(1)
+    c.setLineJoin(1)
+    # Ribbon tails
+    p = c.beginPath()
+    p.moveTo(cx - r * 0.55, cy - r * 0.72)
+    p.lineTo(cx - r * 0.72, y - size * 0.06)
+    p.lineTo(cx - r * 0.16, y + size * 0.08)
+    p.lineTo(cx, cy - r * 0.85)
+    p.lineTo(cx + r * 0.16, y + size * 0.08)
+    p.lineTo(cx + r * 0.72, y - size * 0.06)
+    p.lineTo(cx + r * 0.55, cy - r * 0.72)
+    c.drawPath(p, stroke=1, fill=0)
+    # Scalloped/circular seal body
+    c.circle(cx, cy, r, stroke=1, fill=0)
+    # Inner star dot
+    c.circle(cx, cy, r * 0.34, stroke=1, fill=0)
+    c.restoreState()
+
+
+def _draw_calendar_icon(c: rl_canvas.Canvas, x: float, y: float, size: float, color: HexColor) -> None:
+    """Draws a crisp vector calendar icon matching the reference ICP-Brasil stamp."""
+    w = size * 1.08
+    h = size * 0.96
+    lw = max(0.55, size * 0.095)
+    c.saveState()
+    c.setStrokeColor(color)
+    c.setFillColor(color)
+    c.setLineWidth(lw)
+    c.setLineCap(1)
+    c.setLineJoin(1)
+    c.roundRect(x, y, w, h * 0.88, size * 0.15, stroke=1, fill=0)
+    # Top bar line
+    c.line(x, y + h * 0.62, x + w, y + h * 0.62)
+    # Binding rings
+    c.line(x + w * 0.28, y + h * 0.78, x + w * 0.28, y + h * 1.00)
+    c.line(x + w * 0.72, y + h * 0.78, x + w * 0.72, y + h * 1.00)
+    # Calendar date dots (2 rows x 3 cols)
+    dot_r = max(0.45, size * 0.065)
+    for row_y in (0.42, 0.21):
+        for col_x in (0.28, 0.50, 0.72):
+            c.circle(x + w * col_x, y + h * row_y, dot_r, stroke=0, fill=1)
+    c.restoreState()
+
+
+def _render_banknote_stamp_pdf(
+    width: float,
+    height: float,
+    *,
+    signer_name: str,
+    doc_label: str,
+    cert_type: str,
+    now_br: datetime,
+) -> bytes:
+    """Renders the ornate ICP-Brasil guilloché banknote stamp with dynamic vector text & icons."""
+    w = max(100.0, float(width))
+    h = max(40.0, float(height))
+    buf = BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=(w, h))
+
+    # Preserve exact 1024x433 aspect ratio centered inside target box
+    if (w / h) >= STAMP_BG_RATIO:
+        card_h = h
+        card_w = card_h * STAMP_BG_RATIO
+    else:
+        card_w = w
+        card_h = card_w / STAMP_BG_RATIO
+    card_x = (w - card_w) / 2.0
+    card_y = (h - card_h) / 2.0
+
+    c.drawImage(str(STAMP_BG_PATH), card_x, card_y, width=card_w, height=card_h, preserveAspectRatio=False, mask="auto")
+
+    ink_color = HexColor("#122D18")
+    icon_color = HexColor("#153D1E")
+    sep_color = HexColor("#8DA891")
+
+    left_x = card_x + card_w * 0.190
+    max_x = card_x + card_w * 0.758
+    avail_w = max(20.0, max_x - left_x)
+
+    # Row 1: Signer Name (bold dark green-black, exact coordinate match)
+    name_size = _fit_font_size(signer_name, "Helvetica-Bold", card_h * 0.095, avail_w, min_size=4.5)
+    name_y = card_y + card_h * 0.625
+    c.setFillColor(ink_color)
+    c.setFont("Helvetica-Bold", name_size)
+    c.drawString(left_x, name_y, signer_name)
+
+    # Row 2: [ID icon] CPF ...  |  [Medal icon] e-CPF A1
+    meta_base_size = card_h * 0.071
+    row2_y = card_y + card_h * 0.506
+    id_icon_sz = meta_base_size * 1.18
+    medal_icon_sz = meta_base_size * 1.18
+    gap_ic = meta_base_size * 0.42
+    sep_pad = meta_base_size * 0.75
+
+    # Compute exact width and scale down proportionally only if needed
+    def _row2_width(fs: float) -> float:
+        ic1 = fs * 1.18 * 1.28
+        ic2 = fs * 1.18
+        g = fs * 0.42
+        sp = fs * 0.75
+        total = 0.0
+        if doc_label:
+            total += ic1 + g + stringWidth(doc_label, "Helvetica", fs)
+            if cert_type:
+                total += sp * 2 + ic2 + g + stringWidth(cert_type, "Helvetica", fs)
+        elif cert_type:
+            total += ic2 + g + stringWidth(cert_type, "Helvetica", fs)
+        return total
+
+    r2_size = meta_base_size
+    r2_w = _row2_width(r2_size)
+    if r2_w > avail_w and r2_w > 0:
+        r2_size = max(4.0, r2_size * (avail_w / r2_w))
+    id_icon_sz = r2_size * 1.18
+    medal_icon_sz = r2_size * 1.18
+    gap_ic = r2_size * 0.42
+    sep_pad = r2_size * 0.75
+
+    cx = left_x
+    c.setFillColor(ink_color)
+    c.setFont("Helvetica", r2_size)
+    if doc_label:
+        _draw_id_card_icon(c, cx, row2_y - r2_size * 0.16, id_icon_sz, icon_color)
+        cx += id_icon_sz * 1.28 + gap_ic
+        c.drawString(cx, row2_y, doc_label)
+        cx += stringWidth(doc_label, "Helvetica", r2_size)
+        if cert_type:
+            cx += sep_pad
+            c.saveState()
+            c.setStrokeColor(sep_color)
+            c.setLineWidth(max(0.45, r2_size * 0.06))
+            c.line(cx, row2_y - r2_size * 0.18, cx, row2_y + r2_size * 0.85)
+            c.restoreState()
+            cx += sep_pad
+    if cert_type:
+        _draw_medal_icon(c, cx, row2_y - r2_size * 0.14, medal_icon_sz, icon_color)
+        cx += medal_icon_sz + gap_ic
+        c.setFillColor(ink_color)
+        c.setFont("Helvetica", r2_size)
+        c.drawString(cx, row2_y, cert_type)
+
+    # Row 3: [Calendar icon] Data: 24/11/2026, 01:02 (BRT)
+    date_text = f"Data: {now_br.strftime('%d/%m/%Y, %H:%M')} (BRT)"
+    cal_sz = meta_base_size * 1.15
+    cal_gap = meta_base_size * 0.48
+    r3_size = _fit_font_size(date_text, "Helvetica", meta_base_size, max(16.0, avail_w - cal_sz * 1.08 - cal_gap), min_size=4.0)
+    cal_sz = r3_size * 1.15
+    row3_y = card_y + card_h * 0.390
+    _draw_calendar_icon(c, left_x, row3_y - r3_size * 0.18, cal_sz, icon_color)
+    c.setFillColor(ink_color)
+    c.setFont("Helvetica", r3_size)
+    c.drawString(left_x + cal_sz * 1.08 + r3_size * 0.48, row3_y, date_text)
+
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
 def _render_stamp_pdf(
     width: float,
     height: float,
@@ -461,7 +656,16 @@ def _render_stamp_pdf(
     now_br: datetime,
     style: str = "full",
 ) -> bytes:
-    """Renders a crisp vector PDF stamp identical to the SiSFarm visual preview."""
+    """Renders the ICP-Brasil PDF stamp (ornate guilloché banknote for full; compact vector for enxuto)."""
+    if style != "compact" and STAMP_BG_PATH.is_file():
+        return _render_banknote_stamp_pdf(
+            width,
+            height,
+            signer_name=signer_name,
+            doc_label=doc_label,
+            cert_type=cert_type,
+            now_br=now_br,
+        )
     w = max(80.0, float(width))
     h = max(28.0, float(height))
     is_compact = style == "compact"
@@ -588,7 +792,7 @@ def _build_stamp_style(signer, style: str = "full", box: tuple | list | None = N
         width = abs(float(box[2]) - float(box[0]))
         height = abs(float(box[3]) - float(box[1]))
     else:
-        width, height = (190.0, 48.0) if style == "compact" else (220.0, 76.0)
+        width, height = (190.0, 48.0) if style == "compact" else (236.0, 100.0)
 
     stamp_pdf = _render_stamp_pdf(
         width,
