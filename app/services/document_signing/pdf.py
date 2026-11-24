@@ -120,11 +120,16 @@ def _eligible(reader, signatures):
     names = reader.root.get("/Names")
     if (acroform is not None and "/XFA" in acroform.get_object()
             or names is not None and "/JavaScript" in names.get_object()):
+        logger.info("PDF bloqueado para novas assinaturas: contem XFA ou JavaScript.")
         return False, []
     if any(sig.docmdp_level == fields.MDPPerm.NO_CHANGES for sig in signatures):
+        logger.info("PDF bloqueado para novas assinaturas: DocMDP NO_CHANGES (/P 1).")
         return False, []
     locks = [lock for sig in signatures if (lock := _field_lock(sig)) is not None]
-    free_position = not any(sig.docmdp_level is not None for sig in signatures)
+    # DocMDP ANNOTATE (/P 3, usado p.ex. pelo Gov.br) permite acrescentar novas assinaturas e carimbos.
+    free_position = not any(
+        sig.docmdp_level in (fields.MDPPerm.NO_CHANGES, fields.MDPPerm.FILL_FORMS) for sig in signatures
+    )
     free_position = free_position and not any(lock.is_locked("SiSFarm#" + "0" * 32) for lock in locks)
     eligible = []
     for name, _, ref in fields.enumerate_sig_fields(reader, filled_status=False):
@@ -136,6 +141,12 @@ def _eligible(reader, signatures):
         except (ValueError, TypeError):
             continue
         eligible.append({"name": name, "location": appearance})
+    if not free_position and not eligible:
+        logger.info(
+            "PDF sem posicao livre/campos elegiveis: docmdp=%s locks=%s",
+            [getattr(sig.docmdp_level, "name", None) for sig in signatures],
+            [(getattr(lk.action, "name", None), list(lk.fields or ())) for lk in locks],
+        )
     return free_position, eligible
 
 
@@ -143,7 +154,8 @@ def signing_options(reader):
     try:
         signatures = [EmbeddedPdfSignature(reader, ref, name) for name, ref in _signatures(reader)]
         free, eligible = _eligible(reader, signatures)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Falha ao inspecionar elegibilidade do PDF (%s): %s", type(exc).__name__, exc)
         free, eligible = False, []
     return {"pages": int(reader.root["/Pages"]["/Count"]), "free_position": free, "fields": eligible}
 
@@ -303,8 +315,12 @@ def _policy_oid(sig):
     return None
 
 
-def _proof_of_integrity(status):
-    return status.valid and status.intact and status.coverage in COMPLETE_COVERAGE and status.docmdp_ok is not False
+def _proof_of_integrity(status, sig=None):
+    # pyHanko's StandardDiffPolicy explicitly does not implement DocMDP level 3 (MDPPerm.ANNOTATE),
+    # which Gov.br uses when allowing subsequent approval signatures and visual stamps.
+    allow_annotate = sig is not None and getattr(sig, "docmdp_level", None) == fields.MDPPerm.ANNOTATE
+    docmdp_ok = True if allow_annotate else status.docmdp_ok is not False
+    return status.valid and status.intact and status.coverage in COMPLETE_COVERAGE and docmdp_ok
 
 
 async def _validate_one(sig, context, dss):
@@ -316,7 +332,8 @@ async def _validate_one(sig, context, dss):
         status = await _validate_signature(sig, historical_context, context)
     # A later revocation alone does not establish the state at a proven earlier time.
     problem = getattr(status.trust_problem_indic, "name", "")
-    if not _proof_of_integrity(status):
+    integrity_ok = _proof_of_integrity(status, sig)
+    if not integrity_ok:
         state, label = "invalid", "Integridade ou restrições do PDF violadas."
     elif status.seed_value_constraint_error:
         state, label = "invalid", "A assinatura viola as exigências do campo do PDF."
@@ -331,7 +348,7 @@ async def _validate_one(sig, context, dss):
         state, label = "indeterminate", "Não foi possível comprovar a cadeia ou a revogação."
     return {
         "state": state, "message": label, "field": sig.fq_name, "revision": sig.signed_revision + 1,
-        "integrity": _proof_of_integrity(status), "chain": bool(status.validation_path),
+        "integrity": integrity_ok, "chain": bool(status.validation_path),
         "revocation": "checked" if status.trusted else "revoked" if problem.startswith("REVOKED") else "unknown",
         "coverage": status.coverage.name if status.coverage else None,
         "signed_at": certified_time.isoformat() if certified_time else None,
@@ -396,7 +413,7 @@ async def _assert_preserved(reader, previous):
             raise ValueError("Uma assinatura existente desapareceria na nova revisão.")
         new_sig = EmbeddedPdfSignature(reader, ref, name)
         status = await _validate_signature(new_sig, context)
-        if new_sig.pkcs7_content != original.pkcs7_content or not _proof_of_integrity(status):
+        if new_sig.pkcs7_content != original.pkcs7_content or not _proof_of_integrity(status, original):
             raise ValueError("A nova revisão violaria uma assinatura ou restrição existente.")
 
 

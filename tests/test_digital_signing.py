@@ -155,6 +155,23 @@ def test_respect_external_certification_and_sign_existing_slot(authority, permis
         assert all(item["integrity"] for item in outcome["signatures"])
 
 
+def test_cosign_govbr_style_docmdp_annotate_pdf(authority):
+    make, _ = authority
+    writer = IncrementalPdfFileWriter(BytesIO(_original()))
+    govbr_pdf = signers.sign_pdf(
+        writer,
+        signers.PdfSignatureMetadata(field_name="AssinaturaGovBr", certify=True, docmdp_permissions=fields.MDPPerm.ANNOTATE),
+        signer=make(25, "Assinatura Gov.br").signer,
+    ).getvalue()
+    options = pdf.signing_options(pdf.read_pdf(govbr_pdf))
+    assert options["free_position"] is True
+    cosigned, _, report = pdf.sign_document(
+        govbr_pdf, make(26, "Produtor ICP-Brasil").signer, {"visible": True, "page": 0, "box": [45, 70, 245, 150]},
+    )
+    assert cosigned.startswith(govbr_pdf)
+    assert [item["state"] for item in report["signatures"]] == ["valid", "valid"]
+
+
 def test_external_validation_reports_tampering_and_revocation(authority):
     make, revoked = authority
     raw, _, _ = pdf.sign_document(_original(), make(24, "Titular externo").signer, {"visible": False})
