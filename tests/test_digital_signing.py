@@ -691,3 +691,336 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
     assert [s["state"] for s in cosigned.json()["validation"]["signatures"]] == ["valid", "valid"]
     assert "Documento já assinado" in client.get(pre_url).text
 
+
+
+def _make_signing_app(sessions):
+    web = FastAPI()
+    web.add_middleware(SessionMiddleware, secret_key="secret-for-electronic-tests")
+    web.include_router(router)
+    web.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+    def db_dependency():
+        with sessions() as db:
+            yield db
+
+    def user_dependency(request: Request):
+        with sessions() as db:
+            uid = request.session.get("user_id")
+            if not uid:
+                raise HTTPException(401, "Não autenticado.")
+            return db.get(User, uid)
+
+    @web.get("/test-login")
+    def login(request: Request, user_id: int, farm_id: int = 1):
+        request.session.clear()
+        request.session["user_id"] = user_id
+        request.session["active_farm_id"] = farm_id
+        request.session["user_email"] = f"conta{user_id}@example.test"
+        return {"csrf": ensure_csrf_token(request)}
+
+    web.dependency_overrides[get_db] = db_dependency
+    web.dependency_overrides[get_current_user_web] = user_dependency
+    return web
+
+
+def test_electronic_signing_manifesto_and_public_validation(web_db, monkeypatch):
+    from app.services.document_signing import electronic
+
+    sessions, _ = web_db
+    emails = []
+    monkeypatch.setattr(electronic, "send_plain_email", lambda *args: emails.append(args))
+
+    web = _make_signing_app(sessions)
+    client = LocalTestClient(web)
+    headers = {"X-CSRF-Token": client.get("/test-login", params={"user_id": 1, "farm_id": 1}).json()["csrf"]}
+
+    original = _original()
+    created = client.post("/assinatura-digital/documentos", content=original, headers={
+        **headers,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "termo_parceria.pdf",
+        "X-Document-Title": "Termo%20de%20Parceria%20Agr%C3%ADcola",
+        "X-Document-Signing-Policy": "electronic",
+    })
+    assert created.status_code == 201, created.text
+    endpoint = created.json()["url"]
+
+    # Workspace renders electronic signing form without needing an A1 certificate
+    ws_html = client.get(endpoint).text
+    assert "Assinatura Eletrônica SiSFarm" in ws_html
+    assert "data-ds-el-cpf" in ws_html
+
+    # Invalid CPF is rejected with clear validation error
+    bad_cpf = client.post(endpoint + "/eletronica/autorizar", headers=headers, json={
+        "signer_name": "João Produtor",
+        "cpf": "111.111.111-11",
+        "channel": "email",
+        "appearance": {"visible": True, "page": 0, "box": [45, 70, 260, 140], "style": "full"},
+        "consent": True,
+    })
+    assert bad_cpf.status_code == 422
+
+    # Valid CPF issues 8-digit OTP via email
+    issued = client.post(endpoint + "/eletronica/autorizar", headers=headers, json={
+        "signer_name": "João Produtor",
+        "cpf": "529.982.247-25",
+        "channel": "email",
+        "appearance": {"visible": True, "page": 0, "box": [45, 70, 260, 140], "style": "full"},
+        "consent": True,
+    })
+    assert issued.status_code == 201, issued.text
+    otp = re.search(r"Código de autorização: (\d{8})", emails[-1][2]).group(1)
+
+    confirmed = client.post(endpoint + "/eletronica/assinar", headers=headers, json={
+        "consent": True,
+        "challenge_id": issued.json()["challenge_id"],
+        "code": otp,
+    })
+    assert confirmed.status_code == 200, confirmed.text
+    body = confirmed.json()
+    ver_code = body["verification_code"]
+    assert ver_code.startswith("SF-")
+    assert body["sealed"] is True
+    assert body["seal_mode"] == "internal_hmac"
+    assert body["remaining"] == 0
+
+    # Sealed PDF has automatic Manifesto appended (original pages + 1) and remains compact
+    from app.services.document_signing.pdf import read_pdf, signing_options
+    sealed_pdf = client.get(f"{endpoint}/revisoes/{body['revision']}/pdf").content
+    assert signing_options(read_pdf(sealed_pdf))["pages"] == signing_options(read_pdf(original))["pages"] + 1
+    assert len(sealed_pdf) - len(original) < 35_000
+
+    # Public validation works WITHOUT login, with or without hyphens, masks CPF (LGPD), and checks PDF integrity
+    anon = LocalTestClient(web)
+    val_home = anon.get("/validar")
+    assert val_home.status_code == 200
+    assert "data-ds-code-mask" in val_home.text
+
+    # Query without hyphens redirects cleanly to canonical SF-XXXX-XXXX-XXXX URL
+    compact_code = ver_code.replace("-", "")
+    redir = anon.get(f"/validar?codigo={compact_code}", follow_redirects=False)
+    assert redir.status_code == 303
+    assert redir.headers["location"] == f"/validar/{ver_code}"
+
+    val_page = anon.get(f"/validar/{ver_code}")
+    assert val_page.status_code == 200
+    assert "Termo de Parceria Agrícola" in val_page.text
+    assert "Eletrônica SiSFarm (Avançada)" in val_page.text
+    assert "•••.982.247-••" in val_page.text
+    assert "52998224725" not in val_page.text
+    assert "529.982.247-25" not in val_page.text
+    assert "não equivale à assinatura qualificada ICP-Brasil" in val_page.text
+
+    pub_csrf = re.search(r'data-csrf="([^"]+)"', val_page.text).group(1)
+
+    # Intact sealed PDF passes integrity check
+    ok_check = anon.post(f"/validar/{ver_code}/conferir", content=sealed_pdf, headers={
+        "X-CSRF-Token": pub_csrf, "Content-Type": "application/pdf",
+    })
+    assert ok_check.status_code == 200, ok_check.text
+    assert ok_check.json()["matches"] is True
+    assert ok_check.json()["headline"] == "Documento original confirmado"
+
+    # Tampered PDF returns plain-language non-technical alert
+    tampered_pdf = sealed_pdf + b"\n%tampered"
+    bad_check = anon.post(f"/validar/{ver_code}/conferir", content=tampered_pdf, headers={
+        "X-CSRF-Token": pub_csrf, "Content-Type": "application/pdf",
+    })
+    assert bad_check.status_code == 200, bad_check.text
+    assert bad_check.json()["matches"] is False
+    assert bad_check.json()["headline"] == "Este arquivo não é o mesmo que foi assinado"
+    assert "SHA-256" not in bad_check.json()["message"]
+
+
+def test_external_signer_and_mixed_icp_electronic_document(authority, web_db, monkeypatch):
+    from app.services.document_signing import electronic
+
+    make, _ = authority
+    sessions, _ = web_db
+    emails = []
+    wa_sent = []
+    monkeypatch.setattr(workflow, "send_plain_email", lambda *args: emails.append(args))
+    monkeypatch.setattr(electronic, "send_plain_email", lambda *args: emails.append(args))
+    monkeypatch.setattr(electronic, "whatsapp_is_configured", lambda: True)
+
+    class _FakeWA:
+        def send_text(self, to, body, **kwargs):
+            wa_sent.append((to, body))
+            return {"ok": True}
+
+    monkeypatch.setattr(electronic, "WhatsAppClient", _FakeWA)
+
+    web = _make_signing_app(sessions)
+    owner_client = LocalTestClient(web)
+    headers = {"X-CSRF-Token": owner_client.get("/test-login", params={"user_id": 1, "farm_id": 1}).json()["csrf"]}
+
+    # Owner registers A1 certificate
+    pfx_b64 = base64.b64encode(make(71, "João Produtor:12345678901").pfx).decode()
+    reg = owner_client.post("/certificados-digitais", headers=headers, json={
+        "file": pfx_b64, "password": PASSWORD, "holder_user_id": 1, "enable_documents": True, "cpf": CPF,
+    })
+    assert reg.status_code == 201, reg.text
+    cert_id = reg.json()["id"]
+
+    # Create flexible document and invite an external buyer via WhatsApp
+    original = _original()
+    created = owner_client.post("/assinatura-digital/documentos", content=original, headers={
+        **headers,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "contrato_misto.pdf",
+        "X-Document-Title": "Contrato%20Misto%20Caf%C3%A9",
+        "X-Document-Signing-Policy": "flexible",
+    })
+    assert created.status_code == 201, created.text
+    endpoint = created.json()["url"]
+
+    ext_res = owner_client.post(endpoint + "/externos", headers=headers, json={
+        "name": "Carlos Comprador",
+        "role_label": "Comprador",
+        "channel": "whatsapp",
+        "phone": "(35) 99123-4567",
+    })
+    assert ext_res.status_code == 201, ext_res.text
+    sign_url = ext_res.json()["sign_url"]
+    token = sign_url.rsplit("/assinar/", 1)[1]
+    assert len(wa_sent) == 1 and "Carlos Comprador" in wa_sent[0][1]
+
+    # 1) Owner signs with Qualified ICP-Brasil A1
+    issue_icp = owner_client.post(endpoint + "/autorizar", headers=headers, json={
+        "consent": True,
+        "certificate_id": cert_id,
+        "appearance": {"visible": True, "page": 0, "box": [40, 70, 240, 140], "style": "compact"},
+        "sha256": sha256(original).hexdigest(),
+    })
+    assert issue_icp.status_code == 201, issue_icp.text
+    icp_otp = re.search(r"Código de autorização: (\d{8})", emails[-1][2]).group(1)
+    icp_signed = owner_client.post(endpoint + "/assinar", headers=headers, json={
+        "consent": True, "challenge_id": issue_icp.json()["challenge_id"], "code": icp_otp,
+    })
+    assert icp_signed.status_code == 200, icp_signed.text
+
+    # 2) External buyer signs via /assinar/{token} WITHOUT logging in
+    ext_client = LocalTestClient(web)
+    ext_page = ext_client.get(f"/assinar/{token}")
+    assert ext_page.status_code == 200
+    assert "Carlos Comprador" in ext_page.text
+    assert "Contrato Misto Café" in ext_page.text
+    ext_csrf = re.search(r'data-csrf="([^"]+)"', ext_page.text).group(1)
+
+    ext_pdf_resp = ext_client.get(f"/assinar/{token}/pdf")
+    assert ext_pdf_resp.status_code == 200
+    assert ext_pdf_resp.content.startswith(b"%PDF")
+
+    ext_auth = ext_client.post(f"/assinar/{token}/autorizar", headers={"X-CSRF-Token": ext_csrf}, json={
+        "signer_name": "Carlos Comprador",
+        "cpf": "111.444.777-35",
+        "channel": "whatsapp",
+        "appearance": {"visible": True, "page": 0, "box": [300, 70, 520, 140], "style": "compact"},
+        "consent": True,
+    })
+    assert ext_auth.status_code == 201, ext_auth.text
+    wa_otp = re.search(r"\*(\d{8})\*", wa_sent[-1][1]).group(1)
+
+    ext_done = ext_client.post(f"/assinar/{token}/assinar", headers={"X-CSRF-Token": ext_csrf}, json={
+        "consent": True, "challenge_id": ext_auth.json()["challenge_id"], "code": wa_otp,
+    })
+    assert ext_done.status_code == 200, ext_done.text
+    ext_body = ext_done.json()
+    assert ext_body["sealed"] is True
+    assert ext_body["remaining"] == 0
+
+    # Reopening /assinar/{token} now shows already-signed screen
+    reopened = ext_client.get(f"/assinar/{token}")
+    assert reopened.status_code == 200
+    assert "Você já assinou este documento" in reopened.text
+
+    # Public validation shows BOTH distinct modalities side by side!
+    val_html = ext_client.get(f"/validar/{ext_body['verification_code']}").text
+    assert "Qualificada ICP-Brasil" in val_html
+    assert "Eletrônica SiSFarm (Avançada)" in val_html
+    assert "João Produtor" in val_html
+    assert "Carlos Comprador" in val_html
+
+    # Final sealed PDF has Manifesto page appended
+    from app.services.document_signing.pdf import read_pdf, signing_options
+    final_pdf = owner_client.get(f"{endpoint}/revisoes/{ext_body['revision']}/pdf").content
+    assert signing_options(read_pdf(final_pdf))["pages"] == signing_options(read_pdf(original))["pages"] + 1
+
+
+def test_superadmin_institutional_ecnpj_seal_lifecycle(authority, web_db, monkeypatch):
+    from app.services.document_signing import electronic
+    from app.web import digital_documents as web_dd
+
+    make, _ = authority
+    sessions, _ = web_db
+    emails = []
+    monkeypatch.setattr(electronic, "send_plain_email", lambda *args: emails.append(args))
+
+    web = _make_signing_app(sessions)
+    client = LocalTestClient(web)
+    headers = {"X-CSRF-Token": client.get("/test-login", params={"user_id": 1, "farm_id": 1}).json()["csrf"]}
+
+    # Regular user is blocked from /admin/selo-institucional
+    monkeypatch.setattr(web_dd, "is_super_admin_email", lambda email: False)
+    assert client.get("/admin/selo-institucional").status_code == 403
+    assert client.post("/admin/selo-institucional/desativar", headers=headers, json={}).status_code == 403
+
+    # Superadmin accesses /admin/selo-institucional and sees internal seal mode active
+    monkeypatch.setattr(web_dd, "is_super_admin_email", lambda email: True)
+    page_before = client.get("/admin/selo-institucional")
+    assert page_before.status_code == 200
+    assert "Selo Criptográfico Interno ativo" in page_before.text
+
+    # Upload institutional e-CNPJ A1 certificate
+    ecnpj_pfx = base64.b64encode(make(88, "SISFARM TECNOLOGIA LTDA:12345678000199").pfx).decode()
+    uploaded = client.post("/admin/selo-institucional", headers=headers, json={
+        "file": ecnpj_pfx,
+        "password": PASSWORD,
+        "consent": True,
+    })
+    assert uploaded.status_code == 201, uploaded.text
+
+    page_active = client.get("/admin/selo-institucional")
+    assert page_active.status_code == 200
+    assert "e-CNPJ A1 Institucional ativo" in page_active.text
+    assert "SISFARM TECNOLOGIA LTDA" in page_active.text
+
+    # Signing an electronic document now seals it with institutional_ecnpj!
+    original = _original()
+    created = client.post("/assinatura-digital/documentos", content=original, headers={
+        **headers,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "recibo_selado.pdf",
+        "X-Document-Signing-Policy": "electronic",
+    })
+    assert created.status_code == 201, created.text
+    endpoint = created.json()["url"]
+
+    issued = client.post(endpoint + "/eletronica/autorizar", headers=headers, json={
+        "signer_name": "João Produtor",
+        "cpf": "529.982.247-25",
+        "channel": "email",
+        "appearance": {"visible": True, "page": 0, "box": [45, 70, 260, 140], "style": "compact"},
+        "consent": True,
+    })
+    assert issued.status_code == 201, issued.text
+    otp = re.search(r"Código de autorização: (\d{8})", emails[-1][2]).group(1)
+    confirmed = client.post(endpoint + "/eletronica/assinar", headers=headers, json={
+        "consent": True, "challenge_id": issued.json()["challenge_id"], "code": otp,
+    })
+    assert confirmed.status_code == 200, confirmed.text
+    body = confirmed.json()
+    assert body["sealed"] is True
+    assert body["seal_mode"] == "institutional_ecnpj"
+
+    # Public validation page shows institutional e-CNPJ seal AND keeps legal separation explicit
+    val_html = client.get(f"/validar/{body['verification_code']}").text
+    assert "e-CNPJ A1 Institucional SiSFarm" in val_html
+    assert "Eletrônica SiSFarm (Avançada)" in val_html
+    assert "não substitui nem equivale à assinatura qualificada ICP-Brasil" in val_html
+
+    # Deactivating institutional seal returns cleanly to internal cryptographic seal
+    deact = client.post("/admin/selo-institucional/desativar", headers=headers, json={})
+    assert deact.status_code == 200
+    page_after = client.get("/admin/selo-institucional")
+    assert "Selo Criptográfico Interno ativo" in page_after.text

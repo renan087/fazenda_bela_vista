@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% from "partials/digital_signing_ui.html" import icon %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=9">{% endblock %}
+{% block content %}
+<main class="sf-page pd-page ds-page" data-ds-admin-seal data-csrf="{{ csrf_token }}">
+  <nav class="pd-crumbs" aria-label="Caminho">
+    <a href="/organizacoes">Organizações</a><span aria-hidden="true">›</span>
+    <span>Selo Institucional do SiSFarm</span>
+  </nav>
+
+  <header class="pd-head ds-head">
+    <div>
+      <span class="ds-eyebrow">Painel Administrativo Geral · Acesso restrito</span>
+      <h1 class="sf-page-title">Selo Criptográfico Institucional</h1>
+      <p class="sf-page-subtitle">Configure o certificado e-CNPJ A1 institucional do SiSFarm usado exclusivamente para lacrar a integridade de documentos concluídos com assinatura eletrônica.</p>
+    </div>
+    <div class="pd-head-actions ds-head-actions">
+      <a class="sf-btn sf-btn-secondary" href="/organizacoes">{{ icon('back', 15) }} Voltar para Organizações</a>
+    </div>
+  </header>
+
+  <!-- STATUS ATUAL DO SELAMENTO -->
+  <section class="pd-card ds-panel-pad ds-val-hero {% if active_cert %}is-ok{% else %}is-neutral{% endif %}">
+    <div class="ds-val-hero-top">
+      <div class="ds-val-hero-ic">
+        {% if active_cert %}{{ icon('award', 24) }}{% else %}{{ icon('shield', 24) }}{% endif %}
+      </div>
+      <div class="ds-val-hero-txt">
+        {% if active_cert %}
+        <span class="ds-pill ds-pill--done">e-CNPJ A1 Institucional ativo</span>
+        <h2>{{ active_cert.subject_cn }}</h2>
+        <p>
+          {% if active_cert.cnpj_masked %}CNPJ {{ active_cert.cnpj_masked }} · {% endif %}
+          Emissor: {{ active_cert.issuer_cn }} · Válido até <strong>{{ active_cert.valid_until.strftime('%d/%m/%Y') }}</strong> ({{ days_left }} {{ 'dia restante' if days_left == 1 else 'dias restantes' }})
+        </p>
+        {% else %}
+        <span class="ds-pill ds-pill--brand">Selo Criptográfico Interno ativo</span>
+        <h2>Operando com selo criptográfico interno do SiSFarm</h2>
+        <p>Todos os documentos concluídos com assinatura eletrônica já recebem Manifesto automático e proteção criptográfica interna de integridade. Quando desejar, cadastre abaixo o e-CNPJ A1 institucional do SiSFarm.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if active_cert %}
+    <div class="ds-admin-seal-actions">
+      <button type="button" class="sf-btn sf-btn-secondary" data-ds-deactivate-seal>Desativar e-CNPJ e voltar ao selo interno</button>
+      <p class="ds-feedback" data-ds-deactivate-status role="status" hidden></p>
+    </div>
+    {% endif %}
+  </section>
+
+  <!-- NOTA DE SEPARAÇÃO JURÍDICA -->
+  <div class="ds-banner is-info" role="note">
+    {{ icon('shield', 18) }}
+    <span><strong>Separação jurídica obrigatória:</strong> o certificado institucional aqui cadastrado é usado exclusivamente como <strong>selo de integridade do PDF</strong> (comprovando que o documento não foi alterado após a coleta das assinaturas eletrônicas). Ele nunca substitui nem se confunde com uma assinatura qualificada ICP-Brasil do usuário.</span>
+  </div>
+
+  <div class="ds-admin-seal-grid">
+    <!-- FORMULÁRIO DE UPLOAD / SUBSTITUIÇÃO -->
+    <section class="pd-card ds-panel-pad">
+      <header class="ds-card-heading">
+        <span class="ds-tile">{{ icon('key', 18) }}</span>
+        <div>
+          <h2>{{ 'Substituir certificado e-CNPJ A1' if active_cert else 'Cadastrar certificado e-CNPJ A1 institucional' }}</h2>
+          <p>O arquivo <code>.pfx</code>/<code>.p12</code> e sua senha ficam protegidos com criptografia AES-256-GCM no cofre do sistema.</p>
+        </div>
+      </header>
+
+      <form class="ds-form-grid" data-ds-admin-seal-form novalidate>
+        <div class="ds-drop ds-drop--compact" data-ds-admin-seal-drop>
+          <span class="ds-drop-icon">{{ icon('upload', 20) }}</span>
+          <strong data-ds-drop-title>Arraste o certificado e-CNPJ A1 (.pfx ou .p12)</strong>
+          <p data-ds-drop-sub>Arquivo de até 200 KB. O certificado deve estar dentro da vigência.</p>
+          <label class="sf-btn sf-btn-secondary ds-pick" for="ds-admin-pfx">
+            Escolher arquivo .pfx / .p12
+            <input id="ds-admin-pfx" name="file" type="file" accept=".pfx,.p12,application/x-pkcs12" required>
+          </label>
+        </div>
+
+        <label class="ds-field">
+          <span>Senha do certificado e-CNPJ A1</span>
+          <div class="ds-pw-wrap">
+            <input id="ds-admin-seal-pw" name="password" type="password" autocomplete="new-password" required placeholder="Digite a senha do arquivo A1">
+            <button type="button" class="ds-pw-eye" data-ds-toggle-pw="ds-admin-seal-pw" aria-label="Visualizar senha" aria-pressed="false">
+              <span data-pw-icon="show">{{ icon('eye', 17) }}</span>
+              <span data-pw-icon="hide" hidden>{{ icon('eye-off', 17) }}</span>
+            </button>
+          </div>
+        </label>
+
+        <label class="ds-consent-box">
+          <span class="dt-chk"><input type="checkbox" name="consent" class="dt-check" required></span>
+          <span>Confirmo que este certificado pertence à plataforma SiSFarm e autorizo seu uso exclusivamente como <strong>selo criptográfico institucional de integridade</strong> nos documentos com assinatura eletrônica.</span>
+        </label>
+
+        <p class="ds-feedback" data-ds-admin-seal-status role="status" aria-live="polite" hidden></p>
+
+        <button type="submit" class="sf-btn sf-btn-primary ds-full">
+          {{ icon('shield', 16) }} {{ 'Substituir e ativar selo institucional' if active_cert else 'Salvar e ativar selo institucional' }}
+        </button>
+      </form>
+    </section>
+
+    <!-- HISTÓRICO DE CERTIFICADOS INSTITUCIONAIS -->
+    <section class="pd-card ds-panel-pad">
+      <header class="ds-card-heading">
+        <span class="ds-tile ds-tile--blue">{{ icon('clock', 18) }}</span>
+        <div>
+          <h2>Histórico de certificados institucionais</h2>
+          <p>Trilha de auditoria dos certificados configurados para o selamento do SiSFarm.</p>
+        </div>
+      </header>
+
+      {% if history %}
+      <div class="ds-people-list">
+        {% for item in history %}
+        <div class="ds-person-row">
+          <div>
+            <strong>{{ item.subject_cn }}</strong>
+            <small>
+              {% if item.cnpj_masked %}{{ item.cnpj_masked }} · {% endif %}
+              Validade: {{ item.valid_until.strftime('%d/%m/%Y') }} · Cadastrado em {{ item.created_at|datetime_sp }}
+            </small>
+          </div>
+          <span class="ds-pill {% if item.is_active %}ds-pill--done{% else %}ds-pill--muted{% endif %}">
+            {{ 'Ativo' if item.is_active else 'Inativo' }}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="ds-empty ds-empty--compact">
+        {{ icon('award', 22) }}
+        <strong>Nenhum e-CNPJ cadastrado ainda</strong>
+        <p>Enquanto nenhum certificado institucional for ativado, o SiSFarm utiliza automaticamente o selo criptográfico interno.</p>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+</main>
+<script type="module" src="/static/js/digital_signing.js?v=13"></script>
+{% endblock %}

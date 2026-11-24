@@ -1316,3 +1316,497 @@ input[type="checkbox"].ds-switch-input:checked::after {
 @media (prefers-reduced-motion: reduce) {
   .ds-page * { transition-duration: 0.01ms !important; }
 }
+
+
+/* =========================================================================
+   ASSINATURA ELETRÔNICA SISFARM · EXTERNOS · VALIDAÇÃO PÚBLICA · SELO ADMIN
+   ========================================================================= */
+
+.ds-tag-rec {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.42rem;
+  margin-left: 0.3rem;
+  border-radius: 99px;
+  background: var(--ds-ok-bg);
+  color: var(--ds-ok-fg);
+  font-size: 0.65rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* Subblocks in Wizard Step 2 */
+.ds-subblock {
+  display: grid;
+  gap: 0.7rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #EEF1ED;
+}
+.ds-subblock:first-of-type { padding-top: 0; border-top: 0; }
+.ds-subblock-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.ds-subblock-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ds-ink);
+}
+.ds-subblock-title small { font-weight: 500; color: var(--ds-muted); }
+
+.ds-ext-adder {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.95rem;
+  border-radius: 12px;
+  border: 1px solid var(--ds-line);
+  background: #FAFBF9;
+}
+.ds-ext-adder-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; }
+.ds-ext-added-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+.ds-ext-added-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 11px;
+  border: 1px solid #C8DEC0;
+  background: var(--ds-brand-soft);
+}
+.ds-ext-added-item strong { display: block; font-size: 0.82rem; color: var(--ds-ink); }
+.ds-ext-added-item small { display: block; font-size: 0.73rem; color: var(--ds-muted); }
+
+/* Modality Switcher in Workspace Step 1 */
+.ds-mode-switcher {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.ds-mode-opt {
+  padding: 0.65rem 0.72rem;
+  border-radius: 12px;
+  border: 1.5px solid var(--ds-line-strong);
+  background: #FFFFFF;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+.ds-mode-opt:hover { background: #FAFBF9; }
+.ds-mode-opt[aria-checked="true"] {
+  border-color: var(--ds-brand);
+  background: var(--ds-brand-soft);
+}
+.ds-mode-opt-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem; }
+.ds-mode-opt strong { font-size: 0.8125rem; font-weight: 700; color: var(--ds-ink); }
+.ds-mode-opt small { display: block; font-size: 0.7rem; color: var(--ds-muted); margin-top: 0.22rem; line-height: 1.3; }
+.ds-mode-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 99px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.ds-mode-tag.is-elec { background: #E8F1FB; color: #1F5FA8; }
+.ds-mode-tag.is-icp { background: var(--ds-ok-bg); color: var(--ds-ok-fg); }
+
+.ds-mode-fixed {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.62rem 0.8rem;
+  border-radius: 11px;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+.ds-mode-fixed.is-elec { background: #E8F1FB; color: #1F5FA8; border: 1px solid #C4DCF4; }
+.ds-mode-fixed.is-icp { background: var(--ds-ok-bg); color: var(--ds-ok-fg); border: 1px solid #BFE2BE; }
+.ds-mode-pane { display: grid; gap: 0.78rem; }
+
+/* Electronic SiSFarm Visual Stamp Preview (on PDF canvas) */
+.ds-stamp-body-row { display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
+.ds-stamp-qr {
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 6px;
+  background: #FFFFFF;
+  border: 1px solid #C8DEC0;
+  color: var(--ds-brand-dark);
+  display: inline-grid;
+  place-items: center;
+}
+.ds-stamp-lines { display: grid; gap: 0.08rem; min-width: 0; flex: 1; }
+.ds-stamp.is-electronic {
+  padding: 0;
+  border: 2px dashed var(--ds-brand-dark);
+  background: rgba(252, 253, 252, 0.97);
+}
+.ds-stamp.is-electronic .ds-stamp-head {
+  background: var(--ds-brand-dark);
+  color: #FFFFFF;
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.52rem;
+}
+.ds-stamp.is-electronic .ds-stamp-body-row { padding: 0.32rem 0.5rem; }
+.ds-stamp.is-electronic.is-compact .ds-stamp-qr { width: 1.55rem; height: 1.55rem; }
+
+/* Verification Code & Evidences in Workspace Details */
+.ds-ver-code-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 99px;
+  background: var(--ds-soft);
+  border: 1px solid var(--ds-line-strong);
+  font-size: 0.8rem;
+  color: var(--ds-muted);
+}
+.ds-ver-code-pill strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ds-ink);
+  letter-spacing: 0.04em;
+}
+.ds-ver-card { gap: 0.85rem; }
+.ds-ver-card-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+.ds-ver-card-info { display: flex; align-items: flex-start; gap: 0.75rem; min-width: 0; flex: 1 1 18rem; }
+.ds-ver-card-info h2 { font-size: 0.98rem; font-weight: 700; }
+.ds-ver-card-info p { font-size: 0.8rem; color: var(--ds-muted); margin-top: 0.18rem; }
+.ds-ver-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; }
+.ds-ver-code-box {
+  padding: 0.45rem 0.78rem;
+  border-radius: 10px;
+  background: var(--ds-soft);
+  border: 1px solid var(--ds-line-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ds-brand-dark);
+  letter-spacing: 0.04em;
+}
+.ds-seal-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.62rem 0.85rem;
+  border-radius: 11px;
+  background: var(--ds-brand-soft);
+  color: var(--ds-brand-dark);
+  font-size: 0.78rem;
+}
+
+.ds-ev-list { display: grid; gap: 0.65rem; }
+.ds-ev-item {
+  padding: 0.85rem 0.95rem;
+  border-radius: 12px;
+  border: 1px solid var(--ds-line);
+  background: #FAFBF9;
+  display: grid;
+  gap: 0.5rem;
+}
+.ds-ev-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+.ds-ev-head strong { font-size: 0.875rem; color: var(--ds-ink); }
+.ds-ev-head small { font-size: 0.78rem; color: var(--ds-muted); }
+.ds-ev-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  font-size: 0.76rem;
+  color: var(--ds-muted);
+}
+.ds-ev-meta strong { color: var(--ds-ink); font-weight: 600; }
+.ds-ev-meta code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.74rem;
+  color: var(--ds-brand-dark);
+}
+
+.ds-participants-stack { display: grid; gap: 1rem; align-content: start; }
+.ds-person-row-right { display: flex; align-items: center; gap: 0.45rem; flex: 0 0 auto; }
+.ds-ext-link-box {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.8rem 0.85rem;
+  border-radius: 12px;
+  background: var(--ds-ok-bg);
+  border: 1px solid #BFE2BE;
+}
+.ds-ext-link-box strong { font-size: 0.82rem; color: var(--ds-ok-fg); }
+.ds-ext-link-box p { font-size: 0.75rem; color: #24482A; }
+.ds-ext-link-row { display: flex; gap: 0.45rem; }
+.ds-ext-link-row input {
+  flex: 1;
+  min-width: 0;
+  height: 2.15rem;
+  padding: 0 0.6rem;
+  border-radius: 8px;
+  border: 1px solid #BFE2BE;
+  background: #FFFFFF;
+  font-size: 0.75rem;
+  color: var(--ds-ink);
+}
+
+/* =========================================================================
+   STANDALONE PUBLIC PAGES (/assinar/{token} & /validar)
+   ========================================================================= */
+.ds-pub-body {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: #F3F5F2;
+  color: #16201A;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+}
+.ds-pub-topbar {
+  background: #FFFFFF;
+  border-bottom: 1px solid #E3E8E2;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+.ds-pub-topbar-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.ds-pub-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-decoration: none;
+  color: #16201A;
+}
+.ds-pub-logo {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 10px;
+  background: #294127;
+  color: #FFFFFF;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.ds-pub-brand strong { display: block; font-size: 0.95rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+.ds-pub-brand small { display: block; font-size: 0.73rem; color: #5B6660; }
+
+.ds-pub-shell {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.35rem 1.25rem 2.5rem;
+  flex: 1 0 auto;
+}
+.ds-pub-shell--narrow { max-width: 36rem; padding-top: 3rem; }
+.ds-pub-doc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+.ds-pub-empty {
+  text-align: center;
+  justify-items: center;
+  gap: 0.7rem;
+  padding: 2rem 1.5rem;
+}
+.ds-pub-empty h1, .ds-pub-empty h2 { font-size: 1.25rem; font-weight: 700; }
+.ds-pub-empty p { font-size: 0.875rem; color: var(--ds-muted); max-width: 34rem; line-height: 1.5; }
+.ds-pub-empty-ic {
+  width: 3.6rem;
+  height: 3.6rem;
+  border-radius: 99px;
+  display: grid;
+  place-items: center;
+}
+.ds-pub-empty-ic.is-warn { background: var(--ds-warn-bg); color: var(--ds-warn-ic); }
+.ds-pub-empty-ic.is-err { background: var(--ds-err-bg); color: var(--ds-err-fg); }
+
+.ds-pub-footer {
+  border-top: 1px solid #E3E8E2;
+  background: #FFFFFF;
+  padding: 1rem 1.25rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: #5B6660;
+}
+
+/* Public Validation Page (/validar) */
+.ds-val-search-card { gap: 0.85rem; }
+.ds-val-code-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: stretch;
+}
+.ds-val-code-input-wrap {
+  flex: 1 1 18rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0 0.9rem;
+  min-height: 3rem;
+  border-radius: 12px;
+  border: 1.5px solid var(--ds-line-strong);
+  background: #FFFFFF;
+  color: var(--ds-brand);
+}
+.ds-val-code-input-wrap:focus-within {
+  border-color: var(--ds-brand);
+  box-shadow: 0 0 0 3px rgba(155, 203, 107, 0.35);
+}
+.ds-val-code-input-wrap input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ds-ink);
+  text-transform: uppercase;
+}
+.ds-val-code-form .sf-btn { min-height: 3rem; padding: 0 1.25rem; }
+
+.ds-val-hero { gap: 1rem; }
+.ds-val-hero.is-ok { border-color: #BFE2BE; background: linear-gradient(180deg, #F4FAF2 0%, #FFFFFF 55%); }
+.ds-val-hero.is-warn { border-color: var(--ds-warn-line); background: linear-gradient(180deg, #FFFBF0 0%, #FFFFFF 55%); }
+.ds-val-hero.is-neutral { background: linear-gradient(180deg, #F6F8F5 0%, #FFFFFF 60%); }
+.ds-val-hero-top { display: flex; align-items: flex-start; gap: 0.95rem; }
+.ds-val-hero-ic {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 14px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: var(--ds-brand-soft);
+  color: var(--ds-brand-dark);
+}
+.ds-val-hero.is-ok .ds-val-hero-ic { background: var(--ds-ok-bg); color: var(--ds-ok-fg); }
+.ds-val-hero.is-warn .ds-val-hero-ic { background: var(--ds-warn-bg); color: var(--ds-warn-ic); }
+.ds-val-hero-txt { min-width: 0; }
+.ds-val-hero-txt h2 { font-size: 1.2rem; font-weight: 700; margin-top: 0.4rem; }
+.ds-val-hero-txt p { font-size: 0.84rem; color: var(--ds-muted); margin-top: 0.25rem; line-height: 1.45; }
+.ds-val-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding-top: 0.85rem;
+  border-top: 1px solid #E8EDE7;
+}
+.ds-val-stats dt { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ds-muted); }
+.ds-val-stats dd { margin: 0.2rem 0 0; font-size: 0.95rem; font-weight: 700; color: var(--ds-ink); }
+
+.ds-val-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(19rem, 0.95fr);
+  gap: 1rem;
+  align-items: start;
+}
+.ds-val-main { display: grid; gap: 1rem; }
+.ds-val-side { position: sticky; top: 5.25rem; }
+.ds-val-legal-txt { font-size: 0.84rem; color: #313E36; line-height: 1.55; }
+.ds-tech-details {
+  border-top: 1px solid #EEF1ED;
+  padding-top: 0.65rem;
+  font-size: 0.8rem;
+}
+.ds-tech-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ds-brand);
+  user-select: none;
+}
+.ds-tech-dl { display: grid; gap: 0.55rem; margin: 0.7rem 0 0; }
+.ds-tech-dl dt { font-size: 0.72rem; color: var(--ds-muted); }
+.ds-tech-dl dd { margin: 0.12rem 0 0; word-break: break-all; }
+.ds-tech-dl code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.74rem;
+  background: var(--ds-soft);
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+}
+
+.ds-drop--compact { padding: 1.2rem 1rem; gap: 0.45rem; }
+.ds-pub-verdict {
+  padding: 0.95rem;
+  border-radius: 13px;
+  border: 1.5px solid var(--ds-line);
+  display: grid;
+  gap: 0.55rem;
+}
+.ds-pub-verdict.is-ok { background: var(--ds-ok-bg); border-color: #9DD09B; color: #164C26; }
+.ds-pub-verdict.is-err { background: var(--ds-err-bg); border-color: #F2B5AF; color: #7A1812; }
+.ds-pub-verdict strong { font-size: 0.95rem; display: block; }
+.ds-pub-verdict p { font-size: 0.83rem; line-height: 1.48; margin: 0; }
+.ds-pub-verdict .ds-tech-details { border-top-color: rgba(0, 0, 0, 0.1); }
+.ds-pub-verdict .ds-tech-details summary { color: inherit; font-size: 0.76rem; }
+
+.ds-val-how-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+.ds-val-how-grid article { gap: 0.55rem; }
+.ds-val-how-grid h2 { font-size: 0.95rem; font-weight: 700; }
+.ds-val-how-grid p { font-size: 0.82rem; color: var(--ds-muted); line-height: 1.5; }
+
+/* Admin Institutional Seal Page (/admin/selo-institucional) */
+.ds-admin-seal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.ds-admin-seal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #E8EDE7;
+}
+
+@media (max-width: 1023px) {
+  .ds-val-grid, .ds-val-how-grid, .ds-admin-seal-grid { grid-template-columns: 1fr; }
+  .ds-val-side { position: static; }
+}
+@media (max-width: 639px) {
+  .ds-pub-shell { padding: 0.95rem 0.85rem 2rem; }
+  .ds-pub-topbar-inner { padding: 0.65rem 0.85rem; }
+  .ds-mode-switcher, .ds-val-stats { grid-template-columns: 1fr; }
+  .ds-val-code-form { flex-direction: column; }
+  .ds-val-code-form .sf-btn { width: 100%; justify-content: center; }
+  .ds-ext-link-row { flex-direction: column; }
+}

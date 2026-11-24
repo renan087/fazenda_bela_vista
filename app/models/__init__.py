@@ -178,4 +178,13 @@ from app.models.nfe_draft import (
 )
 
 from app.models.digital_certificate import CertificatePurpose, DigitalCertificate, FiscalCertificateSelection
-from app.models.signed_document import SigningChallenge, SigningDocument, SigningParticipant, SigningRevision
+from app.models.signed_document import (
+    InstitutionalSealingCertificate,
+    SigningChallenge,
+    SigningDocument,
+    SigningElectronicChallenge,
+    SigningEvidence,
+    SigningExternalSigner,
+    SigningParticipant,
+    SigningRevision,
+)

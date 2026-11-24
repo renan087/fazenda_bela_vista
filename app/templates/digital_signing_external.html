@@ -1,0 +1,249 @@
+{% from "partials/digital_signing_ui.html" import icon %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% if invalid_link %}Link indisponível{% else %}Assinar: {{ display_title }}{% endif %} · SiSFarm</title>
+  <link rel="icon" type="image/x-icon" sizes="any" href="/favicon.ico?v=20261116">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20261123ex8">
+  <link rel="stylesheet" href="/static/css/digital_signing.css?v=9">
+</head>
+<body class="ds-pub-body">
+  <header class="ds-pub-topbar">
+    <div class="ds-pub-topbar-inner">
+      <a class="ds-pub-brand" href="/validar" aria-label="SiSFarm">
+        <span class="ds-pub-logo">{{ icon('shield', 18) }}</span>
+        <span>
+          <strong>SiSFarm</strong>
+          <small>{% if not invalid_link and farm %}Enviado por {{ farm.name }} · Assinatura Eletrônica{% else %}Assinatura Eletrônica Segura{% endif %}</small>
+        </span>
+      </a>
+      {% if not invalid_link %}
+      <span class="ds-pill ds-pill--brand ds-hide-mobile">{{ icon('link', 13) }} Link exclusivo</span>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if invalid_link %}
+  <main class="ds-pub-shell ds-pub-shell--narrow">
+    <section class="pd-card ds-panel-pad ds-pub-empty">
+      <div class="ds-pub-empty-ic is-warn">{{ icon('alert', 28) }}</div>
+      <h1>Este link de assinatura não está mais disponível</h1>
+      <p>O convite pode ter expirado, ter sido cancelado por quem enviou ou o endereço foi digitado de forma incompleta.</p>
+      <p class="ds-hint">Peça um novo link para a fazenda ou pessoa responsável pelo documento.</p>
+      <a class="sf-btn sf-btn-secondary" href="/validar">Validar um documento assinado</a>
+    </section>
+  </main>
+  {% else %}
+  {% set pdf_url = '/assinar/' ~ token ~ '/pdf' %}
+  <main class="ds-pub-shell ds-page ds-workspace"
+        data-ds-external-root
+        data-csrf="{{ csrf_token }}"
+        data-token="{{ token }}"
+        data-pdf-url="{{ pdf_url }}"
+        data-verification-code="{{ verification_code }}"
+        data-doc-title="{{ display_title }}">
+    <script type="application/json" data-ds-options>{{ options|tojson }}</script>
+
+    <header class="ds-pub-doc-head">
+      <div>
+        <span class="ds-eyebrow">{{ farm.name }} · Convite para assinatura eletrônica</span>
+        <h1 class="sf-page-title">{{ display_title }}</h1>
+        <p class="sf-page-subtitle">
+          Signatário convidado: <strong>{{ signer.name }}</strong>
+          {% if signer.role_label %} · {{ signer.role_label }}{% endif %}
+          · {{ options.pages }} {{ 'página' if options.pages == 1 else 'páginas' }}
+        </p>
+      </div>
+      <div class="ds-head-actions">
+        <a class="sf-btn sf-btn-secondary" href="{{ pdf_url }}" target="_blank" rel="noopener">{{ icon('download', 16) }} Baixar PDF</a>
+      </div>
+    </header>
+
+    <div class="ds-ceremony-grid" data-ds-ceremony-grid data-ds-already-signed="{{ 'yes' if already_signed else 'no' }}">
+      <section class="pd-card ds-viewer" data-ds-viewer-section aria-label="Prévia do PDF">
+        <div class="ds-toolbar">
+          <div class="ds-toolbar-left">
+            <button type="button" class="ds-icon-btn ds-hide-mobile" data-ds-thumbs-toggle aria-controls="ds-thumbnails" aria-expanded="false" aria-label="Mostrar miniaturas">{{ icon('pages', 17) }}</button>
+            <div class="ds-pager">
+              <button type="button" class="ds-icon-btn" data-ds-prev aria-label="Página anterior">‹</button>
+              <label><span class="sr-only">Página</span><input type="number" min="1" value="1" data-ds-page></label>
+              <span>de <span data-ds-pages>{{ options.pages }}</span></span>
+              <button type="button" class="ds-icon-btn" data-ds-next aria-label="Próxima página">›</button>
+            </div>
+          </div>
+          <div class="ds-toolbar-right">
+            <button type="button" class="ds-jump-btn" data-ds-jump-stamp hidden>{{ icon('pen', 14) }} Ir para o selo</button>
+            <div class="ds-zoom ds-hide-mobile">
+              <button type="button" class="ds-icon-btn" data-ds-zoom="-1" aria-label="Diminuir zoom">−</button>
+              <button type="button" class="ds-fit" data-ds-fit title="Ajustar à largura">Ajustar</button>
+              <button type="button" class="ds-icon-btn" data-ds-zoom="1" aria-label="Aumentar zoom">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="ds-viewer-body">
+          <nav id="ds-thumbnails" class="ds-thumbnails" data-ds-thumbs aria-label="Páginas do documento" hidden></nav>
+          <div class="ds-canvas-scroll" data-ds-scroll>
+            <p data-ds-preview-status role="status" class="ds-preview-status">Carregando o documento…</p>
+            <div class="ds-sheet" data-ds-sheet hidden>
+              <canvas data-ds-canvas aria-label="Página atual do documento"></canvas>
+              <div class="ds-stamp is-electronic" data-ds-stamp tabindex="0" role="group" aria-label="Posição do selo de assinatura. Arraste ou use as setas para mover e Shift com as setas para redimensionar." hidden>
+                <span class="ds-stamp-head" data-ds-stamp-head>SISFARM · ASSINATURA ELETRÔNICA · AVANÇADA</span>
+                <div class="ds-stamp-body-row">
+                  <span class="ds-stamp-qr" data-ds-stamp-qr aria-hidden="true">{{ icon('qr', 26) }}</span>
+                  <div class="ds-stamp-lines">
+                    <span class="ds-stamp-name" data-ds-stamp-label>{{ signer.name|upper }}</span>
+                    <span class="ds-stamp-meta" data-ds-stamp-doc></span>
+                    <span class="ds-stamp-meta" data-ds-stamp-date></span>
+                    <span class="ds-stamp-url" data-ds-stamp-url>/validar/{{ verification_code }}</span>
+                  </div>
+                </div>
+                <span class="ds-stamp-handle" data-ds-handle aria-hidden="true"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="ds-ceremony-side">
+        <section class="pd-card ds-panel-pad ds-ceremony-card">
+          {% if already_signed %}
+          <div class="ds-step-pane ds-success-pane">
+            <div class="ds-success-icon">{{ icon('check', 26) }}</div>
+            <h2>Você já assinou este documento</h2>
+            <p>Sua assinatura eletrônica foi registrada com segurança. Você pode baixar o PDF e conferir o registro a qualquer momento.</p>
+            <div class="ds-ver-code-pill">
+              <span>Código:</span> <strong>{{ verification_code }}</strong>
+            </div>
+            <div class="ds-success-actions">
+              <a class="sf-btn sf-btn-primary ds-full" href="{{ pdf_url }}" target="_blank" rel="noopener">{{ icon('download', 16) }} Baixar PDF assinado</a>
+              <a class="sf-btn sf-btn-secondary ds-full" href="/validar/{{ verification_code }}" target="_blank" rel="noopener">{{ icon('qr', 16) }} Abrir página de validação</a>
+              <button type="button" class="sf-btn sf-btn-secondary ds-full ds-only-tablet-down" data-ds-toggle-viewer aria-expanded="false">{{ icon('eye', 16) }} Visualizar PDF</button>
+            </div>
+          </div>
+          {% else %}
+          <ol class="ds-mini-steps" aria-label="Etapas da assinatura">
+            <li data-ds-step-pill="1" aria-current="step"><span>1</span>Seus dados</li>
+            <li data-ds-step-pill="2"><span>2</span>Confirmar código</li>
+          </ol>
+
+          <!-- PASSO 1 -->
+          <div class="ds-step-pane" data-ds-step-pane="1">
+            <div class="ds-step-title">
+              <h2>Assinatura Eletrônica SiSFarm</h2>
+              <p>Não precisa de certificado digital nem de conta. Confira o documento, informe seu CPF e confirme com o código de 8 dígitos.</p>
+            </div>
+
+            <label class="ds-field">
+              <span>Seu nome completo</span>
+              <input type="text" maxlength="160" value="{{ signer.name }}" data-ds-el-name required>
+            </label>
+
+            <label class="ds-field">
+              <span>Seu CPF <small>(protegido pela LGPD)</small></span>
+              <input type="text" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" data-ds-cpf-mask data-ds-el-cpf required>
+              <small class="ds-cpf-hint">Usado para comprovar sua identidade. Em consultas públicas aparece apenas de forma mascarada.</small>
+            </label>
+
+            <label class="ds-field">
+              <span>Onde receber o código de 8 dígitos?</span>
+              <select data-ds-el-channel>
+                {% if signer.phone %}
+                <option value="whatsapp" {% if signer.channel == 'whatsapp' %}selected{% endif %}>WhatsApp ({{ phone_masked }})</option>
+                {% endif %}
+                {% if signer.email %}
+                <option value="email" {% if signer.channel != 'whatsapp' or not signer.phone %}selected{% endif %}>E-mail ({{ email_masked }})</option>
+                {% endif %}
+              </select>
+            </label>
+
+            <div class="ds-switch-box" data-ds-placement>
+              <label class="ds-switch-row">
+                <span>
+                  <strong>Mostrar selo visual com QR Code no PDF</strong>
+                  <small>Posicione o selo onde preferir na página.</small>
+                </span>
+                <input type="checkbox" class="ds-switch-input" role="switch" data-ds-visible checked>
+              </label>
+              <div class="ds-stamp-modes" data-ds-stamp-modes role="radiogroup" aria-label="Formato do selo">
+                <button type="button" class="ds-stamp-mode-btn" data-ds-stamp-style="full" role="radio" aria-checked="true">
+                  <strong>Completo</strong>
+                  <small>QR Code, nome, CPF mascarado e data</small>
+                </button>
+                <button type="button" class="ds-stamp-mode-btn" data-ds-stamp-style="compact" role="radio" aria-checked="false">
+                  <strong>Enxuto</strong>
+                  <small>Compacto com QR Code e código</small>
+                </button>
+              </div>
+              <button type="button" class="ds-inline-action" data-ds-place-current hidden>Trazer selo para esta página</button>
+            </div>
+
+            <div class="ds-mobile-viewer-slot" data-ds-mobile-viewer-slot hidden></div>
+
+            <label class="ds-consent-box" data-ds-consent-box>
+              <span class="dt-chk"><input type="checkbox" class="dt-check" data-ds-consent></span>
+              <span>Li o documento <strong>{{ display_title }}</strong> e concordo expressamente em assiná-lo de forma eletrônica pelo SiSFarm, ciente do registro de data, hora, CPF, IP e dispositivo para comprovação de autenticidade (MP 2.200-2/2001, Lei 14.063/2020 e LGPD).</span>
+            </label>
+
+            <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-ext-authorize disabled>
+              Enviar código de confirmação {{ icon('arrow', 16) }}
+            </button>
+            <p class="ds-feedback" data-ds-status role="status" aria-live="polite" hidden></p>
+          </div>
+
+          <!-- PASSO 2: OTP -->
+          <form class="ds-step-pane" data-ds-step-pane="2" data-ds-ext-confirm-form hidden>
+            <button type="button" class="ds-inline-action ds-back-step" data-ds-back-step1>{{ icon('back', 15) }} Voltar aos dados</button>
+            <div class="ds-step-title">
+              <h2>Digite o código de 8 dígitos</h2>
+              <p data-ds-step2-sub>Enviamos um código de confirmação para seu contato cadastrado.</p>
+            </div>
+
+            <div class="ds-cert-confirm-chip">
+              {{ icon('shield', 16) }}
+              <span>Assinatura eletrônica de <strong data-ds-confirm-holder>{{ signer.name }}</strong></span>
+            </div>
+
+            <label class="ds-field">
+              <span>Código de confirmação (8 dígitos)</span>
+              <input id="ds-ext-code" name="code" class="ds-otp-input" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="00000000" required>
+            </label>
+
+            <p class="ds-feedback" data-ds-confirm-status role="status" aria-live="polite" hidden></p>
+
+            <button type="submit" class="sf-btn sf-btn-primary ds-full">
+              {{ icon('shield', 16) }} Concluir assinatura agora
+            </button>
+            <p class="ds-hint ds-center-hint">O código vale por 10 minutos para esta versão do documento.</p>
+          </form>
+
+          <!-- PASSO 3: CONCLUÍDO -->
+          <div class="ds-step-pane ds-success-pane" data-ds-step-pane="3" hidden>
+            <div class="ds-success-icon">{{ icon('check', 26) }}</div>
+            <h2>Assinatura concluída!</h2>
+            <p data-ds-success-msg>Sua assinatura eletrônica foi registrada com validade jurídica. Você já pode baixar sua cópia do PDF ou conferir na página de validação.</p>
+            <div class="ds-ver-code-pill">
+              <span>Código:</span> <strong data-ds-signed-code>{{ verification_code }}</strong>
+            </div>
+            <div class="ds-success-actions">
+              <a class="sf-btn sf-btn-primary ds-full" href="{{ pdf_url }}" target="_blank" rel="noopener">{{ icon('download', 16) }} Baixar PDF assinado</a>
+              <a class="sf-btn sf-btn-secondary ds-full" href="/validar/{{ verification_code }}" target="_blank" rel="noopener">{{ icon('qr', 16) }} Abrir página de validação</a>
+            </div>
+          </div>
+          {% endif %}
+        </section>
+      </aside>
+    </div>
+  </main>
+  {% endif %}
+
+  <footer class="ds-pub-footer">
+    <p>SiSFarm · Assinatura Eletrônica conforme MP 2.200-2/2001 (art. 10 §2º), Lei 14.063/2020 (art. 4º II) e LGPD (Lei 13.709/2018).</p>
+  </footer>
+  <script type="module" src="/static/js/digital_signing.js?v=13"></script>
+</body>
+</html>

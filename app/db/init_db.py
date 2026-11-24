@@ -1581,6 +1581,13 @@ def _sync_schema() -> None:
         connection.execute(text("ALTER TABLE signing_documents ADD COLUMN IF NOT EXISTS title VARCHAR(180)"))
         connection.execute(text("ALTER TABLE signing_documents ADD COLUMN IF NOT EXISTS category VARCHAR(48)"))
         connection.execute(text("ALTER TABLE signing_documents ADD COLUMN IF NOT EXISTS owner_signs BOOLEAN NOT NULL DEFAULT TRUE"))
+        connection.execute(text("ALTER TABLE signing_documents ADD COLUMN IF NOT EXISTS verification_code VARCHAR(24)"))
+        connection.execute(text("ALTER TABLE signing_documents ADD COLUMN IF NOT EXISTS signing_policy VARCHAR(24) NOT NULL DEFAULT 'flexible'"))
+        connection.execute(text("ALTER TABLE signing_documents ADD COLUMN IF NOT EXISTS original_sha256 VARCHAR(64)"))
+        connection.execute(text("ALTER TABLE signing_documents ADD COLUMN IF NOT EXISTS sealed_sha256 VARCHAR(64)"))
+        connection.execute(text("ALTER TABLE signing_documents ADD COLUMN IF NOT EXISTS seal_mode VARCHAR(24)"))
+        connection.execute(text("ALTER TABLE signing_documents ADD COLUMN IF NOT EXISTS sealed_at TIMESTAMPTZ"))
+        connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_signing_documents_verification_code ON signing_documents (verification_code)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_runs_deleted_from_storage_at ON backup_runs(deleted_from_storage_at)"))
         connection.execute(
             text(

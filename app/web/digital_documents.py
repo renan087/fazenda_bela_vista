@@ -6,27 +6,36 @@ import logging
 import re
 import secrets
 from datetime import datetime, timezone
+from hashlib import sha256
 from urllib.parse import quote, unquote
 
 from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from app.core.admin_access import is_super_admin_email
 from app.core.csrf import ensure_csrf_token, validate_csrf
 from app.core.deps import get_current_user_web
 from app.db.session import get_db
 from app.models import Farm, User
 from app.models.digital_certificate import CertificateHolderAssignment, CertificatePurpose, DigitalCertificate
-from app.models.signed_document import SigningDocument, SigningParticipant, SigningRevision
+from app.models.signed_document import (
+    InstitutionalSealingCertificate,
+    SigningDocument,
+    SigningEvidence,
+    SigningExternalSigner,
+    SigningParticipant,
+    SigningRevision,
+)
 from app.models.whatsapp import WhatsAppLink
 from app.services import digital_certificates as certificates, login_throttle
 from app.services.audit_log_service import client_ip
-from app.services.document_signing import workflow
-from app.services.document_signing.pdf import MAX_UPLOAD_BYTES, read_pdf, signing_options, validate_pdf
+from app.services.document_signing import electronic, workflow
+from app.services.document_signing.pdf import MAX_PDF_BYTES, MAX_UPLOAD_BYTES, read_pdf, signing_options, validate_pdf
 from app.services.document_signing.policy import signing_mode
 from app.services.email_service import send_plain_email
 from app.services.nfe_permissions import has_fiscal_permission
@@ -147,6 +156,26 @@ def _document_summaries(db, user, farm):
         if uid is not None and sig:
             signed_by_map.setdefault(doc_id, set()).add(uid)
 
+    ev_electronic_count: dict[str, int] = {doc_id: 0 for doc_id in doc_ids}
+    for doc_id, uid, mod in db.execute(
+        select(SigningEvidence.document_id, SigningEvidence.user_id, SigningEvidence.modality).where(
+            SigningEvidence.document_id.in_(doc_ids)
+        )
+    ).all():
+        if uid is not None:
+            signed_by_map.setdefault(doc_id, set()).add(uid)
+        if mod == "electronic_sisfarm":
+            ev_electronic_count[doc_id] = ev_electronic_count.get(doc_id, 0) + 1
+
+    ext_pending_map: dict[str, int] = {doc_id: 0 for doc_id in doc_ids}
+    for doc_id, st in db.execute(
+        select(SigningExternalSigner.document_id, SigningExternalSigner.status).where(
+            SigningExternalSigner.document_id.in_(doc_ids)
+        )
+    ).all():
+        if st == "pending":
+            ext_pending_map[doc_id] = ext_pending_map.get(doc_id, 0) + 1
+
     summaries = []
     counts = {"total": len(docs), "your_turn": 0, "waiting": 0, "done": 0, "attention": 0}
     next_to_sign = None
@@ -154,14 +183,17 @@ def _document_summaries(db, user, farm):
     for doc in docs:
         validation = doc.validation or {}
         val_state = validation.get("state") or "unsigned"
-        sig_count = len(validation.get("signatures") or [])
+        icp_sig_count = len(validation.get("signatures") or [])
+        elec_sig_count = ev_electronic_count.get(doc.id, 0)
+        sig_count = icp_sig_count + elec_sig_count
         participants = part_map.get(doc.id, [])
         signed_users = signed_by_map.get(doc.id, set())
         owner_must_sign = bool(getattr(doc, "owner_signs", True))
         expected_list = ([doc.owner_id] if owner_must_sign else []) + participants
         expected_set = {uid for uid in expected_list if uid is not None}
-        pending_count = len(expected_set - signed_users)
-        expected_count = max(sig_count + pending_count, len(expected_set), 1)
+        ext_pending = ext_pending_map.get(doc.id, 0)
+        pending_count = len(expected_set - signed_users) + ext_pending
+        expected_count = max(sig_count + pending_count, len(expected_set) + ext_pending, 1)
         signed_by_me = user.id in signed_users
         user_must_sign = (user.id in participants) or (doc.owner_id == user.id and owner_must_sign)
 
@@ -326,6 +358,7 @@ async def document_import(request: Request, db: Session = Depends(get_db), user:
         category = unquote(request.headers.get("X-Document-Category", "")) or None
         owner_signs_raw = (request.headers.get("X-Document-Owner-Signs", "1") or "1").strip().lower()
         owner_signs = owner_signs_raw not in {"0", "false", "no"}
+        signing_policy = (request.headers.get("X-Document-Signing-Policy", "flexible") or "flexible").strip().lower()
         doc_id = await run_in_threadpool(
             _limited,
             workflow.import_pdf,
@@ -337,8 +370,14 @@ async def document_import(request: Request, db: Session = Depends(get_db), user:
             title=title,
             category=category,
             owner_signs=owner_signs,
+            signing_policy=signing_policy,
         )
-        return _json({"id": doc_id, "url": f"/assinatura-digital/documentos/{doc_id}"}, 201)
+        doc_row = db.get(SigningDocument, doc_id)
+        return _json({
+            "id": doc_id,
+            "url": f"/assinatura-digital/documentos/{doc_id}",
+            "verification_code": doc_row.verification_code if doc_row else None,
+        }, 201)
     except (ValueError, workflow.WorkflowError, IntegrityError) as exc:
         db.rollback()
         return _error(exc)
@@ -408,18 +447,37 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
             "valid_until": cert.valid_until,
         })
     display_title = doc.title or (doc.filename[:-4] if doc.filename.lower().endswith(".pdf") else doc.filename)
-    sig_count = len((doc.validation or {}).get("signatures") or [])
+    external_signers = db.scalars(
+        select(SigningExternalSigner).filter_by(document_id=doc.id).order_by(SigningExternalSigner.created_at.asc())
+    ).all()
+    evidences = db.scalars(
+        select(SigningEvidence).filter_by(document_id=doc.id).order_by(SigningEvidence.signed_at.asc(), SigningEvidence.revision_number.asc())
+    ).all()
+    icp_sig_count = len((doc.validation or {}).get("signatures") or [])
+    elec_sig_count = sum(1 for ev in evidences if ev.modality == "electronic_sisfarm")
+    sig_count = icp_sig_count + elec_sig_count
     owner_must_sign = bool(getattr(doc, "owner_signs", True))
-    signed_user_ids = {rev.user_id for rev in revisions if rev.signature and rev.user_id is not None}
+    signed_user_ids = {rev.user_id for rev in revisions if rev.signature and rev.user_id is not None} | {
+        ev.user_id for ev in evidences if ev.user_id is not None
+    }
     expected_sisfarm_ids = {
         uid for uid in (([doc.owner_id] if owner_must_sign else []) + [p.id for p in all_participants]) if uid is not None
     }
-    pending_count = len(expected_sisfarm_ids - signed_user_ids)
-    expected_count = max(sig_count + pending_count, len(expected_sisfarm_ids), 1)
+    ext_pending_count = sum(1 for ext in external_signers if ext.status == "pending")
+    pending_count = len(expected_sisfarm_ids - signed_user_ids) + ext_pending_count
+    expected_count = max(sig_count + pending_count, len(expected_sisfarm_ids) + ext_pending_count, 1)
     user_already_signed = user.id in signed_user_ids
     user_must_sign = (doc.owner_id == user.id and owner_must_sign) or any(p.id == user.id for p in all_participants)
-    all_signed = bool(expected_sisfarm_ids) and pending_count == 0
+    all_signed = (bool(expected_sisfarm_ids) or bool(external_signers)) and pending_count == 0
     show_signing_form = (not user_already_signed) and (not all_signed) and user_must_sign
+    signing_policy = getattr(doc, "signing_policy", "flexible") or "flexible"
+    allow_electronic = signing_policy != "icp_brasil"
+    allow_icp = signing_policy != "electronic"
+    default_sign_mode = "icp" if (signing_policy == "icp_brasil" or (allow_icp and cert_choices and signing_policy != "electronic")) else "electronic"
+    wa_link = db.scalar(select(WhatsAppLink).where(WhatsAppLink.user_id == user.id, WhatsAppLink.wa_id.is_not(None)))
+    user_whatsapp_phone = (wa_link.wa_id if wa_link and wa_link.wa_id else "") or (user.phone or "")
+    verification_code = electronic.ensure_document_verification_code(db, doc)
+    db.commit()
     active_view = "detalhes" if request.query_params.get("aba") == "detalhes" else "assinar"
     wizard_flow = request.query_params.get("fluxo") or ""
     notice = (request.query_params.get("aviso") or "").strip()[:260]
@@ -430,10 +488,14 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
         farm=farm, doc=doc, display_title=display_title, show_filename_sub=show_filename_sub,
         options=options, revisions=revisions,
         participants=participants, available_colleagues=available_colleagues,
+        external_signers=external_signers, evidences=evidences,
         certificate_options=cert_choices, sig_count=sig_count, expected_count=expected_count,
         owner_must_sign=owner_must_sign, user_already_signed=user_already_signed,
         user_must_sign=user_must_sign, pending_count=pending_count,
         all_signed=all_signed, show_signing_form=show_signing_form,
+        signing_policy=signing_policy, allow_electronic=allow_electronic, allow_icp=allow_icp,
+        default_sign_mode=default_sign_mode, user_whatsapp_phone=user_whatsapp_phone,
+        verification_code=verification_code,
         notice=notice,
         active_view=active_view, wizard_flow=wizard_flow, mode=signing_mode(farm.id),
     )
@@ -507,12 +569,145 @@ async def apply_signature(document_id: str, request: Request, db: Session = Depe
             or not isinstance(password, str)):
         raise HTTPException(400, "Confirme a assinatura e informe o código enviado ao seu e-mail.")
     try:
-        result = await run_in_threadpool(_limited, workflow.confirm_signature, db, user, farm.id, document_id,
-                                         data["challenge_id"], data["code"].strip(), password, session_nonce)
+        result = await run_in_threadpool(
+            _limited,
+            workflow.confirm_signature,
+            db,
+            user,
+            farm.id,
+            document_id,
+            data["challenge_id"],
+            data["code"].strip(),
+            password,
+            session_nonce,
+            ip_address=client_ip(request),
+            user_agent=request.headers.get("user-agent", ""),
+            farm_name=farm.name,
+            base_url=str(request.base_url),
+        )
         return _json(result)
     except (ValueError, workflow.WorkflowError, IntegrityError) as exc:
         db.rollback()
         return _error(exc)
+
+
+# ---------------------------------------------------------------------------
+# Assinatura Eletrônica SiSFarm (Interna) + Signatários Externos
+# ---------------------------------------------------------------------------
+
+
+@router.post("/assinatura-digital/documentos/{document_id}/eletronica/autorizar")
+async def request_electronic_code(document_id: str, request: Request, db: Session = Depends(get_db),
+                                  user: User = Depends(get_current_user_web)):
+    farm = _farm(request, db, user)
+    data = await _payload(request)
+    doc = _doc(db, user, farm, document_id, lock=True)
+    if getattr(doc, "signing_policy", "flexible") == "icp_brasil":
+        raise HTTPException(403, "Este documento exige assinatura qualificada ICP-Brasil.")
+    try:
+        revision = workflow.current_revision(db, doc)
+        pdf_bytes = workflow.revision_bytes(doc, revision)
+        result = await run_in_threadpool(
+            _limited,
+            electronic.issue_electronic_challenge,
+            db,
+            doc=doc,
+            revision=revision,
+            pdf_bytes=pdf_bytes,
+            user=user,
+            external_signer=None,
+            signer_name=str(data.get("signer_name") or user.display_name or user.name),
+            cpf_raw=str(data.get("cpf") or ""),
+            auth_channel=str(data.get("channel") or "email"),
+            appearance=data.get("appearance") if isinstance(data.get("appearance"), dict) else {"visible": False},
+            consent=data.get("consent") is True,
+        )
+        return _json(result, 201)
+    except (ValueError, PermissionError, workflow.WorkflowError, IntegrityError) as exc:
+        db.rollback()
+        return _error(exc)
+
+
+@router.post("/assinatura-digital/documentos/{document_id}/eletronica/assinar")
+async def apply_electronic_signature(document_id: str, request: Request, db: Session = Depends(get_db),
+                                     user: User = Depends(get_current_user_web)):
+    farm = _farm(request, db, user)
+    data = await _payload(request)
+    if data.get("consent") is not True or not isinstance(data.get("challenge_id"), str) or not isinstance(data.get("code"), str):
+        raise HTTPException(400, "Confirme a assinatura e informe o código recebido.")
+    doc = _doc(db, user, farm, document_id, lock=True)
+    try:
+        revision = workflow.current_revision(db, doc)
+        pdf_bytes = workflow.revision_bytes(doc, revision)
+        result = await run_in_threadpool(
+            _limited,
+            electronic.confirm_electronic_signature,
+            db,
+            doc=doc,
+            revision=revision,
+            pdf_bytes=pdf_bytes,
+            user=user,
+            external_signer=None,
+            challenge_id=data["challenge_id"],
+            code=data["code"].strip(),
+            ip_address=client_ip(request),
+            user_agent=request.headers.get("user-agent", ""),
+            farm_name=farm.name,
+            base_url=str(request.base_url),
+            store_revision_fn=workflow._store_revision,
+        )
+        return _json(result)
+    except (ValueError, PermissionError, workflow.WorkflowError, IntegrityError) as exc:
+        db.rollback()
+        return _error(exc)
+
+
+@router.post("/assinatura-digital/documentos/{document_id}/externos")
+async def add_external_signer(document_id: str, request: Request, db: Session = Depends(get_db),
+                              user: User = Depends(get_current_user_web)):
+    farm = _farm(request, db, user)
+    data = await _payload(request)
+    doc = _doc(db, user, farm, document_id, owner=True, lock=True)
+    if getattr(doc, "signing_policy", "flexible") == "icp_brasil":
+        raise HTTPException(403, "Signatários externos sem certificado só podem ser convidados em documentos com assinatura eletrônica.")
+    try:
+        signer, sign_url, sent, err = await run_in_threadpool(
+            electronic.create_external_signer,
+            db,
+            doc=doc,
+            farm=farm,
+            sender=user,
+            name=str(data.get("name") or ""),
+            email=str(data.get("email") or "") or None,
+            phone=str(data.get("phone") or "") or None,
+            channel=str(data.get("channel") or "email"),
+            role_label=str(data.get("role_label") or "Signatário"),
+            base_url=str(request.base_url),
+        )
+        return _json({
+            "ok": True,
+            "signer_id": signer.id,
+            "sign_url": sign_url,
+            "channel": signer.channel,
+            "notification_sent": sent,
+            "notification_error": err,
+        }, 201)
+    except (ValueError, PermissionError, IntegrityError) as exc:
+        db.rollback()
+        return _error(exc)
+
+
+@router.delete("/assinatura-digital/documentos/{document_id}/externos/{signer_id}")
+def remove_external_signer(document_id: str, signer_id: str, request: Request, db: Session = Depends(get_db),
+                           user: User = Depends(get_current_user_web)):
+    _csrf(request)
+    farm = _farm(request, db, user)
+    doc = _doc(db, user, farm, document_id, owner=True, lock=True)
+    row = db.scalar(select(SigningExternalSigner).filter_by(id=signer_id, document_id=doc.id))
+    if row is not None and row.status != "signed":
+        row.status = "revoked"
+        db.commit()
+    return _json({"ok": True})
 
 
 def _normalize_br_whatsapp(phone: str | None) -> str:
@@ -762,3 +957,281 @@ async def bind_certificate_holder(certificate_id: str, request: Request, db: Ses
     except (ValueError, PermissionError, IntegrityError) as exc:
         db.rollback()
         return _error(exc)
+
+
+# ---------------------------------------------------------------------------
+# Fluxo Público de Signatário Externo (/assinar/{token} — sem login)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/assinar/{token}")
+def external_signing_page(token: str, request: Request, db: Session = Depends(get_db)):
+    found = electronic.get_external_signer_by_token(db, token)
+    if found is None:
+        return templates.TemplateResponse(
+            request,
+            "digital_signing_external.html",
+            {"request": request, "invalid_link": True, "csrf_token": ensure_csrf_token(request)},
+            status_code=404,
+            headers=PRIVATE,
+        )
+    signer, doc, farm = found
+    revision = workflow.current_revision(db, doc)
+    pdf_bytes = workflow.revision_bytes(doc, revision)
+    options = _limited(lambda: signing_options(read_pdf(pdf_bytes)))
+    options["sha256"] = revision.sha256
+    options["number"] = revision.number
+    display_title = doc.title or (doc.filename[:-4] if doc.filename.lower().endswith(".pdf") else doc.filename)
+    ver_code = electronic.ensure_document_verification_code(db, doc)
+    pending_count = electronic._pending_signer_count(db, doc)
+    db.commit()
+    return templates.TemplateResponse(
+        request,
+        "digital_signing_external.html",
+        {
+            "request": request,
+            "invalid_link": False,
+            "csrf_token": ensure_csrf_token(request),
+            "token": token,
+            "signer": signer,
+            "doc": doc,
+            "farm": farm,
+            "display_title": display_title,
+            "options": options,
+            "verification_code": ver_code,
+            "pending_count": pending_count,
+            "already_signed": signer.status == "signed",
+            "phone_masked": electronic.mask_phone(signer.phone) if signer.phone else "",
+            "email_masked": electronic.mask_email(signer.email) if signer.email else "",
+        },
+        headers=PRIVATE,
+    )
+
+
+@router.get("/assinar/{token}/pdf")
+def external_signing_pdf(token: str, db: Session = Depends(get_db)):
+    found = electronic.get_external_signer_by_token(db, token)
+    if found is None:
+        raise HTTPException(404, "Link de assinatura indisponível ou expirado.")
+    _, doc, _ = found
+    revision = workflow.current_revision(db, doc)
+    data = workflow.revision_bytes(doc, revision)
+    filename = doc.filename if doc.current_revision == 1 else f"{doc.filename[:-4]} - assinado.pdf"
+    return Response(
+        data,
+        media_type="application/pdf",
+        headers={
+            **PRIVATE,
+            "Content-Disposition": "inline; filename*=UTF-8''" + quote(filename, safe=""),
+            "Content-Security-Policy": "sandbox",
+            "X-Frame-Options": "DENY",
+        },
+    )
+
+
+@router.post("/assinar/{token}/autorizar")
+async def external_request_code(token: str, request: Request, db: Session = Depends(get_db)):
+    data = await _payload(request)
+    found = electronic.get_external_signer_by_token(db, token)
+    if found is None:
+        raise HTTPException(404, "Link de assinatura indisponível ou expirado.")
+    signer, doc, _ = found
+    try:
+        revision = workflow.current_revision(db, doc)
+        pdf_bytes = workflow.revision_bytes(doc, revision)
+        result = await run_in_threadpool(
+            _limited,
+            electronic.issue_electronic_challenge,
+            db,
+            doc=doc,
+            revision=revision,
+            pdf_bytes=pdf_bytes,
+            user=None,
+            external_signer=signer,
+            signer_name=str(data.get("signer_name") or signer.name),
+            cpf_raw=str(data.get("cpf") or ""),
+            auth_channel=str(data.get("channel") or signer.channel or "email"),
+            appearance=data.get("appearance") if isinstance(data.get("appearance"), dict) else {"visible": False},
+            consent=data.get("consent") is True,
+        )
+        return _json(result, 201)
+    except (ValueError, PermissionError, workflow.WorkflowError, IntegrityError) as exc:
+        db.rollback()
+        return _error(exc)
+
+
+@router.post("/assinar/{token}/assinar")
+async def external_confirm_signature(token: str, request: Request, db: Session = Depends(get_db)):
+    data = await _payload(request)
+    if data.get("consent") is not True or not isinstance(data.get("challenge_id"), str) or not isinstance(data.get("code"), str):
+        raise HTTPException(400, "Confirme a assinatura e informe o código recebido.")
+    found = electronic.get_external_signer_by_token(db, token)
+    if found is None:
+        raise HTTPException(404, "Link de assinatura indisponível ou expirado.")
+    signer, doc, farm = found
+    try:
+        revision = workflow.current_revision(db, doc)
+        pdf_bytes = workflow.revision_bytes(doc, revision)
+        result = await run_in_threadpool(
+            _limited,
+            electronic.confirm_electronic_signature,
+            db,
+            doc=doc,
+            revision=revision,
+            pdf_bytes=pdf_bytes,
+            user=None,
+            external_signer=signer,
+            challenge_id=data["challenge_id"],
+            code=data["code"].strip(),
+            ip_address=client_ip(request),
+            user_agent=request.headers.get("user-agent", ""),
+            farm_name=farm.name,
+            base_url=str(request.base_url),
+            store_revision_fn=workflow._store_revision,
+        )
+        return _json(result)
+    except (ValueError, PermissionError, workflow.WorkflowError, IntegrityError) as exc:
+        db.rollback()
+        return _error(exc)
+
+
+# ---------------------------------------------------------------------------
+# Página Pública de Validação (/validar e /validar/{code} — sem login)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/validar")
+def public_validation_home(request: Request, codigo: str = ""):
+    normalized = electronic.normalize_verification_code(codigo)
+    if normalized:
+        return RedirectResponse(url=f"/validar/{normalized}", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "digital_signing_validate.html",
+        {
+            "request": request,
+            "csrf_token": ensure_csrf_token(request),
+            "query_code": codigo.strip().upper(),
+            "not_found": bool(codigo.strip()),
+            "snapshot": None,
+        },
+        headers=PRIVATE,
+    )
+
+
+@router.get("/validar/{code}")
+def public_validation_detail(code: str, request: Request, db: Session = Depends(get_db)):
+    snapshot = electronic.public_validation_snapshot(db, code)
+    if snapshot is None:
+        return templates.TemplateResponse(
+            request,
+            "digital_signing_validate.html",
+            {
+                "request": request,
+                "csrf_token": ensure_csrf_token(request),
+                "query_code": code.strip().upper(),
+                "not_found": True,
+                "snapshot": None,
+            },
+            status_code=404,
+            headers=PRIVATE,
+        )
+    return templates.TemplateResponse(
+        request,
+        "digital_signing_validate.html",
+        {
+            "request": request,
+            "csrf_token": ensure_csrf_token(request),
+            "query_code": snapshot["code"],
+            "not_found": False,
+            "snapshot": snapshot,
+            "sp_tz": electronic.SP_TZ,
+        },
+        headers=PRIVATE,
+    )
+
+
+@router.post("/validar/{code}/conferir")
+async def public_validation_check_pdf(code: str, request: Request, db: Session = Depends(get_db)):
+    ip = client_ip(request)
+    if login_throttle.blocked_for(f"pub_val:{code}", ip):
+        return _json({"detail": "Muitas consultas seguidas. Aguarde alguns instantes e tente novamente."}, 429)
+    snapshot = electronic.public_validation_snapshot(db, code)
+    if snapshot is None:
+        login_throttle.register_failure(f"pub_val:{code}", ip)
+        return _json({"detail": "Código de verificação não encontrado."}, 404)
+    try:
+        pdf_bytes = await _body(request, MAX_PDF_BYTES, "application/pdf")
+    except HTTPException as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    uploaded_sha = sha256(pdf_bytes).hexdigest()
+    matches = uploaded_sha in snapshot["accepted_hashes"]
+    return _json({
+        "matches": matches,
+        "uploaded_sha256": uploaded_sha,
+        "expected_sha256": snapshot["sealed_sha256"],
+        "headline": "Documento original confirmado" if matches else "Este arquivo não é o mesmo que foi assinado",
+        "message": (
+            "O arquivo que você enviou é exatamente igual à versão assinada e não sofreu nenhuma alteração desde então."
+            if matches
+            else "Este PDF não confere com a versão assinada guardada no SiSFarm. Peça novamente o arquivo original a quem enviou o documento."
+        ),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Painel Administrativo Geral — Selo Institucional e-CNPJ A1 (Superadmin)
+# ---------------------------------------------------------------------------
+
+
+def _require_super_admin(user: User):
+    if not user or not is_super_admin_email(user.email):
+        raise HTTPException(403, "Acesso restrito ao administrador geral do SiSFarm.")
+
+
+@router.get("/admin/selo-institucional")
+def admin_institutional_seal_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    _require_super_admin(user)
+    active_cert = electronic.get_active_institutional_certificate(db)
+    history = db.scalars(
+        select(InstitutionalSealingCertificate).order_by(InstitutionalSealingCertificate.created_at.desc()).limit(10)
+    ).all()
+    days_left = 0
+    if active_cert is not None:
+        days_left = max(0, (certificates.utc(active_cert.valid_until) - datetime.now(timezone.utc)).days)
+    return _page(
+        request,
+        user,
+        db,
+        "organizations",
+        "admin_institutional_seal.html",
+        "Selo Institucional do SiSFarm",
+        active_cert=active_cert,
+        days_left=days_left,
+        history=history,
+    )
+
+
+@router.post("/admin/selo-institucional")
+async def admin_upload_institutional_seal(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    _require_super_admin(user)
+    data = await _payload(request, limit=272_000)
+    raw_file = data.get("file")
+    password = data.get("password")
+    if data.get("consent") is not True or not isinstance(raw_file, str) or not isinstance(password, str):
+        raise HTTPException(400, "Envie o arquivo do certificado, a senha e confirme o termo de uso institucional.")
+    try:
+        pfx_bytes = base64.b64decode(raw_file.encode("ascii"), validate=True)
+        row = electronic.store_institutional_certificate(db, pfx_bytes=pfx_bytes, password=password, user=user)
+        return _json({"ok": True, "id": row.id, "subject_cn": row.subject_cn}, 201)
+    except (ValueError, binascii.Error, IntegrityError) as exc:
+        db.rollback()
+        return _error(exc)
+
+
+@router.post("/admin/selo-institucional/desativar")
+async def admin_deactivate_institutional_seal(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    _require_super_admin(user)
+    await _payload(request)
+    electronic.deactivate_institutional_certificate(db, user=user)
+    return _json({"ok": True})

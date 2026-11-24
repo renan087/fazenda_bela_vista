@@ -46,6 +46,20 @@ function maskCpf(value) {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
+function maskCpfPublic(value) {
+  const d = String(value || "").replace(/\D/g, "");
+  if (d.length !== 11) return "";
+  return `***.${d.slice(3, 6)}.${d.slice(6, 9)}-**`;
+}
+
+function maskVerificationCode(value) {
+  const clean = String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 14);
+  if (clean.length <= 2) return clean;
+  if (clean.length <= 6) return `${clean.slice(0, 2)}-${clean.slice(2)}`;
+  if (clean.length <= 10) return `${clean.slice(0, 2)}-${clean.slice(2, 6)}-${clean.slice(6)}`;
+  return `${clean.slice(0, 2)}-${clean.slice(2, 6)}-${clean.slice(6, 10)}-${clean.slice(10)}`;
+}
+
 function isValidCpf(value) {
   const d = String(value || "").replace(/\D/g, "");
   if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
@@ -88,13 +102,14 @@ function initInputMasks() {
   for (const input of document.querySelectorAll("[data-ds-cpf-mask]")) {
     const field = input.closest(".ds-field");
     const hint = field?.querySelector(".ds-cpf-hint");
+    const defaultHint = hint ? hint.textContent : "";
     const updateCpfState = (force = false) => {
       input.value = maskCpf(input.value);
       const digits = input.value.replace(/\D/g, "");
       if (!digits.length) {
         input.classList.remove("ds-input-valid", "ds-input-invalid");
         if (hint) {
-          hint.textContent = "Conferido com o CPF dentro do certificado A1.";
+          hint.textContent = defaultHint || "Digite os 11 dígitos do CPF.";
           hint.className = "ds-cpf-hint";
         }
         return true;
@@ -119,6 +134,29 @@ function initInputMasks() {
     input.addEventListener("input", () => updateCpfState(false));
     input.addEventListener("blur", () => updateCpfState(true));
   }
+  for (const input of document.querySelectorAll("[data-ds-code-mask]")) {
+    if (input.value) input.value = maskVerificationCode(input.value);
+    input.addEventListener("input", () => {
+      input.value = maskVerificationCode(input.value);
+    });
+  }
+}
+
+function initCopyButtons() {
+  document.addEventListener("click", async (event) => {
+    const btn = event.target.closest("[data-ds-copy-text]");
+    if (!btn) return;
+    const text = btn.dataset.dsCopyText || "";
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      const orig = btn.innerHTML;
+      btn.textContent = "✓ Copiado";
+      setTimeout(() => { btn.innerHTML = orig; }, 1800);
+    } catch {
+      window.prompt("Copie o código abaixo:", text);
+    }
+  });
 }
 
 function reportInto(container, report, filename) {
@@ -166,7 +204,7 @@ function reportInto(container, report, filename) {
   container.hidden = false;
 }
 
-async function request(root, path, {method = "POST", json, pdf, name, title, category, ownerSigns} = {}) {
+async function request(root, path, {method = "POST", json, pdf, name, title, category, ownerSigns, signingPolicy} = {}) {
   const headers = {"X-CSRF-Token": root.dataset.csrf, Accept: "application/json"};
   if (json) headers["Content-Type"] = "application/json";
   if (pdf) headers["Content-Type"] = "application/pdf";
@@ -174,6 +212,7 @@ async function request(root, path, {method = "POST", json, pdf, name, title, cat
   if (title) headers["X-Document-Title"] = encodeURIComponent(title);
   if (category) headers["X-Document-Category"] = encodeURIComponent(category);
   if (typeof ownerSigns === "boolean") headers["X-Document-Owner-Signs"] = ownerSigns ? "1" : "0";
+  if (signingPolicy) headers["X-Document-Signing-Policy"] = signingPolicy;
   const response = await fetch(path, {
     method, headers, body: json ? JSON.stringify(json) : pdf, cache: "no-store",
   });
@@ -445,6 +484,7 @@ function initWizard(root) {
   const submitBtn = root.querySelector("[data-ds-wiz-submit]");
   const statusEl = root.querySelector("[data-ds-wiz-status]");
   const whoCards = [...root.querySelectorAll("[data-ds-who]")];
+  const policyCards = [...root.querySelectorAll("[data-ds-policy]")];
 
   // Top step indicators
   const stepDoc = root.querySelector('[data-wiz-step="doc"]');
@@ -458,14 +498,38 @@ function initWizard(root) {
   const sumTitle = root.querySelector("[data-ds-sum-title]");
   const sumCat = root.querySelector("[data-ds-sum-cat]");
   const sumFile = root.querySelector("[data-ds-sum-file]");
+  const sumPolicy = root.querySelector("[data-ds-sum-policy]");
   const sumWho = root.querySelector("[data-ds-sum-who]");
   const sumNext = root.querySelector("[data-ds-sum-next]");
   const sumPeopleWrap = root.querySelector("[data-ds-sum-people-wrap]");
   const sumPeopleList = root.querySelector("[data-ds-sum-people]");
 
+  // External signers elements
+  const extIcpWarn = root.querySelector("[data-ds-ext-icp-warn]");
+  const extAdder = root.querySelector("[data-ds-ext-adder]");
+  const extName = root.querySelector("[data-ds-ext-name]");
+  const extRole = root.querySelector("[data-ds-ext-role]");
+  const extChannel = root.querySelector("[data-ds-ext-channel]");
+  const extPhoneWrap = root.querySelector("[data-ds-ext-phone-wrap]");
+  const extEmailWrap = root.querySelector("[data-ds-ext-email-wrap]");
+  const extPhone = root.querySelector("[data-ds-ext-phone]");
+  const extEmail = root.querySelector("[data-ds-ext-email]");
+  const extAddBtn = root.querySelector("[data-ds-ext-add-btn]");
+  const extErr = root.querySelector("[data-ds-ext-err]");
+  const extListEl = root.querySelector("[data-ds-ext-list]");
+  const manifestoNote = root.querySelector("[data-ds-manifesto-note]");
+
   let selectedFile = null;
   let whoSigns = "only_me";
+  let signingPolicy = "flexible";
   let currentStep = 1;
+  const externalSigners = [];
+
+  const POLICY_LABELS = {
+    flexible: "Livre escolha",
+    electronic: "Eletrônica SiSFarm",
+    icp_brasil: "Somente ICP-Brasil A1",
+  };
 
   function selectedColleagues() {
     return [...root.querySelectorAll("[data-ds-colleague-card]")].filter(
@@ -473,10 +537,33 @@ function initWizard(root) {
     );
   }
 
+  function renderExternalList() {
+    if (!extListEl) return;
+    extListEl.hidden = externalSigners.length === 0;
+    extListEl.replaceChildren(...externalSigners.map((ext, idx) => {
+      const li = element("li", "", "ds-ext-added-item");
+      const info = element("div");
+      info.append(
+        element("strong", `${ext.name} (${ext.role_label})`),
+        element("small", `${ext.channel === "whatsapp" ? "WhatsApp" : "E-mail"} · ${ext.channel === "whatsapp" ? ext.phone : ext.email}`),
+      );
+      const rmBtn = element("button", "Remover", "ds-inline-action is-danger");
+      rmBtn.type = "button";
+      rmBtn.addEventListener("click", () => {
+        externalSigners.splice(idx, 1);
+        renderExternalList();
+        syncUI();
+      });
+      li.append(info, rmBtn);
+      return li;
+    }));
+  }
+
   function syncUI() {
     const needsStep2 = whoSigns !== "only_me";
     if (!needsStep2) currentStep = 1;
     const totalSteps = whoSigns === "me_and_others" ? 4 : 3;
+    const allowExternal = signingPolicy !== "icp_brasil";
 
     pane1.hidden = currentStep !== 1;
     pane2.hidden = currentStep !== 2;
@@ -484,6 +571,10 @@ function initWizard(root) {
     backBtn.hidden = currentStep !== 2;
     nextBtn.hidden = !(currentStep === 1 && needsStep2);
     submitBtn.hidden = currentStep === 1 && needsStep2;
+
+    if (extIcpWarn) extIcpWarn.hidden = allowExternal;
+    if (extAdder) extAdder.hidden = !allowExternal;
+    if (manifestoNote) manifestoNote.hidden = !allowExternal;
 
     // Adaptive top steps bar
     stepDoc.classList.toggle("is-done", currentStep > 1);
@@ -511,17 +602,20 @@ function initWizard(root) {
 
     if (subtitle) {
       subtitle.textContent = currentStep === 1
-        ? "Envie o PDF e escolha quem vai assinar."
-        : "Defina quais usuários da fazenda vão assinar este documento.";
+        ? "Envie o PDF, escolha a modalidade e defina quem vai assinar."
+        : "Selecione equipe da fazenda e/ou convide signatários externos por link.";
     }
     if (submitBtn) {
       submitBtn.textContent = whoSigns === "only_others"
-        ? "Continuar para Conferir e enviar →"
-        : "Continuar para Revisar e marcar →";
+        ? "Enviar convites e abrir documento →"
+        : "Continuar para Revisar e assinar →";
     }
 
     for (const card of whoCards) {
       card.setAttribute("aria-checked", String(card.dataset.dsWho === whoSigns));
+    }
+    for (const card of policyCards) {
+      card.setAttribute("aria-checked", String(card.dataset.dsPolicy === signingPolicy));
     }
 
     // Update Sticky Summary Card in real time
@@ -530,19 +624,26 @@ function initWizard(root) {
     if (sumTitle) sumTitle.textContent = docName;
     if (sumCat) sumCat.textContent = catSelect?.value || "Outros";
     if (sumFile) sumFile.textContent = selectedFile ? selectedFile.name : "Aguardando envio";
+    if (sumPolicy) sumPolicy.textContent = POLICY_LABELS[signingPolicy] || "Livre escolha";
     const chosen = selectedColleagues();
+    const activeExternals = allowExternal ? externalSigners : [];
+    const totalOthers = chosen.length + activeExternals.length;
     if (sumWho) {
       if (whoSigns === "only_me") sumWho.textContent = "Apenas você";
-      else if (whoSigns === "me_and_others") sumWho.textContent = chosen.length ? `Você + ${chosen.length} pessoa(s)` : "Você e outras pessoas";
-      else sumWho.textContent = chosen.length ? `${chosen.length} pessoa(s)` : "Apenas outras pessoas";
+      else if (whoSigns === "me_and_others") sumWho.textContent = totalOthers ? `Você + ${totalOthers} pessoa(s)` : "Você e outras pessoas";
+      else sumWho.textContent = totalOthers ? `${totalOthers} pessoa(s)` : "Apenas outras pessoas";
     }
     if (sumNext) {
       if (currentStep === 1 && needsStep2) sumNext.textContent = "Quem assina";
-      else sumNext.textContent = whoSigns === "only_others" ? "Conferir e enviar" : "Revisar e marcar";
+      else sumNext.textContent = whoSigns === "only_others" ? "Conferir e enviar" : "Revisar e assinar";
     }
     if (sumPeopleWrap && sumPeopleList) {
-      sumPeopleWrap.hidden = !needsStep2 || chosen.length === 0;
-      sumPeopleList.replaceChildren(...chosen.map((card) => element("li", `• ${card.dataset.name}`)));
+      sumPeopleWrap.hidden = !needsStep2 || totalOthers === 0;
+      const items = [
+        ...chosen.map((card) => element("li", `• ${card.dataset.name}`)),
+        ...activeExternals.map((ext) => element("li", `• ${ext.name} (externo)`)),
+      ];
+      sumPeopleList.replaceChildren(...items);
     }
   }
 
@@ -592,6 +693,47 @@ function initWizard(root) {
       syncUI();
     });
   }
+  for (const card of policyCards) {
+    card.addEventListener("click", () => {
+      signingPolicy = card.dataset.dsPolicy || "flexible";
+      syncUI();
+    });
+  }
+  extChannel?.addEventListener("change", () => {
+    const isWa = extChannel.value === "whatsapp";
+    if (extPhoneWrap) extPhoneWrap.hidden = !isWa;
+    if (extEmailWrap) extEmailWrap.hidden = isWa;
+    feedback(extErr);
+  });
+  extAddBtn?.addEventListener("click", () => {
+    const name = (extName?.value || "").trim();
+    const role_label = (extRole?.value || "").trim() || "Signatário";
+    const channel = extChannel?.value === "email" ? "email" : "whatsapp";
+    const phone = (extPhone?.value || "").trim();
+    const email = (extEmail?.value || "").trim();
+    if (name.length < 3) {
+      feedback(extErr, "Informe o nome completo do signatário externo.", true);
+      extName?.focus();
+      return;
+    }
+    if (channel === "whatsapp" && phone.replace(/\D/g, "").length < 10) {
+      feedback(extErr, "Informe um número de WhatsApp válido com DDD.", true);
+      extPhone?.focus();
+      return;
+    }
+    if (channel === "email" && !email.includes("@")) {
+      feedback(extErr, "Informe um e-mail válido para o signatário externo.", true);
+      extEmail?.focus();
+      return;
+    }
+    externalSigners.push({name, role_label, channel, phone: channel === "whatsapp" ? phone : "", email: channel === "email" ? email : ""});
+    if (extName) extName.value = "";
+    if (extPhone) extPhone.value = "";
+    if (extEmail) extEmail.value = "";
+    feedback(extErr);
+    renderExternalList();
+    syncUI();
+  });
   titleInput?.addEventListener("input", syncUI);
   catSelect?.addEventListener("change", syncUI);
 
@@ -648,8 +790,9 @@ function initWizard(root) {
       return;
     }
     const chosen = whoSigns !== "only_me" ? selectedColleagues() : [];
-    if (whoSigns !== "only_me" && chosen.length === 0) {
-      feedback(statusEl, "Selecione pelo menos uma pessoa para assinar este documento.", true);
+    const activeExternals = (whoSigns !== "only_me" && signingPolicy !== "icp_brasil") ? externalSigners : [];
+    if (whoSigns !== "only_me" && chosen.length === 0 && activeExternals.length === 0) {
+      feedback(statusEl, "Selecione pelo menos um usuário da equipe ou adicione um signatário externo.", true);
       return;
     }
     submitBtn.disabled = true;
@@ -661,6 +804,7 @@ function initWizard(root) {
         title: (titleInput?.value || "").trim(),
         category: catSelect?.value || "Outros",
         ownerSigns: whoSigns !== "only_others",
+        signingPolicy,
       });
       const warnings = [];
       for (const card of chosen) {
@@ -675,6 +819,14 @@ function initWizard(root) {
           } catch (err) {
             warnings.push(err.message || `Não foi possível compartilhar com ${email}.`);
           }
+        }
+      }
+      for (const ext of activeExternals) {
+        try {
+          const res = await request(root, `${created.url}/externos`, {json: ext});
+          if (res && res.notification_error) warnings.push(res.notification_error);
+        } catch (err) {
+          warnings.push(err.message || `Não foi possível convidar ${ext.name}.`);
         }
       }
       const params = new URLSearchParams();
@@ -710,6 +862,8 @@ function initWorkspace(root) {
   const previous = find("[data-ds-prev]");
   const next = find("[data-ds-next]");
   const stamp = find("[data-ds-stamp]");
+  const stampHead = find("[data-ds-stamp-head]");
+  const stampQr = find("[data-ds-stamp-qr]");
   const stampLabel = find("[data-ds-stamp-label]");
   const stampDoc = find("[data-ds-stamp-doc]");
   const stampDate = find("[data-ds-stamp-date]");
@@ -723,12 +877,28 @@ function initWorkspace(root) {
   const placement = find("[data-ds-placement]");
   const placeOnPage = find("[data-ds-place-current]");
   const consent = find("[data-ds-consent]");
+  const consentText = find("[data-ds-consent-text]");
   const authorize = find("[data-ds-authorize]");
+  const authLabel = find("[data-ds-auth-label]");
   const status = find("[data-ds-status]");
   const report = find("[data-ds-result]");
   const confirmForm = find("[data-ds-sign-form]");
   const dialogStatus = find("[data-ds-confirm-status]");
 
+  // Electronic signing elements & modality switcher
+  const modeButtons = [...root.querySelectorAll("[data-ds-sign-mode]")];
+  const modePanes = [...root.querySelectorAll("[data-ds-mode-pane]")];
+  const elNameInput = find("[data-ds-el-name]");
+  const elCpfInput = find("[data-ds-el-cpf]");
+  const elChannelSelect = find("[data-ds-el-channel]");
+  const stampToggleTitle = find("[data-ds-stamp-toggle-title]");
+  const stampToggleSub = find("[data-ds-stamp-toggle-sub]");
+  const verCode = root.dataset.verificationCode || "";
+  const docTitle = root.dataset.docTitle || "este documento";
+
+  let activeMode = root.dataset.defaultMode === "icp" ? "icp" : "electronic";
+  if (activeMode === "electronic" && root.dataset.allowElectronic !== "yes") activeMode = "icp";
+  if (activeMode === "icp" && root.dataset.allowIcp !== "yes") activeMode = "electronic";
   let stampStyle = "full"; // full | compact
 
   // Workspace view tabs
@@ -776,10 +946,65 @@ function initWorkspace(root) {
   let busy = false;
   let challengeId;
 
+  function syncModeUI() {
+    const isEl = activeMode === "electronic";
+    for (const btn of modeButtons) {
+      btn.setAttribute("aria-checked", String(btn.dataset.dsSignMode === activeMode));
+    }
+    for (const pane of modePanes) {
+      pane.hidden = pane.dataset.dsModePane !== activeMode;
+    }
+    if (stampToggleTitle) {
+      stampToggleTitle.textContent = isEl ? "Mostrar selo visual SiSFarm com QR Code" : "Mostrar carimbo visual ICP-Brasil na página";
+    }
+    if (stampToggleSub) {
+      stampToggleSub.textContent = isEl
+        ? "Exibe o selo próprio do SiSFarm com QR Code de validação no PDF."
+        : "Exibe o selo ICP-Brasil diretamente no PDF.";
+    }
+    if (consentText) {
+      consentText.replaceChildren();
+      if (isEl) {
+        consentText.append(
+          document.createTextNode("Li o documento "),
+          element("strong", docTitle),
+          document.createTextNode(" e concordo expressamente em assiná-lo de forma eletrônica pelo SiSFarm, ciente do registro de CPF, data, hora, IP e dispositivo (MP 2.200-2/2001, Lei 14.063/2020 e LGPD)."),
+        );
+      } else {
+        consentText.append(
+          document.createTextNode("Li o documento "),
+          element("strong", docTitle),
+          document.createTextNode(" e autorizo expressamente minha assinatura digital ICP-Brasil nesta versão."),
+        );
+      }
+    }
+    if (authLabel) {
+      const ch = isEl ? (elChannelSelect?.value || "email") : "email";
+      authLabel.textContent = ch === "whatsapp" ? "Enviar código por WhatsApp" : "Enviar código por e-mail";
+    }
+    const blockedBanner = find("[data-ds-icp-blocked-banner]");
+    if (blockedBanner) blockedBanner.hidden = isEl;
+  }
+
   function syncAuthorization() {
-    if (!certificate || !consent || !authorize) return;
-    const hasCert = Boolean(certificate.value);
+    if (!consent || !authorize) return;
+    syncModeUI();
     const consentBox = find("[data-ds-consent-box]");
+    const isEl = activeMode === "electronic";
+
+    if (isEl) {
+      const nameOk = Boolean((elNameInput?.value || "").trim().length >= 3);
+      const cpfOk = isValidCpf(elCpfInput?.value || "");
+      const readyIdentity = nameOk && cpfOk;
+      if (!readyIdentity) consent.checked = false;
+      consent.disabled = !readyIdentity;
+      if (consentBox) consentBox.classList.toggle("is-disabled", !readyIdentity);
+      const canPlace = !visible?.checked || chosenLocation;
+      authorize.disabled = authorize.dataset.elEnabled !== "yes" || !viewport || !consent.checked || !readyIdentity || !canPlace || busy;
+      return;
+    }
+
+    const hasCert = Boolean(certificate && certificate.value);
     if (!hasCert) {
       consent.checked = false;
     }
@@ -789,7 +1014,7 @@ function initWorkspace(root) {
     const certCardTop = find("[data-ds-cert-card-top]");
     const certName = find("[data-ds-cert-card-name]");
     const certMeta = find("[data-ds-cert-card-meta]");
-    const opt = certificate.selectedOptions[0];
+    const opt = certificate?.selectedOptions?.[0];
     if (certCardTop && opt && opt.value) {
       certCardTop.hidden = false;
       if (certName) certName.textContent = opt.dataset.holder || opt.textContent;
@@ -799,7 +1024,7 @@ function initWorkspace(root) {
     }
 
     const canPlace = target?.value || !visible?.checked || chosenLocation;
-    authorize.disabled = authorize.dataset.enabled !== "yes" || !viewport || !consent.checked || !hasCert || !canPlace || busy;
+    authorize.disabled = authorize.dataset.icpEnabled !== "yes" || !viewport || !consent.checked || !hasCert || !canPlace || busy;
   }
 
   function pixelRect(location) {
@@ -833,44 +1058,73 @@ function initWorkspace(root) {
   }
 
   function drawStamp() {
-    if (!certificate) {
+    if (!authorize) {
       if (stamp) stamp.hidden = true;
       if (jumpStamp) jumpStamp.hidden = true;
       return;
     }
-    const fixedField = selectedField();
+    const isEl = activeMode === "electronic";
+    const fixedField = isEl ? null : selectedField();
     const location = fixedField ? fixedField.location : visible?.checked ? chosenLocation : null;
     stamp.hidden = !viewport || !location || location.page + 1 !== renderedPage;
     stamp.classList.toggle("is-fixed", Boolean(fixedField));
     stamp.classList.toggle("is-compact", stampStyle === "compact");
+    stamp.classList.toggle("is-electronic", isEl);
     stamp.tabIndex = fixedField ? -1 : 0;
+    if (stampQr) stampQr.hidden = !isEl;
     if (jumpStamp) jumpStamp.hidden = !location;
     if (!stamp.hidden) {
       const [left, top, width, height] = pixelRect(location);
       Object.assign(stamp.style, {left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`});
-      const opt = certificate.selectedOptions[0];
-      const holder = (opt?.dataset.holder || "Assinatura digital").toUpperCase();
-      const maskedDoc = opt?.dataset.doc || "";
-      const certType = opt?.dataset.type || "";
       const nowStr = formatTime.format(new Date());
-      stampLabel.textContent = holder;
-      if (stampStyle === "compact") {
-        if (stampDoc) {
-          stampDoc.textContent = [maskedDoc, nowStr].filter(Boolean).join(" · ");
-          stampDoc.hidden = false;
+      if (isEl) {
+        if (stampHead) stampHead.textContent = "SISFARM · ASSINATURA ELETRÔNICA · AVANÇADA";
+        const signerName = ((elNameInput?.value || root.dataset.userName || "SIGNATÁRIO").trim()).toUpperCase();
+        const maskedCpf = maskCpfPublic(elCpfInput?.value || "");
+        stampLabel.textContent = signerName;
+        if (stampStyle === "compact") {
+          if (stampDoc) {
+            stampDoc.textContent = [maskedCpf, nowStr].filter(Boolean).join(" · ");
+            stampDoc.hidden = false;
+          }
+          if (stampDate) stampDate.hidden = true;
+          if (stampUrl) stampUrl.textContent = `Código: ${verCode}`;
+        } else {
+          if (stampDoc) {
+            stampDoc.textContent = maskedCpf ? `CPF ${maskedCpf} · Lei 14.063/2020` : "Lei 14.063/2020 · MP 2.200-2";
+            stampDoc.hidden = false;
+          }
+          if (stampDate) {
+            stampDate.textContent = `Data: ${nowStr} (BRT)`;
+            stampDate.hidden = false;
+          }
+          if (stampUrl) stampUrl.textContent = `Validar: /validar/${verCode}`;
         }
-        if (stampDate) stampDate.hidden = true;
-        if (stampUrl) stampUrl.textContent = "validar.iti.gov.br";
       } else {
-        if (stampDoc) {
-          stampDoc.textContent = [maskedDoc, certType].filter(Boolean).join(" · ");
-          stampDoc.hidden = !stampDoc.textContent;
+        if (stampHead) stampHead.textContent = "ASSINADO DIGITALMENTE · ICP-BRASIL";
+        const opt = certificate?.selectedOptions?.[0];
+        const holder = (opt?.dataset.holder || "Assinatura digital").toUpperCase();
+        const maskedDoc = opt?.dataset.doc || "";
+        const certType = opt?.dataset.type || "";
+        stampLabel.textContent = holder;
+        if (stampStyle === "compact") {
+          if (stampDoc) {
+            stampDoc.textContent = [maskedDoc, nowStr].filter(Boolean).join(" · ");
+            stampDoc.hidden = false;
+          }
+          if (stampDate) stampDate.hidden = true;
+          if (stampUrl) stampUrl.textContent = "validar.iti.gov.br";
+        } else {
+          if (stampDoc) {
+            stampDoc.textContent = [maskedDoc, certType].filter(Boolean).join(" · ");
+            stampDoc.hidden = !stampDoc.textContent;
+          }
+          if (stampDate) {
+            stampDate.textContent = `Data: ${nowStr} (BRT)`;
+            stampDate.hidden = false;
+          }
+          if (stampUrl) stampUrl.textContent = "Verifique em validar.iti.gov.br";
         }
-        if (stampDate) {
-          stampDate.textContent = `Data: ${nowStr} (BRT)`;
-          stampDate.hidden = false;
-        }
-        if (stampUrl) stampUrl.textContent = "Verifique em validar.iti.gov.br";
       }
     }
     if (placement) placement.hidden = Boolean(fixedField);
@@ -1058,6 +1312,17 @@ function initWorkspace(root) {
   });
 
   certificate?.addEventListener("change", syncChange);
+  for (const btn of modeButtons) {
+    btn.addEventListener("click", () => {
+      activeMode = btn.dataset.dsSignMode === "icp" ? "icp" : "electronic";
+      if (consent) consent.checked = false;
+      feedback(status);
+      drawStamp();
+    });
+  }
+  elNameInput?.addEventListener("input", drawStamp);
+  elCpfInput?.addEventListener("input", drawStamp);
+  elChannelSelect?.addEventListener("change", syncAuthorization);
   visible?.addEventListener("change", () => {
     if (visible.checked && !chosenLocation) defaultLocation();
     syncChange();
@@ -1084,9 +1349,10 @@ function initWorkspace(root) {
   });
   consent?.addEventListener("change", syncAuthorization);
 
-  // Step 1 -> Step 2 (request email authorization code)
+  // Step 1 -> Step 2 (request authorization code — Electronic SiSFarm OR ICP-Brasil A1)
   authorize?.addEventListener("click", async () => {
-    const field = selectedField();
+    const isEl = activeMode === "electronic";
+    const field = isEl ? null : selectedField();
     const appearance = field
       ? {field: field.name}
       : visible?.checked
@@ -1094,13 +1360,37 @@ function initWorkspace(root) {
       : {visible: false};
     busy = true;
     syncAuthorization();
-    feedback(status, "Enviando código de autorização para seu e-mail…");
+    const channel = isEl ? (elChannelSelect?.value || "email") : "email";
+    feedback(status, channel === "whatsapp" ? "Enviando código de confirmação por WhatsApp…" : "Enviando código de confirmação por e-mail…");
     try {
-      const data = await request(root, endpoint + "/autorizar", {
-        json: {certificate_id: certificate.value, appearance, consent: consent.checked, sha256: options.sha256},
-      });
+      let data;
+      if (isEl) {
+        data = await request(root, endpoint + "/eletronica/autorizar", {
+          json: {
+            signer_name: (elNameInput?.value || "").trim(),
+            cpf: (elCpfInput?.value || "").trim(),
+            channel,
+            appearance,
+            consent: consent.checked,
+          },
+        });
+      } else {
+        data = await request(root, endpoint + "/autorizar", {
+          json: {certificate_id: certificate.value, appearance, consent: consent.checked, sha256: options.sha256},
+        });
+      }
       challengeId = data.challenge_id;
-      find("[data-ds-confirm-holder]").textContent = certificate.selectedOptions[0]?.dataset.holder || data.holder;
+      const step2Title = find("[data-ds-step2-title]");
+      const step2Sub = find("[data-ds-step2-sub]");
+      if (isEl) {
+        if (step2Title) step2Title.textContent = channel === "whatsapp" ? "Digite o código enviado no WhatsApp" : "Digite o código enviado ao seu e-mail";
+        if (step2Sub) step2Sub.textContent = `Enviamos um código de 8 dígitos para ${data.destination_masked || "seu contato"}.`;
+        find("[data-ds-confirm-holder]").textContent = `Assinatura Eletrônica · ${(elNameInput?.value || "").trim()}`;
+      } else {
+        if (step2Title) step2Title.textContent = "Digite o código enviado ao seu e-mail";
+        if (step2Sub) step2Sub.textContent = `Enviamos um código de 8 dígitos para ${root.dataset.userEmail}. Não é necessário informar a senha do certificado.`;
+        find("[data-ds-confirm-holder]").textContent = `ICP-Brasil A1 · ${certificate.selectedOptions[0]?.dataset.holder || data.holder}`;
+      }
       feedback(status);
       feedback(dialogStatus);
       confirmForm.reset();
@@ -1119,19 +1409,31 @@ function initWorkspace(root) {
     setCeremonyStep(1);
   });
 
-  // Step 2 -> Sign with email OTP only (no A1 password prompt!)
+  // Step 2 -> Sign with 8-digit OTP
   confirmForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const isEl = activeMode === "electronic";
     const button = confirmForm.querySelector("[type=submit]");
     button.disabled = true;
-    feedback(dialogStatus, "Aplicando assinatura digital e validando o PDF…");
+    feedback(dialogStatus, isEl ? "Registrando assinatura eletrônica e evidências…" : "Aplicando assinatura digital e validando o PDF…");
     try {
-      const result = await request(root, endpoint + "/assinar", {
+      const url = isEl ? `${endpoint}/eletronica/assinar` : `${endpoint}/assinar`;
+      const result = await request(root, url, {
         json: {consent: true, challenge_id: challengeId, code: confirmForm.elements.code.value.trim()},
       });
       const dlLink = find("[data-ds-signed-download]");
       if (dlLink && result.revision) {
         dlLink.href = `${endpoint}/revisoes/${result.revision}/pdf`;
+      }
+      const verLink = find("[data-ds-signed-verify]");
+      const verCodeEl = find("[data-ds-signed-code]");
+      if (result.verification_code) {
+        if (verLink) verLink.href = `/validar/${result.verification_code}`;
+        if (verCodeEl) verCodeEl.textContent = result.verification_code;
+      }
+      const successMsg = find("[data-ds-success-msg]");
+      if (successMsg && result.sealed) {
+        successMsg.textContent = "Todas as assinaturas foram concluídas! O Manifesto de Assinaturas e o selo criptográfico de integridade foram aplicados ao PDF.";
       }
       setCeremonyStep(3);
     } catch (error) {
@@ -1199,6 +1501,88 @@ function initWorkspace(root) {
         location.reload();
       } catch (error) {
         feedback(shareStatus, error.message, true);
+      } finally {
+        control.disabled = false;
+      }
+    });
+  }
+
+  // External signers management in Details tab
+  const extForm = find("[data-ds-add-external]");
+  const extWsChannel = find("[data-ds-ws-ext-channel]");
+  const extWsPhoneWrap = find("[data-ds-ws-ext-phone-wrap]");
+  const extWsEmailWrap = find("[data-ds-ws-ext-email-wrap]");
+  const extWsStatus = find("[data-ds-ext-ws-status]");
+  const extLinkBox = find("[data-ds-ext-link-box]");
+  const extLinkNote = find("[data-ds-ext-link-note]");
+  const extLinkInput = find("[data-ds-ext-link-input]");
+  const copyExtLinkBtn = find("[data-ds-copy-ext-link]");
+
+  extWsChannel?.addEventListener("change", () => {
+    const isWa = extWsChannel.value === "whatsapp";
+    if (extWsPhoneWrap) extWsPhoneWrap.hidden = !isWa;
+    if (extWsEmailWrap) extWsEmailWrap.hidden = isWa;
+  });
+
+  copyExtLinkBtn?.addEventListener("click", async () => {
+    const url = extLinkInput?.value || "";
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      copyExtLinkBtn.textContent = "✓ Link copiado";
+      setTimeout(() => { copyExtLinkBtn.textContent = "Copiar link"; }, 2000);
+    } catch {
+      extLinkInput?.select();
+    }
+  });
+
+  extForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = extForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    feedback(extWsStatus, "Gerando link exclusivo e enviando convite…");
+    try {
+      const channel = extForm.elements.channel.value || "whatsapp";
+      const res = await request(root, endpoint + "/externos", {
+        json: {
+          name: extForm.elements.name.value.trim(),
+          role_label: (extForm.elements.role_label.value || "Signatário").trim(),
+          channel,
+          phone: channel === "whatsapp" ? extForm.elements.phone.value.trim() : "",
+          email: channel === "email" ? extForm.elements.email.value.trim() : "",
+        },
+      });
+      extForm.reset();
+      if (extWsPhoneWrap) extWsPhoneWrap.hidden = false;
+      if (extWsEmailWrap) extWsEmailWrap.hidden = true;
+      feedback(extWsStatus);
+      if (extLinkBox && extLinkInput) {
+        extLinkBox.hidden = false;
+        extLinkInput.value = res.sign_url || "";
+        if (extLinkNote) {
+          extLinkNote.textContent = res.notification_sent
+            ? "Convite enviado automaticamente! Se preferir, copie o link abaixo para enviar manualmente."
+            : (res.notification_error || "Link gerado com sucesso! Copie e envie ao signatário pelo WhatsApp ou e-mail.");
+        }
+      } else {
+        location.reload();
+      }
+    } catch (error) {
+      feedback(extWsStatus, error.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  for (const control of root.querySelectorAll("[data-ds-remove-external]")) {
+    control.addEventListener("click", async () => {
+      if (!window.confirm("Revogar o link exclusivo deste signatário externo?")) return;
+      control.disabled = true;
+      try {
+        await request(root, endpoint + "/externos/" + control.dataset.dsRemoveExternal, {method: "DELETE"});
+        location.reload();
+      } catch (error) {
+        feedback(extWsStatus, error.message, true);
       } finally {
         control.disabled = false;
       }
@@ -1551,14 +1935,562 @@ function initCertificates(root) {
   });
 }
 
+function initExternalSigning(root) {
+  const find = (selector) => root.querySelector(selector);
+  const options = JSON.parse(find("[data-ds-options]").textContent);
+  const token = root.dataset.token;
+  const verCode = root.dataset.verificationCode || "";
+  const view = find("[data-ds-scroll]");
+  const previewStatus = find("[data-ds-preview-status]");
+  const sheet = find("[data-ds-sheet]");
+  const canvas = find("[data-ds-canvas]");
+  const thumbnails = find("[data-ds-thumbs]");
+  const thumbnailToggle = find("[data-ds-thumbs-toggle]");
+  const pageInput = find("[data-ds-page]");
+  const previous = find("[data-ds-prev]");
+  const next = find("[data-ds-next]");
+  const stamp = find("[data-ds-stamp]");
+  const stampLabel = find("[data-ds-stamp-label]");
+  const stampDoc = find("[data-ds-stamp-doc]");
+  const stampDate = find("[data-ds-stamp-date]");
+  const stampUrl = find("[data-ds-stamp-url]");
+  const stampModesWrap = find("[data-ds-stamp-modes]");
+  const stampModeButtons = [...root.querySelectorAll("[data-ds-stamp-style]")];
+  const jumpStamp = find("[data-ds-jump-stamp]");
+  const visible = find("[data-ds-visible]");
+  const placeOnPage = find("[data-ds-place-current]");
+  const elNameInput = find("[data-ds-el-name]");
+  const elCpfInput = find("[data-ds-el-cpf]");
+  const elChannelSelect = find("[data-ds-el-channel]");
+  const consent = find("[data-ds-consent]");
+  const authorize = find("[data-ds-ext-authorize]");
+  const status = find("[data-ds-status]");
+  const confirmForm = find("[data-ds-ext-confirm-form]");
+  const dialogStatus = find("[data-ds-confirm-status]");
+
+  let pdf;
+  let pageNumber = 1;
+  let renderedPage = 0;
+  let zoom = 1;
+  let viewport;
+  let drawTask;
+  let drawVersion = 0;
+  let chosenLocation = null;
+  let drag;
+  let busy = false;
+  let challengeId;
+  let stampStyle = "full";
+
+  function setStep(step) {
+    for (const pane of root.querySelectorAll("[data-ds-step-pane]")) {
+      pane.hidden = Number(pane.dataset.dsStepPane) !== step;
+    }
+    for (const pill of root.querySelectorAll("[data-ds-step-pill]")) {
+      const num = Number(pill.dataset.dsStepPill);
+      pill.classList.toggle("is-done", num < step);
+      if (num === step) pill.setAttribute("aria-current", "step");
+      else pill.removeAttribute("aria-current");
+    }
+    const grid = find("[data-ds-ceremony-grid]");
+    const viewer = find("[data-ds-viewer-section]");
+    const isDone = step === 3;
+    if (grid) grid.classList.toggle("is-completed", isDone);
+    if (viewer) viewer.hidden = isDone;
+    if (isDone) window.scrollTo({top: 0, behavior: "smooth"});
+  }
+
+  function syncAuthorization() {
+    if (!consent || !authorize) return;
+    const nameOk = Boolean((elNameInput?.value || "").trim().length >= 3);
+    const cpfOk = isValidCpf(elCpfInput?.value || "");
+    const readyIdentity = nameOk && cpfOk;
+    if (!readyIdentity) consent.checked = false;
+    consent.disabled = !readyIdentity;
+    const consentBox = find("[data-ds-consent-box]");
+    if (consentBox) consentBox.classList.toggle("is-disabled", !readyIdentity);
+    const canPlace = !visible?.checked || chosenLocation;
+    authorize.disabled = !viewport || !consent.checked || !readyIdentity || !canPlace || busy;
+  }
+
+  function pixelRect(location) {
+    const [x1, y1, x2, y2] = viewport.convertToViewportRectangle(location.box);
+    return [Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)];
+  }
+
+  function fromPixels(left, top, width, height) {
+    const [x1, y1] = viewport.convertToPdfPoint(left, top);
+    const [x2, y2] = viewport.convertToPdfPoint(left + width, top + height);
+    return {page: renderedPage - 1, box: [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)]};
+  }
+
+  function defaultLocation() {
+    if (!viewport) return;
+    const isCompact = stampStyle === "compact";
+    const width = viewport.width * (isCompact ? 0.30 : 0.42);
+    const height = Math.min(
+      viewport.height * (isCompact ? 0.18 : 0.24),
+      Math.max(viewport.height * (isCompact ? 0.095 : 0.12), width * (433 / 1024)),
+    );
+    chosenLocation = fromPixels(viewport.width - width - viewport.width * 0.06, viewport.height - height - viewport.height * 0.06, width, height);
+  }
+
+  function focusStampElement() {
+    if (!stamp || stamp.hidden) return;
+    stamp.scrollIntoView({behavior: "smooth", block: "center"});
+    stamp.focus({preventScroll: true});
+  }
+
+  function drawStamp() {
+    if (!authorize) {
+      if (stamp) stamp.hidden = true;
+      if (jumpStamp) jumpStamp.hidden = true;
+      return;
+    }
+    const location = visible?.checked ? chosenLocation : null;
+    stamp.hidden = !viewport || !location || location.page + 1 !== renderedPage;
+    stamp.classList.toggle("is-compact", stampStyle === "compact");
+    if (jumpStamp) jumpStamp.hidden = !location;
+    if (!stamp.hidden) {
+      const [left, top, width, height] = pixelRect(location);
+      Object.assign(stamp.style, {left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`});
+      const nowStr = formatTime.format(new Date());
+      const signerName = ((elNameInput?.value || "SIGNATÁRIO").trim()).toUpperCase();
+      const maskedCpf = maskCpfPublic(elCpfInput?.value || "");
+      stampLabel.textContent = signerName;
+      if (stampStyle === "compact") {
+        if (stampDoc) { stampDoc.textContent = [maskedCpf, nowStr].filter(Boolean).join(" · "); stampDoc.hidden = false; }
+        if (stampDate) stampDate.hidden = true;
+        if (stampUrl) stampUrl.textContent = `Código: ${verCode}`;
+      } else {
+        if (stampDoc) { stampDoc.textContent = maskedCpf ? `CPF ${maskedCpf} · Lei 14.063/2020` : "Lei 14.063/2020 · MP 2.200-2"; stampDoc.hidden = false; }
+        if (stampDate) { stampDate.textContent = `Data: ${nowStr} (BRT)`; stampDate.hidden = false; }
+        if (stampUrl) stampUrl.textContent = `Validar: /validar/${verCode}`;
+      }
+    }
+    if (stampModesWrap) stampModesWrap.hidden = !visible?.checked;
+    if (placeOnPage) placeOnPage.hidden = !visible?.checked || !chosenLocation || chosenLocation.page + 1 === renderedPage;
+    for (const btn of stampModeButtons) {
+      btn.setAttribute("aria-checked", String(btn.dataset.dsStampStyle === stampStyle));
+    }
+    syncAuthorization();
+  }
+
+  async function render() {
+    if (!pdf) return;
+    const version = ++drawVersion;
+    if (drawTask) drawTask.cancel();
+    try {
+      const page = await pdf.getPage(pageNumber);
+      if (version !== drawVersion) return;
+      const raw = page.getViewport({scale: 1});
+      const padding = parseFloat(getComputedStyle(view).paddingLeft) * 2;
+      const availableWidth = Math.max(220, view.clientWidth - padding);
+      const fitted = Math.min(availableWidth / raw.width, 1.32);
+      const scale = Math.min(fitted * zoom, 2000 / Math.max(raw.width, raw.height));
+      const nextViewport = page.getViewport({scale: Math.max(0.02, scale)});
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(nextViewport.width * ratio);
+      canvas.height = Math.round(nextViewport.height * ratio);
+      canvas.style.width = `${nextViewport.width}px`;
+      canvas.style.height = `${nextViewport.height}px`;
+      drawTask = page.render({canvas, viewport: nextViewport, transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0]});
+      await drawTask.promise;
+      if (version !== drawVersion) return;
+      viewport = nextViewport;
+      renderedPage = pageNumber;
+      previewStatus.hidden = true;
+      sheet.hidden = false;
+      pageInput.value = String(pageNumber);
+      pageInput.max = String(pdf.numPages);
+      find("[data-ds-pages]").textContent = String(pdf.numPages);
+      previous.disabled = pageNumber <= 1;
+      next.disabled = pageNumber >= pdf.numPages;
+      thumbnails.querySelector("[aria-current]")?.removeAttribute("aria-current");
+      thumbnails.querySelector(`[data-page="${pageNumber}"]`)?.setAttribute("aria-current", "page");
+      if (visible?.checked && !chosenLocation) defaultLocation();
+      drawStamp();
+    } catch (error) {
+      if (version !== drawVersion || error.name === "RenderingCancelledException") return;
+      viewport = null;
+      sheet.hidden = true;
+      previewStatus.hidden = false;
+      previewStatus.textContent = "Não foi possível desenhar esta página do PDF.";
+      syncAuthorization();
+    }
+  }
+
+  function changePage(value) {
+    if (!pdf) return;
+    pageNumber = Math.max(1, Math.min(pdf.numPages, value || 1));
+    pageInput.value = String(pageNumber);
+    view.scrollTop = 0;
+    viewport = null;
+    syncAuthorization();
+    render();
+  }
+
+  async function loadPdf() {
+    try {
+      const lib = await import(vendor + "legacy/build/pdf.min.mjs");
+      lib.GlobalWorkerOptions.workerSrc = vendor + "legacy/build/pdf.worker.min.mjs";
+      pdf = await lib.getDocument({
+        url: root.dataset.pdfUrl, cMapUrl: vendor + "cmaps/", cMapPacked: true,
+        standardFontDataUrl: vendor + "standard_fonts/", wasmUrl: vendor + "wasm/",
+        isEvalSupported: false, enableXfa: false, maxImageSize: 24_000_000, stopAtErrors: true,
+      }).promise;
+      await render();
+    } catch {
+      previewStatus.hidden = false;
+      previewStatus.textContent = "A prévia não está disponível. Use Baixar PDF acima para ler o documento.";
+    }
+  }
+
+  window.addEventListener("resize", () => { if (pdf) render(); });
+  previous?.addEventListener("click", () => changePage(pageNumber - 1));
+  next?.addEventListener("click", () => changePage(pageNumber + 1));
+  pageInput?.addEventListener("change", () => changePage(Number(pageInput.value)));
+  for (const control of root.querySelectorAll("[data-ds-zoom]")) {
+    control.addEventListener("click", () => {
+      zoom = Math.max(0.65, Math.min(2.75, zoom + Number(control.dataset.dsZoom) * 0.2));
+      render();
+    });
+  }
+  find("[data-ds-fit]")?.addEventListener("click", () => { zoom = 1; render(); });
+  jumpStamp?.addEventListener("click", () => {
+    if (!chosenLocation) return;
+    if (chosenLocation.page + 1 !== renderedPage) changePage(chosenLocation.page + 1);
+    else focusStampElement();
+  });
+
+  function resizeOrMove(dx, dy, start, resize) {
+    let [left, top, width, height] = start;
+    if (resize) {
+      const minimum = Math.max(12, viewport.scale * 29);
+      width = Math.max(Math.min(width, minimum), Math.min(viewport.width - left, width + dx));
+      height = Math.max(Math.min(height, minimum), Math.min(viewport.height - top, height + dy));
+    } else {
+      left = Math.max(0, Math.min(viewport.width - width, left + dx));
+      top = Math.max(0, Math.min(viewport.height - height, top + dy));
+    }
+    chosenLocation = fromPixels(left, top, width, height);
+    drawStamp();
+  }
+
+  stamp?.addEventListener("pointerdown", (event) => {
+    if (!viewport || !chosenLocation || event.button !== 0) return;
+    stamp.setPointerCapture(event.pointerId);
+    drag = {x: event.clientX, y: event.clientY, start: pixelRect(chosenLocation), resize: event.target.matches("[data-ds-handle]")};
+    event.preventDefault();
+  });
+  stamp?.addEventListener("pointermove", (event) => {
+    if (drag) resizeOrMove(event.clientX - drag.x, event.clientY - drag.y, drag.start, drag.resize);
+  });
+  stamp?.addEventListener("lostpointercapture", () => { drag = null; });
+  stamp?.addEventListener("keydown", (event) => {
+    const moves = {ArrowLeft: [-8, 0], ArrowRight: [8, 0], ArrowUp: [0, -8], ArrowDown: [0, 8]};
+    if (!moves[event.key] || !chosenLocation) return;
+    event.preventDefault();
+    resizeOrMove(...moves[event.key], pixelRect(chosenLocation), event.shiftKey);
+  });
+
+  elNameInput?.addEventListener("input", drawStamp);
+  elCpfInput?.addEventListener("input", drawStamp);
+  visible?.addEventListener("change", () => {
+    if (visible.checked && !chosenLocation) defaultLocation();
+    drawStamp();
+    if (visible.checked) requestAnimationFrame(() => focusStampElement());
+  });
+  for (const btn of stampModeButtons) {
+    btn.addEventListener("click", () => {
+      stampStyle = btn.dataset.dsStampStyle === "compact" ? "compact" : "full";
+      defaultLocation();
+      drawStamp();
+      requestAnimationFrame(() => focusStampElement());
+    });
+  }
+  placeOnPage?.addEventListener("click", () => {
+    defaultLocation();
+    drawStamp();
+    requestAnimationFrame(() => focusStampElement());
+  });
+  consent?.addEventListener("change", syncAuthorization);
+
+  authorize?.addEventListener("click", async () => {
+    const appearance = visible?.checked
+      ? {visible: true, style: stampStyle, ...chosenLocation}
+      : {visible: false};
+    const channel = elChannelSelect?.value || "email";
+    busy = true;
+    syncAuthorization();
+    feedback(status, channel === "whatsapp" ? "Enviando código por WhatsApp…" : "Enviando código por e-mail…");
+    try {
+      const data = await request(root, `/assinar/${token}/autorizar`, {
+        json: {
+          signer_name: (elNameInput?.value || "").trim(),
+          cpf: (elCpfInput?.value || "").trim(),
+          channel,
+          appearance,
+          consent: consent.checked,
+        },
+      });
+      challengeId = data.challenge_id;
+      const step2Sub = find("[data-ds-step2-sub]");
+      if (step2Sub) step2Sub.textContent = `Enviamos um código de 8 dígitos para ${data.destination_masked || "seu contato"}.`;
+      const holderEl = find("[data-ds-confirm-holder]");
+      if (holderEl) holderEl.textContent = (elNameInput?.value || "").trim();
+      feedback(status);
+      feedback(dialogStatus);
+      confirmForm.reset();
+      setStep(2);
+      confirmForm.elements.code.focus();
+    } catch (error) {
+      feedback(status, error.message, true);
+    } finally {
+      busy = false;
+      syncAuthorization();
+    }
+  });
+
+  find("[data-ds-back-step1]")?.addEventListener("click", () => {
+    feedback(dialogStatus);
+    setStep(1);
+  });
+
+  confirmForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = confirmForm.querySelector("[type=submit]");
+    button.disabled = true;
+    feedback(dialogStatus, "Registrando sua assinatura eletrônica…");
+    try {
+      const result = await request(root, `/assinar/${token}/assinar`, {
+        json: {consent: true, challenge_id: challengeId, code: confirmForm.elements.code.value.trim()},
+      });
+      const successMsg = find("[data-ds-success-msg]");
+      if (successMsg && result.sealed) {
+        successMsg.textContent = "Todas as assinaturas foram concluídas! O Manifesto de Assinaturas e o selo de integridade foram aplicados ao documento.";
+      }
+      setStep(3);
+    } catch (error) {
+      feedback(dialogStatus, error.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  // Mobile embedded viewer parity
+  const ceremonyGrid = find("[data-ds-ceremony-grid]");
+  const viewerSection = find("[data-ds-viewer-section]");
+  const mobileViewerSlot = find("[data-ds-mobile-viewer-slot]");
+  const toggleViewerBtns = [...root.querySelectorAll("[data-ds-toggle-viewer]")];
+  const isAlreadySigned = ceremonyGrid?.dataset.dsAlreadySigned === "yes";
+  const mobileMq = window.matchMedia("(max-width: 1023px)");
+  let pdfStarted = false;
+  let mobileViewerExpanded = false;
+
+  const ensurePdfLoaded = () => {
+    if (!pdfStarted) {
+      pdfStarted = true;
+      loadPdf();
+    } else if (pdf) {
+      requestAnimationFrame(() => render());
+    }
+  };
+
+  function syncMobileViewer() {
+    if (!viewerSection || !ceremonyGrid) return;
+    const isMobile = mobileMq.matches;
+    if (isMobile && !isAlreadySigned && mobileViewerSlot) {
+      mobileViewerSlot.hidden = false;
+      if (viewerSection.parentElement !== mobileViewerSlot) mobileViewerSlot.append(viewerSection);
+      viewerSection.classList.add("is-mobile-embedded");
+      viewerSection.classList.remove("is-mobile-collapsed");
+      ensurePdfLoaded();
+    } else if (isMobile && isAlreadySigned) {
+      if (mobileViewerSlot) mobileViewerSlot.hidden = true;
+      if (viewerSection.parentElement !== ceremonyGrid) ceremonyGrid.prepend(viewerSection);
+      viewerSection.classList.remove("is-mobile-embedded");
+      viewerSection.classList.toggle("is-mobile-collapsed", !mobileViewerExpanded);
+      if (mobileViewerExpanded) ensurePdfLoaded();
+    } else {
+      if (mobileViewerSlot) mobileViewerSlot.hidden = true;
+      if (viewerSection.parentElement !== ceremonyGrid) ceremonyGrid.prepend(viewerSection);
+      viewerSection.classList.remove("is-mobile-embedded", "is-mobile-collapsed");
+      ensurePdfLoaded();
+    }
+  }
+
+  for (const btn of toggleViewerBtns) {
+    btn.addEventListener("click", () => {
+      mobileViewerExpanded = !mobileViewerExpanded;
+      syncMobileViewer();
+      btn.setAttribute("aria-expanded", String(mobileViewerExpanded));
+    });
+  }
+  mobileMq.addEventListener?.("change", syncMobileViewer);
+  syncAuthorization();
+  syncMobileViewer();
+}
+
+function initPublicValidate(root) {
+  const code = root.dataset.code;
+  const codeForm = root.querySelector("[data-ds-val-code-form]");
+  const codeInput = root.querySelector("[data-ds-code-mask]");
+  codeForm?.addEventListener("submit", (event) => {
+    const formattedCode = maskVerificationCode(codeInput?.value || "");
+    if (codeInput) codeInput.value = formattedCode;
+    if (formattedCode.length >= 14) {
+      event.preventDefault();
+      location.assign(`/validar/${encodeURIComponent(formattedCode)}`);
+    }
+  });
+
+  if (!code) return;
+  const dropEl = root.querySelector("[data-ds-pub-check-drop]");
+  const input = root.querySelector("[data-ds-pub-pdf-input]");
+  const statusEl = root.querySelector("[data-ds-pub-check-status]");
+  const verdictEl = root.querySelector("[data-ds-pub-verdict]");
+  let busy = false;
+
+  const checkPdf = async (file) => {
+    if (!file || busy) return;
+    if (!file.name.toLowerCase().endsWith(".pdf") || file.size > 12 * 1024 * 1024) {
+      feedback(statusEl, "Selecione um arquivo PDF de até 12 MB.", true);
+      return;
+    }
+    busy = true;
+    feedback(statusEl, "Conferindo se o arquivo é idêntico ao documento assinado…");
+    try {
+      const data = await request(root, `/validar/${encodeURIComponent(code)}/conferir`, {pdf: file});
+      feedback(statusEl);
+      if (verdictEl) {
+        verdictEl.className = `ds-pub-verdict ${data.matches ? "is-ok" : "is-err"}`;
+        const details = element("details", "", "ds-tech-details");
+        details.append(element("summary", "Ver detalhes técnicos de conferência"));
+        const dl = element("dl", "", "ds-tech-dl");
+        const r1 = element("div");
+        r1.append(element("dt", "Arquivo enviado (SHA-256)"), element("dd", data.uploaded_sha256 || ""));
+        const r2 = element("div");
+        r2.append(element("dt", "Documento registrado no SiSFarm (SHA-256)"), element("dd", data.expected_sha256 || ""));
+        dl.append(r1, r2);
+        details.append(dl);
+        verdictEl.replaceChildren(
+          element("strong", data.headline || (data.matches ? "Documento original confirmado" : "Este arquivo não é o mesmo que foi assinado")),
+          element("p", data.message || ""),
+          details,
+        );
+        verdictEl.hidden = false;
+        verdictEl.focus();
+      }
+    } catch (error) {
+      feedback(statusEl, error.message, true);
+    } finally {
+      if (input) input.value = "";
+      busy = false;
+    }
+  };
+
+  input?.addEventListener("change", () => checkPdf(input.files?.[0]));
+  bindAnimatedDropzone(dropEl, {
+    dragTitle: "Solte o PDF aqui para conferir",
+    dragSub: "A comparação com o documento original começa na hora",
+    onFile: checkPdf,
+  });
+}
+
+function initAdminSeal(root) {
+  const form = root.querySelector("[data-ds-admin-seal-form]");
+  const dropEl = root.querySelector("[data-ds-admin-seal-drop]");
+  const statusEl = root.querySelector("[data-ds-admin-seal-status]");
+  const deactivateBtn = root.querySelector("[data-ds-deactivate-seal]");
+  const deactivateStatus = root.querySelector("[data-ds-deactivate-status]");
+  let selectedPfx = null;
+
+  const pickPfx = (file) => {
+    if (!file) return;
+    selectedPfx = file;
+    const titleEl = dropEl?.querySelector("[data-ds-drop-title]");
+    const subEl = dropEl?.querySelector("[data-ds-drop-sub]");
+    if (titleEl) titleEl.textContent = file.name;
+    if (subEl) subEl.textContent = `${Math.max(1, Math.round(file.size / 1024))} KB · Certificado pronto para envio`;
+  };
+
+  form?.elements.file?.addEventListener("change", () => pickPfx(form.elements.file.files?.[0]));
+  bindAnimatedDropzone(dropEl, {
+    dragTitle: "Solte o arquivo e-CNPJ A1 aqui",
+    dragSub: "O certificado .pfx ou .p12 será preparado automaticamente",
+    onFile: (file) => {
+      if (form?.elements.file) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        form.elements.file.files = dt.files;
+      }
+      pickPfx(file);
+    },
+  });
+
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const file = selectedPfx || form.elements.file?.files?.[0];
+    if (!file || file.size > 200_000) {
+      feedback(statusEl, "Selecione um certificado e-CNPJ A1 (.pfx ou .p12) de até 200 KB.", true);
+      return;
+    }
+    if (!form.elements.consent?.checked) {
+      feedback(statusEl, "Confirme o termo de uso exclusivamente institucional.", true);
+      return;
+    }
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    feedback(statusEl, "Validando e salvando o certificado institucional…");
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      await request(root, "/admin/selo-institucional", {
+        json: {
+          file: btoa(binary),
+          password: form.elements.password.value,
+          consent: true,
+        },
+      });
+      location.reload();
+    } catch (error) {
+      feedback(statusEl, error.message, true);
+    } finally {
+      form.elements.password.value = "";
+      button.disabled = false;
+    }
+  });
+
+  deactivateBtn?.addEventListener("click", async () => {
+    if (!window.confirm("Desativar o e-CNPJ A1 institucional e voltar a selar novos documentos com o selo criptográfico interno do SiSFarm?")) return;
+    deactivateBtn.disabled = true;
+    feedback(deactivateStatus, "Desativando certificado institucional…");
+    try {
+      await request(root, "/admin/selo-institucional/desativar", {json: {}});
+      location.reload();
+    } catch (error) {
+      feedback(deactivateStatus, error.message, true);
+      deactivateBtn.disabled = false;
+    }
+  });
+}
+
 initActionMenus();
 initPasswordToggles();
 initInputMasks();
+initCopyButtons();
 const home = document.querySelector("[data-ds-home]");
 const wizard = document.querySelector("[data-ds-wizard]");
 const workspace = document.querySelector("[data-ds-workspace]");
 const center = document.querySelector("[data-ds-certificates]");
+const externalRoot = document.querySelector("[data-ds-external-root]");
+const validateRoot = document.querySelector("[data-ds-validate-root]");
+const adminSealRoot = document.querySelector("[data-ds-admin-seal]");
 if (home) initHome(home);
 if (wizard) initWizard(wizard);
 if (workspace) initWorkspace(workspace);
 if (center) initCertificates(center);
+if (externalRoot) initExternalSigning(externalRoot);
+if (validateRoot) initPublicValidate(validateRoot);
+if (adminSealRoot) initAdminSeal(adminSealRoot);

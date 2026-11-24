@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, module_tabs %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=8">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=9">{% endblock %}
 {% block content %}
 <main class="sf-page pd-page ds-page" data-ds-certificates data-csrf="{{ csrf_token }}" data-current-user-id="{{ user.id }}">
   <header class="pd-head ds-head">
@@ -9,6 +9,9 @@
       <p class="sf-page-subtitle ds-hide-mobile">Cadastre seus certificados A1, defina o responsável e libere o uso para assinatura e Nota Fiscal{% if farm %} na {{ farm.name }}{% endif %}.</p>
     </div>
     <div class="pd-head-actions ds-head-actions">
+      {% if is_super_admin %}
+      <a class="sf-btn sf-btn-secondary ds-hide-mobile" href="/admin/selo-institucional">{{ icon('award', 16) }} Selo Institucional</a>
+      {% endif %}
       {% if farm and can_write_page %}
       <button type="button" class="sf-btn sf-btn-primary" data-ds-open-register>
         {{ icon('plus', 16) }} <span class="ds-hide-mobile">Cadastrar certificado A1</span><span class="ds-only-mobile">Cadastrar A1</span>
@@ -384,5 +387,5 @@
   </dialog>
   {% endif %}
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=12"></script>
+<script type="module" src="/static/js/digital_signing.js?v=13"></script>
 {% endblock %}

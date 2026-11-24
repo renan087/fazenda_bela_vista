@@ -13,10 +13,23 @@ from sqlalchemy import or_, select, update
 from app.core.security import generate_numeric_code, hash_persistent_token, hash_verification_code
 from app.models.audit_log import AuditLog
 from app.models.digital_certificate import CertificatePurpose, DigitalCertificate
-from app.models.signed_document import SigningChallenge, SigningDocument, SigningParticipant, SigningRevision
+from app.models.signed_document import (
+    SigningChallenge,
+    SigningDocument,
+    SigningElectronicChallenge,
+    SigningEvidence,
+    SigningExternalSigner,
+    SigningParticipant,
+    SigningRevision,
+)
 from app.models.user import User
 from app.services.digital_certificates import (
-    DOCUMENTS, encryption_key, open_for_documents, purpose_for_user, seal, unseal, utc,
+    DOCUMENTS, encryption_key, friendly_cert_info, open_for_documents, purpose_for_user, seal, unseal, utc,
+)
+from app.services.document_signing.electronic import (
+    ensure_document_verification_code,
+    finalize_electronic_document_if_complete,
+    record_icp_evidence,
 )
 from app.services.document_signing.pdf import (
     MAX_UPLOAD_BYTES, a1_signer, check_appearance, read_pdf, sign_document, validate_pdf,
@@ -97,8 +110,14 @@ def revision_bytes(doc, revision):
 
 
 def _store_revision(db, doc, user, data, *, signature=None):
-    revision = SigningRevision(id=uuid4().hex, document_id=doc.id, number=doc.current_revision,
-                               user_id=user.id, sha256=sha256(data).hexdigest(), signature=signature)
+    revision = SigningRevision(
+        id=uuid4().hex,
+        document_id=doc.id,
+        number=doc.current_revision,
+        user_id=user.id if user is not None else None,
+        sha256=sha256(data).hexdigest(),
+        signature=signature,
+    )
     revision.encrypted_pdf = seal(data, encryption_key("digital_document_key"), _associated_data(doc, revision))
     db.add(revision)
     return revision
@@ -129,6 +148,7 @@ def import_pdf(
     title: str | None = None,
     category: str | None = None,
     owner_signs: bool = True,
+    signing_policy: str = "flexible",
 ):
     if len(data) > MAX_UPLOAD_BYTES:
         raise WorkflowError("O PDF ultrapassa o limite de 12 MB.", 413)
@@ -137,14 +157,18 @@ def import_pdf(
     safe_filename = _filename(name)
     safe_title = _clean_text(title, 180) or safe_filename[:-4]
     safe_category = category.strip() if isinstance(category, str) and category.strip() in DOCUMENT_CATEGORIES else None
+    safe_policy = signing_policy if signing_policy in {"flexible", "electronic", "icp_brasil"} else "flexible"
     doc = SigningDocument(
         id=uuid4().hex, organization_id=user.organization_id, farm_id=farm_id,
-        owner_id=user.id, owner_signs=bool(owner_signs), filename=safe_filename, title=safe_title, category=safe_category,
+        owner_id=user.id, owner_signs=bool(owner_signs), signing_policy=safe_policy,
+        filename=safe_filename, title=safe_title, category=safe_category,
         current_revision=1, validation=validation,
     )
+    ensure_document_verification_code(db, doc)
     db.add(doc)
     db.flush()
     revision = _store_revision(db, doc, user, data)
+    doc.original_sha256 = revision.sha256
     audit(db, user, "importar", farm_id=farm_id, document_id=doc.id, sha256=revision.sha256)
     db.commit()
     return doc.id
@@ -153,6 +177,9 @@ def import_pdf(
 def delete_document(db, user, farm_id, document_id):
     doc = accessible_document(db, user, farm_id, document_id, lock=True, owner=True)
     db.query(SigningChallenge).filter_by(document_id=doc.id).delete(synchronize_session="fetch")
+    db.query(SigningElectronicChallenge).filter_by(document_id=doc.id).delete(synchronize_session="fetch")
+    db.query(SigningEvidence).filter_by(document_id=doc.id).delete(synchronize_session="fetch")
+    db.query(SigningExternalSigner).filter_by(document_id=doc.id).delete(synchronize_session="fetch")
     db.query(SigningParticipant).filter_by(document_id=doc.id).delete(synchronize_session="fetch")
     db.query(SigningRevision).filter_by(document_id=doc.id).delete(synchronize_session="fetch")
     audit(db, user, "excluir", farm_id=farm_id, document_id=doc.id, filename=doc.filename)
@@ -249,7 +276,21 @@ def issue_challenge(db, user, farm_id, document_id, certificate_id, appearance, 
     return {"challenge_id": challenge_id, "holder": holder, "expires_minutes": CHALLENGE_MINUTES, "sha256": digest}
 
 
-def confirm_signature(db, user, farm_id, document_id, challenge_id, code, password, session_nonce):
+def confirm_signature(
+    db,
+    user,
+    farm_id,
+    document_id,
+    challenge_id,
+    code,
+    password,
+    session_nonce,
+    *,
+    ip_address: str = "",
+    user_agent: str = "",
+    farm_name: str = "",
+    base_url: str = "",
+):
     require_signing(farm_id)
     _lock_account(db, user)
     doc = accessible_document(db, user, farm_id, document_id, lock=True)
@@ -302,7 +343,41 @@ def confirm_signature(db, user, farm_id, document_id, challenge_id, code, passwo
     }
     output = _store_revision(db, doc, user, signed, signature=signature)
     doc.validation = validation
+    cert_info = friendly_cert_info(cert)
+    cpf_short = cert_info.get("masked_doc", "").replace("CPF ", "").strip()
+    record_icp_evidence(
+        db,
+        doc=doc,
+        revision_number=doc.current_revision,
+        user=user,
+        signer_name=cert_info.get("display_name") or cert.subject_cn,
+        cpf_masked=cpf_short,
+        cert_issuer=cert_info.get("issuer") or cert.issuer_cn or "ICP-Brasil A1",
+        sha_before=revision.sha256,
+        sha_after=output.sha256,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    db.flush()
+    final_sha = output.sha256
+    if base_url and farm_name:
+        sealed = finalize_electronic_document_if_complete(
+            db,
+            doc=doc,
+            farm_name=farm_name,
+            base_url=base_url,
+            current_pdf_bytes=signed,
+            store_revision_fn=_store_revision,
+            actor_user=user,
+        )
+        if sealed:
+            final_sha = sealed[1]
     audit(db, user, "assinar", farm_id=farm_id, document_id=doc.id,
-          output_sha256=output.sha256, **signature)
+          output_sha256=final_sha, **signature)
     db.commit()
-    return {"revision": doc.current_revision, "sha256": output.sha256, "validation": validation}
+    return {
+        "revision": doc.current_revision,
+        "sha256": final_sha,
+        "validation": validation,
+        "verification_code": doc.verification_code,
+    }
