@@ -30,6 +30,97 @@ function cleanText(value) {
   return (value || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
 
+function maskPhone(value) {
+  const d = String(value || "").replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 2) return d ? `(${d}` : "";
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+function maskCpf(value) {
+  const d = String(value || "").replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
+function isValidCpf(value) {
+  const d = String(value || "").replace(/\D/g, "");
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += Number(d[i]) * (10 - i);
+  let rem = (sum * 10) % 11;
+  if (rem === 10) rem = 0;
+  if (rem !== Number(d[9])) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += Number(d[i]) * (11 - i);
+  rem = (sum * 10) % 11;
+  if (rem === 10) rem = 0;
+  return rem === Number(d[10]);
+}
+
+function initPasswordToggles() {
+  for (const btn of document.querySelectorAll("[data-ds-toggle-pw]")) {
+    btn.addEventListener("click", () => {
+      const input = document.getElementById(btn.dataset.dsTogglePw);
+      if (!input) return;
+      const showing = input.type === "text";
+      input.type = showing ? "password" : "text";
+      btn.setAttribute("aria-pressed", String(!showing));
+      btn.setAttribute("aria-label", showing ? "Visualizar senha" : "Ocultar senha");
+      const showIc = btn.querySelector('[data-pw-icon="show"]');
+      const hideIc = btn.querySelector('[data-pw-icon="hide"]');
+      if (showIc) showIc.hidden = !showing;
+      if (hideIc) hideIc.hidden = showing;
+    });
+  }
+}
+
+function initInputMasks() {
+  for (const input of document.querySelectorAll("[data-ds-phone-mask]")) {
+    if (input.value) input.value = maskPhone(input.value);
+    input.addEventListener("input", () => {
+      input.value = maskPhone(input.value);
+    });
+  }
+  for (const input of document.querySelectorAll("[data-ds-cpf-mask]")) {
+    const field = input.closest(".ds-field");
+    const hint = field?.querySelector(".ds-cpf-hint");
+    const updateCpfState = (force = false) => {
+      input.value = maskCpf(input.value);
+      const digits = input.value.replace(/\D/g, "");
+      if (!digits.length) {
+        input.classList.remove("ds-input-valid", "ds-input-invalid");
+        if (hint) {
+          hint.textContent = "Conferido com o CPF dentro do certificado A1.";
+          hint.className = "ds-cpf-hint";
+        }
+        return true;
+      }
+      if (digits.length === 11 || force) {
+        const ok = isValidCpf(input.value);
+        input.classList.toggle("ds-input-valid", ok);
+        input.classList.toggle("ds-input-invalid", !ok);
+        if (hint) {
+          hint.textContent = ok ? "✓ CPF válido" : "CPF inválido. Confira os 11 dígitos digitados.";
+          hint.className = `ds-cpf-hint ${ok ? "is-ok" : "is-err"}`;
+        }
+        return ok;
+      }
+      input.classList.remove("ds-input-valid", "ds-input-invalid");
+      if (hint) {
+        hint.textContent = "Digite os 11 dígitos do CPF.";
+        hint.className = "ds-cpf-hint";
+      }
+      return true;
+    };
+    input.addEventListener("input", () => updateCpfState(false));
+    input.addEventListener("blur", () => updateCpfState(true));
+  }
+}
+
 function reportInto(container, report, filename) {
   const content = element("div", "", "ds-result-content");
   const bannerTone = report.state === "valid" ? "is-valid" : report.state === "invalid" ? "is-invalid" : "is-warn";
@@ -102,7 +193,10 @@ function initActionMenus() {
       const btn = wrap.querySelector("[data-nx-more-btn]");
       const menu = wrap.querySelector(".nx-menu");
       if (btn) btn.setAttribute("aria-expanded", "false");
-      if (menu) menu.hidden = true;
+      if (menu) {
+        menu.hidden = true;
+        menu.classList.remove("is-up");
+      }
     }
   };
 
@@ -114,7 +208,16 @@ function initActionMenus() {
       const menu = wrap.querySelector(".nx-menu");
       const opening = menu.hidden;
       closeAll(opening ? wrap : null);
-      menu.hidden = !opening;
+      if (opening) {
+        const rect = trigger.getBoundingClientRect();
+        menu.hidden = false;
+        const neededHeight = Math.max(menu.offsetHeight || 220, 220);
+        const spaceBelow = window.innerHeight - rect.bottom;
+        menu.classList.toggle("is-up", spaceBelow < neededHeight + 16 && rect.top > spaceBelow);
+      } else {
+        menu.hidden = true;
+        menu.classList.remove("is-up");
+      }
       trigger.setAttribute("aria-expanded", String(opening));
       return;
     }
@@ -272,7 +375,7 @@ function initHome(root) {
     });
   }
 
-  // New document modal
+  // New Document Continuous Modal (Step 1: PDF + 3 Who Signs cards -> Step 2: Colleagues with locked Email / WhatsApp check)
   const newDialog = root.querySelector("[data-ds-new-dialog]");
   const newForm = root.querySelector("[data-ds-new-form]");
   if (newDialog && newForm) {
@@ -282,8 +385,74 @@ function initHome(root) {
     const fileSub = newForm.querySelector("[data-ds-new-file-sub]");
     const newDrop = newForm.querySelector("[data-ds-new-drop]");
     const newStatus = newForm.querySelector("[data-ds-new-status]");
+    const subtitle = newForm.querySelector("[data-ds-new-subtitle]");
+    const step1 = newForm.querySelector('[data-ds-new-step="1"]');
+    const step2 = newForm.querySelector('[data-ds-new-step="2"]');
+    const cancelBtn = newForm.querySelector("[data-ds-new-cancel]");
+    const backBtn = newForm.querySelector("[data-ds-new-back]");
+    const nextBtn = newForm.querySelector("[data-ds-new-next]");
     const submitBtn = newForm.querySelector("[data-ds-new-submit]");
+    const whoCards = [...newForm.querySelectorAll("[data-ds-who]")];
     let selectedFile = null;
+    let whoSigns = "only_me";
+    let currentStep = 1;
+
+    function syncNewModalStep() {
+      const needsStep2 = whoSigns !== "only_me";
+      if (!needsStep2) currentStep = 1;
+      step1.hidden = currentStep !== 1;
+      step2.hidden = currentStep !== 2;
+      cancelBtn.hidden = currentStep !== 1;
+      backBtn.hidden = currentStep !== 2;
+      nextBtn.hidden = !(currentStep === 1 && needsStep2);
+      submitBtn.hidden = currentStep === 1 && needsStep2;
+      if (currentStep === 1) {
+        subtitle.textContent = "Passo 1: Envie o PDF e escolha quem vai assinar.";
+        submitBtn.textContent = "Continuar para revisar e marcar →";
+      } else {
+        subtitle.textContent = "Passo 2: Escolha os colegas da fazenda que vão assinar.";
+        submitBtn.textContent = whoSigns === "only_others"
+          ? "Enviar e abrir detalhes →"
+          : "Continuar para revisar e marcar →";
+      }
+      for (const card of whoCards) {
+        card.setAttribute("aria-checked", String(card.dataset.dsWho === whoSigns));
+      }
+    }
+
+    for (const card of whoCards) {
+      card.addEventListener("click", () => {
+        whoSigns = card.dataset.dsWho;
+        syncNewModalStep();
+      });
+    }
+
+    // Step 2 colleague channel switcher (locked Email vs WhatsApp with empty-phone warning)
+    for (const item of newForm.querySelectorAll("[data-ds-colleague-card]")) {
+      const sel = item.querySelector("[data-ds-colleague-channel]");
+      const contactInput = item.querySelector("[data-ds-colleague-contact]");
+      const contactLabel = item.querySelector("[data-ds-colleague-contact-label]");
+      sel?.addEventListener("change", () => {
+        const isWa = sel.value === "whatsapp";
+        if (contactLabel) contactLabel.textContent = isWa ? "WhatsApp" : "E-mail";
+        if (isWa) {
+          const phone = contactInput.dataset.phone || "";
+          if (phone) {
+            contactInput.value = maskPhone(phone);
+            contactInput.classList.remove("ds-input-warn");
+            contactInput.classList.add("ds-input-readonly");
+          } else {
+            contactInput.value = "Nenhum telefone cadastrado no perfil";
+            contactInput.classList.remove("ds-input-readonly");
+            contactInput.classList.add("ds-input-warn");
+          }
+        } else {
+          contactInput.value = contactInput.dataset.email || "";
+          contactInput.classList.remove("ds-input-warn");
+          contactInput.classList.add("ds-input-readonly");
+        }
+      });
+    }
 
     const pickFile = (file) => {
       if (!file) return;
@@ -304,15 +473,33 @@ function initHome(root) {
       openBtn.addEventListener("click", () => {
         newForm.reset();
         selectedFile = null;
+        whoSigns = "only_me";
+        currentStep = 1;
         fileLabel.textContent = "Arraste o PDF aqui ou clique para escolher";
         fileSub.textContent = "Aceita PDFs de até 12 MB e 120 páginas (inclusive já assinados por outra parte).";
         feedback(newStatus);
+        syncNewModalStep();
         newDialog.showModal();
       });
     }
     for (const closeBtn of newDialog.querySelectorAll("[data-ds-close-new]")) {
       closeBtn.addEventListener("click", () => newDialog.close());
     }
+    nextBtn.addEventListener("click", () => {
+      const file = selectedFile || fileInput.files?.[0];
+      if (!file) {
+        feedback(newStatus, "Escolha um arquivo PDF antes de continuar.", true);
+        return;
+      }
+      feedback(newStatus);
+      currentStep = 2;
+      syncNewModalStep();
+    });
+    backBtn.addEventListener("click", () => {
+      currentStep = 1;
+      syncNewModalStep();
+    });
+
     fileInput.addEventListener("change", () => pickFile(fileInput.files?.[0]));
     newDrop.addEventListener("dragover", (event) => { event.preventDefault(); newDrop.classList.add("is-dragging"); });
     newDrop.addEventListener("dragleave", (event) => { if (!newDrop.contains(event.relatedTarget)) newDrop.classList.remove("is-dragging"); });
@@ -344,13 +531,16 @@ function initHome(root) {
           title: titleInput.value.trim(),
           category: newForm.elements.category.value,
         });
-        const colleagueInputs = [...newForm.querySelectorAll('input[name="colleagues"]:checked')];
-        for (const item of colleagueInputs) {
-          await request(root, `${created.url}/participantes`, {
-            json: {email: item.value, consent: true},
-          }).catch(() => {});
+        if (whoSigns !== "only_me") {
+          const colleagueInputs = [...newForm.querySelectorAll('input[name="colleagues"]:checked')];
+          for (const item of colleagueInputs) {
+            await request(root, `${created.url}/participantes`, {
+              json: {email: item.value, consent: true},
+            }).catch(() => {});
+          }
         }
-        location.assign(created.url);
+        const dest = whoSigns === "only_others" ? `${created.url}?aba=detalhes` : created.url;
+        location.assign(dest);
       } catch (error) {
         feedback(newStatus, error.message, true);
         submitBtn.disabled = false;
@@ -374,12 +564,16 @@ function initWorkspace(root) {
   const next = find("[data-ds-next]");
   const stamp = find("[data-ds-stamp]");
   const stampLabel = find("[data-ds-stamp-label]");
+  const stampDoc = find("[data-ds-stamp-doc]");
+  const stampDate = find("[data-ds-stamp-date]");
+  const stampUrl = find("[data-ds-stamp-url]");
+  const stampModesWrap = find("[data-ds-stamp-modes]");
+  const stampModeButtons = [...root.querySelectorAll("[data-ds-stamp-style]")];
   const jumpStamp = find("[data-ds-jump-stamp]");
   const certificate = find("[data-ds-certificate]");
   const target = find("[data-ds-target]");
   const visible = find("[data-ds-visible]");
   const placement = find("[data-ds-placement]");
-  const placementHint = find("[data-ds-placement-hint]");
   const placeOnPage = find("[data-ds-place-current]");
   const consent = find("[data-ds-consent]");
   const authorize = find("[data-ds-authorize]");
@@ -388,7 +582,9 @@ function initWorkspace(root) {
   const confirmForm = find("[data-ds-sign-form]");
   const dialogStatus = find("[data-ds-confirm-status]");
 
-  // Workspace view tabs (Assinar documento vs Detalhes/participantes/versões)
+  let stampStyle = "full"; // full | compact
+
+  // Workspace view tabs
   const wsTabs = [...root.querySelectorAll("[data-ds-ws-tab]")];
   const wsPanels = [...root.querySelectorAll("[data-ds-ws-panel]")];
   for (const btn of wsTabs) {
@@ -400,7 +596,6 @@ function initWorkspace(root) {
     });
   }
 
-  // Ceremony step switcher (1: Revisar -> 2: Código por e-mail -> 3: Sucesso)
   function setCeremonyStep(step) {
     for (const pane of root.querySelectorAll("[data-ds-step-pane]")) {
       pane.hidden = Number(pane.dataset.dsStepPane) !== step;
@@ -443,28 +638,62 @@ function initWorkspace(root) {
 
   function defaultLocation() {
     if (!viewport) return;
-    const width = viewport.width * 0.32;
-    const height = Math.min(viewport.height * 0.25, Math.max(viewport.height * 0.1, width * 0.27));
-    chosenLocation = fromPixels(viewport.width * 0.62, viewport.height * 0.82, width, height);
+    const isCompact = stampStyle === "compact";
+    const width = viewport.width * (isCompact ? 0.34 : 0.4);
+    const height = Math.min(viewport.height * 0.22, Math.max(viewport.height * (isCompact ? 0.085 : 0.13), width * (isCompact ? 0.24 : 0.34)));
+    chosenLocation = fromPixels(viewport.width - width - viewport.width * 0.06, viewport.height - height - viewport.height * 0.06, width, height);
   }
 
   const selectedField = () => options.fields.find((field) => field.name === target?.value);
+
+  function focusStampElement() {
+    if (!stamp || stamp.hidden) return;
+    stamp.scrollIntoView({behavior: "smooth", block: "center"});
+    stamp.focus({preventScroll: true});
+  }
 
   function drawStamp() {
     const fixedField = selectedField();
     const location = fixedField ? fixedField.location : visible?.checked ? chosenLocation : null;
     stamp.hidden = !viewport || !location || location.page + 1 !== renderedPage;
     stamp.classList.toggle("is-fixed", Boolean(fixedField));
+    stamp.classList.toggle("is-compact", stampStyle === "compact");
     stamp.tabIndex = fixedField ? -1 : 0;
     if (jumpStamp) jumpStamp.hidden = !location;
     if (!stamp.hidden) {
       const [left, top, width, height] = pixelRect(location);
       Object.assign(stamp.style, {left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`});
-      stampLabel.textContent = certificate.selectedOptions[0]?.dataset.holder || "Assinatura digital";
+      const opt = certificate.selectedOptions[0];
+      const holder = (opt?.dataset.holder || "Assinatura digital").toUpperCase();
+      const maskedDoc = opt?.dataset.doc || "";
+      const certType = opt?.dataset.type || "";
+      const nowStr = formatTime.format(new Date());
+      stampLabel.textContent = holder;
+      if (stampStyle === "compact") {
+        if (stampDoc) {
+          stampDoc.textContent = [maskedDoc, nowStr].filter(Boolean).join(" · ");
+          stampDoc.hidden = false;
+        }
+        if (stampDate) stampDate.hidden = true;
+        if (stampUrl) stampUrl.textContent = "validar.iti.gov.br";
+      } else {
+        if (stampDoc) {
+          stampDoc.textContent = [maskedDoc, certType].filter(Boolean).join(" · ");
+          stampDoc.hidden = !stampDoc.textContent;
+        }
+        if (stampDate) {
+          stampDate.textContent = `Data: ${nowStr} (BRT)`;
+          stampDate.hidden = false;
+        }
+        if (stampUrl) stampUrl.textContent = "Verifique em validar.iti.gov.br";
+      }
     }
     if (placement) placement.hidden = Boolean(fixedField);
-    if (placementHint) placementHint.hidden = !visible?.checked;
+    if (stampModesWrap) stampModesWrap.hidden = !visible?.checked;
     if (placeOnPage) placeOnPage.hidden = !visible?.checked || !chosenLocation || chosenLocation.page + 1 === renderedPage;
+    for (const btn of stampModeButtons) {
+      btn.setAttribute("aria-checked", String(btn.dataset.dsStampStyle === stampStyle));
+    }
     syncAuthorization();
   }
 
@@ -603,8 +832,7 @@ function initWorkspace(root) {
     if (loc.page + 1 !== renderedPage) {
       changePage(loc.page + 1);
     } else {
-      stamp.scrollIntoView({behavior: "smooth", block: "center"});
-      stamp.focus();
+      focusStampElement();
     }
   });
 
@@ -648,8 +876,23 @@ function initWorkspace(root) {
   visible?.addEventListener("change", () => {
     if (visible.checked && !chosenLocation) defaultLocation();
     syncChange();
+    if (visible.checked) {
+      requestAnimationFrame(() => focusStampElement());
+    }
   });
-  placeOnPage?.addEventListener("click", () => { defaultLocation(); syncChange(); });
+  for (const btn of stampModeButtons) {
+    btn.addEventListener("click", () => {
+      stampStyle = btn.dataset.dsStampStyle === "compact" ? "compact" : "full";
+      defaultLocation();
+      syncChange();
+      requestAnimationFrame(() => focusStampElement());
+    });
+  }
+  placeOnPage?.addEventListener("click", () => {
+    defaultLocation();
+    syncChange();
+    requestAnimationFrame(() => focusStampElement());
+  });
   target?.addEventListener("change", () => {
     if (selectedField()?.location) changePage(selectedField().location.page + 1);
     syncChange();
@@ -659,7 +902,11 @@ function initWorkspace(root) {
   // Step 1 -> Step 2 (request email authorization code)
   authorize.addEventListener("click", async () => {
     const field = selectedField();
-    const appearance = field ? {field: field.name} : visible?.checked ? {visible: true, ...chosenLocation} : {visible: false};
+    const appearance = field
+      ? {field: field.name}
+      : visible?.checked
+      ? {visible: true, style: stampStyle, ...chosenLocation}
+      : {visible: false};
     busy = true;
     syncAuthorization();
     feedback(status, "Enviando código de autorização para seu e-mail…");
@@ -780,46 +1027,102 @@ function initCertificates(root) {
   const currentUserId = root.dataset.currentUserId || "";
   const regDialog = root.querySelector("[data-ds-register-dialog]");
   const regForm = root.querySelector("[data-ds-register]");
+  const regDrop = root.querySelector("[data-ds-reg-drop]");
+  const regFileLabel = root.querySelector("[data-ds-reg-file-label]");
+  const regFileSub = root.querySelector("[data-ds-reg-file-sub]");
   const regStatus = root.querySelector("[data-ds-status]");
   const regHolder = root.querySelector("[data-ds-reg-holder]");
+  const regEmail = root.querySelector("[data-ds-reg-email]");
+  const regWhatsapp = root.querySelector("[data-ds-reg-whatsapp]");
+  const regWhatsappHint = root.querySelector("[data-ds-reg-whatsapp-hint]");
   const regEnableWrap = root.querySelector("[data-ds-reg-enable-wrap]");
   const regEnable = root.querySelector("[data-ds-reg-enable]");
-  const regCpfWrap = root.querySelector("[data-ds-reg-cpf-wrap]");
+  const regOtherNote = root.querySelector("[data-ds-reg-other-note]");
   const regCpf = root.querySelector("[data-ds-reg-cpf]");
+  let selectedPfxFile = null;
 
   // Generic close buttons on all dialogs
   for (const closeBtn of root.querySelectorAll("[data-ds-close-dialog]")) {
     closeBtn.addEventListener("click", () => closeBtn.closest("dialog")?.close());
   }
 
-  // Register A1 dialog
   function syncRegFields() {
-    if (!regHolder || !regEnableWrap || !regEnable || !regCpfWrap || !regCpf) return;
+    if (!regHolder) return;
+    const opt = regHolder.selectedOptions[0];
     const isSelf = regHolder.value === currentUserId;
-    regEnableWrap.hidden = !isSelf;
-    if (!isSelf) regEnable.checked = false;
-    const needCpf = isSelf && regEnable.checked;
-    regCpfWrap.hidden = !needCpf;
-    regCpf.required = needCpf;
-    regCpf.disabled = !needCpf;
+    if (regEmail) regEmail.value = opt?.dataset.email || "";
+    const profilePhone = opt?.dataset.phone || "";
+    if (regWhatsapp) {
+      if (profilePhone) {
+        regWhatsapp.value = maskPhone(profilePhone);
+        regWhatsapp.readOnly = true;
+        regWhatsapp.classList.add("ds-input-readonly");
+        if (regWhatsappHint) regWhatsappHint.hidden = true;
+      } else {
+        regWhatsapp.value = "";
+        regWhatsapp.readOnly = false;
+        regWhatsapp.classList.remove("ds-input-readonly");
+        if (regWhatsappHint) regWhatsappHint.hidden = false;
+      }
+    }
+    if (regEnableWrap) regEnableWrap.hidden = !isSelf;
+    if (!isSelf && regEnable) regEnable.checked = false;
+    if (regOtherNote) regOtherNote.hidden = isSelf;
   }
+
+  const pickPfx = (file) => {
+    if (!file) return;
+    selectedPfxFile = file;
+    if (regFileLabel) regFileLabel.textContent = file.name;
+    if (regFileSub) regFileSub.textContent = `${Math.max(1, Math.round(file.size / 1024))} KB · Pronto para validar`;
+  };
 
   for (const btn of root.querySelectorAll("[data-ds-open-register]")) {
     btn.addEventListener("click", () => {
       regForm?.reset();
+      selectedPfxFile = null;
+      if (regFileLabel) regFileLabel.textContent = "Arraste o arquivo .pfx ou .p12 aqui";
+      if (regFileSub) regFileSub.textContent = "ou clique para escolher do computador ou celular (até 200 KB)";
       feedback(regStatus);
       syncRegFields();
       regDialog?.showModal();
     });
   }
+
   regHolder?.addEventListener("change", syncRegFields);
-  regEnable?.addEventListener("change", syncRegFields);
+  regForm?.elements.file?.addEventListener("change", () => pickPfx(regForm.elements.file.files?.[0]));
+  if (regDrop && regForm?.elements.file) {
+    regDrop.addEventListener("dragover", (event) => { event.preventDefault(); regDrop.classList.add("is-dragging"); });
+    regDrop.addEventListener("dragleave", (event) => { if (!regDrop.contains(event.relatedTarget)) regDrop.classList.remove("is-dragging"); });
+    regDrop.addEventListener("drop", (event) => {
+      event.preventDefault();
+      regDrop.classList.remove("is-dragging");
+      const file = event.dataTransfer.files?.[0];
+      if (file) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        regForm.elements.file.files = dt.files;
+        pickPfx(file);
+      }
+    });
+  }
 
   regForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const file = regForm.elements.file.files?.[0];
+    const file = selectedPfxFile || regForm.elements.file.files?.[0];
     if (!file || file.size > 200_000) {
       feedback(regStatus, "Selecione um certificado A1 (.pfx ou .p12) de até 200 KB.", true);
+      return;
+    }
+    const cpfVal = (regCpf?.value || "").trim();
+    if (cpfVal && !isValidCpf(cpfVal)) {
+      feedback(regStatus, "CPF inválido. Confira os 11 dígitos digitados.", true);
+      regCpf?.focus();
+      return;
+    }
+    if (regEnable?.checked && !regEnableWrap.hidden && !isValidCpf(cpfVal)) {
+      feedback(regStatus, "Informe um CPF válido do titular para liberar a assinatura.", true);
+      regCpf?.focus();
       return;
     }
     const button = regForm.querySelector('button[type="submit"]');
@@ -834,9 +1137,12 @@ function initCertificates(root) {
         password: regForm.elements.password.value,
       };
       if (regHolder?.value) payload.holder_user_id = Number(regHolder.value);
+      if (cpfVal) payload.cpf = cpfVal;
+      if (regWhatsapp && !regWhatsapp.readOnly && regWhatsapp.value.trim()) {
+        payload.whatsapp = regWhatsapp.value.trim();
+      }
       if (regEnable?.checked && !regEnableWrap.hidden) {
         payload.enable_documents = true;
-        payload.cpf = regCpf.value.trim();
       }
       await request(root, "/certificados-digitais", {json: payload});
       location.reload();
@@ -848,21 +1154,20 @@ function initCertificates(root) {
     }
   });
 
-  // Change / bind responsible modal
+  // Bind responsible modal (only for legacy unbound certificates)
   const bindDialog = root.querySelector("[data-ds-binding-dialog]");
   const bindForm = root.querySelector("[data-ds-binding-form]");
   const bindSelect = root.querySelector("[data-ds-binding-select]");
+  const bindName = root.querySelector("[data-ds-binding-name]");
   const bindSub = root.querySelector("[data-ds-binding-sub]");
   const bindStatus = root.querySelector("[data-ds-binding-status]");
   let activeBindCertId = null;
-  let activeBindPrevious = "";
 
   for (const btn of root.querySelectorAll("[data-ds-open-binding]")) {
     btn.addEventListener("click", () => {
       activeBindCertId = btn.dataset.dsOpenBinding;
-      activeBindPrevious = btn.dataset.currentHolder || "";
-      if (bindSub) bindSub.textContent = `${btn.dataset.certName || ""} · ${btn.dataset.certSub || ""}`;
-      if (bindSelect) bindSelect.value = activeBindPrevious;
+      if (bindName) bindName.textContent = btn.dataset.certName || "";
+      if (bindSub) bindSub.textContent = btn.dataset.certSub || "";
       feedback(bindStatus);
       bindDialog?.showModal();
     });
@@ -870,13 +1175,9 @@ function initCertificates(root) {
 
   bindForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!activeBindCertId) return;
+    if (!activeBindCertId || !bindSelect || bindSelect.disabled) return;
     const userId = bindSelect.value;
     if (!userId) return;
-    if (activeBindPrevious && activeBindPrevious !== userId &&
-        !window.confirm("Trocar o responsável encerra as autorizações anteriores deste certificado. Confirmar a troca?")) {
-      return;
-    }
     const button = bindForm.querySelector('button[type="submit"]');
     button.disabled = true;
     feedback(bindStatus, "Vinculando responsável…");
@@ -890,11 +1191,19 @@ function initCertificates(root) {
     }
   });
 
-  // Authorize / Revoke purpose modal
+  // Authorize / Deactivate purpose modal (button enabled ONLY when consent checkbox is checked!)
   const purposeDialog = root.querySelector("[data-ds-purpose-dialog]");
   const purposeForm = root.querySelector("[data-ds-purpose-form]");
   const purposeStatus = root.querySelector("[data-ds-purpose-status]");
+  const purposeConsentChk = root.querySelector("[data-ds-purpose-consent-chk]");
+  const purposeSubmit = root.querySelector("[data-ds-purpose-submit]");
   let selection = null;
+
+  function syncPurposeSubmit() {
+    if (!purposeSubmit || !purposeConsentChk) return;
+    purposeSubmit.disabled = !purposeConsentChk.checked;
+  }
+  purposeConsentChk?.addEventListener("change", syncPurposeSubmit);
 
   for (const control of root.querySelectorAll("[data-ds-purpose]")) {
     control.addEventListener("click", () => {
@@ -903,7 +1212,12 @@ function initCertificates(root) {
       const purpose = selection.dsPurpose === "fiscal" ? "emissão de Nota Fiscal" : "assinatura de documentos";
       const environment = selection.dsPurpose === "fiscal" ? ` em ${selection.env === "producao" ? "produção" : "homologação"}` : "";
       purposeDialog.querySelector("[data-ds-purpose-title]").textContent = enable ? `Liberar ${purpose}` : `Desativar ${purpose}`;
-      purposeDialog.querySelector("[data-ds-purpose-holder]").textContent = selection.holder;
+      purposeDialog.querySelector("[data-ds-purpose-subtitle]").textContent = enable
+        ? "Autorize o uso deste certificado A1"
+        : "Confirme a suspensão temporária deste uso";
+      purposeDialog.querySelector("[data-ds-purpose-holder]").textContent = selection.holder || "";
+      purposeDialog.querySelector("[data-ds-purpose-cert-sub]").textContent = selection.certSub || "";
+      purposeDialog.querySelector("[data-ds-purpose-disable-note]").hidden = enable;
       purposeDialog.querySelector("[data-ds-purpose-password]").hidden = !enable;
       purposeForm.elements.password.required = enable;
       const confirmCpf = enable && selection.cpf === "yes";
@@ -913,17 +1227,24 @@ function initCertificates(root) {
       purposeDialog.querySelector("[data-ds-purpose-consent]").textContent = enable
         ? `Autorizo expressamente o uso deste certificado para ${purpose}${environment}.`
         : `Confirmo a desativação do uso para ${purpose}.`;
-      purposeDialog.querySelector("[data-ds-purpose-submit]").textContent = enable ? "Liberar uso" : "Desativar uso";
+      purposeSubmit.textContent = enable ? "Liberar uso" : "Desativar uso";
+      purposeSubmit.classList.toggle("ds-btn-danger", !enable);
+      purposeSubmit.classList.toggle("sf-btn-primary", enable);
+      purposeForm.reset();
       feedback(purposeStatus);
+      syncPurposeSubmit();
       purposeDialog.showModal();
     });
   }
-  purposeDialog?.addEventListener("close", () => { purposeForm.reset(); feedback(purposeStatus); });
+  purposeDialog?.addEventListener("close", () => { purposeForm.reset(); feedback(purposeStatus); syncPurposeSubmit(); });
   purposeForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!selection) return;
-    const button = purposeForm.querySelector('button[type="submit"]');
-    button.disabled = true;
+    if (!selection || !purposeConsentChk?.checked) return;
+    if (!purposeForm.elements.cpf.disabled && !isValidCpf(purposeForm.elements.cpf.value)) {
+      feedback(purposeStatus, "CPF inválido. Confira os 11 dígitos digitados.", true);
+      return;
+    }
+    purposeSubmit.disabled = true;
     try {
       await request(root, `/certificados-digitais/${selection.cert}/finalidades`, {
         json: {
@@ -932,7 +1253,7 @@ function initCertificates(root) {
           environment: selection.env,
           password: purposeForm.elements.password.value,
           cpf: purposeForm.elements.cpf.value,
-          consent: purposeForm.elements.consent.checked,
+          consent: purposeConsentChk.checked,
         },
       });
       location.reload();
@@ -941,7 +1262,7 @@ function initCertificates(root) {
     } finally {
       purposeForm.elements.password.value = "";
       purposeForm.elements.cpf.value = "";
-      button.disabled = false;
+      syncPurposeSubmit();
     }
   });
 
@@ -979,6 +1300,8 @@ function initCertificates(root) {
 }
 
 initActionMenus();
+initPasswordToggles();
+initInputMasks();
 const home = document.querySelector("[data-ds-home]");
 const workspace = document.querySelector("[data-ds-workspace]");
 const center = document.querySelector("[data-ds-certificates]");

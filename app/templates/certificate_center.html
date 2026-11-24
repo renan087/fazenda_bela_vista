@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, module_tabs %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=4">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=5">{% endblock %}
 {% block content %}
 <main class="sf-page pd-page ds-page" data-ds-certificates data-csrf="{{ csrf_token }}" data-current-user-id="{{ user.id }}">
   <header class="pd-head ds-head">
@@ -58,9 +58,9 @@
         <div class="nx-more" data-nx-more>
           <button type="button" class="sf-icon-btn" data-nx-more-btn aria-label="Mais ações para {{ entry.display_name }}" aria-haspopup="menu" aria-expanded="false">{{ icon('dots', 18) }}</button>
           <div class="nx-menu" role="menu" aria-label="Ações do certificado" hidden>
-            {% if organization_users %}
-            <button type="button" class="nx-mi" role="menuitem" data-ds-open-binding="{{ cert.id }}" data-cert-name="{{ entry.display_name }}" data-cert-sub="{{ entry.cert_type }}{% if entry.masked_doc %} · {{ entry.masked_doc }}{% endif %}" data-current-holder="{{ entry.holder_id or '' }}">
-              {{ icon('users', 15) }}<span>Alterar responsável</span>
+            {% if not entry.holder_id and organization_users %}
+            <button type="button" class="nx-mi" role="menuitem" data-ds-open-binding="{{ cert.id }}" data-cert-name="{{ entry.display_name }}" data-cert-sub="{{ entry.cert_type }}{% if entry.masked_doc %} · {{ entry.masked_doc }}{% endif %}">
+              {{ icon('users', 15) }}<span>Vincular responsável</span>
             </button>
             {% endif %}
             <button type="button" class="nx-mi" role="menuitem" data-ds-open-register>
@@ -77,7 +77,7 @@
         {% endif %}
       </div>
 
-      <!-- Linha limpa de responsável vinculado -->
+      <!-- Linha de responsável vinculado (imutável por segurança após vincular!) -->
       <div class="ds-cert-resp-row">
         <span>
           Responsável por assinar:
@@ -87,9 +87,11 @@
           <strong>Ainda não vinculado</strong>
           {% endif %}
         </span>
-        {% if organization_users and can_write_page %}
-        <button type="button" class="ds-inline-action" data-ds-open-binding="{{ cert.id }}" data-cert-name="{{ entry.display_name }}" data-cert-sub="{{ entry.cert_type }}{% if entry.masked_doc %} · {{ entry.masked_doc }}{% endif %}" data-current-holder="{{ entry.holder_id or '' }}">
-          {{ 'Alterar' if entry.holder_name else 'Vincular responsável' }}
+        {% if entry.holder_id %}
+        <span class="ds-protected-tag">Vínculo protegido</span>
+        {% elif organization_users and can_write_page %}
+        <button type="button" class="ds-inline-action" data-ds-open-binding="{{ cert.id }}" data-cert-name="{{ entry.display_name }}" data-cert-sub="{{ entry.cert_type }}{% if entry.masked_doc %} · {{ entry.masked_doc }}{% endif %}">
+          Vincular responsável
         </button>
         {% endif %}
       </div>
@@ -104,7 +106,8 @@
           {% if entry.can_set_docs and (entry.valid or entry.docs_enabled) and can_write_page %}
           <button type="button" class="sf-btn {{ 'sf-btn-secondary' if entry.docs_enabled else 'sf-btn-soft' }} ds-btn-sm"
                   data-ds-purpose="documents" data-cert="{{ cert.id }}" data-cpf="{{ 'yes' if entry.confirm_cpf else 'no' }}"
-                  data-enable="{{ 'no' if entry.docs_enabled else 'yes' }}" data-env="homologacao" data-holder="{{ entry.display_name }}">
+                  data-enable="{{ 'no' if entry.docs_enabled else 'yes' }}" data-env="homologacao"
+                  data-holder="{{ entry.display_name }}" data-cert-sub="{{ entry.cert_type }}{% if entry.masked_doc %} · {{ entry.masked_doc }}{% endif %}">
             {{ 'Desativar' if entry.docs_enabled else 'Liberar uso' }}
           </button>
           {% else %}
@@ -122,7 +125,7 @@
                   data-ds-purpose="fiscal" data-cert="{{ cert.id }}" data-cpf="{{ 'yes' if entry.confirm_cpf else 'no' }}"
                   data-enable="{{ 'no' if entry.fiscal_active else 'yes' }}"
                   data-env="{{ cert.environment if cert.environment in ('producao', 'homologacao') else 'homologacao' }}"
-                  data-holder="{{ entry.display_name }}">
+                  data-holder="{{ entry.display_name }}" data-cert-sub="{{ entry.cert_type }}{% if entry.masked_doc %} · {{ entry.masked_doc }}{% endif %}">
             {{ 'Desativar' if entry.fiscal_active else 'Ativar fiscal' }}
           </button>
           {% else %}
@@ -146,126 +149,219 @@
   </section>
   {% endif %}
 
-  <!-- MODAL 1: CADASTRAR CERTIFICADO A1 (com vínculo de responsável integrado!) -->
-  <dialog class="ds-dialog" data-ds-register-dialog aria-labelledby="ds-reg-title">
+  <!-- MODAL 1: CADASTRAR CERTIFICADO A1 (Largo + Drag&Drop + Olho + CPF + E-mail/WhatsApp + Switch!) -->
+  <dialog class="ds-dialog ds-dialog--xl" data-ds-register-dialog aria-labelledby="ds-reg-title">
     <form class="ds-dialog-form" data-ds-register>
       <div class="ds-dialog-head">
-        <div>
-          <h2 id="ds-reg-title">Cadastrar certificado A1</h2>
-          <p>O arquivo fica guardado com criptografia no cofre da fazenda.</p>
+        <div class="ds-dialog-title-row">
+          <span class="ds-tile">{{ icon('key', 18) }}</span>
+          <div>
+            <h2 id="ds-reg-title">Cadastrar certificado A1</h2>
+            <p>O arquivo fica guardado com criptografia no cofre da fazenda.</p>
+          </div>
         </div>
         <button type="button" class="ds-icon-btn" data-ds-close-dialog aria-label="Fechar">{{ icon('close', 18) }}</button>
       </div>
       <div class="ds-dialog-body">
-        <label class="ds-field">
-          <span>Arquivo .pfx ou .p12</span>
-          <input id="ds-pfx" name="file" type="file" accept=".p12,.pfx" required>
-        </label>
-        <label class="ds-field">
-          <span>Senha do certificado A1 <small>(apenas para validar e guardar no cofre)</small></span>
-          <input id="ds-pfx-password" name="password" type="password" autocomplete="off" maxlength="1024" required>
-        </label>
+        <div class="ds-drop ds-drop--compact" data-ds-reg-drop>
+          <span class="ds-drop-icon">{{ icon('upload', 20) }}</span>
+          <strong data-ds-reg-file-label>Arraste o arquivo .pfx ou .p12 aqui</strong>
+          <p data-ds-reg-file-sub>ou clique para escolher do computador ou celular (até 200 KB)</p>
+          <label class="sf-btn sf-btn-secondary ds-pick" for="ds-pfx">
+            Escolher arquivo A1
+            <input id="ds-pfx" name="file" type="file" accept=".p12,.pfx" required>
+          </label>
+        </div>
+
+        <div class="ds-form-grid-2">
+          <label class="ds-field">
+            <span>Senha do certificado A1</span>
+            <div class="ds-pw-wrap">
+              <input id="ds-pfx-password" name="password" type="password" autocomplete="off" maxlength="1024" placeholder="Senha do arquivo .pfx" required>
+              <button type="button" class="ds-pw-eye" data-ds-toggle-pw="ds-pfx-password" aria-label="Visualizar senha" aria-pressed="false">
+                <span data-pw-icon="show">{{ icon('eye', 16) }}</span>
+                <span data-pw-icon="hide" hidden>{{ icon('eye-off', 16) }}</span>
+              </button>
+            </div>
+            <small class="ds-hint">Usada apenas para validar e guardar no cofre.</small>
+          </label>
+
+          <label class="ds-field">
+            <span>CPF do titular do certificado</span>
+            <input id="ds-reg-cpf" name="cpf" type="text" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" autocomplete="off" data-ds-cpf-mask data-ds-reg-cpf>
+            <small class="ds-cpf-hint" data-ds-cpf-feedback>Conferido com o CPF dentro do certificado A1.</small>
+          </label>
+        </div>
+
         <label class="ds-field">
           <span>Responsável por assinar com este certificado</span>
           <select name="holder_user_id" data-ds-reg-holder>
             {% if organization_users %}
               {% for person in organization_users %}
-              <option value="{{ person.id }}" {% if person.id == user.id %}selected{% endif %}>{{ person.display_name or person.name }}{% if person.id == user.id %} (Você){% endif %} · {{ person.email }}</option>
+              <option value="{{ person.id }}" data-email="{{ person.email }}" data-phone="{{ person.phone or '' }}" {% if person.id == user.id %}selected{% endif %}>{{ person.display_name or person.name }}{% if person.id == user.id %} (Você){% endif %} · {{ person.email }}</option>
               {% endfor %}
             {% else %}
-              <option value="{{ user.id }}" selected>{{ user.display_name or user.name }} (Você) · {{ user.email }}</option>
+              <option value="{{ user.id }}" data-email="{{ user.email }}" data-phone="{{ user.phone or '' }}" selected>{{ user.display_name or user.name }} (Você) · {{ user.email }}</option>
             {% endif %}
           </select>
-          <small class="ds-hint">Somente esta conta poderá usar o certificado para assinar documentos.</small>
+          <small class="ds-hint">Por segurança, após o cadastro o responsável não pode ser alterado.</small>
         </label>
-        <label class="ds-check" data-ds-reg-enable-wrap>
-          <input name="enable_documents" type="checkbox" data-ds-reg-enable>
-          <span>Já liberar para assinatura de documentos na minha conta</span>
-        </label>
-        <label class="ds-field" data-ds-reg-cpf-wrap hidden>
-          <span>CPF do titular do certificado</span>
-          <input name="cpf" type="text" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" autocomplete="off" data-ds-reg-cpf>
-        </label>
+
+        <div class="ds-form-grid-2">
+          <label class="ds-field">
+            <span>E-mail <small>(automático)</small></span>
+            <input type="email" class="ds-input-readonly" readonly value="{{ user.email }}" data-ds-reg-email>
+          </label>
+          <label class="ds-field">
+            <span>WhatsApp</span>
+            <input type="tel" name="whatsapp" inputmode="numeric" maxlength="15" placeholder="(00) 00000-0000" value="{{ user.phone or '' }}" data-ds-phone-mask data-ds-reg-whatsapp>
+            <small class="ds-hint" data-ds-reg-whatsapp-hint hidden>Sem telefone no perfil — informe o WhatsApp acima.</small>
+          </label>
+        </div>
+
+        <div class="ds-switch-box" data-ds-reg-enable-wrap>
+          <label class="ds-switch-row">
+            <span>
+              <strong>Liberar para assinatura na minha conta</strong>
+              <small>Fica pronto para assinar documentos imediatamente.</small>
+            </span>
+            <input name="enable_documents" type="checkbox" class="ds-switch-input" role="switch" data-ds-reg-enable>
+          </label>
+        </div>
+
+        <div class="ds-banner is-ok ds-banner--sm" data-ds-reg-other-note hidden>
+          {{ icon('shield', 16) }}
+          <span>O certificado será validado com o CPF informado e vinculado à conta escolhida, que poderá liberar o uso ao acessar o SiSFarm.</span>
+        </div>
+
         <p class="ds-feedback" data-ds-status role="status" hidden></p>
       </div>
       <div class="ds-dialog-foot">
         <button type="button" class="sf-btn sf-btn-secondary" data-ds-close-dialog>Cancelar</button>
-        <button type="submit" class="sf-btn sf-btn-primary">Cadastrar certificado</button>
+        <button type="submit" class="sf-btn sf-btn-primary" data-ds-reg-submit>Cadastrar certificado</button>
       </div>
     </form>
   </dialog>
 
-  <!-- MODAL 2: ALTERAR / VINCULAR RESPONSÁVEL -->
-  {% if organization_users %}
+  <!-- MODAL 2: VINCULAR RESPONSÁVEL (somente para certificados sem vínculo + estado vazio desabilitado!) -->
   <dialog class="ds-dialog" data-ds-binding-dialog aria-labelledby="ds-bind-title">
     <form class="ds-dialog-form" data-ds-binding-form>
       <div class="ds-dialog-head">
-        <div>
-          <h2 id="ds-bind-title">Alterar responsável pelo certificado</h2>
-          <p data-ds-binding-sub></p>
+        <div class="ds-dialog-title-row">
+          <span class="ds-tile">{{ icon('users', 18) }}</span>
+          <div>
+            <h2 id="ds-bind-title">Vincular responsável</h2>
+            <p>Defina qual usuário pode assinar com este A1</p>
+          </div>
         </div>
         <button type="button" class="ds-icon-btn" data-ds-close-dialog aria-label="Fechar">{{ icon('close', 18) }}</button>
       </div>
       <div class="ds-dialog-body">
+        <div class="ds-dialog-cert-box">
+          <span class="ds-tile">{{ icon('key', 17) }}</span>
+          <div>
+            <strong data-ds-binding-name></strong>
+            <small data-ds-binding-sub></small>
+          </div>
+        </div>
         <label class="ds-field">
           <span>Usuário responsável</span>
+          {% if organization_users %}
           <select name="holder" required data-ds-binding-select>
-            <option value="">Selecione um usuário ativo</option>
             {% for person in organization_users %}
             <option value="{{ person.id }}">{{ person.display_name or person.name }} · {{ person.email }}</option>
             {% endfor %}
           </select>
+          {% else %}
+          <select name="holder" class="ds-input-readonly" disabled data-ds-binding-select>
+            <option value="">Nenhum usuário cadastrado no sistema</option>
+          </select>
+          {% endif %}
         </label>
-        <p class="ds-hint">Trocar o responsável encerra as autorizações anteriores deste certificado para que a nova conta confirme o uso.</p>
+        {% if not organization_users %}
+        <div class="ds-banner is-warn ds-banner--sm">
+          {{ icon('alert', 16) }}
+          <span>Não possui nenhum usuário cadastrado no sistema. Cadastre um usuário ativo antes de vincular o certificado.</span>
+        </div>
+        {% else %}
+        <p class="ds-hint">Por segurança, após vincular um usuário responsável este vínculo não poderá ser alterado.</p>
+        {% endif %}
         <p class="ds-feedback" data-ds-binding-status role="status" hidden></p>
       </div>
       <div class="ds-dialog-foot">
         <button type="button" class="sf-btn sf-btn-secondary" data-ds-close-dialog>Cancelar</button>
-        <button type="submit" class="sf-btn sf-btn-primary">Vincular responsável</button>
+        <button type="submit" class="sf-btn sf-btn-primary" {% if not organization_users %}disabled{% endif %}>Vincular responsável</button>
       </div>
     </form>
   </dialog>
-  {% endif %}
 
-  <!-- MODAL 3: AUTORIZAR / DESATIVAR FINALIDADE -->
+  <!-- MODAL 3: DESATIVAR / LIBERAR FINALIDADE (Estilizado + botão só habilita com checkbox marcado!) -->
   <dialog class="ds-dialog" data-ds-purpose-dialog aria-labelledby="ds-purpose-title">
     <form class="ds-dialog-form" data-ds-purpose-form>
       <div class="ds-dialog-head">
-        <div>
-          <h2 id="ds-purpose-title" data-ds-purpose-title></h2>
-          <p data-ds-purpose-holder></p>
+        <div class="ds-dialog-title-row">
+          <span class="ds-tile" data-ds-purpose-icon>{{ icon('shield', 18) }}</span>
+          <div>
+            <h2 id="ds-purpose-title" data-ds-purpose-title></h2>
+            <p data-ds-purpose-subtitle></p>
+          </div>
         </div>
         <button type="button" class="ds-icon-btn" data-ds-close-dialog aria-label="Fechar">{{ icon('close', 18) }}</button>
       </div>
       <div class="ds-dialog-body">
+        <div class="ds-dialog-cert-box">
+          <span class="ds-tile">{{ icon('key', 17) }}</span>
+          <div>
+            <strong data-ds-purpose-holder></strong>
+            <small data-ds-purpose-cert-sub></small>
+          </div>
+        </div>
+
+        <div class="ds-banner is-warn ds-banner--sm" data-ds-purpose-disable-note hidden>
+          {{ icon('alert', 16) }}
+          <span>Enquanto estiver desativado, este certificado não poderá ser usado para esta finalidade. Contratos já assinados permanecem válidos.</span>
+        </div>
+
         <label class="ds-field" data-ds-purpose-cpf hidden>
           <span>CPF do titular ou responsável de uso</span>
-          <input id="ds-purpose-cpf" name="cpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" autocomplete="off" disabled>
+          <input id="ds-purpose-cpf" name="cpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" autocomplete="off" data-ds-cpf-mask disabled>
+          <small class="ds-cpf-hint" data-ds-purpose-cpf-feedback>Digite os 11 dígitos do CPF.</small>
         </label>
+
         <label class="ds-field" data-ds-purpose-password>
-          <span>Senha do certificado A1 <small>(confirmada apenas uma vez para liberar)</small></span>
-          <input id="ds-purpose-pw" name="password" type="password" autocomplete="off" maxlength="1024">
+          <span>Senha do certificado A1 <small>(confirmada apenas desta vez)</small></span>
+          <div class="ds-pw-wrap">
+            <input id="ds-purpose-pw" name="password" type="password" autocomplete="off" maxlength="1024">
+            <button type="button" class="ds-pw-eye" data-ds-toggle-pw="ds-purpose-pw" aria-label="Visualizar senha" aria-pressed="false">
+              <span data-pw-icon="show">{{ icon('eye', 16) }}</span>
+              <span data-pw-icon="hide" hidden>{{ icon('eye-off', 16) }}</span>
+            </button>
+          </div>
         </label>
-        <label class="ds-check">
-          <input name="consent" type="checkbox" required>
+
+        <label class="ds-consent-box">
+          <span class="dt-chk"><input name="consent" type="checkbox" class="dt-check" required data-ds-purpose-consent-chk></span>
           <span data-ds-purpose-consent></span>
         </label>
         <p class="ds-feedback" data-ds-purpose-status role="status" hidden></p>
       </div>
       <div class="ds-dialog-foot">
         <button type="button" class="sf-btn sf-btn-secondary" data-ds-close-dialog>Cancelar</button>
-        <button type="submit" class="sf-btn sf-btn-primary" data-ds-purpose-submit>Confirmar</button>
+        <button type="submit" class="sf-btn sf-btn-primary" data-ds-purpose-submit disabled>Confirmar</button>
       </div>
     </form>
   </dialog>
 
-  <!-- MODAL 4: REMOVER CERTIFICADO (com alerta contextual de Nota Fiscal) -->
+  <!-- MODAL 4: REMOVER CERTIFICADO -->
   <dialog class="ds-dialog" data-ds-delete-cert-dialog aria-labelledby="ds-del-cert-title">
     <form class="ds-dialog-form" data-ds-delete-cert-form>
       <div class="ds-dialog-head">
-        <div>
-          <h2 id="ds-del-cert-title">Remover certificado A1?</h2>
-          <p data-ds-delete-cert-sub></p>
+        <div class="ds-dialog-title-row">
+          <span class="ds-tile">{{ icon('trash', 18) }}</span>
+          <div>
+            <h2 id="ds-del-cert-title">Remover certificado A1?</h2>
+            <p data-ds-delete-cert-sub></p>
+          </div>
         </div>
         <button type="button" class="ds-icon-btn" data-ds-close-dialog aria-label="Fechar">{{ icon('close', 18) }}</button>
       </div>
@@ -288,5 +384,5 @@
   </dialog>
   {% endif %}
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=4"></script>
+<script type="module" src="/static/js/digital_signing.js?v=5"></script>
 {% endblock %}

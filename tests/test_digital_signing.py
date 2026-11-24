@@ -355,13 +355,15 @@ def test_signing_web_workflow_and_external_validation_without_certificate(author
     assert holder_client.post(purpose_url, headers=holder_headers, json=authorization).status_code == 422
     enabled = holder_client.post(purpose_url, headers=holder_headers, json={**authorization, "cpf": CPF})
     assert enabled.status_code == 200, enabled.text
+    # Rebinding to the same user is idempotent; changing to another user is blocked for security!
     assert client.post(binding_url, headers=headers, json={"user_id": 2}).status_code == 200
     with sessions() as db:
         grant = db.get(certificates.CertificatePurpose, (new_id, certificates.DOCUMENTS))
         assert grant.user_id == 2 and grant.enabled_at is not None and grant.disabled_at is None
-    assert client.post(binding_url, headers=headers, json={"user_id": 1}).status_code == 200
+    assert client.post(binding_url, headers=headers, json={"user_id": 1}).status_code == 403
     with sessions() as db:
-        assert db.get(certificates.CertificatePurpose, (new_id, certificates.DOCUMENTS)).disabled_at is not None
+        grant = db.get(certificates.CertificatePurpose, (new_id, certificates.DOCUMENTS))
+        assert grant.user_id == 2 and grant.disabled_at is None
     assert client.get("/assinatura-digital").status_code == 200
     assert client.get("/certificados-digitais").status_code == 200
     assert client.post("/assinatura-digital/documentos", content=original,
@@ -505,9 +507,12 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
     ws_html = client.get(endpoint).text
     assert "Senha do certificado A1" not in ws_html
 
-    # 3) Authorize and sign using ONLY the email code (no password field!)
+    # 3) Authorize and sign using ONLY the email code (no password field!) with compact stamp style
     issue = client.post(endpoint + "/autorizar", headers=headers, json={
-        "consent": True, "certificate_id": cert_id, "appearance": {"visible": False}, "sha256": sha256(original).hexdigest(),
+        "consent": True,
+        "certificate_id": cert_id,
+        "appearance": {"visible": True, "page": 0, "box": [45, 70, 250, 125], "style": "compact"},
+        "sha256": sha256(original).hexdigest(),
     })
     assert issue.status_code == 201, issue.text
     code = re.search(r"Código de autorização: (\d{8})", emails[-1][2]).group(1)
@@ -516,6 +521,15 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
     })
     assert signed.status_code == 200, signed.text
     assert signed.json()["validation"]["state"] == "valid"
+
+    # Register A1 for another user with CPF and WhatsApp saved to profile when empty
+    other_pfx = base64.b64encode(make(56, "Maria Produtora:12345678901").pfx).decode()
+    reg_other = client.post("/certificados-digitais", headers=headers, json={
+        "file": other_pfx, "password": PASSWORD, "holder_user_id": 2, "cpf": CPF, "whatsapp": "(35) 99888-7766",
+    })
+    assert reg_other.status_code == 201, reg_other.text
+    with sessions() as db:
+        assert db.get(User, 2).phone == "(35) 99888-7766"
 
     # Signed document cannot be deleted
     assert client.delete(endpoint, headers=headers).status_code == 409

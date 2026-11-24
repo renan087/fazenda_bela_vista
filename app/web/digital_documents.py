@@ -244,6 +244,7 @@ def _certificate_inventory(db, user, farm):
             "holder_id": holder_id,
             "holder_name": (holder_user.display_name or holder_user.name) if holder_user else None,
             "holder_email": holder_user.email if holder_user else None,
+            "holder_phone": (holder_user.phone or "") if holder_user else "",
             "confirm_cpf": assigned and docs is None,
             "can_set_docs": bool(docs or assigned),
             "docs_enabled": bool(docs and docs.enabled_at and not docs.disabled_at),
@@ -355,6 +356,7 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
             "id": cert.id,
             "display_name": info["display_name"],
             "cert_type": info["cert_type"],
+            "masked_doc": info["masked_doc"],
             "subject_cn": cert.subject_cn,
             "valid_until": cert.valid_until,
         })
@@ -501,6 +503,7 @@ async def register_certificate(request: Request, db: Session = Depends(get_db), 
     holder_user_id = data.get("holder_user_id")
     enable_documents = bool(data.get("enable_documents"))
     cpf = str(data.get("cpf", "") or "").strip()
+    whatsapp = str(data.get("whatsapp", "") or "").strip()[:40]
     if holder_user_id is not None and type(holder_user_id) is not int:
         raise HTTPException(400, "Responsável selecionado inválido.")
     try:
@@ -518,11 +521,18 @@ async def register_certificate(request: Request, db: Session = Depends(get_db), 
                     raise ValueError("Selecione um usuário ativo da organização.")
             else:
                 raise PermissionError("Sua conta precisa de permissão de gestão para vincular outro usuário.")
+            if whatsapp and not (holder.phone or "").strip():
+                holder.phone = whatsapp
             certificates.assign_certificate_holder(db, cert, holder)
             db.flush()
+            if cpf and holder.id != user.id:
+                await run_in_threadpool(
+                    _limited, certificates.verify_responsible_identity, db, cert=cert, user=holder,
+                    cpf=cpf, password=data["password"], reference="CPF e senha do A1 confirmados no cadastro",
+                )
         if enable_documents and holder is not None and holder.id == user.id:
             if not cpf:
-                raise ValueError("Informe o CPF do titular para já liberar o certificado para assinatura.")
+                raise ValueError("Informe o CPF do titular para liberar o certificado para assinatura.")
             await run_in_threadpool(
                 _limited, certificates.authorize_purpose, db, cert=cert, user=user, farm_id=farm.id,
                 purpose=certificates.DOCUMENTS, enable=True, password=data["password"], cpf=cpf,
@@ -625,6 +635,6 @@ async def bind_certificate_holder(certificate_id: str, request: Request, db: Ses
         workflow.audit(db, user, "vincular_responsavel", farm_id=farm.id, certificate_id=cert.id, holder_user_id=holder.id)
         db.commit()
         return _json({"ok": True})
-    except (ValueError, IntegrityError) as exc:
+    except (ValueError, PermissionError, IntegrityError) as exc:
         db.rollback()
         return _error(exc)

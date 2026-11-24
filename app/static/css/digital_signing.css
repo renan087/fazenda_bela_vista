@@ -30,7 +30,7 @@
 .ds-page [hidden] { display: none !important; }
 .ds-page h1, .ds-page h2, .ds-page h3, .ds-page p { margin: 0; }
 .ds-tabular { font-variant-numeric: tabular-nums; }
-.ds-only-mobile, .ds-only-mobile-grid, .ds-only-mobile-flex { display: none; }
+.ds-only-mobile, .ds-only-mobile-grid, .ds-only-mobile-flex { display: none !important; }
 
 .ds-page :is(a, button, input, select, summary, .ds-stamp):focus-visible {
   outline: 2px solid var(--ds-brand);
@@ -327,7 +327,7 @@
   position: absolute;
   right: 0;
   top: calc(100% + 6px);
-  min-width: 220px;
+  min-width: 240px;
   padding: 6px;
   border-radius: 14px;
   background: #FFFFFF;
@@ -336,6 +336,10 @@
   z-index: 45;
   display: grid;
   gap: 2px;
+}
+.nx-menu.is-up {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 .nx-mi {
   display: flex;
@@ -354,7 +358,9 @@
   text-align: left;
   cursor: pointer;
 }
-.nx-mi:hover { background: var(--ds-soft); }
+.nx-mi:hover:not(:disabled) { background: var(--ds-soft); }
+.nx-mi:disabled { opacity: 0.46; cursor: not-allowed; }
+.nx-mi em { margin-left: auto; font-style: normal; font-size: 0.7rem; color: var(--ds-muted-2); }
 .nx-mi svg { color: var(--ds-muted); flex: 0 0 auto; }
 .nx-mi.is-primary { color: var(--ds-brand-dark); font-weight: 600; }
 .nx-mi.is-primary svg { color: var(--ds-brand); }
@@ -387,12 +393,20 @@
   gap: 0.45rem;
   text-align: center;
   padding: 1.5rem 1rem;
-  border: 1.5px dashed #B5C7B2;
-  border-radius: 14px;
-  background: var(--ds-soft);
+  border: 2px dashed #9EB699;
+  border-radius: 16px;
+  background: #F4F8F2;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 120ms ease;
 }
-.ds-drop--compact { padding: 1.1rem 0.9rem; }
-.ds-drop.is-dragging { background: var(--ds-brand-soft); border-color: var(--ds-brand); }
+.ds-drop:hover { border-color: var(--ds-brand); background: #EAF3E6; }
+.ds-drop--compact { padding: 1.15rem 0.95rem; }
+.ds-drop.is-dragging {
+  border-style: solid;
+  border-color: var(--ds-brand-dark);
+  background: #D7EBD0;
+  box-shadow: inset 0 0 0 3px rgba(68, 106, 54, 0.2), 0 6px 18px rgba(41, 65, 39, 0.12);
+  transform: scale(1.005);
+}
 .ds-drop strong { font-size: 0.9rem; }
 .ds-drop p { font-size: 0.8rem; color: var(--ds-muted); max-width: 42ch; }
 .ds-drop-icon { color: var(--ds-brand); }
@@ -511,24 +525,94 @@
 .ds-stamp {
   position: absolute;
   display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.28rem 0.5rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.14rem;
+  padding: 0.45rem 0.6rem;
   overflow: hidden;
   border: 2px dashed var(--ds-brand);
-  border-radius: 8px;
-  background: rgba(238, 243, 235, 0.94);
-  color: var(--ds-brand-dark);
-  font-size: 0.75rem;
-  font-weight: 700;
+  border-radius: 10px;
+  background: rgba(238, 243, 235, 0.96);
+  color: var(--ds-ink);
+  text-align: left;
   cursor: grab;
   user-select: none;
   touch-action: none;
 }
 .ds-stamp.is-fixed { border-style: solid; cursor: default; }
-.ds-stamp span[data-ds-stamp-label] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-stamp-head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ds-ok-fg);
+  border-bottom: 1px solid rgba(68, 106, 54, 0.2);
+  padding-bottom: 0.18rem;
+  margin-bottom: 0.12rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-stamp-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ds-ink);
+  line-height: 1.18;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-stamp-meta {
+  font-size: 0.6rem;
+  color: #354A39;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-stamp-url {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: var(--ds-brand);
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-stamp.is-compact { padding: 0.3rem 0.5rem; gap: 0.08rem; }
+.ds-stamp.is-compact .ds-stamp-head { font-size: 0.5rem; border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }
+.ds-stamp.is-compact .ds-stamp-name { font-size: 0.64rem; }
+.ds-stamp.is-compact .ds-stamp-meta { font-size: 0.56rem; }
 .ds-stamp-handle { position: absolute; right: 0; bottom: 0; width: 1.15rem; height: 1.15rem; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, var(--ds-brand) 50%); }
 .ds-stamp.is-fixed .ds-stamp-handle { display: none; }
+
+/* Stamp Mode Segmented Picker */
+.ds-stamp-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--ds-line);
+}
+.ds-stamp-mode-btn {
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  border: 1.5px solid var(--ds-line-strong);
+  background: #FFFFFF;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+.ds-stamp-mode-btn:hover { background: #FAFBF9; }
+.ds-stamp-mode-btn[aria-checked="true"] {
+  border-color: var(--ds-brand);
+  background: var(--ds-brand-soft);
+}
+.ds-stamp-mode-btn strong { display: block; font-size: 0.78rem; font-weight: 700; color: var(--ds-ink); }
+.ds-stamp-mode-btn small { display: block; font-size: 0.69rem; color: var(--ds-muted); margin-top: 0.1rem; }
 
 /* Ceremony Right Side Panel */
 .ds-ceremony-side { position: sticky; top: 1rem; }
@@ -575,24 +659,143 @@
   font-weight: 700;
   letter-spacing: 0.24em;
 }
-.ds-switch-box { padding: 0.8rem 0.9rem; border-radius: 12px; background: var(--ds-soft); border: 1px solid var(--ds-line); display: grid; gap: 0.45rem; }
+/* Modern Switch Control */
+.ds-switch-box { padding: 0.8rem 0.9rem; border-radius: 12px; background: var(--ds-soft); border: 1px solid var(--ds-line); display: grid; gap: 0.5rem; }
 .ds-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; cursor: pointer; }
-.ds-switch-row strong { display: block; font-size: 0.82rem; }
+.ds-switch-row strong { display: block; font-size: 0.82rem; color: var(--ds-ink); }
 .ds-switch-row small { display: block; font-size: 0.74rem; color: var(--ds-muted); margin-top: 0.1rem; }
-.ds-switch-input { width: 1.15rem; height: 1.15rem; accent-color: var(--ds-brand); flex: 0 0 auto; cursor: pointer; }
+input[type="checkbox"].ds-switch-input {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  width: 2.55rem;
+  height: 1.42rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background-color: #CBD3CA;
+  background-image: none;
+  box-shadow: none;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background-color 160ms ease;
+}
+input[type="checkbox"].ds-switch-input::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(1.42rem - 4px);
+  height: calc(1.42rem - 4px);
+  border-radius: 999px;
+  background: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 160ms ease;
+}
+input[type="checkbox"].ds-switch-input:checked {
+  background-color: var(--ds-brand);
+  background-image: none;
+}
+input[type="checkbox"].ds-switch-input:checked::after {
+  transform: translateX(1.13rem);
+}
+
+/* Consent Box with Official .dt-check Checkbox */
 .ds-consent-box {
   display: flex;
   align-items: flex-start;
-  gap: 0.6rem;
-  padding: 0.8rem 0.9rem;
+  gap: 0.7rem;
+  padding: 0.85rem 0.95rem;
   border-radius: 12px;
-  border: 1px solid var(--ds-line-strong);
+  border: 1.5px solid var(--ds-line-strong);
   background: #FFFFFF;
   font-size: 0.82rem;
   line-height: 1.45;
   cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
 }
-.ds-consent-box input { margin-top: 0.18rem; width: 1rem; height: 1rem; accent-color: var(--ds-brand); flex: 0 0 auto; }
+.ds-consent-box:has(input:checked) {
+  border-color: var(--ds-brand);
+  background: rgba(238, 243, 235, 0.55);
+}
+.ds-consent-box .dt-chk,
+.ds-check .dt-chk { width: 24px; height: 24px; margin: 0; flex: 0 0 auto; }
+
+/* Password Input with Eye Toggle */
+.ds-pw-wrap { position: relative; display: flex; align-items: center; }
+.ds-pw-wrap input { padding-right: 2.65rem; }
+.ds-pw-eye {
+  position: absolute;
+  right: 0.35rem;
+  width: 2.1rem;
+  height: 2.1rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ds-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.ds-pw-eye:hover { background: var(--ds-brand-soft); color: var(--ds-ink); }
+.ds-input-readonly { background: var(--ds-soft) !important; color: var(--ds-muted) !important; }
+.ds-input-warn { background: var(--ds-warn-bg) !important; border-color: var(--ds-warn-line) !important; color: var(--ds-warn-fg) !important; font-weight: 500; }
+.ds-input-valid { border-color: var(--ds-ok-fg) !important; }
+.ds-input-invalid { border-color: var(--ds-err-fg) !important; }
+.ds-cpf-hint { font-size: 0.72rem; font-weight: 500; color: var(--ds-muted-2); }
+.ds-cpf-hint.is-ok { color: var(--ds-ok-fg); }
+.ds-cpf-hint.is-err { color: var(--ds-err-fg); }
+
+/* Who Signs 3-Card Selector (Continuous Wizard) */
+.ds-who-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.65rem; }
+.ds-who-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.85rem;
+  border-radius: 12px;
+  border: 1.5px solid var(--ds-line);
+  background: #FFFFFF;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+.ds-who-card:hover { border-color: #BFC9BD; background: var(--ds-soft); }
+.ds-who-card[aria-checked="true"] { border-color: var(--ds-brand); background: var(--ds-brand-soft); }
+.ds-who-dot {
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.12rem;
+  border-radius: 99px;
+  border: 2px solid #BFC9BD;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.ds-who-card[aria-checked="true"] .ds-who-dot { border-color: var(--ds-brand); }
+.ds-who-card[aria-checked="true"] .ds-who-dot::after {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 99px;
+  background: var(--ds-brand);
+}
+.ds-who-card strong { display: block; font-size: 0.8125rem; font-weight: 700; color: var(--ds-ink); }
+.ds-who-card small { display: block; font-size: 0.72rem; color: var(--ds-muted); margin-top: 0.15rem; line-height: 1.35; }
+
+/* Signer Row Cards in Wizard Step 2 */
+.ds-signer-list { display: grid; gap: 0.7rem; }
+.ds-signer-item {
+  padding: 0.85rem;
+  border-radius: 12px;
+  border: 1px solid var(--ds-line);
+  background: #FAFBF9;
+  display: grid;
+  gap: 0.65rem;
+}
+.ds-signer-item-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.8rem; }
+.ds-signer-item-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
 .ds-cert-confirm-chip {
   display: flex;
   align-items: center;
@@ -729,7 +932,8 @@
   box-shadow: 0 20px 44px rgba(15, 21, 19, 0.22);
   overflow: hidden;
 }
-.ds-dialog--wide { width: min(35rem, calc(100vw - 1.5rem)); }
+.ds-dialog--wide { width: min(36rem, calc(100vw - 1.5rem)); }
+.ds-dialog--xl { width: min(38rem, calc(100vw - 1.5rem)); }
 .ds-dialog::backdrop { background: rgba(15, 21, 19, 0.45); }
 .ds-dialog-form { display: flex; flex-direction: column; max-height: calc(100dvh - 2rem); }
 .ds-dialog-head {
@@ -737,27 +941,50 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 1.05rem 1.25rem;
+  padding: 1.05rem 1.35rem;
   border-bottom: 1px solid var(--ds-line);
+  background: #FAFBF9;
 }
+.ds-dialog-title-row { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
 .ds-dialog-head h2 { font-size: 1rem; font-weight: 700; }
 .ds-dialog-head p { font-size: 0.78rem; color: var(--ds-muted); margin-top: 0.15rem; }
-.ds-dialog-body { padding: 1.15rem 1.25rem; overflow-y: auto; display: grid; gap: 0.9rem; }
+.ds-dialog-body { padding: 1.25rem 1.35rem; overflow-y: auto; display: grid; gap: 0.95rem; }
 .ds-dialog-foot {
   display: flex;
   justify-content: flex-end;
   gap: 0.55rem;
-  padding: 0.9rem 1.25rem;
+  padding: 0.9rem 1.35rem;
   border-top: 1px solid var(--ds-line);
   background: #FAFBF9;
 }
-.ds-form-grid { display: grid; gap: 0.75rem; }
+.ds-dialog-cert-box {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  background: var(--ds-soft);
+  border: 1px solid var(--ds-line);
+}
+.ds-dialog-cert-box strong { display: block; font-size: 0.875rem; color: var(--ds-ink); }
+.ds-dialog-cert-box small { display: block; font-size: 0.75rem; color: var(--ds-muted); margin-top: 0.1rem; }
+.ds-form-grid { display: grid; gap: 0.85rem; }
+.ds-form-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; }
 .ds-colleagues-box { display: grid; gap: 0.45rem; }
-.ds-colleagues-list { display: grid; gap: 0.35rem; max-height: 9rem; overflow-y: auto; padding: 0.5rem; border-radius: 10px; border: 1px solid var(--ds-line); background: var(--ds-soft); }
-.ds-check-row { display: flex; align-items: center; gap: 0.55rem; font-size: 0.8rem; cursor: pointer; }
-.ds-check-row input { accent-color: var(--ds-brand); width: 0.95rem; height: 0.95rem; }
-.ds-check-row strong { display: block; font-size: 0.8rem; }
-.ds-check-row small { display: block; font-size: 0.72rem; color: var(--ds-muted); }
+.ds-colleagues-list { display: grid; border-radius: 12px; border: 1px solid var(--ds-line); background: #FAFBF9; overflow: hidden; }
+.ds-switch-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid #EEF1ED;
+  cursor: pointer;
+}
+.ds-switch-list-row:last-child { border-bottom: 0; }
+.ds-switch-list-row strong { display: block; font-size: 0.8125rem; color: var(--ds-ink); }
+.ds-switch-list-row small { display: block; font-size: 0.72rem; color: var(--ds-muted); }
+.ds-protected-tag { font-size: 0.72rem; font-weight: 600; color: var(--ds-muted-2); }
 
 /* Responsive Tablet (<= 1023px) */
 @media (max-width: 1023px) {
@@ -774,6 +1001,7 @@
   .ds-only-mobile { display: block !important; }
   .ds-only-mobile-grid { display: grid !important; }
   .ds-only-mobile-flex { display: flex !important; }
+  .ds-who-grid, .ds-form-grid-2, .ds-signer-item-grid { grid-template-columns: 1fr !important; }
 
   .ds-head { align-items: center; }
   .ds-head .sf-page-title { font-size: 1.375rem; }

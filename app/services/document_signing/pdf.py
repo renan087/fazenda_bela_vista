@@ -3,6 +3,7 @@ import asyncio
 import math
 from dataclasses import replace
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from hashlib import sha256
 from io import BytesIO
 from uuid import uuid4
@@ -207,7 +208,8 @@ def check_appearance(reader, appearance):
     if (x2 - x1 < 28 or y2 - y1 < 20
             or not (left - .02 <= x1 < x2 <= right + .02 and bottom - .02 <= y1 < y2 <= top + .02)):
         raise ValueError("Posicione a assinatura dentro dos limites visíveis da página.")
-    return {"visible": True, "page": page, "box": rect}
+    style = "compact" if appearance.get("style") == "compact" else "full"
+    return {"visible": True, "page": page, "box": rect, "style": style}
 
 
 class _PbadCmsWriter:
@@ -388,6 +390,45 @@ async def _assert_preserved(reader, previous):
             raise ValueError("A nova revisão violaria uma assinatura ou restrição existente.")
 
 
+def _build_stamp_style(signer, style: str = "full") -> TextStampStyle:
+    cn = ""
+    try:
+        cn = signer.signing_cert.subject.native.get("common_name") or ""
+    except Exception:
+        cn = ""
+    display_name = cn.strip()
+    doc_label = ""
+    if ":" in display_name:
+        left, right = display_name.rsplit(":", 1)
+        digits = "".join(ch for ch in right if ch.isdigit())
+        if len(digits) == 11:
+            display_name = left.strip() or display_name
+            doc_label = f"CPF ***.{digits[3:6]}.{digits[6:9]}-**"
+        elif len(digits) == 14:
+            display_name = left.strip() or display_name
+            doc_label = f"CNPJ {digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:]}"
+    now_br = datetime.now(ZoneInfo("America/Sao_Paulo"))
+    signer_line = display_name.upper() if display_name else "%(signer)s"
+    if style == "compact":
+        id_line = f"{signer_line} - {doc_label}" if doc_label else signer_line
+        text = (
+            "ASSINADO DIGITALMENTE - ICP-BRASIL\n"
+            f"{id_line}\n"
+            f"{now_br.strftime('%d/%m/%Y %H:%M')} - validar.iti.gov.br"
+        )
+    else:
+        lines = [
+            "ASSINADO DIGITALMENTE - ICP-BRASIL",
+            signer_line,
+        ]
+        if doc_label:
+            lines.append(doc_label)
+        lines.append(f"Data: {now_br.strftime('%d/%m/%Y %H:%M')} (BRT)")
+        lines.append("Verifique em validar.iti.gov.br")
+        text = "\n".join(lines)
+    return TextStampStyle(stamp_text=text, border_width=1)
+
+
 async def _sign(data, signer, appearance, field_name):
     reader = read_pdf(data)
     approved = check_appearance(reader, appearance)
@@ -405,7 +446,8 @@ async def _sign(data, signer, appearance, field_name):
         cades_signed_attr_spec=CAdESSignedAttrSpec(signature_policy_identifier=policy_identifier()),
     )
     writer = IncrementalPdfFileWriter(BytesIO(data), prev=reader)
-    result = await _PbadSigner(metadata, signer, stamp_style=STAMP, new_field_spec=spec).async_sign_pdf(
+    stamp_style = _build_stamp_style(signer, approved.get("style", "full"))
+    result = await _PbadSigner(metadata, signer, stamp_style=stamp_style, new_field_spec=spec).async_sign_pdf(
         writer, existing_fields_only=bool(existing_field),
     )
     signed = result.getvalue()

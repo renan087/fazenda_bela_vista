@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, doc_chip, module_tabs, dropzone %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=4">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=5">{% endblock %}
 {% block content %}
 {% set c = doc_counts %}
 <main class="sf-page pd-page ds-page" data-ds-home data-csrf="{{ csrf_token }}" data-active-tab="{{ active_tab }}">
@@ -216,8 +216,14 @@
                 {% if item.status_key == 'your_turn' %}
                 <a class="nx-mi is-primary" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}">{{ icon('pen', 15) }}<span>Assinar agora</span></a>
                 {% endif %}
-                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}?aba=detalhes">{{ icon('eye', 15) }}<span>Abrir detalhes e versões</span></a>
-                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}/revisoes/{{ item.doc.current_revision }}/pdf">{{ icon('download', 15) }}<span>Baixar PDF</span></a>
+                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}?aba=detalhes">{{ icon('eye', 15) }}<span>Detalhes, participantes e versões</span></a>
+                <div class="nx-sep"></div>
+                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}/revisoes/1/pdf">{{ icon('download', 15) }}<span>Baixar PDF original</span></a>
+                {% if item.sig_count > 0 %}
+                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}/revisoes/{{ item.doc.current_revision }}/pdf">{{ icon('shield', 15) }}<span>Baixar PDF assinado</span></a>
+                {% else %}
+                <button type="button" class="nx-mi" role="menuitem" disabled>{{ icon('shield', 15) }}<span>Baixar PDF assinado</span><em>sem assinatura</em></button>
+                {% endif %}
                 {% if item.can_delete and can_write_page %}
                 <div class="nx-sep"></div>
                 <button type="button" class="nx-mi is-danger" role="menuitem" data-ds-delete-doc="{{ item.id }}" data-ds-delete-title="{{ item.title }}">{{ icon('trash', 15) }}<span>Excluir documento</span></button>
@@ -256,8 +262,14 @@
                 {% if item.status_key == 'your_turn' %}
                 <a class="nx-mi is-primary" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}">{{ icon('pen', 15) }}<span>Assinar agora</span></a>
                 {% endif %}
-                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}?aba=detalhes">{{ icon('eye', 15) }}<span>Abrir detalhes e versões</span></a>
-                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}/revisoes/{{ item.doc.current_revision }}/pdf">{{ icon('download', 15) }}<span>Baixar PDF</span></a>
+                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}?aba=detalhes">{{ icon('eye', 15) }}<span>Detalhes, participantes e versões</span></a>
+                <div class="nx-sep"></div>
+                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}/revisoes/1/pdf">{{ icon('download', 15) }}<span>Baixar PDF original</span></a>
+                {% if item.sig_count > 0 %}
+                <a class="nx-mi" role="menuitem" href="/assinatura-digital/documentos/{{ item.id }}/revisoes/{{ item.doc.current_revision }}/pdf">{{ icon('shield', 15) }}<span>Baixar PDF assinado</span></a>
+                {% else %}
+                <button type="button" class="nx-mi" role="menuitem" disabled>{{ icon('shield', 15) }}<span>Baixar PDF assinado</span><em>sem assinatura</em></button>
+                {% endif %}
                 {% if item.can_delete and can_write_page %}
                 <div class="nx-sep"></div>
                 <button type="button" class="nx-mi is-danger" role="menuitem" data-ds-delete-doc="{{ item.id }}" data-ds-delete-title="{{ item.title }}">{{ icon('trash', 15) }}<span>Excluir documento</span></button>
@@ -314,66 +326,115 @@
     </div>
   </div>
 
-  <!-- MODAL: NOVO DOCUMENTO (Wizard enxuto de envio) -->
+  <!-- MODAL: NOVO DOCUMENTO (Jornada contínua com 3 cards Quem assina + switches!) -->
   {% if farm and can_write_page %}
-  <dialog class="ds-dialog ds-dialog--wide" data-ds-new-dialog aria-labelledby="ds-new-dialog-title">
+  <dialog class="ds-dialog ds-dialog--xl" data-ds-new-dialog aria-labelledby="ds-new-dialog-title">
     <form class="ds-dialog-form" data-ds-new-form>
       <div class="ds-dialog-head">
-        <div>
-          <h2 id="ds-new-dialog-title">Novo documento</h2>
-          <p>Envie o PDF, dê um nome fácil de encontrar e siga direto para a assinatura.</p>
+        <div class="ds-dialog-title-row">
+          <span class="ds-tile">{{ icon('file', 18) }}</span>
+          <div>
+            <h2 id="ds-new-dialog-title">Novo documento</h2>
+            <p data-ds-new-subtitle>Envie o PDF e escolha quem vai assinar.</p>
+          </div>
         </div>
         <button type="button" class="ds-icon-btn" data-ds-close-new aria-label="Fechar">{{ icon('close', 18) }}</button>
       </div>
 
       <div class="ds-dialog-body">
-        <div class="ds-drop ds-drop--compact" data-ds-new-drop>
-          <span class="ds-drop-icon">{{ icon('upload', 20) }}</span>
-          <strong data-ds-new-file-label>Arraste o PDF aqui ou clique para escolher</strong>
-          <p data-ds-new-file-sub>Aceita PDFs de até 12 MB e 120 páginas (inclusive já assinados por outra parte).</p>
-          <label class="sf-btn sf-btn-secondary ds-pick" for="ds-import-file">
-            Escolher arquivo PDF
-            <input id="ds-import-file" name="file" type="file" accept="application/pdf,.pdf" required>
-          </label>
-        </div>
-
-        <div class="ds-form-grid">
-          <label class="ds-field ds-field--full">
-            <span>Nome do documento</span>
-            <input type="text" name="title" maxlength="180" placeholder="Ex.: Contrato de Venda de Café #2026/045" data-ds-new-title>
-          </label>
-          <label class="ds-field ds-field--full">
-            <span>Categoria</span>
-            <select name="category">
-              {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
-            </select>
-          </label>
-        </div>
-
-        {% if org_colleagues %}
-        <div class="ds-colleagues-box">
-          <span class="ds-field-label">Compartilhar também com colegas da fazenda? <small>(opcional)</small></span>
-          <div class="ds-colleagues-list">
-            {% for colleague in org_colleagues %}
-            <label class="ds-check-row">
-              <input type="checkbox" name="colleagues" value="{{ colleague.email }}">
-              <span><strong>{{ colleague.display_name or colleague.name }}</strong><small>{{ colleague.email }}</small></span>
+        <!-- PASSO 1: DOCUMENTO + 3 CARDS QUEM ASSINA -->
+        <div class="ds-form-grid" data-ds-new-step="1">
+          <div class="ds-drop ds-drop--compact" data-ds-new-drop>
+            <span class="ds-drop-icon">{{ icon('upload', 20) }}</span>
+            <strong data-ds-new-file-label>Arraste o PDF aqui ou clique para escolher</strong>
+            <p data-ds-new-file-sub>Aceita PDFs de até 12 MB e 120 páginas (inclusive já assinados por outra parte).</p>
+            <label class="sf-btn sf-btn-secondary ds-pick" for="ds-import-file">
+              Escolher arquivo PDF
+              <input id="ds-import-file" name="file" type="file" accept="application/pdf,.pdf" required>
             </label>
-            {% endfor %}
+          </div>
+
+          <div class="ds-form-grid-2">
+            <label class="ds-field">
+              <span>Nome do documento</span>
+              <input type="text" name="title" maxlength="180" placeholder="Ex.: Contrato de Venda de Café #2026/045" data-ds-new-title>
+            </label>
+            <label class="ds-field">
+              <span>Categoria</span>
+              <select name="category">
+                {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+              </select>
+            </label>
+          </div>
+
+          <div class="ds-field">
+            <span>Quem vai assinar este documento?</span>
+            <div class="ds-who-grid" role="radiogroup" aria-label="Quem vai assinar este documento">
+              <button type="button" class="ds-who-card" data-ds-who="only_me" role="radio" aria-checked="true">
+                <span class="ds-who-dot" aria-hidden="true"></span>
+                <span><strong>Só eu vou assinar</strong><small>Vai direto para revisar e confirmar sua assinatura.</small></span>
+              </button>
+              <button type="button" class="ds-who-card" data-ds-who="me_and_others" role="radio" aria-checked="false">
+                <span class="ds-who-dot" aria-hidden="true"></span>
+                <span><strong>Eu e outras pessoas</strong><small>Escolha colegas da fazenda e assine sua parte em seguida.</small></span>
+              </button>
+              <button type="button" class="ds-who-card" data-ds-who="only_others" role="radio" aria-checked="false">
+                <span class="ds-who-dot" aria-hidden="true"></span>
+                <span><strong>Apenas outras pessoas</strong><small>Compartilhe para outros usuários assinarem.</small></span>
+              </button>
+            </div>
           </div>
         </div>
-        {% endif %}
+
+        <!-- PASSO 2: QUEM ASSINA (exibido quando envolve outras pessoas) -->
+        <div class="ds-form-grid" data-ds-new-step="2" hidden>
+          <div class="ds-field">
+            <span>Selecione quem da fazenda vai assinar</span>
+            {% if org_colleagues %}
+            <div class="ds-signer-list">
+              {% for colleague in org_colleagues %}
+              <div class="ds-signer-item" data-ds-colleague-card>
+                <div class="ds-signer-item-head">
+                  <strong>{{ colleague.display_name or colleague.name }}</strong>
+                  <input type="checkbox" class="ds-switch-input" name="colleagues" value="{{ colleague.email }}" data-ds-colleague-switch>
+                </div>
+                <div class="ds-signer-item-grid">
+                  <label class="ds-field">
+                    <span>Canal de aviso</span>
+                    <select data-ds-colleague-channel>
+                      <option value="email" selected>E-mail da conta</option>
+                      <option value="whatsapp">WhatsApp</option>
+                    </select>
+                  </label>
+                  <label class="ds-field">
+                    <span data-ds-colleague-contact-label>E-mail</span>
+                    <input type="text" class="ds-input-readonly" readonly value="{{ colleague.email }}" data-email="{{ colleague.email }}" data-phone="{{ colleague.phone or '' }}" data-ds-colleague-contact>
+                  </label>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="ds-banner is-warn ds-banner--sm">
+              {{ icon('users', 16) }}
+              <span>Não há outros usuários ativos cadastrados nesta organização. Você pode seguir assinando sozinho ou cadastrar novos usuários em Administração.</span>
+            </div>
+            {% endif %}
+          </div>
+        </div>
 
         <p class="ds-feedback" data-ds-new-status role="status" aria-live="polite" hidden></p>
       </div>
 
       <div class="ds-dialog-foot">
-        <button type="button" class="sf-btn sf-btn-secondary" data-ds-close-new>Cancelar</button>
-        <button type="submit" class="sf-btn sf-btn-primary" data-ds-new-submit>Continuar para assinatura →</button>
+        <button type="button" class="sf-btn sf-btn-secondary" data-ds-close-new data-ds-new-cancel>Cancelar</button>
+        <button type="button" class="sf-btn sf-btn-secondary" data-ds-new-back hidden>{{ icon('back', 15) }} Voltar</button>
+        <button type="button" class="sf-btn sf-btn-primary" data-ds-new-next hidden>Continuar para Quem assina →</button>
+        <button type="submit" class="sf-btn sf-btn-primary" data-ds-new-submit>Continuar para revisar e marcar →</button>
       </div>
     </form>
   </dialog>
   {% endif %}
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=4"></script>
+<script type="module" src="/static/js/digital_signing.js?v=5"></script>
 {% endblock %}

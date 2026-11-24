@@ -142,26 +142,22 @@ def assign_certificate_holder(db, cert, user):
     assignment = db.get(CertificateHolderAssignment, cert.id, populate_existing=True)
     if assignment is not None and assignment.user_id == user.id and assignment.email == user.email:
         return
+    if assignment is not None and assignment.user_id != user.id:
+        raise PermissionError(
+            "Este certificado já possui um responsável vinculado e não pode ser alterado. "
+            "Remova e cadastre novamente para vincular a outro usuário."
+        )
     existing = db.get(CertificatePurpose, (cert.id, DOCUMENTS), with_for_update=True, populate_existing=True)
+    if existing is not None and existing.user_id is not None and existing.user_id != user.id:
+        raise PermissionError(
+            "Este certificado já possui um responsável vinculado e não pode ser alterado. "
+            "Remova e cadastre novamente para vincular a outro usuário."
+        )
     if assignment is None:
         assignment = CertificateHolderAssignment(certificate_id=cert.id)
         db.add(assignment)
     assignment.user_id = user.id
     assignment.email = user.email
-    if existing is not None and existing.user_id == user.id and existing.identity_email == user.email:
-        return
-    now = datetime.now(timezone.utc)
-    for purpose in (DOCUMENTS, FISCAL):
-        grant = db.get(CertificatePurpose, (cert.id, purpose), with_for_update=True, populate_existing=True)
-        if grant is not None:
-            grant.user_id = None
-            grant.generation = uuid4().hex
-            grant.secret_ciphertext = None
-            grant.disabled_at = now
-    if cert.environment == CENTRAL:
-        selection = db.get(FiscalCertificateSelection, cert.id, with_for_update=True)
-        if selection is not None:
-            db.delete(selection)
 
 
 def assigned_to_user(db, cert, user):
