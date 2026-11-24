@@ -1158,12 +1158,54 @@ input[type="checkbox"].ds-switch-input:checked::after {
 .ds-switch-list-row small { display: block; font-size: 0.72rem; color: var(--ds-muted); }
 .ds-protected-tag { font-size: 0.72rem; font-weight: 600; color: var(--ds-muted-2); }
 
+/* Responsive Helpers */
+.ds-only-tablet-down { display: none !important; }
+.ds-mobile-viewer-slot { display: block; }
+.ds-viewer.is-mobile-embedded {
+  border-radius: 12px;
+  border: 1px solid var(--ds-line-strong);
+  box-shadow: none;
+}
+.ds-viewer.is-mobile-embedded .ds-toolbar {
+  padding: 0.35rem 0.5rem;
+  gap: 0.35rem;
+}
+.ds-viewer.is-mobile-embedded .ds-toolbar .ds-icon-btn {
+  min-width: 1.9rem;
+  min-height: 1.9rem;
+  padding: 0.2rem;
+}
+.ds-viewer.is-mobile-embedded .ds-toolbar .ds-pager input {
+  width: 2.4rem;
+  padding: 0.18rem 0.25rem;
+  font-size: 0.78rem;
+}
+.ds-viewer.is-mobile-embedded .ds-toolbar .ds-zoom-btn {
+  padding: 0.22rem 0.45rem;
+  font-size: 0.74rem;
+}
+.ds-viewer.is-mobile-embedded .ds-toolbar .ds-jump-btn {
+  padding: 0.24rem 0.5rem;
+  font-size: 0.72rem;
+}
+.ds-viewer.is-mobile-embedded .ds-viewer-body {
+  min-height: 13.5rem;
+  height: 36dvh;
+  max-height: 21rem;
+}
+.ds-viewer.is-mobile-embedded .ds-canvas-scroll {
+  padding: 0.4rem;
+}
+
 /* Responsive Tablet (<= 1023px) */
 @media (max-width: 1023px) {
   .ds-kpi-grid, .ds-overview-row, .ds-validate-grid, .ds-ceremony-grid, .ds-details-grid, .ds-cert-purposes, .ds-wizard-grid {
     grid-template-columns: 1fr;
   }
   .ds-ceremony-side, .ds-wiz-summary { position: static; }
+  .ds-only-tablet-down { display: inline-flex !important; }
+  .ds-ceremony-grid[data-ds-already-signed="yes"] .ds-ceremony-side { order: -1; }
+  .ds-viewer.is-mobile-collapsed { display: none !important; }
 }
 
 /* Mobile-First Enxuto (<= 639px) — Zero Poluição & Bottom Sheet Modals */
@@ -1239,9 +1281,16 @@ input[type="checkbox"].ds-switch-input:checked::after {
   .ds-doc-date { font-size: 0.71rem; color: var(--ds-muted-2); flex: 0 0 auto; }
 
   /* Viewer enxuto no mobile */
-  .ds-viewer-body { min-height: 17rem; height: 46vh; }
-  .ds-canvas-scroll { padding: 0.5rem; }
-  .ds-panel-pad, .ds-cert-card { padding: 0.95rem; }
+  .ds-viewer-body { min-height: 13.5rem; height: 36dvh; max-height: 21rem; }
+  .ds-canvas-scroll { padding: 0.4rem; }
+  .ds-panel-pad, .ds-cert-card { padding: 0.85rem; }
+  .ds-ceremony-card { gap: 0.7rem; }
+  .ds-step-pane { gap: 0.65rem; }
+  .ds-step-title h2 { font-size: 0.98rem; }
+  .ds-step-title p { font-size: 0.78rem; }
+  .ds-switch-box { padding: 0.6rem 0.7rem; }
+  .ds-stamp-mode-btn { padding: 0.42rem 0.55rem; }
+  .ds-consent-box { padding: 0.6rem 0.7rem; font-size: 0.78rem; }
   .ds-purpose-box { flex-wrap: wrap; }
 
   /* Modais como Bottom Sheet (gaveta inferior) no celular */

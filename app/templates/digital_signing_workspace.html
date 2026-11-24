@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, status %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=6">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=7">{% endblock %}
 {% block content %}
 {% set endpoint = '/assinatura-digital/documentos/' ~ doc.id %}
 {% set pdf_url = endpoint ~ '/revisoes/' ~ doc.current_revision ~ '/pdf' %}
@@ -55,8 +55,8 @@
   {% if notice %}<div class="ds-banner is-warn" role="alert">{{ icon('alert', 17) }}<span>{{ notice }}</span></div>{% endif %}
 
   <!-- PAINEL 1: CERIMÔNIA DE ASSINATURA GUIADA (MODO FOCO) -->
-  <div class="ds-ceremony-grid" data-ds-ws-panel="assinar" {% if active_view != 'assinar' %}hidden{% endif %}>
-    <section class="pd-card ds-viewer" aria-label="Prévia do PDF">
+  <div class="ds-ceremony-grid" data-ds-ws-panel="assinar" data-ds-ceremony-grid data-ds-already-signed="{{ 'yes' if not show_signing_form else 'no' }}" {% if active_view != 'assinar' %}hidden{% endif %}>
+    <section class="pd-card ds-viewer" data-ds-viewer-section aria-label="Prévia do PDF">
       <div class="ds-toolbar">
         <div class="ds-toolbar-left">
           <button type="button" class="ds-icon-btn ds-hide-mobile" data-ds-thumbs-toggle aria-controls="ds-thumbnails" aria-expanded="false" aria-label="Mostrar miniaturas">{{ icon('pages', 17) }}</button>
@@ -108,6 +108,7 @@
           {% endif %}
           <div class="ds-success-actions">
             <a class="sf-btn sf-btn-primary ds-full" href="{{ pdf_url }}">{{ icon('download', 16) }} Baixar PDF assinado</a>
+            <button type="button" class="sf-btn sf-btn-secondary ds-full ds-only-tablet-down" data-ds-toggle-viewer aria-expanded="false">{{ icon('eye', 16) }} Visualizar PDF</button>
             <button type="button" class="sf-btn sf-btn-secondary ds-full" data-ds-open-details>Ver detalhes e assinaturas</button>
             <a class="sf-btn sf-btn-soft ds-full" href="/assinatura-digital">Voltar para Documentos</a>
           </div>
@@ -123,6 +124,7 @@
           {% endif %}
           <div class="ds-success-actions">
             <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-open-details>Ver quem falta assinar</button>
+            <button type="button" class="sf-btn sf-btn-secondary ds-full ds-only-tablet-down" data-ds-toggle-viewer aria-expanded="false">{{ icon('eye', 16) }} Visualizar PDF</button>
             <a class="sf-btn sf-btn-secondary ds-full" href="{{ pdf_url }}">{{ icon('download', 16) }} Baixar versão atual</a>
             <a class="sf-btn sf-btn-soft ds-full" href="/assinatura-digital">Voltar para Documentos</a>
           </div>
@@ -138,6 +140,7 @@
           {% endif %}
           <div class="ds-success-actions">
             <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-open-details>Ver participantes</button>
+            <button type="button" class="sf-btn sf-btn-secondary ds-full ds-only-tablet-down" data-ds-toggle-viewer aria-expanded="false">{{ icon('eye', 16) }} Visualizar PDF</button>
             <a class="sf-btn sf-btn-secondary ds-full" href="{{ pdf_url }}">{{ icon('download', 16) }} Baixar PDF atual</a>
             <a class="sf-btn sf-btn-soft ds-full" href="/assinatura-digital">Voltar para Documentos</a>
           </div>
@@ -221,6 +224,8 @@
           {% elif not options.fields %}
           <div class="ds-banner is-warn ds-banner--sm">{{ icon('alert', 16) }}<span>Este PDF não permite acrescentar novas assinaturas nesta versão.</span></div>
           {% endif %}
+
+          <div class="ds-mobile-viewer-slot" data-ds-mobile-viewer-slot hidden></div>
 
           <label class="ds-consent-box{% if certificate_options|length != 1 %} is-disabled{% endif %}" data-ds-consent-box>
             <span class="dt-chk"><input type="checkbox" class="dt-check" data-ds-consent {% if certificate_options|length != 1 %}disabled{% endif %}></span>
@@ -378,5 +383,5 @@
     {% endif %}
   </div>
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=10"></script>
+<script type="module" src="/static/js/digital_signing.js?v=11"></script>
 {% endblock %}

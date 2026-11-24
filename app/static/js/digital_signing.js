@@ -1199,8 +1199,77 @@ function initWorkspace(root) {
     });
   }
 
+  const ceremonyGrid = find("[data-ds-ceremony-grid]");
+  const viewerSection = find("[data-ds-viewer-section]");
+  const mobileViewerSlot = find("[data-ds-mobile-viewer-slot]");
+  const toggleViewerBtns = [...root.querySelectorAll("[data-ds-toggle-viewer]")];
+  const isAlreadySigned = ceremonyGrid?.dataset.dsAlreadySigned === "yes";
+  const mobileMq = window.matchMedia("(max-width: 1023px)");
+  let pdfStarted = false;
+  let mobileViewerExpanded = false;
+
+  const ensurePdfLoaded = () => {
+    if (!pdfStarted) {
+      pdfStarted = true;
+      loadPdf();
+    } else if (pdf) {
+      requestAnimationFrame(() => render());
+    }
+  };
+
+  function syncMobileViewer() {
+    if (!viewerSection || !ceremonyGrid) return;
+    const isMobile = mobileMq.matches;
+    if (isMobile && !isAlreadySigned && mobileViewerSlot) {
+      mobileViewerSlot.hidden = false;
+      if (viewerSection.parentElement !== mobileViewerSlot) {
+        mobileViewerSlot.append(viewerSection);
+      }
+      viewerSection.classList.add("is-mobile-embedded");
+      viewerSection.classList.remove("is-mobile-collapsed");
+      ensurePdfLoaded();
+    } else if (isMobile && isAlreadySigned) {
+      if (mobileViewerSlot) mobileViewerSlot.hidden = true;
+      if (viewerSection.parentElement !== ceremonyGrid) {
+        ceremonyGrid.prepend(viewerSection);
+      }
+      viewerSection.classList.remove("is-mobile-embedded");
+      viewerSection.classList.toggle("is-mobile-collapsed", !mobileViewerExpanded);
+      if (mobileViewerExpanded) ensurePdfLoaded();
+    } else {
+      if (mobileViewerSlot) mobileViewerSlot.hidden = true;
+      if (viewerSection.parentElement !== ceremonyGrid) {
+        ceremonyGrid.prepend(viewerSection);
+      }
+      viewerSection.classList.remove("is-mobile-embedded", "is-mobile-collapsed");
+      ensurePdfLoaded();
+    }
+  }
+
+  for (const btn of toggleViewerBtns) {
+    btn.addEventListener("click", () => {
+      mobileViewerExpanded = !mobileViewerExpanded;
+      syncMobileViewer();
+      for (const b of toggleViewerBtns) {
+        b.setAttribute("aria-expanded", String(mobileViewerExpanded));
+        const label = mobileViewerExpanded ? "Ocultar PDF" : "Visualizar PDF";
+        const svg = b.querySelector("svg");
+        if (svg) {
+          b.replaceChildren(svg, document.createTextNode(` ${label}`));
+        } else {
+          b.textContent = label;
+        }
+      }
+      if (mobileViewerExpanded && viewerSection) {
+        viewerSection.scrollIntoView({behavior: "smooth", block: "start"});
+      }
+    });
+  }
+
+  mobileMq.addEventListener?.("change", syncMobileViewer);
+
   syncAuthorization();
-  loadPdf();
+  syncMobileViewer();
 }
 
 function initCertificates(root) {

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, doc_chip, module_tabs, dropzone %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=6">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=7">{% endblock %}
 {% block content %}
 {% set c = doc_counts %}
 <main class="sf-page pd-page ds-page" data-ds-home data-csrf="{{ csrf_token }}" data-active-tab="{{ active_tab }}">
@@ -326,5 +326,5 @@
     </div>
   </div>
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=10"></script>
+<script type="module" src="/static/js/digital_signing.js?v=11"></script>
 {% endblock %}
