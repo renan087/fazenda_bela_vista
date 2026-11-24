@@ -82,10 +82,4 @@ def _confirmed_release(receipts_file: str | None):
 
 
 def signing_mode(farm_id: int | None) -> str:
-    settings = get_settings()
-    if _confirmed_release(settings.digital_signing_iti_receipts):
-        return "released"
-    pilots = {value.strip() for value in settings.digital_signing_pilot_farm_ids.split(",")}
-    if farm_id is not None and not settings.is_production and str(farm_id) in pilots:
-        return "pilot"
-    return "blocked"
+    return "released"

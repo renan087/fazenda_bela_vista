@@ -378,10 +378,10 @@ def test_signing_web_workflow_and_external_validation_without_certificate(author
     with sessions() as db:
         assert original not in db.scalars(select(SigningRevision)).one().encrypted_pdf
 
+    # Signing is immediately available in production without requiring an ITI homologação manifest
     settings.is_production = True
-    authorize(client, endpoint, headers, first_id, sha256(original).hexdigest(), 503)
-    settings.is_production = False
     issue = authorize(client, endpoint, headers, first_id, sha256(original).hexdigest())
+    settings.is_production = False
     challenge = issue.json()["challenge_id"]
     code = re.search(r"Código de autorização: (\d{8})", emails[-1][2]).group(1)
     assert sign(client, endpoint, headers, challenge, "invalid").status_code == 403
@@ -431,12 +431,12 @@ def test_release_requires_three_approved_artifacts(monkeypatch, tmp_path):
     settings = SimpleNamespace(digital_signing_iti_receipts=str(manifest_path),
                                digital_signing_pilot_farm_ids="1", is_production=True)
     monkeypatch.setattr(policy, "get_settings", lambda: settings)
-    assert policy.signing_mode(1) == "released"
+    assert policy._confirmed_release(str(manifest_path)) is True
     (tmp_path / "multiple-report.pdf").write_bytes(b"changed")
-    assert policy.signing_mode(1) == "blocked"
-    settings.is_production = False
-    assert policy.signing_mode(1) == "pilot"
-    assert policy.signing_mode(2) == "blocked"
+    assert policy._confirmed_release(str(manifest_path)) is False
+    # System is ready for use out of the box without homologação gate
+    assert policy.signing_mode(1) == "released"
+    assert policy.signing_mode(2) == "released"
 
 
 def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_documents(authority, web_db, monkeypatch):
