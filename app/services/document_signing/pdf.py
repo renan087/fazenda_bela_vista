@@ -34,7 +34,7 @@ from reportlab.pdfgen import canvas as rl_canvas
 from app.services.document_signing.policy import FILTER, SUBFILTER, POLICY_OID, policy_identifier
 from app.services.document_signing.trust import ASSETS, validation_context
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error.document_signing")
 STAMP_BG_PATH = ASSETS / "icp_stamp_bg.jpg"
 STAMP_COMPACT_BG_PATH = ASSETS / "icp_stamp_compact_bg.jpg"
 STAMP_BG_RATIO = 1024.0 / 433.0
@@ -42,7 +42,7 @@ STAMP_BG_RATIO = 1024.0 / 433.0
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 MAX_PDF_BYTES = 16 * 1024 * 1024
 MAX_PAGES = 120
-KEY_USAGE = KeyUsageConstraints(key_usage={"digital_signature", "non_repudiation"})
+KEY_USAGE = KeyUsageConstraints(key_usage={"digital_signature"})
 STAMP = TextStampStyle(
     stamp_text="Assinado digitalmente\n%(signer)s",
     border_width=1,
@@ -58,7 +58,7 @@ def read_pdf(data: bytes) -> PdfFileReader:
     if not data.startswith(b"%PDF-") or len(data) > MAX_PDF_BYTES:
         raise ValueError("Envie um arquivo PDF válido dentro do limite de tamanho.")
     try:
-        reader = PdfFileReader(BytesIO(data), strict=True)
+        reader = PdfFileReader(BytesIO(data), strict=False)
         if reader.security_handler is not None:
             raise ValueError("PDF protegido por senha ou criptografia.")
         page_count = int(reader.root["/Pages"]["/Count"])
@@ -935,10 +935,10 @@ async def _sign(data, signer, appearance, field_name):
     context = validation_context(other_certs=embedded_chain)
     metadata = signers.PdfSignatureMetadata(
         field_name=name, md_algorithm="sha256", subfilter=fields.SigSeedSubFilter.PADES,
-        validation_context=context, signer_key_usage={"non_repudiation"},
+        validation_context=context, signer_key_usage={"digital_signature"},
         cades_signed_attr_spec=CAdESSignedAttrSpec(signature_policy_identifier=policy_identifier()),
     )
-    writer = IncrementalPdfFileWriter(BytesIO(data), prev=reader)
+    writer = IncrementalPdfFileWriter(BytesIO(data), prev=reader, strict=False)
     stamp_style = _build_stamp_style(signer, approved.get("style", "full"), approved.get("box"))
     result = await _PbadSigner(metadata, signer, stamp_style=stamp_style, new_field_spec=spec).async_sign_pdf(
         writer, existing_fields_only=bool(existing_field),
@@ -961,14 +961,32 @@ async def _sign(data, signer, appearance, field_name):
     return signed, name, report
 
 
+def _friendly_signing_error(exc: Exception) -> str:
+    cause = exc.__cause__
+    if isinstance(cause, RevokedError):
+        return "A revogação do certificado impede esta assinatura."
+    raw = f"{exc} | {cause or ''}".lower()
+    if "author signature forbids" in raw or "docmdp" in raw or "lock" in raw:
+        return "Este PDF possui uma restrição do autor que impede acrescentar novas assinaturas."
+    if "expired" in raw or "not yet valid" in raw or "validity" in raw:
+        return "O certificado digital está fora do período de vigência."
+    if "key usage" in raw:
+        return "Este certificado não possui permissão de assinatura digital (Key Usage)."
+    if "could not be validated" in raw or "path" in raw or "trust" in raw or "revocation" in raw:
+        detail = str(cause or exc).strip()
+        return f"Não foi possível validar a cadeia do certificado ICP-Brasil ({detail[:160]})."
+    detail = str(cause or exc).strip()
+    if detail:
+        return f"Não foi possível assinar este PDF ({detail[:160]})."
+    return "Não foi possível usar o certificado neste PDF. Confira a cadeia, a revogação e as restrições."
+
+
 def sign_document(data, signer, appearance):
     try:
         return asyncio.run(asyncio.wait_for(_sign(data, signer, appearance, "SiSFarm#" + uuid4().hex), timeout=60))
     except SigningError as exc:
         logger.warning("SigningError ao assinar PDF: %s | cause=%r", exc, exc.__cause__)
-        if isinstance(exc.__cause__, RevokedError):
-            raise ValueError("A revogação do certificado impede esta assinatura.") from exc
-        raise ValueError("Não foi possível usar o certificado neste PDF. Confira a cadeia, a revogação e as restrições.") from exc
+        raise ValueError(_friendly_signing_error(exc)) from exc
     except ValueError:
         raise
     except Exception as exc:
