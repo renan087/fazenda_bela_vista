@@ -874,6 +874,8 @@ def test_external_signer_and_mixed_icp_electronic_document(authority, web_db, mo
     assert created.status_code == 201, created.text
     endpoint = created.json()["url"]
 
+    # Without an active 24h Meta window (and no approved template), WhatsApp does not silently drop:
+    # returns a clear warning + ready-to-click wa.me share URL!
     ext_res = owner_client.post(endpoint + "/externos", headers=headers, json={
         "name": "Carlos Comprador",
         "role_label": "Comprador",
@@ -881,7 +883,26 @@ def test_external_signer_and_mixed_icp_electronic_document(authority, web_db, mo
         "phone": "(35) 99123-4567",
     })
     assert ext_res.status_code == 201, ext_res.text
-    sign_url = ext_res.json()["sign_url"]
+    ext_json = ext_res.json()
+    assert ext_json["notification_sent"] is False
+    assert "24h" in (ext_json["notification_error"] or "")
+    assert ext_json["whatsapp_share_url"].startswith("https://wa.me/5535991234567?text=")
+    assert len(wa_sent) == 0
+
+    # Once the recipient has an active 24h inbound window, resending dispatches automatically via WhatsApp Cloud API!
+    from app.models.whatsapp import WhatsAppInboundMessage
+    with sessions() as db:
+        db.add(WhatsAppInboundMessage(
+            wamid="wamid.test.24h",
+            wa_id="5535991234567",
+            msg_type="text",
+            received_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    resend_res = owner_client.post(f"{endpoint}/externos/{ext_json['signer_id']}/reenviar", headers=headers)
+    assert resend_res.status_code == 200, resend_res.text
+    assert resend_res.json()["notification_sent"] is True
+    sign_url = resend_res.json()["sign_url"]
     token = sign_url.rsplit("/assinar/", 1)[1]
     assert len(wa_sent) == 1 and "Carlos Comprador" in wa_sent[0][1]
 
@@ -1024,3 +1045,66 @@ def test_superadmin_institutional_ecnpj_seal_lifecycle(authority, web_db, monkey
     assert deact.status_code == 200
     page_after = client.get("/admin/selo-institucional")
     assert "Selo Criptográfico Interno ativo" in page_after.text
+
+
+def test_external_signer_email_and_whatsapp_template_dispatch(web_db, monkeypatch):
+    from app.services.document_signing import electronic
+
+    sessions, settings = web_db
+    emails = []
+    wa_templates = []
+    monkeypatch.setattr(electronic, "send_plain_email", lambda *args: emails.append(args))
+    monkeypatch.setattr(electronic, "whatsapp_is_configured", lambda: True)
+
+    class _FakeTemplateWA:
+        def send_template(self, to, template_name, *, language="pt_BR", body_params=None):
+            wa_templates.append((to, template_name, language, body_params))
+            return {"ok": True}
+
+    monkeypatch.setattr(electronic, "WhatsAppClient", _FakeTemplateWA)
+
+    web = _make_signing_app(sessions)
+    client = LocalTestClient(web)
+    headers = {"X-CSRF-Token": client.get("/test-login", params={"user_id": 1, "farm_id": 1}).json()["csrf"]}
+
+    original = _original()
+    created = client.post("/assinatura-digital/documentos", content=original, headers={
+        **headers,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "termo_externo.pdf",
+        "X-Document-Owner-Signs": "0",
+        "X-Document-Signing-Policy": "electronic",
+    })
+    assert created.status_code == 201, created.text
+    endpoint = created.json()["url"]
+
+    # 1) External invite via email dispatches send_plain_email cleanly
+    ext_email = client.post(endpoint + "/externos", headers=headers, json={
+        "name": "Ana Compradora",
+        "role_label": "Compradora",
+        "channel": "email",
+        "email": "ana@compradora.test",
+    })
+    assert ext_email.status_code == 201, ext_email.text
+    assert ext_email.json()["notification_sent"] is True
+    assert len(emails) == 1
+    assert emails[0][0] == "ana@compradora.test"
+    assert "/assinar/" in emails[0][2]
+
+    # 2) External invite via WhatsApp with approved Meta template works WITHOUT 24h window
+    monkeypatch.setattr(electronic, "get_settings", lambda: SimpleNamespace(
+        whatsapp_signing_invite_template="sisfarm_convite_assinatura",
+        whatsapp_signing_otp_template="sisfarm_codigo_assinatura",
+        whatsapp_template_language="pt_BR",
+    ))
+    ext_wa = client.post(endpoint + "/externos", headers=headers, json={
+        "name": "Pedro Fornecedor",
+        "role_label": "Fornecedor",
+        "channel": "whatsapp",
+        "phone": "(35) 99222-3344",
+    })
+    assert ext_wa.status_code == 201, ext_wa.text
+    assert ext_wa.json()["notification_sent"] is True
+    assert len(wa_templates) == 1
+    assert wa_templates[0][0] == "5535992223344"
+    assert wa_templates[0][1] == "sisfarm_convite_assinatura"

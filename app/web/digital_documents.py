@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app.core.admin_access import is_super_admin_email
+from app.core.config import get_settings
 from app.core.csrf import ensure_csrf_token, validate_csrf
 from app.core.deps import get_current_user_web
 from app.db.session import get_db
@@ -46,6 +47,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 PRIVATE = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
 SESSION_NONCE = "document_signing_session"
+
+
+def _public_base_url(request: Request) -> str:
+    """Resolve a URL publica em HTTPS para links de assinatura, e-mail, WhatsApp e QR Code."""
+    req_url = str(request.base_url).rstrip("/")
+    host = (request.headers.get("x-forwarded-host") or request.url.hostname or "").lower()
+    if host not in ("", "testserver", "localhost", "127.0.0.1"):
+        configured = (get_settings().app_public_url or "").strip().rstrip("/")
+        if configured.startswith("https://") or configured.startswith("http://"):
+            return configured
+    proto = (request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip().lower()
+    if proto == "https" and req_url.startswith("http://"):
+        return "https://" + req_url[len("http://"):]
+    return req_url
 
 
 def _farm(request, db, user, *, required=True):
@@ -583,7 +598,7 @@ async def apply_signature(document_id: str, request: Request, db: Session = Depe
             ip_address=client_ip(request),
             user_agent=request.headers.get("user-agent", ""),
             farm_name=farm.name,
-            base_url=str(request.base_url),
+            base_url=_public_base_url(request),
         )
         return _json(result)
     except (ValueError, workflow.WorkflowError, IntegrityError) as exc:
@@ -653,7 +668,7 @@ async def apply_electronic_signature(document_id: str, request: Request, db: Ses
             ip_address=client_ip(request),
             user_agent=request.headers.get("user-agent", ""),
             farm_name=farm.name,
-            base_url=str(request.base_url),
+            base_url=_public_base_url(request),
             store_revision_fn=workflow._store_revision,
         )
         return _json(result)
@@ -671,7 +686,7 @@ async def add_external_signer(document_id: str, request: Request, db: Session = 
     if getattr(doc, "signing_policy", "flexible") == "icp_brasil":
         raise HTTPException(403, "Signatários externos sem certificado só podem ser convidados em documentos com assinatura eletrônica.")
     try:
-        signer, sign_url, sent, err = await run_in_threadpool(
+        signer, sign_url, sent, err, wa_share_url = await run_in_threadpool(
             electronic.create_external_signer,
             db,
             doc=doc,
@@ -682,16 +697,52 @@ async def add_external_signer(document_id: str, request: Request, db: Session = 
             phone=str(data.get("phone") or "") or None,
             channel=str(data.get("channel") or "email"),
             role_label=str(data.get("role_label") or "Signatário"),
-            base_url=str(request.base_url),
+            base_url=_public_base_url(request),
         )
         return _json({
             "ok": True,
             "signer_id": signer.id,
+            "signer_name": signer.name,
             "sign_url": sign_url,
+            "whatsapp_share_url": wa_share_url,
             "channel": signer.channel,
             "notification_sent": sent,
             "notification_error": err,
         }, 201)
+    except (ValueError, PermissionError, IntegrityError) as exc:
+        db.rollback()
+        return _error(exc)
+
+
+@router.post("/assinatura-digital/documentos/{document_id}/externos/{signer_id}/reenviar")
+async def resend_external_signer_invite(document_id: str, signer_id: str, request: Request, db: Session = Depends(get_db),
+                                        user: User = Depends(get_current_user_web)):
+    _csrf(request)
+    farm = _farm(request, db, user)
+    doc = _doc(db, user, farm, document_id, owner=True, lock=True)
+    row = db.scalar(select(SigningExternalSigner).filter_by(id=signer_id, document_id=doc.id))
+    if row is None or row.status == "revoked":
+        raise HTTPException(404, "Signatário externo não encontrado.")
+    try:
+        sign_url, sent, err, wa_share_url = await run_in_threadpool(
+            electronic.resend_external_signer,
+            db,
+            doc=doc,
+            farm=farm,
+            sender=user,
+            signer=row,
+            base_url=_public_base_url(request),
+        )
+        return _json({
+            "ok": True,
+            "signer_id": row.id,
+            "signer_name": row.name,
+            "sign_url": sign_url,
+            "whatsapp_share_url": wa_share_url,
+            "channel": row.channel,
+            "notification_sent": sent,
+            "notification_error": err,
+        })
     except (ValueError, PermissionError, IntegrityError) as exc:
         db.rollback()
         return _error(exc)
@@ -774,7 +825,7 @@ async def add_participant(document_id: str, request: Request, db: Session = Depe
         db.add(SigningParticipant(document_id=doc.id, user_id=collaborator.id))
         workflow.audit(db, user, "compartilhar", document_id=doc.id, farm_id=farm.id, participant_id=collaborator.id)
         db.commit()
-    doc_url = str(request.base_url).rstrip("/") + f"/assinatura-digital/documentos/{doc.id}"
+    doc_url = _public_base_url(request) + f"/assinatura-digital/documentos/{doc.id}"
     sent, err = await run_in_threadpool(
         _notify_participant, db, doc=doc, farm=farm, sender=user, collaborator=collaborator, channel=channel, doc_url=doc_url
     )
@@ -984,6 +1035,19 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
     display_title = doc.title or (doc.filename[:-4] if doc.filename.lower().endswith(".pdf") else doc.filename)
     ver_code = electronic.ensure_document_verification_code(db, doc)
     pending_count = electronic._pending_signer_count(db, doc)
+    settings = get_settings()
+    otp_template = (getattr(settings, "whatsapp_signing_otp_template", None) or "").strip()
+    whatsapp_ready = bool(
+        signer.phone
+        and electronic.whatsapp_is_configured()
+        and (otp_template or electronic.has_active_whatsapp_window(db, signer.phone))
+    )
+    bot_wa = electronic.normalize_br_whatsapp(getattr(settings, "whatsapp_display_number", None))
+    whatsapp_bot_url = (
+        f"https://wa.me/{bot_wa}?text=" + quote("Olá, quero ativar o recebimento do código de assinatura no SiSFarm.", safe="")
+        if bot_wa
+        else ""
+    )
     db.commit()
     return templates.TemplateResponse(
         request,
@@ -1003,6 +1067,8 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
             "already_signed": signer.status == "signed",
             "phone_masked": electronic.mask_phone(signer.phone) if signer.phone else "",
             "email_masked": electronic.mask_email(signer.email) if signer.email else "",
+            "whatsapp_ready": whatsapp_ready,
+            "whatsapp_bot_url": whatsapp_bot_url,
         },
         headers=PRIVATE,
     )
@@ -1053,6 +1119,7 @@ async def external_request_code(token: str, request: Request, db: Session = Depe
             auth_channel=str(data.get("channel") or signer.channel or "email"),
             appearance=data.get("appearance") if isinstance(data.get("appearance"), dict) else {"visible": False},
             consent=data.get("consent") is True,
+            override_email=str(data.get("email") or "") or None,
         )
         return _json(result, 201)
     except (ValueError, PermissionError, workflow.WorkflowError, IntegrityError) as exc:
@@ -1086,7 +1153,7 @@ async def external_confirm_signature(token: str, request: Request, db: Session =
             ip_address=client_ip(request),
             user_agent=request.headers.get("user-agent", ""),
             farm_name=farm.name,
-            base_url=str(request.base_url),
+            base_url=_public_base_url(request),
             store_revision_fn=workflow._store_revision,
         )
         return _json(result)

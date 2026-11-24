@@ -186,6 +186,33 @@ class WhatsAppClient:
             payload["context"] = {"message_id": reply_to}
         return self._send(payload)
 
+    def send_template(
+        self,
+        to: str,
+        template_name: str,
+        *,
+        language: str = "pt_BR",
+        body_params: list[str] | None = None,
+    ) -> dict:
+        """Envia mensagem de template aprovado na Meta (funciona fora da janela de 24h)."""
+        template: dict = {
+            "name": (template_name or "").strip(),
+            "language": {"code": (language or "pt_BR").strip()},
+        }
+        if body_params:
+            template["components"] = [{
+                "type": "body",
+                "parameters": [{"type": "text", "text": str(p)[:1024]} for p in body_params],
+            }]
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "template",
+            "template": template,
+        }
+        return self._send(payload)
+
     def send_buttons(self, to: str, body: str, buttons: list[tuple[str, str]], *, reply_to: str | None = None) -> dict:
         """Ate 3 botoes de resposta rapida (titulo ate 20 caracteres)."""
         payload = {

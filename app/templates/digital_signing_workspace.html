@@ -521,6 +521,7 @@
               <span class="ds-pill ds-pill--muted">Revogado</span>
               {% else %}
               <span class="ds-pill ds-pill--warn">Pendente</span>
+              <button type="button" class="ds-inline-action" data-ds-resend-external="{{ ext.id }}">Reenviar / Link</button>
               <button type="button" class="ds-inline-action is-danger" data-ds-remove-external="{{ ext.id }}">Revogar</button>
               {% endif %}
             </div>
@@ -532,12 +533,13 @@
         {% endif %}
 
         <div class="ds-ext-link-box" data-ds-ext-link-box hidden>
-          <strong>Link exclusivo gerado!</strong>
+          <strong data-ds-ext-link-title>Link exclusivo gerado!</strong>
           <p data-ds-ext-link-note></p>
           <div class="ds-ext-link-row">
             <input type="text" readonly data-ds-ext-link-input>
             <button type="button" class="sf-btn sf-btn-secondary ds-btn-sm" data-ds-copy-ext-link>{{ icon('copy', 14) }} Copiar link</button>
           </div>
+          <a class="sf-btn sf-btn-primary ds-btn-sm" href="#" target="_blank" rel="noopener" data-ds-ext-wa-btn hidden>{{ icon('whatsapp', 15) }} Enviar pelo meu WhatsApp</a>
         </div>
 
         <form class="ds-share-form" data-ds-add-external>
@@ -629,5 +631,5 @@
     {% endif %}
   </div>
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=13"></script>
+<script type="module" src="/static/js/digital_signing.js?v=14"></script>
 {% endblock %}

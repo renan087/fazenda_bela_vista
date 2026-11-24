@@ -153,13 +153,31 @@
               <span>Onde receber o código de 8 dígitos?</span>
               <select data-ds-el-channel>
                 {% if signer.phone %}
-                <option value="whatsapp" {% if signer.channel == 'whatsapp' %}selected{% endif %}>WhatsApp ({{ phone_masked }})</option>
+                <option value="whatsapp" {% if whatsapp_ready and signer.channel == 'whatsapp' %}selected{% endif %}>WhatsApp ({{ phone_masked }})</option>
                 {% endif %}
-                {% if signer.email %}
-                <option value="email" {% if signer.channel != 'whatsapp' or not signer.phone %}selected{% endif %}>E-mail ({{ email_masked }})</option>
-                {% endif %}
+                <option value="email" {% if (not whatsapp_ready) or signer.channel != 'whatsapp' or not signer.phone %}selected{% endif %}>
+                  {% if email_masked %}E-mail ({{ email_masked }}){% else %}E-mail (informar abaixo){% endif %}
+                </option>
               </select>
             </label>
+
+            {% if not signer.email %}
+            <label class="ds-field" data-ds-el-override-email-wrap {% if whatsapp_ready and signer.channel == 'whatsapp' %}hidden{% endif %}>
+              <span>Seu e-mail para receber o código</span>
+              <input type="email" maxlength="180" placeholder="seuemail@exemplo.com.br" data-ds-el-override-email>
+            </label>
+            {% endif %}
+
+            {% if signer.phone and not whatsapp_ready %}
+            <div class="ds-banner is-info ds-banner--sm" data-ds-wa-activate-note hidden>
+              {{ icon('whatsapp', 16) }}
+              <span>
+                Para receber o código pelo WhatsApp oficial do SiSFarm, envie primeiro um "Oi" para o nosso número
+                {% if whatsapp_bot_url %} — <a href="{{ whatsapp_bot_url }}" target="_blank" rel="noopener"><strong>Abrir WhatsApp do SiSFarm →</strong></a>{% endif %}
+                ou escolha <strong>E-mail</strong> acima para receber imediatamente.
+              </span>
+            </div>
+            {% endif %}
 
             <div class="ds-switch-box" data-ds-placement>
               <label class="ds-switch-row">
@@ -244,6 +262,6 @@
   <footer class="ds-pub-footer">
     <p>SiSFarm · Assinatura Eletrônica conforme MP 2.200-2/2001 (art. 10 §2º), Lei 14.063/2020 (art. 4º II) e LGPD (Lei 13.709/2018).</p>
   </footer>
-  <script type="module" src="/static/js/digital_signing.js?v=13"></script>
+  <script type="module" src="/static/js/digital_signing.js?v=14"></script>
 </body>
 </html>

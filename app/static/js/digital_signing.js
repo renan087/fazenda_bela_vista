@@ -705,26 +705,28 @@ function initWizard(root) {
     if (extEmailWrap) extEmailWrap.hidden = isWa;
     feedback(extErr);
   });
-  extAddBtn?.addEventListener("click", () => {
+  function tryCommitPendingExternal() {
+    if (signingPolicy === "icp_brasil") return true;
     const name = (extName?.value || "").trim();
-    const role_label = (extRole?.value || "").trim() || "Signatário";
-    const channel = extChannel?.value === "email" ? "email" : "whatsapp";
     const phone = (extPhone?.value || "").trim();
     const email = (extEmail?.value || "").trim();
+    if (!name && !phone && !email) return true;
+    const role_label = (extRole?.value || "").trim() || "Signatário";
+    const channel = extChannel?.value === "email" ? "email" : "whatsapp";
     if (name.length < 3) {
       feedback(extErr, "Informe o nome completo do signatário externo.", true);
       extName?.focus();
-      return;
+      return false;
     }
     if (channel === "whatsapp" && phone.replace(/\D/g, "").length < 10) {
       feedback(extErr, "Informe um número de WhatsApp válido com DDD.", true);
       extPhone?.focus();
-      return;
+      return false;
     }
     if (channel === "email" && !email.includes("@")) {
       feedback(extErr, "Informe um e-mail válido para o signatário externo.", true);
       extEmail?.focus();
-      return;
+      return false;
     }
     externalSigners.push({name, role_label, channel, phone: channel === "whatsapp" ? phone : "", email: channel === "email" ? email : ""});
     if (extName) extName.value = "";
@@ -733,6 +735,11 @@ function initWizard(root) {
     feedback(extErr);
     renderExternalList();
     syncUI();
+    return true;
+  }
+
+  extAddBtn?.addEventListener("click", () => {
+    tryCommitPendingExternal();
   });
   titleInput?.addEventListener("input", syncUI);
   catSelect?.addEventListener("change", syncUI);
@@ -787,6 +794,10 @@ function initWizard(root) {
     const file = selectedFile || fileInput?.files?.[0];
     if (!file) {
       feedback(statusEl, "Selecione ou arraste um arquivo PDF antes de continuar.", true);
+      return;
+    }
+    if (whoSigns !== "only_me" && !tryCommitPendingExternal()) {
+      feedback(statusEl, "Corrija os dados do signatário externo antes de continuar.", true);
       return;
     }
     const chosen = whoSigns !== "only_me" ? selectedColleagues() : [];
@@ -1514,9 +1525,36 @@ function initWorkspace(root) {
   const extWsEmailWrap = find("[data-ds-ws-ext-email-wrap]");
   const extWsStatus = find("[data-ds-ext-ws-status]");
   const extLinkBox = find("[data-ds-ext-link-box]");
+  const extLinkTitle = find("[data-ds-ext-link-title]");
   const extLinkNote = find("[data-ds-ext-link-note]");
   const extLinkInput = find("[data-ds-ext-link-input]");
+  const extWaBtn = find("[data-ds-ext-wa-btn]");
   const copyExtLinkBtn = find("[data-ds-copy-ext-link]");
+
+  function showExternalLinkBox(res) {
+    if (!extLinkBox || !extLinkInput) return;
+    extLinkBox.hidden = false;
+    extLinkInput.value = res.sign_url || "";
+    if (extLinkTitle) {
+      extLinkTitle.textContent = res.notification_sent
+        ? `Convite enviado para ${res.signer_name || "o signatário"}!`
+        : `Link exclusivo pronto para ${res.signer_name || "o signatário"}`;
+    }
+    if (extLinkNote) {
+      extLinkNote.textContent = res.notification_sent
+        ? "Convite disparado automaticamente! Se quiser, você também pode copiar o link ou enviar pelo seu WhatsApp."
+        : (res.notification_error || "Link gerado com sucesso! Clique abaixo para enviar pelo seu WhatsApp ou copie o link.");
+    }
+    if (extWaBtn) {
+      if (res.whatsapp_share_url) {
+        extWaBtn.href = res.whatsapp_share_url;
+        extWaBtn.hidden = false;
+      } else {
+        extWaBtn.hidden = true;
+      }
+    }
+    extLinkBox.scrollIntoView({behavior: "smooth", block: "nearest"});
+  }
 
   extWsChannel?.addEventListener("change", () => {
     const isWa = extWsChannel.value === "whatsapp";
@@ -1556,23 +1594,29 @@ function initWorkspace(root) {
       if (extWsPhoneWrap) extWsPhoneWrap.hidden = false;
       if (extWsEmailWrap) extWsEmailWrap.hidden = true;
       feedback(extWsStatus);
-      if (extLinkBox && extLinkInput) {
-        extLinkBox.hidden = false;
-        extLinkInput.value = res.sign_url || "";
-        if (extLinkNote) {
-          extLinkNote.textContent = res.notification_sent
-            ? "Convite enviado automaticamente! Se preferir, copie o link abaixo para enviar manualmente."
-            : (res.notification_error || "Link gerado com sucesso! Copie e envie ao signatário pelo WhatsApp ou e-mail.");
-        }
-      } else {
-        location.reload();
-      }
+      showExternalLinkBox(res);
     } catch (error) {
       feedback(extWsStatus, error.message, true);
     } finally {
       button.disabled = false;
     }
   });
+
+  for (const control of root.querySelectorAll("[data-ds-resend-external]")) {
+    control.addEventListener("click", async () => {
+      control.disabled = true;
+      feedback(extWsStatus, "Gerando novo link e reenviando convite…");
+      try {
+        const res = await request(root, `${endpoint}/externos/${control.dataset.dsResendExternal}/reenviar`, {method: "POST"});
+        feedback(extWsStatus);
+        showExternalLinkBox(res);
+      } catch (error) {
+        feedback(extWsStatus, error.message, true);
+      } finally {
+        control.disabled = false;
+      }
+    });
+  }
 
   for (const control of root.querySelectorAll("[data-ds-remove-external]")) {
     control.addEventListener("click", async () => {
@@ -1962,6 +2006,9 @@ function initExternalSigning(root) {
   const elNameInput = find("[data-ds-el-name]");
   const elCpfInput = find("[data-ds-el-cpf]");
   const elChannelSelect = find("[data-ds-el-channel]");
+  const elOverrideEmailWrap = find("[data-ds-el-override-email-wrap]");
+  const elOverrideEmail = find("[data-ds-el-override-email]");
+  const waActivateNote = find("[data-ds-wa-activate-note]");
   const consent = find("[data-ds-consent]");
   const authorize = find("[data-ds-ext-authorize]");
   const status = find("[data-ds-status]");
@@ -1999,11 +2046,20 @@ function initExternalSigning(root) {
     if (isDone) window.scrollTo({top: 0, behavior: "smooth"});
   }
 
+  function syncExternalChannelFields() {
+    const ch = elChannelSelect?.value || "email";
+    if (elOverrideEmailWrap) elOverrideEmailWrap.hidden = ch !== "email";
+    if (waActivateNote) waActivateNote.hidden = ch !== "whatsapp";
+  }
+
   function syncAuthorization() {
     if (!consent || !authorize) return;
+    syncExternalChannelFields();
     const nameOk = Boolean((elNameInput?.value || "").trim().length >= 3);
     const cpfOk = isValidCpf(elCpfInput?.value || "");
-    const readyIdentity = nameOk && cpfOk;
+    const ch = elChannelSelect?.value || "email";
+    const emailOk = ch !== "email" || !elOverrideEmail || elOverrideEmailWrap?.hidden || (elOverrideEmail.value || "").trim().includes("@");
+    const readyIdentity = nameOk && cpfOk && emailOk;
     if (!readyIdentity) consent.checked = false;
     consent.disabled = !readyIdentity;
     const consentBox = find("[data-ds-consent-box]");
@@ -2195,6 +2251,8 @@ function initExternalSigning(root) {
 
   elNameInput?.addEventListener("input", drawStamp);
   elCpfInput?.addEventListener("input", drawStamp);
+  elChannelSelect?.addEventListener("change", syncAuthorization);
+  elOverrideEmail?.addEventListener("input", syncAuthorization);
   visible?.addEventListener("change", () => {
     if (visible.checked && !chosenLocation) defaultLocation();
     drawStamp();
@@ -2229,6 +2287,7 @@ function initExternalSigning(root) {
           signer_name: (elNameInput?.value || "").trim(),
           cpf: (elCpfInput?.value || "").trim(),
           channel,
+          email: (elOverrideEmail?.value || "").trim(),
           appearance,
           consent: consent.checked,
         },

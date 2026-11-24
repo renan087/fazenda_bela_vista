@@ -14,7 +14,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from io import BytesIO
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -31,6 +31,7 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas as rl_canvas
 from sqlalchemy import select, update
 
+from app.core.config import get_settings
 from app.core.security import hash_persistent_token, hash_verification_code
 from app.models import Farm, User
 from app.models.audit_log import AuditLog
@@ -43,11 +44,17 @@ from app.models.signed_document import (
     SigningParticipant,
     SigningRevision,
 )
-from app.models.whatsapp import WhatsAppLink
+from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink
 from app.services.digital_certificates import encryption_key, seal, unseal, utc
 from app.services.document_signing.pdf import a1_signer, check_appearance, read_pdf, sign_document, validate_pdf
 from app.services.email_service import send_plain_email
-from app.services.whatsapp import WhatsAppClient, WhatsAppError, is_configured as whatsapp_is_configured
+from app.services.whatsapp import (
+    SERVICE_WINDOW_SECONDS,
+    WhatsAppClient,
+    WhatsAppError,
+    is_configured as whatsapp_is_configured,
+    wa_id_variants,
+)
 
 rl_config.useA85 = 0
 logger = logging.getLogger("uvicorn.error.electronic_signing")
@@ -828,6 +835,114 @@ def apply_institutional_ecnpj_seal(pdf_bytes: bytes, *, cert_row: InstitutionalS
 # ---------------------------------------------------------------------------
 
 
+def has_active_whatsapp_window(db, phone_or_wa_id: str | None) -> bool:
+    """Verifica se o destinatário enviou mensagem ao WhatsApp do SiSFarm nas últimas 24h (janela ativa da Meta)."""
+    wa_to = normalize_br_whatsapp(phone_or_wa_id)
+    if not wa_to:
+        return False
+    variants = wa_id_variants(wa_to)
+    if not variants:
+        return False
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=SERVICE_WINDOW_SECONDS)
+    link_at = db.scalar(
+        select(WhatsAppLink.last_inbound_at)
+        .where(WhatsAppLink.wa_id.in_(variants), WhatsAppLink.last_inbound_at.is_not(None))
+        .order_by(WhatsAppLink.last_inbound_at.desc())
+        .limit(1)
+    )
+    if link_at and utc(link_at) >= cutoff:
+        return True
+    inbound_at = db.scalar(
+        select(WhatsAppInboundMessage.received_at)
+        .where(WhatsAppInboundMessage.wa_id.in_(variants))
+        .order_by(WhatsAppInboundMessage.received_at.desc())
+        .limit(1)
+    )
+    return bool(inbound_at and utc(inbound_at) >= cutoff)
+
+
+def build_whatsapp_share_url(phone: str | None, text: str) -> str:
+    wa_to = normalize_br_whatsapp(phone)
+    if not wa_to:
+        return ""
+    return f"https://wa.me/{wa_to}?text={quote(text, safe='')}"
+
+
+def _dispatch_external_invite(
+    db,
+    *,
+    doc: SigningDocument,
+    farm: Farm,
+    sender: User,
+    signer: SigningExternalSigner,
+    sign_url: str,
+) -> tuple[bool, str | None, str]:
+    doc_title = doc.title or doc.filename
+    sender_name = sender.display_name or sender.name
+    invite_text = (
+        f"Olá, {signer.name}!\n\n"
+        f"*{sender_name}* ({farm.name}) enviou o documento *{doc_title}* para sua assinatura eletrônica no SiSFarm.\n"
+        f"Não precisa criar conta nem ter certificado digital.\n\n"
+        f"Acesse seu link exclusivo para ler e assinar:\n{sign_url}"
+    )
+    whatsapp_share_url = build_whatsapp_share_url(signer.phone, invite_text)
+    sent, err = False, None
+    settings = get_settings()
+
+    if signer.channel == "whatsapp":
+        wa_to = normalize_br_whatsapp(signer.phone)
+        template_name = (getattr(settings, "whatsapp_signing_invite_template", None) or "").strip()
+        template_lang = (getattr(settings, "whatsapp_template_language", None) or "pt_BR").strip()
+        if not whatsapp_is_configured():
+            err = "Envio automático por WhatsApp não está configurado no servidor. Clique em 'Enviar pelo meu WhatsApp' ou copie o link."
+        elif template_name:
+            try:
+                WhatsAppClient().send_template(
+                    wa_to,
+                    template_name,
+                    language=template_lang,
+                    body_params=[signer.name, sender_name, farm.name, doc_title, sign_url],
+                )
+                sent = True
+            except WhatsAppError as exc:
+                logger.warning("Falha ao enviar template WhatsApp externo (doc=%s): %s", doc.id, exc)
+                err = f"Não foi possível enviar o WhatsApp automático para {signer.name} ({exc}). Use 'Enviar pelo meu WhatsApp' ou copie o link."
+        elif has_active_whatsapp_window(db, wa_to):
+            try:
+                WhatsAppClient().send_text(wa_to, invite_text)
+                sent = True
+            except WhatsAppError as exc:
+                logger.warning("Falha ao enviar link externo via WhatsApp (doc=%s): %s", doc.id, exc)
+                err = f"Não foi possível enviar o WhatsApp para {signer.name} ({exc}). Use 'Enviar pelo meu WhatsApp' ou copie o link."
+        else:
+            logger.info(
+                "WhatsApp externo sem janela de 24h nem template aprovado (doc=%s, signer=%s); retornando link wa.me",
+                doc.id,
+                signer.id,
+            )
+            err = (
+                f"O WhatsApp Business (Meta) não entrega mensagens automáticas para quem não conversou com o SiSFarm nas últimas 24h "
+                f"(sem modelo aprovado). Use o botão 'Enviar pelo meu WhatsApp' para mandar o convite para {signer.name} na hora."
+            )
+    else:
+        try:
+            send_plain_email(
+                signer.email,
+                f"Convite para assinar documento no SiSFarm: {doc_title}",
+                f"Olá, {signer.name}.\n\n"
+                f"{sender_name} ({farm.name}) enviou o documento \"{doc_title}\" para sua assinatura eletrônica no SiSFarm.\n"
+                "Você não precisa criar conta nem ter certificado digital.\n\n"
+                f"Acesse seu link exclusivo para revisar e assinar:\n{sign_url}\n\n"
+                f"Link válido por {EXTERNAL_TOKEN_DAYS} dias.",
+                "document_signing_external_invite",
+            )
+            sent = True
+        except RuntimeError as exc:
+            logger.warning("Falha ao enviar link externo via e-mail (doc=%s, to=%s): %s", doc.id, signer.email, exc)
+            err = f"Não foi possível enviar o e-mail para {signer.email}: {exc}"
+    return sent, err, whatsapp_share_url
+
+
 def create_external_signer(
     db,
     *,
@@ -840,7 +955,7 @@ def create_external_signer(
     channel: str,
     role_label: str,
     base_url: str,
-) -> tuple[SigningExternalSigner, str, bool, str | None]:
+) -> tuple[SigningExternalSigner, str, bool, str | None, str]:
     clean_name = (name or "").strip()[:160]
     if len(clean_name) < 2:
         raise ValueError("Informe o nome completo do signatário externo.")
@@ -872,43 +987,34 @@ def create_external_signer(
     db.commit()
 
     sign_url = f"{base_url.rstrip('/')}/assinar/{raw_token}"
-    doc_title = doc.title or doc.filename
-    sender_name = sender.display_name or sender.name
-    sent, err = False, None
-    if chan == "whatsapp":
-        wa_to = normalize_br_whatsapp(clean_phone)
-        if not whatsapp_is_configured():
-            err = "Envio por WhatsApp não está configurado no servidor. Copie o link exclusivo para enviar manualmente."
-        else:
-            body = (
-                f"Olá, {clean_name}!\n\n"
-                f"*{sender_name}* ({farm.name}) enviou o documento *{doc_title}* para sua assinatura eletrônica no SiSFarm.\n"
-                f"Não precisa criar conta nem ter certificado digital.\n\n"
-                f"Acesse seu link exclusivo para ler e assinar:\n{sign_url}"
-            )
-            try:
-                WhatsAppClient().send_text(wa_to, body)
-                sent = True
-            except WhatsAppError as exc:
-                logger.warning("Falha ao enviar link externo via WhatsApp (doc=%s): %s", doc.id, exc)
-                err = f"Não foi possível enviar o WhatsApp para {clean_name}: {exc}"
-    else:
-        try:
-            send_plain_email(
-                clean_email,
-                f"Convite para assinar documento no SiSFarm: {doc_title}",
-                f"Olá, {clean_name}.\n\n"
-                f"{sender_name} ({farm.name}) enviou o documento \"{doc_title}\" para sua assinatura eletrônica no SiSFarm.\n"
-                "Você não precisa criar conta nem ter certificado digital.\n\n"
-                f"Acesse seu link exclusivo para revisar e assinar:\n{sign_url}\n\n"
-                f"Link válido por {EXTERNAL_TOKEN_DAYS} dias.",
-                "document_signing_external_invite",
-            )
-            sent = True
-        except RuntimeError as exc:
-            logger.warning("Falha ao enviar link externo via e-mail (doc=%s): %s", doc.id, exc)
-            err = f"Não foi possível enviar o e-mail para {clean_email}."
-    return signer, sign_url, sent, err
+    sent, err, whatsapp_share_url = _dispatch_external_invite(
+        db, doc=doc, farm=farm, sender=sender, signer=signer, sign_url=sign_url,
+    )
+    return signer, sign_url, sent, err, whatsapp_share_url
+
+
+def resend_external_signer(
+    db,
+    *,
+    doc: SigningDocument,
+    farm: Farm,
+    sender: User,
+    signer: SigningExternalSigner,
+    base_url: str = "",
+) -> tuple[str, bool, str | None, str]:
+    if signer.status == "signed":
+        raise ValueError("Este signatário já assinou o documento.")
+    raw_token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    signer.access_token_hash = hash_persistent_token(raw_token)
+    signer.token_expires_at = now + timedelta(days=EXTERNAL_TOKEN_DAYS)
+    signer.status = "pending"
+    db.commit()
+    sign_url = f"{base_url.rstrip('/')}/assinar/{raw_token}"
+    sent, err, whatsapp_share_url = _dispatch_external_invite(
+        db, doc=doc, farm=farm, sender=sender, signer=signer, sign_url=sign_url,
+    )
+    return sign_url, sent, err, whatsapp_share_url
 
 
 def get_external_signer_by_token(db, raw_token: str) -> tuple[SigningExternalSigner, SigningDocument, Farm] | None:
@@ -958,6 +1064,7 @@ def issue_electronic_challenge(
     auth_channel: str,
     appearance: dict,
     consent: bool,
+    override_email: str | None = None,
 ) -> dict:
     if not consent:
         raise ValueError("Confirme que leu o documento e autoriza a assinatura eletrônica.")
@@ -972,6 +1079,11 @@ def issue_electronic_challenge(
         if external_signer.status == "signed":
             raise ValueError("Você já assinou este documento.")
         dest_email = external_signer.email
+        if chan == "email" and (not dest_email or "@" not in dest_email):
+            clean_override = (override_email or "").strip().lower()[:180]
+            if clean_override and "@" in clean_override:
+                dest_email = clean_override
+                external_signer.email = clean_override
         dest_phone = external_signer.phone
     elif user is not None:
         dest_email = user.email
@@ -980,16 +1092,24 @@ def issue_electronic_challenge(
     else:
         raise ValueError("Signatário inválido.")
 
+    settings = get_settings()
+    otp_template = (getattr(settings, "whatsapp_signing_otp_template", None) or "").strip()
+    otp_lang = (getattr(settings, "whatsapp_template_language", None) or "pt_BR").strip()
+
     if chan == "whatsapp":
         wa_target = normalize_br_whatsapp(dest_phone)
         if not wa_target:
             raise ValueError("Não há número de WhatsApp cadastrado para receber o código. Escolha E-mail.")
         if not whatsapp_is_configured():
-            raise ValueError("O envio de código por WhatsApp não está disponível no momento. Escolha E-mail.")
+            raise ValueError("O envio de código por WhatsApp não está disponível no momento. Escolha receber por E-mail.")
+        if not otp_template and not has_active_whatsapp_window(db, wa_target):
+            raise ValueError(
+                "Para receber o código pelo WhatsApp do SiSFarm, envie primeiro um 'Oi' no nosso WhatsApp ou escolha receber o código por E-mail."
+            )
         dest_masked = mask_phone(wa_target)
     else:
         if not dest_email or "@" not in dest_email:
-            raise ValueError("Não há e-mail cadastrado para receber o código.")
+            raise ValueError("Informe um e-mail válido para receber o código de confirmação.")
         wa_target = ""
         dest_masked = mask_email(dest_email)
 
@@ -1063,12 +1183,20 @@ def issue_electronic_challenge(
 
     try:
         if chan == "whatsapp":
-            WhatsAppClient().send_text(
-                wa_target,
-                f"SiSFarm · Código de confirmação para assinar *{doc_title}*:\n\n"
-                f"*{code}*\n\n"
-                f"Válido por {CHALLENGE_MINUTES} minutos. Informe este código apenas na tela onde você iniciou a assinatura.",
-            )
+            if otp_template:
+                WhatsAppClient().send_template(
+                    wa_target,
+                    otp_template,
+                    language=otp_lang,
+                    body_params=[code, doc_title],
+                )
+            else:
+                WhatsAppClient().send_text(
+                    wa_target,
+                    f"SiSFarm · Código de confirmação para assinar *{doc_title}*:\n\n"
+                    f"*{code}*\n\n"
+                    f"Válido por {CHALLENGE_MINUTES} minutos. Informe este código apenas na tela onde você iniciou a assinatura.",
+                )
         else:
             send_plain_email(
                 dest_email,
