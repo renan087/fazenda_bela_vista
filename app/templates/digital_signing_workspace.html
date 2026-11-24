@@ -52,6 +52,7 @@
 
   {% if mode == 'blocked' %}<div class="ds-banner is-warn" role="status">{{ icon('clock', 17) }}<span>Assinatura em homologação no VALIDAR do ITI. Você pode revisar, compartilhar e validar este PDF.</span></div>{% endif %}
   {% if mode == 'pilot' %}<div class="ds-banner is-info" role="status">{{ icon('clock', 17) }}<span>Ambiente piloto do VALIDAR. Utilize documentos de teste.</span></div>{% endif %}
+  {% if notice %}<div class="ds-banner is-warn" role="alert">{{ icon('alert', 17) }}<span>{{ notice }}</span></div>{% endif %}
 
   <!-- PAINEL 1: CERIMÔNIA DE ASSINATURA GUIADA (MODO FOCO) -->
   <div class="ds-ceremony-grid" data-ds-ws-panel="assinar" {% if active_view != 'assinar' %}hidden{% endif %}>
@@ -324,5 +325,5 @@
     {% endif %}
   </div>
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=6"></script>
+<script type="module" src="/static/js/digital_signing.js?v=7"></script>
 {% endblock %}

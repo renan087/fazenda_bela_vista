@@ -119,7 +119,17 @@ def _clean_text(value: str | None, limit: int) -> str | None:
     return cleaned[:limit] if cleaned else None
 
 
-def import_pdf(db, user, farm_id, name, data, *, title: str | None = None, category: str | None = None):
+def import_pdf(
+    db,
+    user,
+    farm_id,
+    name,
+    data,
+    *,
+    title: str | None = None,
+    category: str | None = None,
+    owner_signs: bool = True,
+):
     if len(data) > MAX_UPLOAD_BYTES:
         raise WorkflowError("O PDF ultrapassa o limite de 12 MB.", 413)
     # Existing signatures are inspected on import without keeping network requests inside this transaction.
@@ -129,7 +139,7 @@ def import_pdf(db, user, farm_id, name, data, *, title: str | None = None, categ
     safe_category = category.strip() if isinstance(category, str) and category.strip() in DOCUMENT_CATEGORIES else None
     doc = SigningDocument(
         id=uuid4().hex, organization_id=user.organization_id, farm_id=farm_id,
-        owner_id=user.id, filename=safe_filename, title=safe_title, category=safe_category,
+        owner_id=user.id, owner_signs=bool(owner_signs), filename=safe_filename, title=safe_title, category=safe_category,
         current_revision=1, validation=validation,
     )
     db.add(doc)

@@ -592,3 +592,39 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
         assert workflow.usable_certificates(db, user=db.get(User, 2), farm_id=1) == []
     assert "Maria Produtora" not in client.get("/certificados-digitais").text
 
+    # 7) "Apenas outras pessoas" (owner_signs=False) counts only invited signers (0 de 1, Aguardando outros)
+    # and actually dispatches WhatsApp notification when channel="whatsapp"
+    sent_whatsapp = []
+    from app.web import digital_documents as web_dd
+    monkeypatch.setattr(web_dd, "whatsapp_is_configured", lambda: True)
+    class _FakeWA:
+        def send_text(self, to, body, **kwargs):
+            sent_whatsapp.append((to, body))
+            return {"ok": True}
+    monkeypatch.setattr(web_dd, "WhatsAppClient", _FakeWA)
+
+    others_only = client.post("/assinatura-digital/documentos", content=original, headers={
+        **headers,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "so_terceiro.pdf",
+        "X-Document-Title": "Contrato%20Terceiro",
+        "X-Document-Owner-Signs": "0",
+    })
+    assert others_only.status_code == 201, others_only.text
+    others_url = others_only.json()["url"]
+    invited = client.post(others_url + "/participantes", headers=headers, json={
+        "email": "conta2@example.test", "channel": "whatsapp", "consent": True,
+    })
+    assert invited.status_code == 200, invited.text
+    assert invited.json()["notification_sent"] is True
+    assert len(sent_whatsapp) == 1
+    assert sent_whatsapp[0][0] == "5535998887766"
+    assert "Contrato Terceiro" in sent_whatsapp[0][1]
+
+    home_after = client.get("/assinatura-digital").text
+    assert "Contrato Terceiro" in home_after
+    assert "Aguardando outros" in home_after
+    ws_others = client.get(others_url).text
+    assert "0 de 1 assinou" in ws_others
+    assert "0 de 2 assinou" not in ws_others
+

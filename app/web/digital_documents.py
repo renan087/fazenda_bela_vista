@@ -2,6 +2,8 @@
 import base64
 import binascii
 import json
+import logging
+import re
 import secrets
 from datetime import datetime, timezone
 from urllib.parse import quote, unquote
@@ -20,14 +22,18 @@ from app.db.session import get_db
 from app.models import Farm, User
 from app.models.digital_certificate import CertificateHolderAssignment, CertificatePurpose, DigitalCertificate
 from app.models.signed_document import SigningDocument, SigningParticipant, SigningRevision
+from app.models.whatsapp import WhatsAppLink
 from app.services import digital_certificates as certificates, login_throttle
 from app.services.audit_log_service import client_ip
 from app.services.document_signing import workflow
 from app.services.document_signing.pdf import MAX_UPLOAD_BYTES, read_pdf, signing_options, validate_pdf
 from app.services.document_signing.policy import signing_mode
+from app.services.email_service import send_plain_email
 from app.services.nfe_permissions import has_fiscal_permission
+from app.services.whatsapp import WhatsAppClient, WhatsAppError, is_configured as whatsapp_is_configured
 from app.web.routes import _base_context, _repository, templates
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 PRIVATE = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
 SESSION_NONCE = "document_signing_session"
@@ -151,14 +157,17 @@ def _document_summaries(db, user, farm):
         sig_count = len(validation.get("signatures") or [])
         participants = part_map.get(doc.id, [])
         signed_users = signed_by_map.get(doc.id, set())
-        expected_set = {uid for uid in ([doc.owner_id] + participants) if uid is not None}
+        owner_must_sign = bool(getattr(doc, "owner_signs", True))
+        expected_list = ([doc.owner_id] if owner_must_sign else []) + participants
+        expected_set = {uid for uid in expected_list if uid is not None}
         expected_count = max(len(expected_set), sig_count, 1)
         signed_by_me = user.id in signed_users
+        user_must_sign = (user.id in participants) or (doc.owner_id == user.id and owner_must_sign)
 
         if val_state == "invalid":
             status_key, status_label, status_tone = "attention", "Com alerta", "err"
             counts["attention"] += 1
-        elif not signed_by_me and (sig_count == 0 or user.id in participants or doc.owner_id == user.id):
+        elif not signed_by_me and user_must_sign:
             status_key, status_label, status_tone = "your_turn", "Sua vez de assinar", "warn"
             counts["your_turn"] += 1
         elif sig_count < expected_count:
@@ -314,8 +323,19 @@ async def document_import(request: Request, db: Session = Depends(get_db), user:
         name = unquote(request.headers.get("X-Document-Name", "Documento.pdf"))
         title = unquote(request.headers.get("X-Document-Title", "")) or None
         category = unquote(request.headers.get("X-Document-Category", "")) or None
+        owner_signs_raw = (request.headers.get("X-Document-Owner-Signs", "1") or "1").strip().lower()
+        owner_signs = owner_signs_raw not in {"0", "false", "no"}
         doc_id = await run_in_threadpool(
-            _limited, workflow.import_pdf, db, user, farm.id, name, data, title=title, category=category
+            _limited,
+            workflow.import_pdf,
+            db,
+            user,
+            farm.id,
+            name,
+            data,
+            title=title,
+            category=category,
+            owner_signs=owner_signs,
         )
         return _json({"id": doc_id, "url": f"/assinatura-digital/documentos/{doc_id}"}, 201)
     except (ValueError, workflow.WorkflowError, IntegrityError) as exc:
@@ -385,9 +405,11 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
         })
     display_title = doc.title or (doc.filename[:-4] if doc.filename.lower().endswith(".pdf") else doc.filename)
     sig_count = len((doc.validation or {}).get("signatures") or [])
-    expected_count = max(1 + len(participants), sig_count, 1)
+    owner_must_sign = bool(getattr(doc, "owner_signs", True))
+    expected_count = max((1 if owner_must_sign else 0) + len(participants), sig_count, 1)
     active_view = "detalhes" if request.query_params.get("aba") == "detalhes" else "assinar"
     wizard_flow = request.query_params.get("fluxo") or ""
+    notice = (request.query_params.get("aviso") or "").strip()[:260]
     filename_stem = doc.filename[:-4] if doc.filename.lower().endswith(".pdf") else doc.filename
     show_filename_sub = filename_stem.strip().lower() != display_title.strip().lower()
     return _page(
@@ -396,6 +418,7 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
         options=options, revisions=revisions,
         participants=participants, available_colleagues=available_colleagues,
         certificate_options=cert_choices, sig_count=sig_count, expected_count=expected_count,
+        owner_must_sign=owner_must_sign, notice=notice,
         active_view=active_view, wizard_flow=wizard_flow, mode=signing_mode(farm.id),
     )
 
@@ -476,12 +499,60 @@ async def apply_signature(document_id: str, request: Request, db: Session = Depe
         return _error(exc)
 
 
+def _normalize_br_whatsapp(phone: str | None) -> str:
+    digits = re.sub(r"\D", "", phone or "")
+    if not digits:
+        return ""
+    if len(digits) in (10, 11) and not digits.startswith("55"):
+        return "55" + digits
+    return digits
+
+
+def _notify_participant(db: Session, *, doc: SigningDocument, farm: Farm, sender: User, collaborator: User, channel: str, doc_url: str) -> tuple[bool, str | None]:
+    doc_title = doc.title or doc.filename
+    sender_name = sender.display_name or sender.name
+    if channel == "whatsapp":
+        link = db.scalar(select(WhatsAppLink).where(WhatsAppLink.user_id == collaborator.id, WhatsAppLink.wa_id.is_not(None)))
+        wa_to = (link.wa_id if link and link.wa_id else "") or _normalize_br_whatsapp(collaborator.phone)
+        if not wa_to:
+            return False, f"{collaborator.display_name or collaborator.name} não possui telefone cadastrado para WhatsApp."
+        if not whatsapp_is_configured():
+            return False, "Envio por WhatsApp não está configurado no servidor."
+        body = (
+            f"Olá, {collaborator.display_name or collaborator.name}!\n\n"
+            f"*{sender_name}* enviou o documento *{doc_title}* ({farm.name}) para sua assinatura digital no SiSFarm.\n\n"
+            f"Acesse para revisar e assinar:\n{doc_url}"
+        )
+        try:
+            WhatsAppClient().send_text(wa_to, body)
+            return True, None
+        except WhatsAppError as exc:
+            logger.warning("Falha ao enviar convite de assinatura por WhatsApp (doc=%s, user=%s): %s", doc.id, collaborator.id, exc)
+            return False, f"Não foi possível enviar o WhatsApp para {collaborator.display_name or collaborator.name}: {exc}"
+    try:
+        send_plain_email(
+            collaborator.email,
+            f"Documento para assinatura no SiSFarm: {doc_title}",
+            f"Olá, {collaborator.display_name or collaborator.name}.\n\n"
+            f"{sender_name} compartilhou o documento \"{doc_title}\" ({farm.name}) para sua assinatura digital no SiSFarm.\n\n"
+            f"Acesse o link abaixo para revisar e assinar:\n{doc_url}\n",
+            "document_signing_invite",
+        )
+        return True, None
+    except RuntimeError as exc:
+        logger.warning("Falha ao enviar convite de assinatura por e-mail (doc=%s, user=%s): %s", doc.id, collaborator.id, exc)
+        return False, f"Não foi possível enviar o e-mail para {collaborator.email}."
+
+
 @router.post("/assinatura-digital/documentos/{document_id}/participantes")
 async def add_participant(document_id: str, request: Request, db: Session = Depends(get_db),
                           user: User = Depends(get_current_user_web)):
     farm = _farm(request, db, user)
     data = await _payload(request)
     email = str(data.get("email", "")).strip().lower()
+    channel = str(data.get("channel") or "email").strip().lower()
+    if channel not in {"email", "whatsapp"}:
+        channel = "email"
     if data.get("consent") is not True:
         raise HTTPException(400, "Confirme o compartilhamento com a pessoa indicada.")
     doc = _doc(db, user, farm, document_id, owner=True, lock=True)
@@ -492,7 +563,11 @@ async def add_participant(document_id: str, request: Request, db: Session = Depe
         db.add(SigningParticipant(document_id=doc.id, user_id=collaborator.id))
         workflow.audit(db, user, "compartilhar", document_id=doc.id, farm_id=farm.id, participant_id=collaborator.id)
         db.commit()
-    return _json({"ok": True})
+    doc_url = str(request.base_url).rstrip("/") + f"/assinatura-digital/documentos/{doc.id}"
+    sent, err = await run_in_threadpool(
+        _notify_participant, db, doc=doc, farm=farm, sender=user, collaborator=collaborator, channel=channel, doc_url=doc_url
+    )
+    return _json({"ok": True, "channel": channel, "notification_sent": sent, "notification_error": err})
 
 
 @router.delete("/assinatura-digital/documentos/{document_id}/participantes/{participant_id}")

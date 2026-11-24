@@ -166,13 +166,14 @@ function reportInto(container, report, filename) {
   container.hidden = false;
 }
 
-async function request(root, path, {method = "POST", json, pdf, name, title, category} = {}) {
+async function request(root, path, {method = "POST", json, pdf, name, title, category, ownerSigns} = {}) {
   const headers = {"X-CSRF-Token": root.dataset.csrf, Accept: "application/json"};
   if (json) headers["Content-Type"] = "application/json";
   if (pdf) headers["Content-Type"] = "application/pdf";
   if (name) headers["X-Document-Name"] = encodeURIComponent(name);
   if (title) headers["X-Document-Title"] = encodeURIComponent(title);
   if (category) headers["X-Document-Category"] = encodeURIComponent(category);
+  if (typeof ownerSigns === "boolean") headers["X-Document-Owner-Signs"] = ownerSigns ? "1" : "0";
   const response = await fetch(path, {
     method, headers, body: json ? JSON.stringify(json) : pdf, cache: "no-store",
   });
@@ -646,6 +647,11 @@ function initWizard(root) {
       feedback(statusEl, "Selecione ou arraste um arquivo PDF antes de continuar.", true);
       return;
     }
+    const chosen = whoSigns !== "only_me" ? selectedColleagues() : [];
+    if (whoSigns !== "only_me" && chosen.length === 0) {
+      feedback(statusEl, "Selecione pelo menos uma pessoa para assinar este documento.", true);
+      return;
+    }
     submitBtn.disabled = true;
     feedback(statusEl, "Enviando e preparando o documento…");
     try {
@@ -654,21 +660,33 @@ function initWizard(root) {
         name: file.name,
         title: (titleInput?.value || "").trim(),
         category: catSelect?.value || "Outros",
+        ownerSigns: whoSigns !== "only_others",
       });
-      if (whoSigns !== "only_me") {
-        for (const card of selectedColleagues()) {
-          const email = card.querySelector("[data-ds-colleague-switch]")?.value;
-          if (email) {
-            await request(root, `${created.url}/participantes`, {
-              json: {email, consent: true},
-            }).catch(() => {});
+      const warnings = [];
+      for (const card of chosen) {
+        const email = card.querySelector("[data-ds-colleague-switch]")?.value;
+        const channel = card.querySelector("[data-ds-colleague-channel]")?.value || "email";
+        if (email) {
+          try {
+            const res = await request(root, `${created.url}/participantes`, {
+              json: {email, channel, consent: true},
+            });
+            if (res && res.notification_error) warnings.push(res.notification_error);
+          } catch (err) {
+            warnings.push(err.message || `Não foi possível compartilhar com ${email}.`);
           }
         }
       }
-      const dest = whoSigns === "only_others"
-        ? `${created.url}?aba=detalhes`
-        : `${created.url}?fluxo=${whoSigns}`;
-      location.assign(dest);
+      const params = new URLSearchParams();
+      if (whoSigns === "only_others") {
+        params.set("aba", "detalhes");
+      } else {
+        params.set("fluxo", whoSigns);
+      }
+      if (warnings.length) {
+        params.set("aviso", warnings.join(" "));
+      }
+      location.assign(`${created.url}?${params.toString()}`);
     } catch (error) {
       feedback(statusEl, error.message, true);
       submitBtn.disabled = false;
