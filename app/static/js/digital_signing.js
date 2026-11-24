@@ -233,6 +233,56 @@ function initActionMenus() {
   });
 }
 
+function bindAnimatedDropzone(dropEl, {dragTitle, dragSub, onFile}) {
+  if (!dropEl) return;
+  const titleEl = dropEl.querySelector("[data-ds-drop-title], [data-ds-reg-file-label], strong");
+  const subEl = dropEl.querySelector("[data-ds-drop-sub], [data-ds-reg-file-sub], p");
+  let origTitle = titleEl ? titleEl.textContent : "";
+  let origSub = subEl ? subEl.textContent : "";
+  let depth = 0;
+
+  const enterDrag = () => {
+    if (!dropEl.classList.contains("is-dragging")) {
+      origTitle = titleEl ? titleEl.textContent : "";
+      origSub = subEl ? subEl.textContent : "";
+      dropEl.classList.add("is-dragging");
+      if (titleEl) titleEl.textContent = dragTitle;
+      if (subEl) subEl.textContent = dragSub;
+    }
+  };
+
+  const leaveDrag = () => {
+    depth = 0;
+    if (dropEl.classList.contains("is-dragging")) {
+      dropEl.classList.remove("is-dragging");
+      if (titleEl) titleEl.textContent = origTitle;
+      if (subEl) subEl.textContent = origSub;
+    }
+  };
+
+  dropEl.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    depth++;
+    enterDrag();
+  });
+  dropEl.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    enterDrag();
+  });
+  dropEl.addEventListener("dragleave", (event) => {
+    depth = Math.max(0, depth - 1);
+    if (depth === 0 || !dropEl.contains(event.relatedTarget)) {
+      leaveDrag();
+    }
+  });
+  dropEl.addEventListener("drop", (event) => {
+    event.preventDefault();
+    leaveDrag();
+    const file = event.dataTransfer?.files?.[0];
+    if (file && onFile) onFile(file);
+  });
+}
+
 function initHome(root) {
   const panels = {
     overview: root.querySelector('[data-ds-panel="overview"]'),
@@ -366,187 +416,266 @@ function initHome(root) {
       }
     };
     input.addEventListener("change", () => runValidation(input.files?.[0]));
-    validateDrop.addEventListener("dragover", (event) => { event.preventDefault(); validateDrop.classList.add("is-dragging"); });
-    validateDrop.addEventListener("dragleave", (event) => { if (!validateDrop.contains(event.relatedTarget)) validateDrop.classList.remove("is-dragging"); });
-    validateDrop.addEventListener("drop", (event) => {
-      event.preventDefault();
-      validateDrop.classList.remove("is-dragging");
-      runValidation(event.dataTransfer.files?.[0]);
+    bindAnimatedDropzone(validateDrop, {
+      dragTitle: "Solte o PDF aqui para validar",
+      dragSub: "A conferência das assinaturas iniciará automaticamente",
+      onFile: runValidation,
     });
   }
+}
 
-  // New Document Continuous Modal (Step 1: PDF + 3 Who Signs cards -> Step 2: Colleagues with locked Email / WhatsApp check)
-  const newDialog = root.querySelector("[data-ds-new-dialog]");
-  const newForm = root.querySelector("[data-ds-new-form]");
-  if (newDialog && newForm) {
-    const fileInput = newForm.elements.file;
-    const titleInput = newForm.querySelector("[data-ds-new-title]");
-    const fileLabel = newForm.querySelector("[data-ds-new-file-label]");
-    const fileSub = newForm.querySelector("[data-ds-new-file-sub]");
-    const newDrop = newForm.querySelector("[data-ds-new-drop]");
-    const newStatus = newForm.querySelector("[data-ds-new-status]");
-    const subtitle = newForm.querySelector("[data-ds-new-subtitle]");
-    const step1 = newForm.querySelector('[data-ds-new-step="1"]');
-    const step2 = newForm.querySelector('[data-ds-new-step="2"]');
-    const cancelBtn = newForm.querySelector("[data-ds-new-cancel]");
-    const backBtn = newForm.querySelector("[data-ds-new-back]");
-    const nextBtn = newForm.querySelector("[data-ds-new-next]");
-    const submitBtn = newForm.querySelector("[data-ds-new-submit]");
-    const whoCards = [...newForm.querySelectorAll("[data-ds-who]")];
-    let selectedFile = null;
-    let whoSigns = "only_me";
-    let currentStep = 1;
+function initWizard(root) {
+  const form = root.querySelector("[data-ds-wiz-form]");
+  if (!form) return;
+  const dropEl = root.querySelector("[data-ds-wiz-drop]");
+  const fileInput = form.elements.file;
+  const loadedBox = root.querySelector("[data-ds-wiz-loaded]");
+  const loadedName = root.querySelector("[data-ds-wiz-file-name]");
+  const loadedMeta = root.querySelector("[data-ds-wiz-file-meta]");
+  const clearFileBtn = root.querySelector("[data-ds-wiz-clear-file]");
+  const titleInput = root.querySelector("[data-ds-wiz-title]");
+  const catSelect = root.querySelector("[data-ds-wiz-category]");
+  const subtitle = root.querySelector("[data-ds-wiz-subtitle]");
+  const pane1 = root.querySelector('[data-ds-wiz-pane="1"]');
+  const pane2 = root.querySelector('[data-ds-wiz-pane="2"]');
+  const cancelBtn = root.querySelector("[data-ds-wiz-cancel]");
+  const backBtn = root.querySelector("[data-ds-wiz-back]");
+  const nextBtn = root.querySelector("[data-ds-wiz-next]");
+  const submitBtn = root.querySelector("[data-ds-wiz-submit]");
+  const statusEl = root.querySelector("[data-ds-wiz-status]");
+  const whoCards = [...root.querySelectorAll("[data-ds-who]")];
 
-    function syncNewModalStep() {
-      const needsStep2 = whoSigns !== "only_me";
-      if (!needsStep2) currentStep = 1;
-      step1.hidden = currentStep !== 1;
-      step2.hidden = currentStep !== 2;
-      cancelBtn.hidden = currentStep !== 1;
-      backBtn.hidden = currentStep !== 2;
-      nextBtn.hidden = !(currentStep === 1 && needsStep2);
-      submitBtn.hidden = currentStep === 1 && needsStep2;
-      if (currentStep === 1) {
-        subtitle.textContent = "Passo 1: Envie o PDF e escolha quem vai assinar.";
-        submitBtn.textContent = "Continuar para revisar e marcar →";
-      } else {
-        subtitle.textContent = "Passo 2: Escolha os colegas da fazenda que vão assinar.";
-        submitBtn.textContent = whoSigns === "only_others"
-          ? "Enviar e abrir detalhes →"
-          : "Continuar para revisar e marcar →";
-      }
-      for (const card of whoCards) {
-        card.setAttribute("aria-checked", String(card.dataset.dsWho === whoSigns));
-      }
+  // Top step indicators
+  const stepDoc = root.querySelector('[data-wiz-step="doc"]');
+  const stepSigners = root.querySelector('[data-wiz-step="signers"]');
+  const stepReview = root.querySelector('[data-wiz-step="review"]');
+  const stepConfirm = root.querySelector('[data-wiz-step="confirm"]');
+  const stepSendReview = root.querySelector('[data-wiz-step="send_review"]');
+
+  // Summary sidebar elements
+  const sumStep = root.querySelector("[data-ds-sum-step]");
+  const sumTitle = root.querySelector("[data-ds-sum-title]");
+  const sumCat = root.querySelector("[data-ds-sum-cat]");
+  const sumFile = root.querySelector("[data-ds-sum-file]");
+  const sumWho = root.querySelector("[data-ds-sum-who]");
+  const sumNext = root.querySelector("[data-ds-sum-next]");
+  const sumPeopleWrap = root.querySelector("[data-ds-sum-people-wrap]");
+  const sumPeopleList = root.querySelector("[data-ds-sum-people]");
+
+  let selectedFile = null;
+  let whoSigns = "only_me";
+  let currentStep = 1;
+
+  function selectedColleagues() {
+    return [...root.querySelectorAll("[data-ds-colleague-card]")].filter(
+      (card) => card.querySelector("[data-ds-colleague-switch]")?.checked
+    );
+  }
+
+  function syncUI() {
+    const needsStep2 = whoSigns !== "only_me";
+    if (!needsStep2) currentStep = 1;
+    const totalSteps = whoSigns === "me_and_others" ? 4 : 3;
+
+    pane1.hidden = currentStep !== 1;
+    pane2.hidden = currentStep !== 2;
+    cancelBtn.hidden = currentStep !== 1;
+    backBtn.hidden = currentStep !== 2;
+    nextBtn.hidden = !(currentStep === 1 && needsStep2);
+    submitBtn.hidden = currentStep === 1 && needsStep2;
+
+    // Adaptive top steps bar
+    stepDoc.classList.toggle("is-done", currentStep > 1);
+    if (currentStep === 1) stepDoc.setAttribute("aria-current", "step");
+    else stepDoc.removeAttribute("aria-current");
+    stepDoc.querySelector("span").textContent = currentStep > 1 ? "✓" : "1";
+
+    stepSigners.hidden = !needsStep2;
+    if (currentStep === 2) stepSigners.setAttribute("aria-current", "step");
+    else stepSigners.removeAttribute("aria-current");
+
+    stepReview.hidden = whoSigns === "only_others";
+    stepConfirm.hidden = whoSigns === "only_others";
+    stepSendReview.hidden = whoSigns !== "only_others";
+
+    if (whoSigns === "only_me") {
+      stepReview.querySelector("[data-wiz-num]").textContent = "2";
+      stepConfirm.querySelector("[data-wiz-num]").textContent = "3";
+    } else if (whoSigns === "me_and_others") {
+      stepReview.querySelector("[data-wiz-num]").textContent = "3";
+      stepConfirm.querySelector("[data-wiz-num]").textContent = "4";
+    } else {
+      stepSendReview.querySelector("[data-wiz-num]").textContent = "3";
+    }
+
+    if (subtitle) {
+      subtitle.textContent = currentStep === 1
+        ? "Envie o PDF e escolha quem vai assinar."
+        : "Defina quais usuários da fazenda vão assinar este documento.";
+    }
+    if (submitBtn) {
+      submitBtn.textContent = whoSigns === "only_others"
+        ? "Continuar para Conferir e enviar →"
+        : "Continuar para Revisar e marcar →";
     }
 
     for (const card of whoCards) {
-      card.addEventListener("click", () => {
-        whoSigns = card.dataset.dsWho;
-        syncNewModalStep();
-      });
+      card.setAttribute("aria-checked", String(card.dataset.dsWho === whoSigns));
     }
 
-    // Step 2 colleague channel switcher (locked Email vs WhatsApp with empty-phone warning)
-    for (const item of newForm.querySelectorAll("[data-ds-colleague-card]")) {
-      const sel = item.querySelector("[data-ds-colleague-channel]");
-      const contactInput = item.querySelector("[data-ds-colleague-contact]");
-      const contactLabel = item.querySelector("[data-ds-colleague-contact-label]");
-      sel?.addEventListener("change", () => {
-        const isWa = sel.value === "whatsapp";
-        if (contactLabel) contactLabel.textContent = isWa ? "WhatsApp" : "E-mail";
-        if (isWa) {
-          const phone = contactInput.dataset.phone || "";
-          if (phone) {
-            contactInput.value = maskPhone(phone);
-            contactInput.classList.remove("ds-input-warn");
-            contactInput.classList.add("ds-input-readonly");
-          } else {
-            contactInput.value = "Nenhum telefone cadastrado no perfil";
-            contactInput.classList.remove("ds-input-readonly");
-            contactInput.classList.add("ds-input-warn");
-          }
-        } else {
-          contactInput.value = contactInput.dataset.email || "";
-          contactInput.classList.remove("ds-input-warn");
-          contactInput.classList.add("ds-input-readonly");
-        }
-      });
+    // Update Sticky Summary Card in real time
+    if (sumStep) sumStep.textContent = `Passo ${currentStep} de ${totalSteps}`;
+    const docName = (titleInput?.value || "").trim() || (selectedFile ? selectedFile.name.replace(/\.pdf$/i, "") : "Nenhum arquivo selecionado");
+    if (sumTitle) sumTitle.textContent = docName;
+    if (sumCat) sumCat.textContent = catSelect?.value || "Outros";
+    if (sumFile) sumFile.textContent = selectedFile ? selectedFile.name : "Aguardando envio";
+    const chosen = selectedColleagues();
+    if (sumWho) {
+      if (whoSigns === "only_me") sumWho.textContent = "Apenas você";
+      else if (whoSigns === "me_and_others") sumWho.textContent = chosen.length ? `Você + ${chosen.length} pessoa(s)` : "Você e outras pessoas";
+      else sumWho.textContent = chosen.length ? `${chosen.length} pessoa(s)` : "Apenas outras pessoas";
     }
-
-    const pickFile = (file) => {
-      if (!file) return;
-      if (!file.name.toLowerCase().endsWith(".pdf") || file.size > 12 * 1024 * 1024) {
-        feedback(newStatus, "Escolha um arquivo PDF de até 12 MB.", true);
-        return;
-      }
-      selectedFile = file;
-      feedback(newStatus);
-      fileLabel.textContent = file.name;
-      fileSub.textContent = `${Math.max(1, Math.round(file.size / 1024))} KB · Pronto para enviar`;
-      if (!titleInput.value.trim()) {
-        titleInput.value = file.name.replace(/\.pdf$/i, "");
-      }
-    };
-
-    for (const openBtn of root.querySelectorAll("[data-ds-open-new]")) {
-      openBtn.addEventListener("click", () => {
-        newForm.reset();
-        selectedFile = null;
-        whoSigns = "only_me";
-        currentStep = 1;
-        fileLabel.textContent = "Arraste o PDF aqui ou clique para escolher";
-        fileSub.textContent = "Aceita PDFs de até 12 MB e 120 páginas (inclusive já assinados por outra parte).";
-        feedback(newStatus);
-        syncNewModalStep();
-        newDialog.showModal();
-      });
+    if (sumNext) {
+      if (currentStep === 1 && needsStep2) sumNext.textContent = "Quem assina";
+      else sumNext.textContent = whoSigns === "only_others" ? "Conferir e enviar" : "Revisar e marcar";
     }
-    for (const closeBtn of newDialog.querySelectorAll("[data-ds-close-new]")) {
-      closeBtn.addEventListener("click", () => newDialog.close());
+    if (sumPeopleWrap && sumPeopleList) {
+      sumPeopleWrap.hidden = !needsStep2 || chosen.length === 0;
+      sumPeopleList.replaceChildren(...chosen.map((card) => element("li", `• ${card.dataset.name}`)));
     }
-    nextBtn.addEventListener("click", () => {
-      const file = selectedFile || fileInput.files?.[0];
-      if (!file) {
-        feedback(newStatus, "Escolha um arquivo PDF antes de continuar.", true);
-        return;
-      }
-      feedback(newStatus);
-      currentStep = 2;
-      syncNewModalStep();
-    });
-    backBtn.addEventListener("click", () => {
-      currentStep = 1;
-      syncNewModalStep();
-    });
+  }
 
-    fileInput.addEventListener("change", () => pickFile(fileInput.files?.[0]));
-    newDrop.addEventListener("dragover", (event) => { event.preventDefault(); newDrop.classList.add("is-dragging"); });
-    newDrop.addEventListener("dragleave", (event) => { if (!newDrop.contains(event.relatedTarget)) newDrop.classList.remove("is-dragging"); });
-    newDrop.addEventListener("drop", (event) => {
-      event.preventDefault();
-      newDrop.classList.remove("is-dragging");
-      const file = event.dataTransfer.files?.[0];
-      if (file) {
+  const pickFile = (file) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".pdf") || file.size > 12 * 1024 * 1024) {
+      feedback(statusEl, "Escolha um arquivo PDF de até 12 MB.", true);
+      return;
+    }
+    selectedFile = file;
+    feedback(statusEl);
+    if (dropEl) dropEl.hidden = true;
+    if (loadedBox) loadedBox.hidden = false;
+    if (loadedName) loadedName.textContent = file.name;
+    if (loadedMeta) loadedMeta.textContent = `${Math.max(1, Math.round(file.size / 1024))} KB · PDF pronto para assinatura`;
+    if (titleInput && !titleInput.value.trim()) {
+      titleInput.value = file.name.replace(/\.pdf$/i, "");
+    }
+    syncUI();
+  };
+
+  fileInput?.addEventListener("change", () => pickFile(fileInput.files?.[0]));
+  clearFileBtn?.addEventListener("click", () => {
+    selectedFile = null;
+    if (fileInput) fileInput.value = "";
+    if (loadedBox) loadedBox.hidden = true;
+    if (dropEl) dropEl.hidden = false;
+    syncUI();
+  });
+
+  bindAnimatedDropzone(dropEl, {
+    dragTitle: "Solte o PDF aqui para enviar",
+    dragSub: "O arquivo será carregado automaticamente",
+    onFile: (file) => {
+      if (fileInput) {
         const dt = new DataTransfer();
         dt.items.add(file);
         fileInput.files = dt.files;
-        pickFile(file);
       }
-    });
+      pickFile(file);
+    },
+  });
 
-    newForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const file = selectedFile || fileInput.files?.[0];
-      if (!file) {
-        feedback(newStatus, "Escolha um arquivo PDF antes de continuar.", true);
-        return;
-      }
-      submitBtn.disabled = true;
-      feedback(newStatus, "Enviando e preparando documento…");
-      try {
-        const created = await request(root, "/assinatura-digital/documentos", {
-          pdf: file,
-          name: file.name,
-          title: titleInput.value.trim(),
-          category: newForm.elements.category.value,
-        });
-        if (whoSigns !== "only_me") {
-          const colleagueInputs = [...newForm.querySelectorAll('input[name="colleagues"]:checked')];
-          for (const item of colleagueInputs) {
-            await request(root, `${created.url}/participantes`, {
-              json: {email: item.value, consent: true},
-            }).catch(() => {});
-          }
+  for (const card of whoCards) {
+    card.addEventListener("click", () => {
+      whoSigns = card.dataset.dsWho;
+      syncUI();
+    });
+  }
+  titleInput?.addEventListener("input", syncUI);
+  catSelect?.addEventListener("change", syncUI);
+
+  for (const item of root.querySelectorAll("[data-ds-colleague-card]")) {
+    const sw = item.querySelector("[data-ds-colleague-switch]");
+    const sel = item.querySelector("[data-ds-colleague-channel]");
+    const contactInput = item.querySelector("[data-ds-colleague-contact]");
+    const contactLabel = item.querySelector("[data-ds-colleague-contact-label]");
+    sw?.addEventListener("change", syncUI);
+    sel?.addEventListener("change", () => {
+      const isWa = sel.value === "whatsapp";
+      if (contactLabel) contactLabel.textContent = isWa ? "WhatsApp" : "E-mail";
+      if (isWa) {
+        const phone = contactInput.dataset.phone || "";
+        if (phone) {
+          contactInput.value = maskPhone(phone);
+          contactInput.classList.remove("ds-input-warn");
+          contactInput.classList.add("ds-input-readonly");
+        } else {
+          contactInput.value = "Nenhum telefone cadastrado no perfil";
+          contactInput.classList.remove("ds-input-readonly");
+          contactInput.classList.add("ds-input-warn");
         }
-        const dest = whoSigns === "only_others" ? `${created.url}?aba=detalhes` : created.url;
-        location.assign(dest);
-      } catch (error) {
-        feedback(newStatus, error.message, true);
-        submitBtn.disabled = false;
+      } else {
+        contactInput.value = contactInput.dataset.email || "";
+        contactInput.classList.remove("ds-input-warn");
+        contactInput.classList.add("ds-input-readonly");
       }
     });
   }
+
+  nextBtn?.addEventListener("click", () => {
+    const file = selectedFile || fileInput?.files?.[0];
+    if (!file) {
+      feedback(statusEl, "Selecione ou arraste um arquivo PDF antes de continuar.", true);
+      return;
+    }
+    feedback(statusEl);
+    currentStep = 2;
+    syncUI();
+    window.scrollTo({top: 0, behavior: "smooth"});
+  });
+
+  backBtn?.addEventListener("click", () => {
+    currentStep = 1;
+    syncUI();
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const file = selectedFile || fileInput?.files?.[0];
+    if (!file) {
+      feedback(statusEl, "Selecione ou arraste um arquivo PDF antes de continuar.", true);
+      return;
+    }
+    submitBtn.disabled = true;
+    feedback(statusEl, "Enviando e preparando o documento…");
+    try {
+      const created = await request(root, "/assinatura-digital/documentos", {
+        pdf: file,
+        name: file.name,
+        title: (titleInput?.value || "").trim(),
+        category: catSelect?.value || "Outros",
+      });
+      if (whoSigns !== "only_me") {
+        for (const card of selectedColleagues()) {
+          const email = card.querySelector("[data-ds-colleague-switch]")?.value;
+          if (email) {
+            await request(root, `${created.url}/participantes`, {
+              json: {email, consent: true},
+            }).catch(() => {});
+          }
+        }
+      }
+      const dest = whoSigns === "only_others"
+        ? `${created.url}?aba=detalhes`
+        : `${created.url}?fluxo=${whoSigns}`;
+      location.assign(dest);
+    } catch (error) {
+      feedback(statusEl, error.message, true);
+      submitBtn.disabled = false;
+    }
+  });
+
+  syncUI();
 }
 
 function initWorkspace(root) {
@@ -621,8 +750,28 @@ function initWorkspace(root) {
   let challengeId;
 
   function syncAuthorization() {
+    const hasCert = Boolean(certificate.value);
+    const consentBox = find("[data-ds-consent-box]");
+    if (!hasCert) {
+      consent.checked = false;
+    }
+    consent.disabled = !hasCert;
+    if (consentBox) consentBox.classList.toggle("is-disabled", !hasCert);
+
+    const certCardTop = find("[data-ds-cert-card-top]");
+    const certName = find("[data-ds-cert-card-name]");
+    const certMeta = find("[data-ds-cert-card-meta]");
+    const opt = certificate.selectedOptions[0];
+    if (certCardTop && opt && opt.value) {
+      certCardTop.hidden = false;
+      if (certName) certName.textContent = opt.dataset.holder || opt.textContent;
+      if (certMeta) certMeta.textContent = `${opt.dataset.type || "Certificado A1"} · vence em ${opt.dataset.until || ""}`;
+    } else if (certCardTop) {
+      certCardTop.hidden = true;
+    }
+
     const canPlace = target?.value || !visible?.checked || chosenLocation;
-    authorize.disabled = authorize.dataset.enabled !== "yes" || !viewport || !consent.checked || !certificate.value || !canPlace || busy;
+    authorize.disabled = authorize.dataset.enabled !== "yes" || !viewport || !consent.checked || !hasCert || !canPlace || busy;
   }
 
   function pixelRect(location) {
@@ -1020,6 +1169,7 @@ function initWorkspace(root) {
     });
   }
 
+  syncAuthorization();
   loadPdf();
 }
 
@@ -1092,18 +1242,15 @@ function initCertificates(root) {
   regHolder?.addEventListener("change", syncRegFields);
   regForm?.elements.file?.addEventListener("change", () => pickPfx(regForm.elements.file.files?.[0]));
   if (regDrop && regForm?.elements.file) {
-    regDrop.addEventListener("dragover", (event) => { event.preventDefault(); regDrop.classList.add("is-dragging"); });
-    regDrop.addEventListener("dragleave", (event) => { if (!regDrop.contains(event.relatedTarget)) regDrop.classList.remove("is-dragging"); });
-    regDrop.addEventListener("drop", (event) => {
-      event.preventDefault();
-      regDrop.classList.remove("is-dragging");
-      const file = event.dataTransfer.files?.[0];
-      if (file) {
+    bindAnimatedDropzone(regDrop, {
+      dragTitle: "Solte o arquivo A1 aqui para carregar",
+      dragSub: "O certificado .pfx ou .p12 será preparado automaticamente",
+      onFile: (file) => {
         const dt = new DataTransfer();
         dt.items.add(file);
         regForm.elements.file.files = dt.files;
         pickPfx(file);
-      }
+      },
     });
   }
 
@@ -1303,8 +1450,10 @@ initActionMenus();
 initPasswordToggles();
 initInputMasks();
 const home = document.querySelector("[data-ds-home]");
+const wizard = document.querySelector("[data-ds-wizard]");
 const workspace = document.querySelector("[data-ds-workspace]");
 const center = document.querySelector("[data-ds-certificates]");
 if (home) initHome(home);
+if (wizard) initWizard(wizard);
 if (workspace) initWorkspace(workspace);
 if (center) initCertificates(center);

@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% from "partials/digital_signing_ui.html" import icon %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=6">{% endblock %}
+{% block content %}
+<main class="sf-page pd-page ds-page ds-wizard-page" data-ds-wizard data-csrf="{{ csrf_token }}">
+  <nav class="pd-crumbs" aria-label="Caminho">
+    <a href="/assinatura-digital">Documentos</a><span aria-hidden="true">›</span>
+    <span>Novo documento</span>
+  </nav>
+
+  <header class="pd-head ds-head ds-wiz-head">
+    <div>
+      <h1 class="sf-page-title">Novo documento</h1>
+      <p class="sf-page-subtitle ds-hide-mobile" data-ds-wiz-subtitle>Envie o PDF e escolha quem vai assinar.</p>
+    </div>
+    <ol class="vw-steps ds-wiz-steps" aria-label="Etapas do envio" data-ds-wiz-steps>
+      <li data-wiz-step="doc" aria-current="step"><span>1</span>Documento</li>
+      <li data-wiz-step="signers" hidden><span>2</span>Quem assina</li>
+      <li data-wiz-step="review"><span data-wiz-num>2</span>Revisar e marcar</li>
+      <li data-wiz-step="confirm"><span data-wiz-num>3</span>Confirmar identidade</li>
+      <li data-wiz-step="send_review" hidden><span data-wiz-num>3</span>Conferir e enviar</li>
+    </ol>
+  </header>
+
+  {% if not farm %}
+  <section class="pd-card ds-empty-card">
+    <div class="ds-empty">
+      {{ icon('file', 26) }}
+      <strong>Selecione uma fazenda no topo</strong>
+      <p>Escolha uma fazenda para preparar e enviar documentos para assinatura.</p>
+      <a class="sf-btn sf-btn-secondary" href="/assinatura-digital">Voltar para Documentos</a>
+    </div>
+  </section>
+  {% else %}
+  <form class="ds-wizard-grid" data-ds-wiz-form novalidate>
+    <!-- COLUNA PRINCIPAL DO PASSO -->
+    <section class="pd-card ds-wiz-main">
+      <!-- PASSO 1: DOCUMENTO + 3 CARDS QUEM ASSINA -->
+      <div class="ds-wiz-pane" data-ds-wiz-pane="1">
+        <div class="ds-wiz-pane-head">
+          <h2>1. Qual documento você quer assinar?</h2>
+          <p>Envie um arquivo PDF do computador ou celular (até 12 MB e 120 páginas).</p>
+        </div>
+
+        <!-- Dropzone com estado Drag-and-Drop animado (esconde botão e muda texto!) -->
+        <div class="ds-drop ds-drop--wizard" data-ds-wiz-drop>
+          <span class="ds-drop-icon" data-ds-drop-icon>{{ icon('upload', 24) }}</span>
+          <strong data-ds-drop-title>Arraste o arquivo PDF para cá</strong>
+          <p data-ds-drop-sub>Aceita PDFs de até 12 MB e 120 páginas (inclusive PDFs já assinados por outra parte).</p>
+          <label class="sf-btn sf-btn-primary ds-pick" for="ds-wiz-file" data-ds-drop-btn>
+            Escolher arquivo PDF
+            <input id="ds-wiz-file" name="file" type="file" accept="application/pdf,.pdf" required>
+          </label>
+        </div>
+
+        <!-- Cartão de arquivo carregado (igual ao protótipo!) -->
+        <div class="ds-loaded-file" data-ds-wiz-loaded hidden>
+          <div class="ds-loaded-file-info">
+            <span class="ds-loaded-file-ic">{{ icon('file', 20) }}</span>
+            <div class="ds-doc-title-wrap">
+              <strong data-ds-wiz-file-name></strong>
+              <small data-ds-wiz-file-meta></small>
+            </div>
+          </div>
+          <button type="button" class="sf-btn sf-btn-secondary ds-btn-sm" data-ds-wiz-clear-file>Trocar arquivo</button>
+        </div>
+
+        <!-- Campos Nome + Categoria -->
+        <div class="ds-form-grid-2">
+          <label class="ds-field ds-field--span2">
+            <span>Nome do documento <small>(como aparece para quem assina)</small></span>
+            <input type="text" name="title" maxlength="180" placeholder="Ex.: Contrato de Venda de Café #2026/052" data-ds-wiz-title>
+          </label>
+          <label class="ds-field ds-field--span2">
+            <span>Categoria</span>
+            <select name="category" data-ds-wiz-category>
+              {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+            </select>
+          </label>
+        </div>
+
+        <!-- 3 Cards Elegantes: Quem vai assinar este documento? -->
+        <fieldset class="ds-who-fieldset">
+          <legend>Quem vai assinar este documento?</legend>
+          <div class="ds-who-grid" role="radiogroup" aria-label="Quem vai assinar este documento">
+            <button type="button" class="ds-who-card" data-ds-who="only_me" role="radio" aria-checked="true">
+              <span class="ds-who-dot" aria-hidden="true"></span>
+              <span>
+                <strong>Só eu vou assinar</strong>
+                <small>Assine direto com seu certificado A1 em segundos.</small>
+              </span>
+            </button>
+            <button type="button" class="ds-who-card" data-ds-who="me_and_others" role="radio" aria-checked="false">
+              <span class="ds-who-dot" aria-hidden="true"></span>
+              <span>
+                <strong>Eu e outras pessoas</strong>
+                <small>Ex.: você e um sócio, gerente ou colega da fazenda.</small>
+              </span>
+            </button>
+            <button type="button" class="ds-who-card" data-ds-who="only_others" role="radio" aria-checked="false">
+              <span class="ds-who-dot" aria-hidden="true"></span>
+              <span>
+                <strong>Apenas outras pessoas</strong>
+                <small>Compartilhe para outros usuários da organização assinarem.</small>
+              </span>
+            </button>
+          </div>
+        </fieldset>
+      </div>
+
+      <!-- PASSO 2: QUEM ASSINA (exibido quando envolve outras pessoas) -->
+      <div class="ds-wiz-pane" data-ds-wiz-pane="2" hidden>
+        <div class="ds-wiz-pane-head">
+          <h2>2. Quem vai assinar este documento?</h2>
+          <p>Ative os usuários da organização que receberão acesso ao documento para assinar.</p>
+        </div>
+
+        {% if org_colleagues %}
+        <div class="ds-signer-list">
+          {% for colleague in org_colleagues %}
+          <div class="ds-signer-item" data-ds-colleague-card data-name="{{ colleague.display_name or colleague.name }}">
+            <div class="ds-signer-item-head">
+              <div>
+                <strong>{{ colleague.display_name or colleague.name }}</strong>
+              </div>
+              <input type="checkbox" class="ds-switch-input" role="switch" name="colleagues" value="{{ colleague.email }}" data-ds-colleague-switch aria-label="Incluir {{ colleague.display_name or colleague.name }}">
+            </div>
+            <div class="ds-signer-item-grid">
+              <label class="ds-field">
+                <span>Canal de aviso</span>
+                <select data-ds-colleague-channel>
+                  <option value="email" selected>E-mail da conta</option>
+                  <option value="whatsapp">WhatsApp</option>
+                </select>
+              </label>
+              <label class="ds-field">
+                <span data-ds-colleague-contact-label>E-mail</span>
+                <input type="text" class="ds-input-readonly" readonly value="{{ colleague.email }}" data-email="{{ colleague.email }}" data-phone="{{ colleague.phone or '' }}" data-ds-colleague-contact>
+              </label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="ds-banner is-warn">
+          {{ icon('users', 17) }}
+          <span>Não há outros usuários ativos cadastrados nesta organização. Você pode voltar e escolher "Só eu vou assinar" ou cadastrar novos usuários em Administração.</span>
+        </div>
+        {% endif %}
+      </div>
+
+      <p class="ds-feedback" data-ds-wiz-status role="status" aria-live="polite" hidden></p>
+
+      <!-- Rodapé do Wizard -->
+      <div class="ds-wiz-foot">
+        <a class="sf-btn sf-btn-secondary" href="/assinatura-digital" data-ds-wiz-cancel>Cancelar</a>
+        <button type="button" class="sf-btn sf-btn-secondary" data-ds-wiz-back hidden>{{ icon('back', 15) }} Voltar passo</button>
+        <button type="button" class="sf-btn sf-btn-primary ds-wiz-cta" data-ds-wiz-next hidden>Continuar para Quem assina →</button>
+        <button type="submit" class="sf-btn sf-btn-primary ds-wiz-cta" data-ds-wiz-submit>Continuar para Revisar e marcar →</button>
+      </div>
+    </section>
+
+    <!-- COLUNA DIREITA: QUADRO RESUMO LATERAL STICKY (Fiel ao protótipo aprovado!) -->
+    <aside class="pd-card ds-wiz-summary ds-hide-mobile" aria-label="Resumo do envio">
+      <div class="ds-summary-head">
+        <span class="ds-eyebrow">Resumo</span>
+        <span class="ds-pill ds-pill--brand" data-ds-sum-step>Passo 1 de 3</span>
+      </div>
+
+      <div class="ds-summary-doc">
+        <span class="ds-summary-label">Documento</span>
+        <strong data-ds-sum-title>Nenhum arquivo selecionado</strong>
+        <small data-ds-sum-cat>{{ categories[0] }}</small>
+      </div>
+
+      <dl class="ds-summary-rows">
+        <div>
+          <dt>Arquivo PDF</dt>
+          <dd data-ds-sum-file>Aguardando envio</dd>
+        </div>
+        <div>
+          <dt>Quem assina</dt>
+          <dd data-ds-sum-who>Apenas você</dd>
+        </div>
+        <div>
+          <dt>Próxima etapa</dt>
+          <dd data-ds-sum-next>Revisar e marcar</dd>
+        </div>
+      </dl>
+
+      <div class="ds-summary-people" data-ds-sum-people-wrap hidden>
+        <span class="ds-summary-label">Participantes selecionados</span>
+        <ul data-ds-sum-people></ul>
+      </div>
+
+      <div class="ds-summary-shield">
+        {{ icon('shield', 16) }}
+        <span>Ao finalizar, o PDF fica protegido no cofre da fazenda com validade jurídica ICP-Brasil.</span>
+      </div>
+    </aside>
+  </form>
+  {% endif %}
+</main>
+<script type="module" src="/static/js/digital_signing.js?v=6"></script>
+{% endblock %}

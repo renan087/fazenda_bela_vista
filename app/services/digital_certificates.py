@@ -1,6 +1,7 @@
 """Certificate inventory and purpose boundaries shared by fiscal and document services."""
 import base64
 import hmac
+import logging
 import secrets
 import re
 from datetime import datetime, timezone
@@ -9,7 +10,10 @@ from uuid import uuid4
 from asn1crypto.core import BMPString, IA5String, OctetString, PrintableString, UTF8String
 from cryptography import x509
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from sqlalchemy import or_, select
+from sqlalchemy import delete as sa_delete, or_, select
+from sqlalchemy.exc import IntegrityError
+
+logger = logging.getLogger(__name__)
 
 from app.core.config import get_settings
 from app.models.digital_certificate import CertificateHolderAssignment, CertificatePurpose, DigitalCertificate, FiscalCertificateSelection
@@ -300,6 +304,7 @@ def fiscal_certificate_query(db, organization_id, farm_id, *, environment=None, 
         legacy = legacy & DigitalCertificate.is_active.is_(True)
     return db.query(DigitalCertificate).filter(
         DigitalCertificate.organization_id == organization_id, DigitalCertificate.farm_id == farm_id,
+        DigitalCertificate.deleted_at.is_(None),
         or_(legacy, DigitalCertificate.id.in_(assignments)),
     )
 
@@ -371,7 +376,7 @@ def friendly_cert_info(cert: DigitalCertificate) -> dict:
 
 
 def delete_certificate(db, *, cert: DigitalCertificate, user: User, farm_id: int, can_manage_fiscal: bool = False) -> None:
-    if cert.organization_id != user.organization_id or cert.farm_id != farm_id:
+    if cert.organization_id != user.organization_id or cert.farm_id != farm_id or cert.deleted_at is not None:
         raise PermissionError("Certificado não pertence a esta fazenda.")
     lock_fiscal_farm(db, cert.organization_id, cert.farm_id)
     active_fiscal_ids = {
@@ -387,8 +392,21 @@ def delete_certificate(db, *, cert: DigitalCertificate, user: User, farm_id: int
     )
     if not can_manage_fiscal and not is_related_user:
         raise PermissionError("Você não tem permissão para remover este certificado.")
-    db.query(SigningChallenge).filter_by(certificate_id=cert.id).delete(synchronize_session="fetch")
-    db.query(FiscalCertificateSelection).filter_by(certificate_id=cert.id).delete(synchronize_session="fetch")
-    db.query(CertificatePurpose).filter_by(certificate_id=cert.id).delete(synchronize_session="fetch")
-    db.query(CertificateHolderAssignment).filter_by(certificate_id=cert.id).delete(synchronize_session="fetch")
-    db.delete(cert)
+    cert_id = cert.id
+    # Delete dependent rows in explicit order with synchronize_session=False and flush before parent delete
+    for model in (SigningChallenge, FiscalCertificateSelection, CertificatePurpose, CertificateHolderAssignment):
+        db.execute(sa_delete(model).where(model.certificate_id == cert_id).execution_options(synchronize_session=False))
+    db.flush()
+    try:
+        with db.begin_nested():
+            db.execute(sa_delete(DigitalCertificate).where(DigitalCertificate.id == cert_id).execution_options(synchronize_session=False))
+            db.flush()
+        db.expunge(cert)
+    except IntegrityError as exc:
+        logger.warning("Hard delete de certificado %s impedido por FK; aplicando remocao logica segura: %s", cert_id, exc)
+        cert.is_active = False
+        cert.ciphertext_b64 = ""
+        cert.salt_b64 = ""
+        cert.nonce_b64 = ""
+        cert.deleted_at = datetime.now(timezone.utc)
+        db.flush()

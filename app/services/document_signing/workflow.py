@@ -154,8 +154,11 @@ def delete_document(db, user, farm_id, document_id):
 
 
 def document_certificate(db, user, farm_id, certificate_id, *, lock=False):
-    cert = db.scalar(select(DigitalCertificate).filter_by(
-        id=certificate_id, organization_id=user.organization_id, farm_id=farm_id,
+    cert = db.scalar(select(DigitalCertificate).where(
+        DigitalCertificate.id == certificate_id,
+        DigitalCertificate.organization_id == user.organization_id,
+        DigitalCertificate.farm_id == farm_id,
+        DigitalCertificate.deleted_at.is_(None),
     ))
     if cert is None:
         raise WorkflowError("Certificado não encontrado.", 404)
@@ -172,6 +175,7 @@ def usable_certificates(db, user, farm_id):
         select(DigitalCertificate).join(CertificatePurpose, CertificatePurpose.certificate_id == DigitalCertificate.id)
         .where(
             DigitalCertificate.organization_id == user.organization_id, DigitalCertificate.farm_id == farm_id,
+            DigitalCertificate.deleted_at.is_(None),
             DigitalCertificate.valid_from <= now, DigitalCertificate.valid_until >= now,
             CertificatePurpose.purpose == DOCUMENTS, CertificatePurpose.user_id == user.id,
             CertificatePurpose.identity_email == user.email, CertificatePurpose.enabled_at.is_not(None),

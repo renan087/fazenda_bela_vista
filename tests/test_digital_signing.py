@@ -502,6 +502,16 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
     home_html = client.get("/assinatura-digital").text
     assert "Contrato Venda 2026" in home_html
     assert "data-nx-more-btn" in home_html
+    assert "/assinatura-digital/novo" in home_html
+
+    # New document dedicated Wizard page renders 3-step bar, 3 signer cards, sticky summary and animated dropzone
+    wizard_html = client.get("/assinatura-digital/novo").text
+    assert "data-ds-wizard" in wizard_html
+    assert "Resumo" in wizard_html
+    assert "Só eu vou assinar" in wizard_html
+    assert "Eu e outras pessoas" in wizard_html
+    assert "Apenas outras pessoas" in wizard_html
+    assert "data-ds-drop-btn" in wizard_html
 
     # Workspace page does NOT ask for A1 password during signing
     ws_html = client.get(endpoint).text
@@ -544,12 +554,41 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
     assert validation.status_code == 200
     assert validation.json()["state"] == "valid"
 
-    # 5) Unsigned document can be deleted by owner
+    # 5) Unsigned document can be deleted by owner; workspace avoids repeating filename when title == filename stem
+    # and keeps consent checkbox disabled when user has no active certificate selected
     draft = client.post("/assinatura-digital/documentos", content=original, headers={
         **headers, "Content-Type": "application/pdf", "X-Document-Name": "rascunho.pdf",
     })
     assert draft.status_code == 201
     draft_url = draft.json()["url"]
+    draft_ws = client.get(draft_url).text
+    assert "rascunho.pdf" not in draft_ws
+    assert 'data-ds-consent disabled' in draft_ws
     assert client.delete(draft_url, headers=headers).status_code == 200
     assert client.get(draft_url).status_code == 404
+
+    # 6) Logical-delete fallback when database FK blocks hard delete still removes certificate cleanly
+    other_id = reg_other.json()["id"]
+    with sessions() as db:
+        from sqlalchemy.exc import IntegrityError
+        orig_execute = db.execute
+        def raise_fk_on_cert_delete(stmt, *args, **kwargs):
+            if str(stmt).startswith("DELETE FROM nfe_certificate_vaults"):
+                raise IntegrityError("DELETE", {}, Exception("foreign key violation"))
+            return orig_execute(stmt, *args, **kwargs)
+        monkeypatch.setattr(db, "execute", raise_fk_on_cert_delete)
+        certificates.delete_certificate(
+            db,
+            cert=db.get(certificates.DigitalCertificate, other_id),
+            user=db.get(User, 1),
+            farm_id=1,
+            can_manage_fiscal=True,
+        )
+        db.commit()
+    with sessions() as db:
+        soft_cert = db.get(certificates.DigitalCertificate, other_id)
+        assert soft_cert is not None and soft_cert.deleted_at is not None and not soft_cert.is_active
+        assert soft_cert.ciphertext_b64 == ""
+        assert workflow.usable_certificates(db, user=db.get(User, 2), farm_id=1) == []
+    assert "Maria Produtora" not in client.get("/certificados-digitais").text
 

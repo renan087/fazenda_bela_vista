@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, status %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=5">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=6">{% endblock %}
 {% block content %}
 {% set endpoint = '/assinatura-digital/documentos/' ~ doc.id %}
 {% set pdf_url = endpoint ~ '/revisoes/' ~ doc.current_revision ~ '/pdf' %}
@@ -13,20 +13,36 @@
     <span>{{ display_title }}</span>
   </nav>
 
+  <!-- Cabeçalho limpo e bem hierarquizado (título primeiro, metadados organizados abaixo, sem duplicar nome do arquivo!) -->
   <header class="pd-head ds-head ds-ws-head">
     <div class="ds-ws-title-block">
-      <div class="ds-ws-meta">
+      <h1 class="sf-page-title">{{ display_title }}</h1>
+      <div class="ds-ws-meta-bar">
         {{ status(doc.validation.state) }}
         {% if doc.category %}<span class="ds-pill ds-pill--muted">{{ doc.category }}</span>{% endif %}
-        <span class="ds-ws-sigcount ds-tabular">{{ sig_count }} de {{ expected_count }} {{ 'assinou' if expected_count == 1 else 'assinaram' }}</span>
+        <span class="ds-ws-meta-item ds-tabular">{{ sig_count }} de {{ expected_count }} {{ 'assinou' if expected_count == 1 else 'assinaram' }}</span>
+        <span class="ds-ws-dot" aria-hidden="true">·</span>
+        <span class="ds-ws-meta-item ds-tabular">{{ options.pages }} {{ 'página' if options.pages == 1 else 'páginas' }}</span>
+        {% if show_filename_sub %}
+        <span class="ds-ws-dot ds-hide-mobile" aria-hidden="true">·</span>
+        <span class="ds-ws-meta-item ds-hide-mobile">{{ doc.filename }}</span>
+        {% endif %}
       </div>
-      <h1 class="sf-page-title">{{ display_title }}</h1>
-      <p class="sf-page-subtitle ds-hide-mobile">{{ farm.name }} · {{ doc.filename }} · {{ options.pages }} {{ 'página' if options.pages == 1 else 'páginas' }}</p>
     </div>
+
+    {% if wizard_flow in ('only_me', 'me_and_others') %}
+    <ol class="vw-steps ds-wiz-steps ds-hide-mobile" aria-label="Etapas do envio" data-ds-ws-flow-steps>
+      <li class="is-done"><span>✓</span>Documento</li>
+      {% if wizard_flow == 'me_and_others' %}<li class="is-done"><span>✓</span>Quem assina</li>{% endif %}
+      <li data-ds-step-pill="1" aria-current="step"><span>{{ 3 if wizard_flow == 'me_and_others' else 2 }}</span>Revisar e marcar</li>
+      <li data-ds-step-pill="2"><span>{{ 4 if wizard_flow == 'me_and_others' else 3 }}</span>Confirmar identidade</li>
+    </ol>
+    {% else %}
     <div class="pd-head-actions ds-head-actions">
       <a class="sf-btn sf-btn-secondary" href="{{ pdf_url }}">{{ icon('download', 16) }} Baixar PDF</a>
       <button type="button" class="sf-btn sf-btn-secondary ds-hide-mobile" data-ds-revalidate>{{ icon('shield', 16) }} Revalidar</button>
     </div>
+    {% endif %}
   </header>
 
   <nav class="pd-tabs ds-tabs" aria-label="Visões do documento">
@@ -93,21 +109,36 @@
             <p>Revise o PDF e escolha o certificado A1 que será aplicado.</p>
           </div>
 
-          <label class="ds-field">
+          <div class="ds-field">
             <span>Certificado digital (ICP-Brasil A1)</span>
-            <select id="ds-certificate" data-ds-certificate {% if not certificate_options %}disabled{% endif %}>
-              {% if certificate_options|length != 1 %}<option value="">Selecione um certificado</option>{% endif %}
-              {% for cert in certificate_options %}
-              <option value="{{ cert.id }}" data-holder="{{ cert.display_name }}" data-doc="{{ cert.masked_doc }}" data-type="{{ cert.cert_type }}" {% if loop.first and certificate_options|length == 1 %}selected{% endif %}>{{ cert.display_name }} ({{ cert.cert_type }}) · vence {{ cert.valid_until.strftime('%d/%m/%Y') }}</option>
-              {% endfor %}
+            {% if certificate_options %}
+            {% set first_cert = certificate_options[0] %}
+            <div class="ds-cert-selected-card" data-ds-cert-card>
+              <div class="ds-cert-selected-top" data-ds-cert-card-top {% if certificate_options|length != 1 %}hidden{% endif %}>
+                <span class="ds-cert-selected-ic">{{ icon('key', 16) }}</span>
+                <div class="ds-cert-selected-txt">
+                  <strong data-ds-cert-card-name>{{ first_cert.display_name }}</strong>
+                  <small data-ds-cert-card-meta>{{ first_cert.cert_type }} · vence em {{ first_cert.valid_until.strftime('%d/%m/%Y') }}</small>
+                </div>
+                <span class="ds-pill ds-pill--done">Vigente</span>
+              </div>
+              <select id="ds-certificate" data-ds-certificate {% if certificate_options|length == 1 %}class="ds-cert-select-single"{% endif %}>
+                {% if certificate_options|length != 1 %}<option value="">Selecione um certificado</option>{% endif %}
+                {% for cert in certificate_options %}
+                <option value="{{ cert.id }}" data-holder="{{ cert.display_name }}" data-doc="{{ cert.masked_doc }}" data-type="{{ cert.cert_type }}" data-until="{{ cert.valid_until.strftime('%d/%m/%Y') }}" {% if loop.first and certificate_options|length == 1 %}selected{% endif %}>{{ cert.display_name }} ({{ cert.cert_type }}) · vence {{ cert.valid_until.strftime('%d/%m/%Y') }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% else %}
+            <select id="ds-certificate" data-ds-certificate disabled>
+              <option value="">Nenhum certificado disponível</option>
             </select>
-          </label>
-          {% if not certificate_options %}
-          <div class="ds-banner is-warn ds-banner--sm">
-            {{ icon('key', 16) }}
-            <span>Nenhum certificado habilitado para sua conta. <a href="/certificados-digitais">Ativar em Certificados A1 →</a></span>
+            <div class="ds-banner is-warn ds-banner--sm">
+              {{ icon('key', 16) }}
+              <span>Nenhum certificado habilitado para sua conta. <a href="/certificados-digitais">Ativar em Certificados A1 →</a></span>
+            </div>
+            {% endif %}
           </div>
-          {% endif %}
 
           {% if options.fields %}
           <label class="ds-field">
@@ -144,14 +175,17 @@
           <div class="ds-banner is-warn ds-banner--sm">{{ icon('alert', 16) }}<span>Este PDF não permite acrescentar novas assinaturas nesta versão.</span></div>
           {% endif %}
 
-          <label class="ds-consent-box">
-            <span class="dt-chk"><input type="checkbox" class="dt-check" data-ds-consent></span>
+          <label class="ds-consent-box{% if certificate_options|length != 1 %} is-disabled{% endif %}" data-ds-consent-box>
+            <span class="dt-chk"><input type="checkbox" class="dt-check" data-ds-consent {% if certificate_options|length != 1 %}disabled{% endif %}></span>
             <span>Li o documento <strong>{{ display_title }}</strong> e autorizo expressamente minha assinatura digital nesta versão.</span>
           </label>
 
           <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-authorize data-enabled="{{ 'yes' if mode != 'blocked' and (options.fields or options.free_position) else 'no' }}" disabled>
             Enviar código por e-mail {{ icon('arrow', 16) }}
           </button>
+          {% if mode == 'blocked' %}
+          <p class="ds-hint ds-center-hint">Assinatura temporariamente bloqueada enquanto o ambiente aguarda homologação no VALIDAR do ITI (ou liberação piloto para esta fazenda).</p>
+          {% endif %}
           <p class="ds-feedback" data-ds-status role="status" aria-live="polite" hidden></p>
         </div>
 
@@ -290,5 +324,5 @@
     {% endif %}
   </div>
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=5"></script>
+<script type="module" src="/static/js/digital_signing.js?v=6"></script>
 {% endblock %}

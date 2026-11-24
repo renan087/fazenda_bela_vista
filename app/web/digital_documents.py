@@ -200,7 +200,11 @@ def _certificate_inventory(db, user, farm):
     if not farm:
         return rows, organization_users, expiring_certs
     manage = has_fiscal_permission(user, "nfe.certificate.manage")
-    inventory = select(DigitalCertificate).filter_by(organization_id=user.organization_id, farm_id=farm.id)
+    inventory = select(DigitalCertificate).where(
+        DigitalCertificate.organization_id == user.organization_id,
+        DigitalCertificate.farm_id == farm.id,
+        DigitalCertificate.deleted_at.is_(None),
+    )
     if manage:
         organization_users = db.scalars(
             select(User).filter_by(organization_id=user.organization_id, is_active=True).order_by(User.name, User.id)
@@ -280,6 +284,25 @@ def signing_home(request: Request, db: Session = Depends(get_db), user: User = D
         cert_count=len(cert_rows), expiring_certs=expiring_certs,
         categories=workflow.DOCUMENT_CATEGORIES, org_colleagues=org_colleagues,
         active_tab=active_tab, mode=signing_mode(farm.id if farm else None),
+    )
+
+
+@router.get("/assinatura-digital/novo")
+def new_document_wizard(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    farm = _farm(request, db, user, required=False)
+    org_colleagues = (
+        db.scalars(
+            select(User)
+            .where(User.organization_id == user.organization_id, User.is_active.is_(True), User.id != user.id)
+            .order_by(User.name, User.id)
+        ).all()
+        if farm
+        else []
+    )
+    return _page(
+        request, user, db, "digital_signing", "digital_signing_new.html", "Novo documento",
+        farm=farm, categories=workflow.DOCUMENT_CATEGORIES, org_colleagues=org_colleagues,
+        mode=signing_mode(farm.id if farm else None),
     )
 
 
@@ -364,12 +387,16 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
     sig_count = len((doc.validation or {}).get("signatures") or [])
     expected_count = max(1 + len(participants), sig_count, 1)
     active_view = "detalhes" if request.query_params.get("aba") == "detalhes" else "assinar"
+    wizard_flow = request.query_params.get("fluxo") or ""
+    filename_stem = doc.filename[:-4] if doc.filename.lower().endswith(".pdf") else doc.filename
+    show_filename_sub = filename_stem.strip().lower() != display_title.strip().lower()
     return _page(
         request, user, db, "digital_signing", "digital_signing_workspace.html", display_title,
-        farm=farm, doc=doc, display_title=display_title, options=options, revisions=revisions,
+        farm=farm, doc=doc, display_title=display_title, show_filename_sub=show_filename_sub,
+        options=options, revisions=revisions,
         participants=participants, available_colleagues=available_colleagues,
         certificate_options=cert_choices, sig_count=sig_count, expected_count=expected_count,
-        active_view=active_view, mode=signing_mode(farm.id),
+        active_view=active_view, wizard_flow=wizard_flow, mode=signing_mode(farm.id),
     )
 
 
@@ -550,8 +577,11 @@ def remove_certificate(certificate_id: str, request: Request, db: Session = Depe
                        user: User = Depends(get_current_user_web)):
     _csrf(request)
     farm = _farm(request, db, user)
-    cert = db.scalar(select(DigitalCertificate).filter_by(
-        id=certificate_id, organization_id=user.organization_id, farm_id=farm.id,
+    cert = db.scalar(select(DigitalCertificate).where(
+        DigitalCertificate.id == certificate_id,
+        DigitalCertificate.organization_id == user.organization_id,
+        DigitalCertificate.farm_id == farm.id,
+        DigitalCertificate.deleted_at.is_(None),
     ))
     if cert is None:
         raise HTTPException(404, "Certificado não encontrado nesta fazenda.")
@@ -622,8 +652,11 @@ async def bind_certificate_holder(certificate_id: str, request: Request, db: Ses
     user_id = (await _payload(request)).get("user_id")
     if type(user_id) is not int:
         raise HTTPException(400, "Selecione um usuário da organização.")
-    cert = db.scalar(select(DigitalCertificate).filter_by(
-        id=certificate_id, organization_id=user.organization_id, farm_id=farm.id,
+    cert = db.scalar(select(DigitalCertificate).where(
+        DigitalCertificate.id == certificate_id,
+        DigitalCertificate.organization_id == user.organization_id,
+        DigitalCertificate.farm_id == farm.id,
+        DigitalCertificate.deleted_at.is_(None),
     ))
     if cert is None:
         raise HTTPException(404, "Certificado não encontrado nesta fazenda.")
