@@ -377,13 +377,16 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
         raise HTTPException(getattr(exc, "status", 422), str(exc)) from exc
     options["sha256"] = revision.sha256
     options["number"] = revision.number
-    participants = []
+    all_participants = db.scalars(
+        select(User)
+        .join(SigningParticipant, SigningParticipant.user_id == User.id)
+        .where(SigningParticipant.document_id == doc.id, User.organization_id == user.organization_id)
+        .order_by(User.name)
+    ).all()
+    participants = all_participants if doc.owner_id == user.id else []
     available_colleagues = []
     if doc.owner_id == user.id:
-        participants = db.scalars(select(User).join(SigningParticipant, SigningParticipant.user_id == User.id)
-                                  .where(SigningParticipant.document_id == doc.id,
-                                         User.organization_id == user.organization_id).order_by(User.name)).all()
-        existing_ids = {p.id for p in participants} | {user.id}
+        existing_ids = {p.id for p in all_participants} | {user.id}
         available_colleagues = db.scalars(
             select(User)
             .where(User.organization_id == user.organization_id, User.is_active.is_(True), User.id.not_in(existing_ids))
@@ -406,7 +409,13 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
     display_title = doc.title or (doc.filename[:-4] if doc.filename.lower().endswith(".pdf") else doc.filename)
     sig_count = len((doc.validation or {}).get("signatures") or [])
     owner_must_sign = bool(getattr(doc, "owner_signs", True))
-    expected_count = max((1 if owner_must_sign else 0) + len(participants), sig_count, 1)
+    expected_count = max((1 if owner_must_sign else 0) + len(all_participants), sig_count, 1)
+    signed_user_ids = {rev.user_id for rev in revisions if rev.signature and rev.user_id is not None}
+    user_already_signed = user.id in signed_user_ids
+    user_must_sign = (doc.owner_id == user.id and owner_must_sign) or any(p.id == user.id for p in all_participants)
+    pending_count = max(0, expected_count - sig_count)
+    all_signed = sig_count >= expected_count and sig_count > 0
+    show_signing_form = (not user_already_signed) and (not all_signed) and user_must_sign
     active_view = "detalhes" if request.query_params.get("aba") == "detalhes" else "assinar"
     wizard_flow = request.query_params.get("fluxo") or ""
     notice = (request.query_params.get("aviso") or "").strip()[:260]
@@ -418,7 +427,10 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
         options=options, revisions=revisions,
         participants=participants, available_colleagues=available_colleagues,
         certificate_options=cert_choices, sig_count=sig_count, expected_count=expected_count,
-        owner_must_sign=owner_must_sign, notice=notice,
+        owner_must_sign=owner_must_sign, user_already_signed=user_already_signed,
+        user_must_sign=user_must_sign, pending_count=pending_count,
+        all_signed=all_signed, show_signing_form=show_signing_form,
+        notice=notice,
         active_view=active_view, wizard_flow=wizard_flow, mode=signing_mode(farm.id),
     )
 

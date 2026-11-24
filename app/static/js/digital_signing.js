@@ -734,13 +734,16 @@ function initWorkspace(root) {
   // Workspace view tabs
   const wsTabs = [...root.querySelectorAll("[data-ds-ws-tab]")];
   const wsPanels = [...root.querySelectorAll("[data-ds-ws-panel]")];
+  const switchWsTab = (tab) => {
+    for (const b of wsTabs) b.setAttribute("aria-current", b.dataset.dsWsTab === tab ? "page" : "false");
+    for (const p of wsPanels) p.hidden = p.dataset.dsWsPanel !== tab;
+    if (tab === "assinar" && pdf) render();
+  };
   for (const btn of wsTabs) {
-    btn.addEventListener("click", () => {
-      const tab = btn.dataset.dsWsTab;
-      for (const b of wsTabs) b.setAttribute("aria-current", b.dataset.dsWsTab === tab ? "page" : "false");
-      for (const p of wsPanels) p.hidden = p.dataset.dsWsPanel !== tab;
-      if (tab === "assinar" && pdf) render();
-    });
+    btn.addEventListener("click", () => switchWsTab(btn.dataset.dsWsTab));
+  }
+  for (const btn of root.querySelectorAll("[data-ds-open-details]")) {
+    btn.addEventListener("click", () => switchWsTab("detalhes"));
   }
 
   function setCeremonyStep(step) {
@@ -768,6 +771,7 @@ function initWorkspace(root) {
   let challengeId;
 
   function syncAuthorization() {
+    if (!certificate || !consent || !authorize) return;
     const hasCert = Boolean(certificate.value);
     const consentBox = find("[data-ds-consent-box]");
     if (!hasCert) {
@@ -823,6 +827,11 @@ function initWorkspace(root) {
   }
 
   function drawStamp() {
+    if (!certificate) {
+      if (stamp) stamp.hidden = true;
+      if (jumpStamp) jumpStamp.hidden = true;
+      return;
+    }
     const fixedField = selectedField();
     const location = fixedField ? fixedField.location : visible?.checked ? chosenLocation : null;
     stamp.hidden = !viewport || !location || location.page + 1 !== renderedPage;
@@ -1021,7 +1030,7 @@ function initWorkspace(root) {
   }
 
   function syncChange() {
-    consent.checked = false;
+    if (consent) consent.checked = false;
     drawStamp();
   }
 
@@ -1042,7 +1051,7 @@ function initWorkspace(root) {
     resizeOrMove(...moves[event.key], pixelRect(chosenLocation), event.shiftKey);
   });
 
-  certificate.addEventListener("change", syncChange);
+  certificate?.addEventListener("change", syncChange);
   visible?.addEventListener("change", () => {
     if (visible.checked && !chosenLocation) defaultLocation();
     syncChange();
@@ -1067,10 +1076,10 @@ function initWorkspace(root) {
     if (selectedField()?.location) changePage(selectedField().location.page + 1);
     syncChange();
   });
-  consent.addEventListener("change", syncAuthorization);
+  consent?.addEventListener("change", syncAuthorization);
 
   // Step 1 -> Step 2 (request email authorization code)
-  authorize.addEventListener("click", async () => {
+  authorize?.addEventListener("click", async () => {
     const field = selectedField();
     const appearance = field
       ? {field: field.name}
@@ -1105,7 +1114,7 @@ function initWorkspace(root) {
   });
 
   // Step 2 -> Sign with email OTP only (no A1 password prompt!)
-  confirmForm.addEventListener("submit", async (event) => {
+  confirmForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = confirmForm.querySelector("[type=submit]");
     button.disabled = true;

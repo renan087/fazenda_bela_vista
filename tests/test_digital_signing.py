@@ -532,6 +532,12 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
     assert signed.status_code == 200, signed.text
     assert signed.json()["validation"]["state"] == "valid"
 
+    # Reopening a completed single-signer document shows "Documento já assinado" instead of the signing form
+    ws_signed = client.get(endpoint).text
+    assert "Documento já assinado" in ws_signed
+    assert "disponível para download" in ws_signed
+    assert "data-ds-authorize" not in ws_signed
+
     # Register A1 for another user with CPF and WhatsApp saved to profile when empty
     other_pfx = base64.b64encode(make(56, "Maria Produtora:12345678901").pfx).decode()
     reg_other = client.post("/certificados-digitais", headers=headers, json={
@@ -627,4 +633,6 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
     ws_others = client.get(others_url).text
     assert "0 de 1 assinou" in ws_others
     assert "0 de 2 assinou" not in ws_others
+    assert "Aguardando assinaturas" in ws_others
+    assert "data-ds-authorize" not in ws_others
 

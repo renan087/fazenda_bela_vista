@@ -46,7 +46,7 @@
   </header>
 
   <nav class="pd-tabs ds-tabs" aria-label="Visões do documento">
-    <button type="button" class="ds-tab-btn" data-ds-ws-tab="assinar" aria-current="{{ 'page' if active_view == 'assinar' else 'false' }}">Assinar documento</button>
+    <button type="button" class="ds-tab-btn" data-ds-ws-tab="assinar" aria-current="{{ 'page' if active_view == 'assinar' else 'false' }}">{{ 'Assinar documento' if show_signing_form else 'Visualizar documento' }}</button>
     <button type="button" class="ds-tab-btn" data-ds-ws-tab="detalhes" aria-current="{{ 'page' if active_view == 'detalhes' else 'false' }}">Detalhes, participantes e versões</button>
   </nav>
 
@@ -97,6 +97,52 @@
 
     <aside class="ds-ceremony-side">
       <section class="pd-card ds-panel-pad ds-ceremony-card">
+        {% if all_signed %}
+        <div class="ds-step-pane ds-success-pane">
+          <div class="ds-success-icon">{{ icon('check', 26) }}</div>
+          <h2>Documento já assinado</h2>
+          {% if expected_count <= 1 %}
+          <p>Este documento já foi assinado e está disponível para download.</p>
+          {% else %}
+          <p>Todas as {{ sig_count }} assinaturas foram concluídas. O PDF assinado já está disponível para download.</p>
+          {% endif %}
+          <div class="ds-success-actions">
+            <a class="sf-btn sf-btn-primary ds-full" href="{{ pdf_url }}">{{ icon('download', 16) }} Baixar PDF assinado</a>
+            <button type="button" class="sf-btn sf-btn-secondary ds-full" data-ds-open-details>Ver detalhes e assinaturas</button>
+            <a class="sf-btn sf-btn-soft ds-full" href="/assinatura-digital">Voltar para Documentos</a>
+          </div>
+        </div>
+        {% elif user_already_signed %}
+        <div class="ds-step-pane ds-success-pane">
+          <div class="ds-success-icon">{{ icon('check', 26) }}</div>
+          <h2>Você já assinou este documento</h2>
+          {% if pending_count == 1 %}
+          <p>Sua assinatura já foi registrada. Ainda falta <strong>1 pessoa</strong> assinar para concluir o documento.</p>
+          {% else %}
+          <p>Sua assinatura já foi registrada. Ainda faltam <strong>{{ pending_count }} pessoas</strong> assinarem para concluir o documento.</p>
+          {% endif %}
+          <div class="ds-success-actions">
+            <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-open-details>Ver quem falta assinar</button>
+            <a class="sf-btn sf-btn-secondary ds-full" href="{{ pdf_url }}">{{ icon('download', 16) }} Baixar versão atual</a>
+            <a class="sf-btn sf-btn-soft ds-full" href="/assinatura-digital">Voltar para Documentos</a>
+          </div>
+        </div>
+        {% elif not user_must_sign %}
+        <div class="ds-step-pane ds-success-pane">
+          <div class="ds-success-icon" style="background:#FFF6E5;color:#B27400">{{ icon('clock', 26) }}</div>
+          <h2>Aguardando assinaturas</h2>
+          {% if pending_count == 1 %}
+          <p>Este documento foi enviado para outra pessoa assinar. Assim que ela concluir, o PDF assinado ficará disponível para download.</p>
+          {% else %}
+          <p>Este documento foi enviado para outras pessoas assinarem. Ainda faltam <strong>{{ pending_count }} assinaturas</strong> para concluir.</p>
+          {% endif %}
+          <div class="ds-success-actions">
+            <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-open-details>Ver participantes</button>
+            <a class="sf-btn sf-btn-secondary ds-full" href="{{ pdf_url }}">{{ icon('download', 16) }} Baixar PDF atual</a>
+            <a class="sf-btn sf-btn-soft ds-full" href="/assinatura-digital">Voltar para Documentos</a>
+          </div>
+        </div>
+        {% else %}
         <!-- Indicador linear de 2 passos -->
         <ol class="ds-mini-steps" aria-label="Etapas da assinatura">
           <li data-ds-step-pill="1" aria-current="step"><span>1</span>Revisar</li>
@@ -219,14 +265,21 @@
         <!-- ETAPA 3: SUCESSO IMEDIATO -->
         <div class="ds-step-pane ds-success-pane" data-ds-step-pane="3" hidden>
           <div class="ds-success-icon">{{ icon('check', 26) }}</div>
-          <h2>Documento assinado com sucesso!</h2>
-          <p>Sua assinatura ICP-Brasil foi gravada no PDF com integridade verificada.</p>
+          <h2>Documento assinado!</h2>
+          {% if pending_count <= 1 %}
+          <p>Sua assinatura foi registrada e o documento já está pronto para download.</p>
+          {% elif pending_count == 2 %}
+          <p>Sua assinatura foi registrada. Ainda falta <strong>1 pessoa</strong> assinar para concluir o documento.</p>
+          {% else %}
+          <p>Sua assinatura foi registrada. Ainda faltam <strong>{{ pending_count - 1 }} pessoas</strong> assinarem para concluir o documento.</p>
+          {% endif %}
           <div class="ds-success-actions">
             <a class="sf-btn sf-btn-primary ds-full" data-ds-signed-download href="{{ pdf_url }}">{{ icon('download', 16) }} Baixar PDF assinado</a>
-            <button type="button" class="sf-btn sf-btn-secondary ds-full" data-ds-reload-page>Ver nova versão e detalhes</button>
+            <button type="button" class="sf-btn sf-btn-secondary ds-full" data-ds-reload-page>Ver detalhes e assinaturas</button>
             <a class="sf-btn sf-btn-soft ds-full" href="/assinatura-digital">Voltar para Documentos</a>
           </div>
         </div>
+        {% endif %}
       </section>
     </aside>
   </div>
@@ -325,5 +378,5 @@
     {% endif %}
   </div>
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=9"></script>
+<script type="module" src="/static/js/digital_signing.js?v=10"></script>
 {% endblock %}
