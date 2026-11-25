@@ -20,8 +20,8 @@
         <p class="ms-organization">{{ organization.name }}</p>
         <h2 class="ms-title">Minha assinatura</h2>
         <p class="ms-copy">Seu plano SiSFarm, faturas e forma de pagamento.</p>
-        {% if sandbox_mp %}
-        <p class="ms-copy">Mercado Pago · Ambiente de teste</p>
+        {% if mp_active %}
+        <p class="ms-copy">Mercado Pago{% if sandbox_mp %} · Ambiente de teste{% endif %}</p>
         {% elif subscription and can_change_payment and support_email %}
         <a href="mailto:{{ support_email }}" class="mt-2 inline-block text-sm font-semibold text-brand-700 underline">Solicitar cancelamento à equipe SiSFarm</a>
         {% endif %}
@@ -61,8 +61,8 @@
             {% endfor %}
         </ol>
         <p class="ms-copy">
-            {% if state == 'pending' %}Seu plano será ativado após a confirmação do pagamento.{% if not subscription_display.payment_url and not sandbox_mp %} O link de pagamento está em preparação.{% endif %}
-            {% elif state == 'confirming' %}{{ 'O Mercado Pago' if sandbox_mp else 'O Asaas' }} está confirmando o pagamento. Acompanhe a atualização por aqui.
+            {% if state == 'pending' %}Seu plano será ativado após a confirmação do pagamento.{% if not subscription_display.payment_url and not mp_active %} O link de pagamento está em preparação.{% endif %}
+            {% elif state == 'confirming' %}{{ 'O Mercado Pago' if mp_active else 'O Asaas' }} está confirmando o pagamento. Acompanhe a atualização por aqui.
             {% elif state == 'overdue' %}Há cobrança vencida.{% if situation and situation.overdue_count %} Total em atraso de R$ {{ situation.overdue_amount|decimal_br }}.{% endif %} Consulte as faturas em aberto para regularizar.
             {% elif state == 'active' %}Sua assinatura está ativa.
             {% elif state == 'suspended' %}Sua assinatura está suspensa. Fale com a equipe SiSFarm para reativá-la.
@@ -81,29 +81,34 @@
         {% endif %}
         <div class="ms-actions" data-subscription-actions>
             <a href="#detalhes-do-plano" class="ms-link" data-plan-details-link>Ver detalhes do plano</a>
-            {% if subscription and not sandbox_mp %}<a href="/planos-disponiveis" class="ms-link">Alterar plano</a>{% endif %}
+            {% if subscription and not mp_active %}<a href="/planos-disponiveis" class="ms-link">Alterar plano</a>{% endif %}
             {% if subscription %}
             <button type="button" data-dialog-open="payment-method-dialog" class="ms-secondary">{{ 'Acompanhar troca de cartão' if card_migration else 'Forma de pagamento' }}</button>
             {% endif %}
-            {% if subscription_display.payment_url and (not sandbox_mp or can_change_payment) %}
+            {% if subscription_display.payment_url and (not mp_active or can_change_payment) %}
             <a href="{{ subscription_display.payment_url }}" target="_blank" rel="noopener noreferrer" class="ms-primary">{{ 'Pagar agora' if state == 'overdue' else 'Concluir pagamento' }} <span aria-hidden="true">→</span></a>
             {% endif %}
-            {% if sandbox_mp and subscription and can_change_payment %}
+            {% if mp_active and subscription and can_change_payment %}
             <form method="post" action="/minha-assinatura/mercadopago">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="subscription_id" value="{{ subscription.id }}">
                 <button class="ms-secondary" name="action" value="sincronizar">Atualizar situação</button>
-                {% if subscription.mercadopago_id %}<button class="ms-link" name="action" value="cancelar" onclick="return confirm('Cancelar a assinatura de teste?');">Cancelar assinatura</button>{% endif %}
+                {% if subscription.mercadopago_id %}<button class="ms-link" name="action" value="cancelar" onclick="return confirm('Cancelar a renovação da assinatura?');">Cancelar assinatura</button>{% endif %}
             </form>
             {% endif %}
         </div>
     </section>
     {% else %}
     <section class="ms-card">
+        {% if paid_until %}
+        <h3 class="ms-subtitle">Renovação cancelada</h3>
+        <p class="ms-copy">Seu acesso segue disponível até {{ (paid_last_day or paid_until).strftime('%d/%m/%Y') }}. A partir de {{ paid_until.strftime('%d/%m/%Y') }}, você poderá contratar um novo plano.</p>
+        {% else %}
         <h3 class="ms-subtitle">Sua organização ainda não tem uma assinatura ativa</h3>
         <p class="ms-copy">Escolha o plano ideal para sua fazenda.</p>
         {% if can_change_payment %}<a href="/planos-disponiveis" class="ms-primary mt-4">Contratar plano</a>
         {% elif support_email %}<a href="mailto:{{ support_email }}" class="ms-link">Falar com a equipe</a>{% endif %}
+        {% endif %}
     </section>
     {% endif %}
 
@@ -126,7 +131,7 @@
                     <button type="button" data-copy-link="{{ charge.invoice_url }}" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Copiar link</button>
                     {% endif %}
                     {% if may_pay and charge.bank_slip_url %}<a href="{{ charge.bank_slip_url }}" target="_blank" rel="noopener noreferrer" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Boleto (PDF)</a>{% endif %}
-                    {% if not may_pay %}<span class="text-xs text-slate-500">{{ "Aguardando confirmação" if state == "confirming" else "Em análise" }}</span>{% elif not charge.invoice_url and not charge.bank_slip_url %}<span class="text-xs text-slate-500">{{ 'Acompanhe a cobrança no Mercado Pago.' if sandbox_mp else 'Link de pagamento sendo gerado…' }}</span>{% endif %}
+                    {% if not may_pay %}<span class="text-xs text-slate-500">{{ "Aguardando confirmação" if state == "confirming" else "Em análise" }}</span>{% elif not charge.invoice_url and not charge.bank_slip_url %}<span class="text-xs text-slate-500">{{ 'Acompanhe a cobrança no Mercado Pago.' if mp_active else 'Link de pagamento sendo gerado…' }}</span>{% endif %}
                 </div>
             </div>
             {% endfor %}
@@ -139,7 +144,10 @@
     <dialog id="payment-method-dialog" class="app-modal w-full max-w-lg rounded-[2rem] p-0 shadow-2xl">
     <div class="bg-white p-6" data-payment-method>
         <h3 class="text-lg font-semibold text-slate-900">Forma de pagamento</h3>
-        {% if card_migration %}
+        {% if mp_active %}
+        <p class="mt-2 text-sm text-slate-600">{{ payment_labels.get(subscription.billing_type, subscription.billing_type) }}</p>
+        {% if can_change_payment %}<a href="https://www.mercadopago.com.br/subscriptions" target="_blank" rel="noopener noreferrer" class="ms-link">Gerenciar cobrança no Mercado Pago</a>{% endif %}
+        {% elif card_migration %}
         <div class="mt-3 rounded-2xl bg-sky-50 p-4 text-sm text-sky-900">
             {% if card_migration.status == 'pago' %}
             <p class="font-semibold">Aguardando confirmação</p><p class="mt-1">O pagamento foi identificado. Estamos confirmando a nova forma de pagamento com o Asaas.</p>
@@ -189,7 +197,15 @@
         <ul class="mt-3 divide-y divide-slate-100">
             {% for charge in paid_charges %}
             <li class="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                <span><span class="font-semibold text-slate-900">R$ {{ charge.amount|decimal_br if charge.amount is not none else '—' }}</span> <span class="text-slate-500">· pago em {{ (charge.paid_date or charge.due_date).strftime('%d/%m/%Y') if (charge.paid_date or charge.due_date) else '—' }} · {{ payment_labels.get(charge.billing_type, charge.billing_type or '—') }}{% if charge.card_last4 %} final {{ charge.card_last4 }}{% endif %}</span></span>
+                <span>
+                    <span class="font-semibold text-slate-900">R$ {{ charge.amount|decimal_br if charge.amount is not none else '—' }}</span>
+                    <span class="text-slate-500">
+                        {% if charge.status == 'REFUNDED' %}· Estornado{% elif charge.status not in ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'] %}· Em revisão{% endif %}
+                        {% if charge.paid_date %}· pago em {{ charge.paid_date.strftime('%d/%m/%Y') }}{% elif charge.due_date %}· vencimento {{ charge.due_date.strftime('%d/%m/%Y') }}{% endif %}
+                        · {{ payment_labels.get(charge.billing_type, charge.billing_type or '—') }}{% if charge.card_last4 %} final {{ charge.card_last4 }}{% endif %}
+                        {% if charge.refunded_amount and charge.status != 'REFUNDED' %}· R$ {{ charge.refunded_amount|decimal_br }} estornados{% endif %}
+                    </span>
+                </span>
                 {% if charge.invoice_url %}<a href="{{ charge.invoice_url }}" target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-emerald-800 hover:underline">Ver fatura</a>{% endif %}
             </li>
             {% endfor %}

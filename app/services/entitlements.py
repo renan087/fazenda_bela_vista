@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models import Farm, Organization, OrganizationAccessGrant, OrganizationSubscription, OrganizationSubscriptionPayment, SubscriptionPlan, User
 from app.services.access_grants import TRIAL_GRANT_REASON, organization_access
-from app.services.billing_environment import MERCADOPAGO_TEST, billing_environment
+from app.services.billing_environment import MERCADOPAGO_ENVIRONMENTS, MERCADOPAGO_LIVE, billing_environment
 from app.services.subscription_plans import PLAN_MODULES, plan_modules
 
 DEFAULT_ORGANIZATION_SLUG = "sisfarm"
@@ -97,13 +97,13 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
                              .order_by(OrganizationSubscription.is_current.desc(), OrganizationSubscription.id.desc()).first())
         if plan_id is None and last_subscription:
             plan_id = last_subscription.plan_id
-    access_missing = not access.has_access and bool(env == "production" or last_trial or last_subscription)
+    access_missing = not access.has_access and bool(env in {"production", MERCADOPAGO_LIVE} or last_trial or last_subscription)
     plan = db.get(SubscriptionPlan, plan_id) if plan_id else None
     modules = frozenset(plan_modules(plan)) if plan and not is_trial else None
     locked = frozenset(code for code in MODULE_LABELS if modules is not None and code not in modules)
 
     subscription_query = db.query(OrganizationSubscription.id).filter_by(organization_id=organization_id, environment=env)
-    if env in {"production", MERCADOPAGO_TEST}:
+    if env == "production" or env in MERCADOPAGO_ENVIRONMENTS:
         subscription_query = subscription_query.filter_by(is_current=True)
     subscription_ids = [row[0] for row in subscription_query.all()]
     days_overdue, overdue_amount, oldest = 0, Decimal("0.00"), None
@@ -118,6 +118,10 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
             oldest = min(dates)
             days_overdue = max((today - oldest).days, 0)
         overdue_amount = sum((Decimal(row.amount or 0) for row in overdue), Decimal("0.00"))
+    if access.renewal_due and access.renewal_due < today and (not oldest or access.renewal_due < oldest):
+        # A fatura pode chegar depois da data de renovação. Considere o período já pago para definir a tolerância.
+        oldest = access.renewal_due
+        days_overdue = (today - oldest).days
 
     grace = grace_days()
     trial_ended = bool(last_trial and last_trial.ends_on < today)

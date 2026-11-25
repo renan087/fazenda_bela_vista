@@ -1,11 +1,11 @@
-"""Cliente e conciliação da API de Assinaturas do Mercado Pago em modo de teste."""
+"""Cliente e conciliação da API de Assinaturas do Mercado Pago."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import re
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -18,7 +18,7 @@ from app.core.config import get_settings
 from app.core.timezone import app_now, today_in_app_timezone
 from app.db.session import SessionLocal
 from app.models import MercadoPagoEvent, Organization, OrganizationSubscription, OrganizationSubscriptionPayment
-from app.services.billing_environment import MERCADOPAGO_TEST
+from app.services.billing_environment import MERCADOPAGO_LIVE, MERCADOPAGO_TEST, mercadopago_environment
 from app.services.asaas_environment import app_public_base
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ TOPICS = {
 }
 PAYMENT_TYPES = {"credit_card": "CREDIT_CARD", "debit_card": "DEBIT_CARD",
                  "bank_transfer": "PIX", "ticket": "BOLETO", "account_money": "ACCOUNT_MONEY"}
-CONFIRMATION_PENDING = {"in_process", "authorized", "in_mediation"}
+CONFIRMATION_PENDING = {"in_process", "authorized"}
 
 
 class MercadoPagoError(Exception):
@@ -46,11 +46,12 @@ class MercadoPagoError(Exception):
 
 CHECKOUT_REJECTIONS = {400, 401, 403, 404, 422}
 CHECKOUT_ERROR_MESSAGES = {
-    "ambiente_do_comprador": "O Mercado Pago recusou a combinação das contas. Confira se o vendedor e o comprador pertencem ao mesmo ambiente de teste.",
-    "comprador_igual_ao_vendedor": "O Mercado Pago exige contas diferentes para vendedor e comprador. Use o e-mail do comprador de teste.",
-    "email_do_comprador": "O Mercado Pago recusou o e-mail informado. Confira o e-mail da conta de comprador de teste.",
+    "ambiente_do_comprador": "O Mercado Pago recusou a combinação das contas. Confira se o vendedor e o comprador pertencem ao mesmo ambiente.",
+    "comprador_igual_ao_vendedor": "O Mercado Pago exige contas diferentes para vendedor e comprador.",
+    "email_do_comprador": "O Mercado Pago recusou o e-mail informado. Confira o e-mail da conta do comprador.",
+    "email_de_teste_em_producao": "Informe o e-mail da sua conta real do Mercado Pago.",
     "data_da_cobranca": "O Mercado Pago recusou a data de cobrança. Informe à equipe SiSFarm a data que aparece no resumo do plano.",
-    "credencial_invalida": "O Mercado Pago recusou o Access Token. Confira se ele pertence à aplicação usada neste teste de assinaturas.",
+    "credencial_invalida": "O Mercado Pago recusou o Access Token. Confira se ele pertence à aplicação de assinaturas.",
     "politica_do_mercado_pago": "O Mercado Pago bloqueou a solicitação por uma política de acesso. Informe ao suporte do Mercado Pago o código e a referência desta tentativa.",
 }
 
@@ -100,7 +101,7 @@ def checkout_error_message(error: MercadoPagoError) -> str:
     elif error.http_status in {401, 403}:
         message = "O Mercado Pago recusou a credencial ou a permissão da aplicação. Confira a configuração com a equipe SiSFarm."
     elif error.http_status in CHECKOUT_REJECTIONS:
-        message = "O Mercado Pago recusou a criação da assinatura de teste. Informe o código da tentativa à equipe SiSFarm."
+        message = "O Mercado Pago recusou a criação da assinatura. Informe o código da tentativa à equipe SiSFarm."
     elif str(error) == "organizacao_indisponivel":
         return "A organização está indisponível para uma nova contratação."
     else:
@@ -111,13 +112,49 @@ def checkout_error_message(error: MercadoPagoError) -> str:
 
 def configuration_error(settings=None) -> str | None:
     settings = settings or get_settings()
-    if not settings.mercadopago_sandbox:
-        return "O sandbox do Mercado Pago está desativado."
+    environment = mercadopago_environment(settings)
+    if not environment:
+        return "O Mercado Pago está desativado."
+    if environment == MERCADOPAGO_LIVE:
+        if settings.mercadopago_sandbox:
+            return "Selecione somente um ambiente do Mercado Pago."
+        if not settings.mercadopago_live_seller_id or settings.mercadopago_live_seller_id <= 0:
+            return "Configure o ID da conta brasileira que receberá as assinaturas reais."
+        token = (settings.mercadopago_live_access_token or "").strip()
+        secret = (settings.mercadopago_live_webhook_secret or "").strip()
+        if not token.startswith("APP_USR-") or token == (settings.mercadopago_access_token or "").strip():
+            return "Configure um Access Token próprio da aplicação de produção do Mercado Pago."
+        if len(secret) < 32 or secret in {token, (settings.mercadopago_webhook_secret or "").strip()}:
+            return "Configure o segredo exclusivo do webhook de produção do Mercado Pago."
+        return None
     missing = [name.upper() for name in ("mercadopago_access_token", "mercadopago_public_key", "mercadopago_webhook_secret")
                if not (getattr(settings, name) or "").strip()]
     if missing:
         return "Configure " + ", ".join(missing) + " com os dados da aplicação usada para homologação."
     return None
+
+
+def checkout_configuration_error(settings=None) -> str | None:
+    settings = settings or get_settings()
+    error = configuration_error(settings)
+    if error:
+        return error
+    if mercadopago_environment(settings) == MERCADOPAGO_LIVE and not settings.mercadopago_live_checkout_enabled:
+        return "Novas contratações estão temporariamente indisponíveis."
+    if mercadopago_environment(settings) == MERCADOPAGO_LIVE:
+        try:
+            url = urlsplit(app_public_base(settings))
+            if (url.scheme == "https" and url.hostname and url.port in {None, 443}
+                    and not (url.path or url.username or url.password or url.query or url.fragment)):
+                return None
+        except ValueError:
+            pass
+        return "Configure o endereço HTTPS público do SiSFarm em APP_PUBLIC_URL."
+    return None
+
+
+def first_due_date(trial_ends_on: date | None, today: date) -> date:
+    return max(today, trial_ends_on + timedelta(days=1)) if trial_ends_on else today
 
 
 def resource_id(value) -> str | None:
@@ -164,47 +201,66 @@ def _amount(value):
 class MercadoPagoAPI:
     def __init__(self, settings=None):
         settings = settings or get_settings()
+        self.environment = mercadopago_environment(settings)
         if configuration_error(settings):
-            raise MercadoPagoError("sandbox_indisponivel")
-        self.token = settings.mercadopago_access_token.strip()
-        self._test_seller: dict | None = None
+            raise MercadoPagoError("producao_indisponivel" if self.environment == MERCADOPAGO_LIVE else "sandbox_indisponivel")
+        self.checkout_enabled = checkout_configuration_error(settings) is None
+        self.seller_id = settings.mercadopago_live_seller_id if self.environment == MERCADOPAGO_LIVE else None
+        self.token = (settings.mercadopago_live_access_token if self.environment == MERCADOPAGO_LIVE
+                      else settings.mercadopago_access_token).strip()
+        self._seller: dict | None = None
 
-    def _verified_test_seller(self, client: httpx.Client) -> dict:
-        if self._test_seller is None:
-            self._test_seller = {}
+    def _verified_seller(self, client: httpx.Client) -> dict:
+        if self._seller is None:
+            response = client.get("/users/me")
+            if response.status_code >= 500 or response.status_code == 429:
+                raise MercadoPagoError(f"http_{response.status_code}", response.status_code)
             try:
-                response = client.get("/users/me")
                 account = response.json() if response.is_success else {}
-            except (httpx.HTTPError, ValueError):
-                return self._test_seller
+            except ValueError:
+                raise MercadoPagoError("resposta_invalida") from None
+            self._seller = {}
+            tags = account.get("tags") if isinstance(account, dict) else None
+            if tags is None:
+                tags = []
             if (isinstance(account, dict) and isinstance(account.get("id"), int)
-                    and account.get("site_id") == "MLB" and isinstance(account.get("tags"), list)
-                    and "test_user" in account["tags"] and str(account.get("email") or "").lower().endswith("@testuser.com")):
-                self._test_seller = {"id": account["id"], "email": account["email"].lower()}
-        return self._test_seller
+                    and account.get("site_id") == "MLB" and isinstance(tags, list)):
+                email = str(account.get("email") or "").lower()
+                fictitious = "test_user" in tags or email.endswith("@testuser.com")
+                if ((self.environment == MERCADOPAGO_TEST and "test_user" in tags and email.endswith("@testuser.com"))
+                        or (self.environment == MERCADOPAGO_LIVE and account["id"] == self.seller_id and email and not fictitious)):
+                    self._seller = {"id": account["id"], "email": email}
+        return self._seller
 
     def request(self, method, path, *, params=None, payload=None):
         headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
         try:
             with httpx.Client(base_url=API_URL, headers=headers, timeout=8.0) as client:
-                seller = self._verified_test_seller(client)
+                seller = self._verified_seller(client)
+                if self.environment == MERCADOPAGO_LIVE and not seller:
+                    raise MercadoPagoError("vendedor_de_producao_nao_confirmado")
                 # O endpoint de assinaturas recusa X-scope: stage para a aplicação do vendedor fictício.
-                if seller and method == "POST" and path == "/preapproval":
+                if method == "POST" and path == "/preapproval":
+                    if not self.checkout_enabled:
+                        raise MercadoPagoError("novas_contratacoes_desativadas")
                     email = str((payload or {}).get("payer_email") or "").strip().lower()
-                    if not re.fullmatch(r"[a-z0-9._+-]+@testuser\.com", email):
+                    test_email = bool(re.fullmatch(r"[a-z0-9._+-]+@testuser\.com", email))
+                    if self.environment == MERCADOPAGO_TEST and seller and not test_email:
                         raise MercadoPagoError("comprador_de_teste_invalido", reason="email_do_comprador")
-                    if email == seller["email"]:
+                    if self.environment == MERCADOPAGO_LIVE and test_email:
+                        raise MercadoPagoError("comprador_de_teste_invalido", reason="email_de_teste_em_producao")
+                    if email == seller.get("email"):
                         raise MercadoPagoError("comprador_de_teste_invalido", reason="comprador_igual_ao_vendedor")
                 scope = {} if seller else {"X-scope": "stage"}
                 response = client.request(method, path, params=params, json=payload, headers=scope)
         except httpx.HTTPError:
-            logger.warning("Mercado Pago sandbox: falha de conexão method=%s endpoint=%s", method, path)
+            logger.warning("Mercado Pago: falha de conexão ambiente=%s method=%s endpoint=%s", self.environment, method, path)
             raise MercadoPagoError("falha_de_conexao") from None
         if not response.is_success:
             response_id = resource_id(response.headers.get("x-request-id"))
             reason = _preapproval_error_reason(response) if method == "POST" and path == "/preapproval" else None
-            logger.warning("Mercado Pago sandbox: method=%s endpoint=%s status=%s request_id=%s motivo=%s",
-                           method, path, response.status_code, response_id or "-", reason or "-")
+            logger.warning("Mercado Pago: ambiente=%s method=%s endpoint=%s status=%s request_id=%s motivo=%s",
+                           self.environment, method, path, response.status_code, response_id or "-", reason or "-")
             raise MercadoPagoError(f"http_{response.status_code}", response.status_code, reason=reason, request_id=response_id)
         try:
             data = response.json()
@@ -213,13 +269,20 @@ class MercadoPagoAPI:
         if not isinstance(data, dict):
             raise MercadoPagoError("resposta_invalida")
         live_mode = data.get("live_mode")
+        owned = bool(seller) and str(data.get("collector_id")) == str(seller["id"])
+        subscription = path == "/preapproval" or (
+            method == "GET" and path.startswith("/preapproval/") and path != "/preapproval/search"
+        )
         if path.startswith("/v1/payments/"):
-            # Credenciais da aplicação fictícia podem retornar live_mode=true até para cartões de teste.
-            owned_test_payment = bool(seller) and str(data.get("collector_id")) == str(seller["id"])
-            if live_mode is not False and not (live_mode is True and owned_test_payment):
+            if self.environment == MERCADOPAGO_LIVE:
+                if live_mode is not True or not owned:
+                    raise MercadoPagoError("pagamento_fora_da_conta_de_producao")
+            elif live_mode is not False and not (live_mode is True and owned):
                 raise MercadoPagoError("resposta_fora_do_sandbox")
-        elif live_mode is True:
+        elif self.environment == MERCADOPAGO_TEST and live_mode is True:
             raise MercadoPagoError("resposta_fora_do_sandbox")
+        elif self.environment == MERCADOPAGO_LIVE and (live_mode is False or (subscription and not owned)):
+            raise MercadoPagoError("recurso_fora_da_conta_de_producao")
         return data
 
     def get(self, topic, identifier):
@@ -271,6 +334,7 @@ def _apply_subscription(subscription, remote):
         return
     if subscription.mercadopago_status in {"canceled", "cancelled"} and status not in {"canceled", "cancelled"}:
         return
+    previous_status = subscription.mercadopago_status
     subscription.mercadopago_id = identifier
     if isinstance(version, int):
         subscription.mercadopago_version = version
@@ -284,29 +348,39 @@ def _apply_subscription(subscription, remote):
         subscription.status = "revisao"
         subscription.sync_issue = "Aguardando link de autorização do Mercado Pago."
     if status in {"cancelled", "canceled"}:
-        subscription.status = "encerrada"
+        # Assinatura cancelada enquanto pausada não restaura acesso pelo período pago restante.
+        subscription.status = "encerrada_pausada" if previous_status == "paused" else "encerrada"
         subscription.is_current = False
+        if not subscription.mercadopago_ended_at:
+            subscription.mercadopago_ended_at = _now()
 
 
-def reserve_checkout(db, *, organization, plan, amount, cycle, due, email):
+def reserve_checkout(db, *, organization, plan, amount, cycle, due, email, environment=MERCADOPAGO_TEST):
     """Reserva local sob o bloqueio da organização. O chamador confirma antes do POST remoto."""
     if not db.query(Organization.id).filter_by(id=organization.id, archived_at=None, is_active=True).with_for_update().first():
         raise MercadoPagoError("organizacao_indisponivel")
     current = db.query(OrganizationSubscription).filter_by(organization_id=organization.id, is_current=True).first()
     if current:
-        if current.environment != "sandbox":
+        if not can_replace_test_subscription(current, environment):
             raise MercadoPagoError("assinatura_existente")
         current.is_current = False
         db.flush()
     row = OrganizationSubscription(
         organization_id=organization.id, plan_id=plan.id, plan_name=plan.name, amount=amount, cycle=cycle,
-        first_due_date=due, billing_type="UNDEFINED", environment=MERCADOPAGO_TEST,
+        first_due_date=due, billing_type="UNDEFINED", environment=environment,
         mercadopago_payer_email=email,
-        mercadopago_reference=f"sisfarm-test-{uuid4().hex}", last_synced_at=_now(),
+        mercadopago_reference=f"sisfarm-{'live' if environment == MERCADOPAGO_LIVE else 'test'}-{uuid4().hex}",
+        last_synced_at=_now(),
     )
     db.add(row)
     db.flush()
     return row
+
+
+def can_replace_test_subscription(current, environment):
+    return current.environment == "sandbox" or (
+        environment == MERCADOPAGO_LIVE and current.environment == MERCADOPAGO_TEST
+    )
 
 
 def create_checkout(db, api, subscription):
@@ -318,7 +392,8 @@ def create_checkout(db, api, subscription):
     recurring = {"frequency": CYCLES[subscription.cycle], "frequency_type": "months",
                  "transaction_amount": float(subscription.amount), "currency_id": "BRL"}
     if subscription.first_due_date > today_in_app_timezone():
-        recurring["start_date"] = datetime.combine(subscription.first_due_date, time.min, app_now().tzinfo).isoformat()
+        start_utc = datetime.combine(subscription.first_due_date, time.min, app_now().tzinfo).astimezone(timezone.utc)
+        recurring["start_date"] = start_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z")
     payload = {"reason": f"SiSFarm - {subscription.plan_name}", "external_reference": subscription.mercadopago_reference,
                "payer_email": subscription.mercadopago_payer_email, "back_url": app_public_base() + "/minha-assinatura", "status": "pending",
                "auto_recurring": recurring}
@@ -327,27 +402,32 @@ def create_checkout(db, api, subscription):
     except MercadoPagoError as error:
         subscription.last_synced_at = _now()
         diagnostic = [str(error), error.reason, error.request_id]
-        subscription.sync_issue = f"Criação da assinatura em teste: {' · '.join(filter(None, diagnostic))}."
+        stage = " em teste" if subscription.environment == MERCADOPAGO_TEST else ""
+        subscription.sync_issue = f"Criação da assinatura{stage}: {' · '.join(filter(None, diagnostic))}."
         subscription.status = "revisao"
         # Falhas inconclusivas são recuperadas por referência, sem repetir o POST.
-        if error.http_status in CHECKOUT_REJECTIONS or str(error) == "comprador_de_teste_invalido":
+        if error.http_status in CHECKOUT_REJECTIONS or str(error) in {
+            "comprador_de_teste_invalido", "vendedor_de_producao_nao_confirmado", "novas_contratacoes_desativadas",
+        }:
             subscription.is_current = False
             subscription.status = "falhou"
         db.commit()
-        logger.warning("Mercado Pago sandbox: criação subscription_id=%s resultado=%s", subscription.id, error)
+        logger.warning("Mercado Pago: criação ambiente=%s subscription_id=%s resultado=%s",
+                       subscription.environment, subscription.id, error)
         raise
     db.commit()
     return subscription.mercadopago_checkout_url
 
 
-def _find_subscription(db, remote_id, reference=None):
+def _find_subscription(db, environment, remote_id, reference=None):
     if not resource_id(remote_id):
         return None
     match = OrganizationSubscription.mercadopago_id == str(remote_id)
-    if isinstance(reference, str) and reference.startswith("sisfarm-test-"):
+    prefix = "sisfarm-live-" if environment == MERCADOPAGO_LIVE else "sisfarm-test-"
+    if isinstance(reference, str) and reference.startswith(prefix):
         match = or_(match, OrganizationSubscription.mercadopago_reference == reference)
     return db.query(OrganizationSubscription).filter(
-        OrganizationSubscription.environment == MERCADOPAGO_TEST, match,
+        OrganizationSubscription.environment == environment, match,
     ).with_for_update().one_or_none()
 
 
@@ -356,7 +436,7 @@ def _apply_invoice(db, api, invoice):
     remote_id = resource_id(invoice.get("preapproval_id"))
     if not identifier or not remote_id:
         raise MercadoPagoError("fatura_invalida")
-    subscription = _find_subscription(db, remote_id, invoice.get("external_reference"))
+    subscription = _find_subscription(db, getattr(api, "environment", MERCADOPAGO_TEST), remote_id, invoice.get("external_reference"))
     if not subscription:
         return "sem_vinculo"
     if not subscription.mercadopago_id:
@@ -374,24 +454,37 @@ def _apply_invoice(db, api, invoice):
         raise MercadoPagoError("pagamento_divergente")
     remote_status = payment.get("status")
     due = _date(invoice.get("debit_date"))
+    existing = db.query(OrganizationSubscriptionPayment).filter_by(mercadopago_invoice_id=identifier).one_or_none()
+    if existing and existing.subscription_id != subscription.id:
+        raise MercadoPagoError("fatura_ja_vinculada")
+    if existing and existing.due_date:
+        due = min(due, existing.due_date) if due else existing.due_date
+    refunded = _amount(payment.get("transaction_amount_refunded"))
     status = "PENDING"
     if remote_status == "approved":
         status = "CONFIRMED"
     elif remote_status in {"refunded", "charged_back"}:
         status = "REFUNDED" if remote_status == "refunded" else "CHARGEBACK_REQUESTED"
+    elif remote_status == "in_mediation":
+        status = "CHARGEBACK_DISPUTE"
+    elif (
+        (remote_status in {"rejected", "cancelled", "canceled"}
+         and (invoice.get("status") == "processed" or (due is not None and due <= today_in_app_timezone())))
+        or (due and due < today_in_app_timezone())
+    ):
+        status = "OVERDUE"
     elif remote_status in CONFIRMATION_PENDING:
         status = "AWAITING_RISK_ANALYSIS"
-    elif (remote_status in {"rejected", "cancelled", "canceled"} and invoice.get("status") == "processed") or (due and due < today_in_app_timezone()):
-        status = "OVERDUE"
-    existing = db.query(OrganizationSubscriptionPayment).filter_by(mercadopago_invoice_id=identifier).one_or_none()
-    if existing and existing.subscription_id != subscription.id:
-        raise MercadoPagoError("fatura_ja_vinculada")
     row = existing or OrganizationSubscriptionPayment(subscription_id=subscription.id, mercadopago_invoice_id=identifier)
     if not existing:
         db.add(row)
     row.mercadopago_payment_id, row.amount, row.status = payment_id, amount, status
-    row.due_date = min(row.due_date, due) if row.due_date and due else due or row.due_date
-    row.paid_date = _date(payment.get("date_approved")) if status == "CONFIRMED" else None
+    row.due_date = due
+    row.refunded_amount = amount if status == "REFUNDED" else refunded
+    if status in {"CONFIRMED", "REFUNDED", "CHARGEBACK_REQUESTED", "CHARGEBACK_DISPUTE"}:
+        row.paid_date = _date(payment.get("date_approved")) or row.paid_date
+    else:
+        row.paid_date = None
     method = PAYMENT_TYPES.get(payment.get("payment_type_id"))
     if payment.get("payment_method_id") == "pix":
         method = "PIX"
@@ -419,7 +512,7 @@ def process_event(db, api, topic, identifier):
         status = remote.get("status")
         return f"plano_consultado:{status}" if status in {"active", "inactive", "paused", "cancelled", "canceled"} else "plano_consultado"
     if topic == "subscription_preapproval":
-        row = _find_subscription(db, identifier, remote.get("external_reference"))
+        row = _find_subscription(db, getattr(api, "environment", MERCADOPAGO_TEST), identifier, remote.get("external_reference"))
         if not row:
             return "sem_vinculo"
         _apply_subscription(row, api.get(topic, identifier))
@@ -436,9 +529,10 @@ def process_event(db, api, topic, identifier):
 def reconcile(db, api, row):
     row.last_synced_at = _now()
     if not row.mercadopago_id:
-        if not row.mercadopago_payer_email:
+        email = (row.mercadopago_payer_email or "").strip().lower()
+        if not email:
             return
-        matches = [item for item in api.search("/preapproval/search", payer_email=row.mercadopago_payer_email)
+        matches = [item for item in api.search("/preapproval/search", payer_email=email)
                    if item.get("external_reference") == row.mercadopago_reference]
         if not matches:
             return
@@ -449,13 +543,54 @@ def reconcile(db, api, row):
         remote = api.get("subscription_preapproval", row.mercadopago_id)
     _apply_subscription(row, remote)
     if row.mercadopago_status != "pending":
-        for invoice in api.search("/authorized_payments/search", preapproval_id=row.mercadopago_id):
-            if resource_id(invoice.get("preapproval_id")) == row.mercadopago_id:
-                _apply_invoice(db, api, invoice)
+        try:
+            invoices = list(api.search("/authorized_payments/search", preapproval_id=row.mercadopago_id))
+        except MercadoPagoError as error:
+            row.sync_issue = f"Conciliação de cobranças: {error}."
+            logger.warning("Mercado Pago: conciliação de cobranças subscription_id=%s erro=%s", row.id, error)
+            return
+        issues = []
+        for invoice in invoices:
+            if resource_id(invoice.get("preapproval_id")) != row.mercadopago_id:
+                continue
+            try:
+                # Isola cada fatura: falha em uma cobrança não reverte as demais da assinatura.
+                with db.begin_nested():
+                    _apply_invoice(db, api, invoice)
+            except MercadoPagoError as error:
+                invoice_id = resource_id(invoice.get("id")) or "-"
+                issues.append(str(error))
+                logger.warning("Mercado Pago: conciliação da fatura=%s subscription_id=%s erro=%s",
+                               invoice_id, row.id, error)
+        if issues:
+            row.sync_issue = f"Conciliação de cobranças: {issues[-1]}."
+
+
+def release_unconfirmed_checkout(db, api, row) -> str:
+    """Libera uma reserva em revisão que não chegou a ser criada no Mercado Pago."""
+    if row.environment != getattr(api, "environment", MERCADOPAGO_TEST):
+        raise MercadoPagoError("ambiente_invalido")
+    if row.mercadopago_id or not row.is_current or row.status not in {"criando", "revisao"}:
+        raise MercadoPagoError("acao_indisponivel")
+    email = (row.mercadopago_payer_email or "").strip().lower()
+    if email:
+        matches = [item for item in api.search("/preapproval/search", payer_email=email)
+                   if item.get("external_reference") == row.mercadopago_reference]
+        if len(matches) > 1:
+            raise MercadoPagoError("referencia_duplicada")
+        if len(matches) == 1:
+            remote = api.get("subscription_preapproval", matches[0].get("id"))
+            _apply_subscription(row, remote)
+            return "recuperada"
+    row.is_current = False
+    row.status = "falhou"
+    row.last_synced_at = _now()
+    row.sync_issue = "Tentativa liberada pela equipe após confirmar ausência no Mercado Pago."
+    return "liberada"
 
 
 def change_status(api, row, target):
-    if not row.mercadopago_id or row.environment != MERCADOPAGO_TEST:
+    if not row.mercadopago_id or row.environment != getattr(api, "environment", MERCADOPAGO_TEST):
         raise MercadoPagoError("aguardando_vinculo")
     allowed = {"canceled": {"pending", "authorized", "paused"}, "paused": {"authorized"}, "authorized": {"paused"}}
     remote = api.get("subscription_preapproval", row.mercadopago_id)
@@ -476,6 +611,7 @@ def _process_events(api):
     for _ in range(20):
         with SessionLocal() as db:
             event = db.query(MercadoPagoEvent).filter(
+                MercadoPagoEvent.environment == getattr(api, "environment", MERCADOPAGO_TEST),
                 MercadoPagoEvent.state == "pending", MercadoPagoEvent.retry_at <= _now(),
             ).order_by(MercadoPagoEvent.id).with_for_update(skip_locked=True).first()
             if not event:
@@ -483,15 +619,19 @@ def _process_events(api):
             event.attempts += 1
             try:
                 with db.begin_nested():
-                    event.result = process_event(db, api, event.topic, event.resource_id)
+                    result = process_event(db, api, event.topic, event.resource_id)
+                    # Pagamento pode chegar segundos antes da fatura aparecer em /authorized_payments/search.
+                    if event.topic == "payment" and result == "sem_fatura" and event.attempts < 3:
+                        raise MercadoPagoError("fatura_ainda_nao_vinculada")
+                    event.result = result
                 event.state = "processed"
             except MercadoPagoError as error:
                 event.result = str(error)
                 event.retry_at = _now() + timedelta(seconds=min(1800, 30 * (2 ** event.attempts)))
                 if event.attempts >= 8:
                     event.state = "failed"
-                logger.warning("Mercado Pago sandbox: evento=%s tópico=%s recurso=%s tentativa=%s erro=%s",
-                               event.id, event.topic, event.resource_id, event.attempts, error)
+                logger.warning("Mercado Pago: evento=%s ambiente=%s tópico=%s recurso=%s tentativa=%s erro=%s",
+                               event.id, event.environment, event.topic, event.resource_id, event.attempts, error)
             db.commit()
 
 
@@ -502,12 +642,22 @@ def _tick():
     _process_events(api)
     for _ in range(10):
         with SessionLocal() as db:
+            now = _now()
             row = db.query(OrganizationSubscription).filter(
-                OrganizationSubscription.environment == MERCADOPAGO_TEST,
-                OrganizationSubscription.is_current.is_(True),
-                or_(OrganizationSubscription.last_synced_at.is_(None),
-                    OrganizationSubscription.last_synced_at < _now() - timedelta(minutes=5)),
-            ).order_by(OrganizationSubscription.last_synced_at.asc().nullsfirst()).with_for_update(skip_locked=True).first()
+                OrganizationSubscription.environment == getattr(api, "environment", MERCADOPAGO_TEST),
+                or_(
+                    OrganizationSubscription.is_current.is_(True) & (
+                        OrganizationSubscription.last_synced_at.is_(None)
+                        | (OrganizationSubscription.last_synced_at < now - timedelta(minutes=5))
+                    ),
+                    (OrganizationSubscription.mercadopago_ended_at >= now - timedelta(days=180))
+                    & (
+                        (OrganizationSubscription.last_synced_at <= OrganizationSubscription.mercadopago_ended_at)
+                        | (OrganizationSubscription.last_synced_at < now - timedelta(hours=6))
+                    ),
+                ),
+            ).order_by(OrganizationSubscription.is_current.desc(),
+                       OrganizationSubscription.last_synced_at.asc().nullsfirst()).with_for_update(skip_locked=True).first()
             if not row:
                 return
             try:
@@ -515,8 +665,9 @@ def _tick():
                     reconcile(db, api, row)
             except MercadoPagoError as error:
                 row.last_synced_at = _now()
-                row.sync_issue = f"Conciliação em teste: {error}."
-                logger.warning("Mercado Pago sandbox: conciliação subscription_id=%s erro=%s", row.id, error)
+                row.sync_issue = f"Conciliação da assinatura: {error}."
+                logger.warning("Mercado Pago: conciliação ambiente=%s subscription_id=%s erro=%s",
+                               row.environment, row.id, error)
             db.commit()
 
 
@@ -525,5 +676,5 @@ async def run_mercadopago_loop():
         try:
             await run_in_threadpool(_tick)
         except Exception:
-            logger.exception("Mercado Pago sandbox: falha na fila ou conciliação")
+            logger.exception("Mercado Pago: falha na fila ou conciliação")
         await asyncio.sleep(10)

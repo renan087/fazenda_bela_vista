@@ -1,4 +1,6 @@
-# Entrada em produção das assinaturas
+# Operação legada de assinaturas no Asaas
+
+Para configurar o provedor atual, consulte o [guia de produção do Mercado Pago](mercadopago-producao.md).
 
 ## 1. Homologação
 

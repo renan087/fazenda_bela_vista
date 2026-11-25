@@ -9,7 +9,7 @@
                     <p class="stock-page-card-subtitle" data-sector-costs-description>Acompanhe planos, cobranças e histórico comercial por organização.</p>
                 </div>
             </div>
-            {% set env = asaas_env() %}<span class="rounded-2xl border px-4 py-3 text-sm font-semibold {{ 'border-emerald-200 bg-emerald-50 text-emerald-800' if not sandbox_mp and env.is_production else 'border-amber-200 bg-amber-50 text-amber-800' }}">{{ 'Mercado Pago · Ambiente de teste' if sandbox_mp else env.label }}</span>
+            {% set env = asaas_env() %}{% set is_live_badge = (mp_active and not sandbox_mp) or (not mp_active and env.is_production) %}<span class="rounded-2xl border px-4 py-3 text-sm font-semibold {{ 'border-emerald-200 bg-emerald-50 text-emerald-800' if is_live_badge else 'border-amber-200 bg-amber-50 text-amber-800' }}">{{ ('Mercado Pago · Ambiente de teste' if sandbox_mp else 'Mercado Pago · Produção') if mp_active else env.label }}</span>
         </div>
     </section>
 
@@ -22,7 +22,7 @@
 
     <section class="stock-panel overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-panel sm:p-6" data-stock-fade-panel>
         <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
-            <div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Carteira</p><h3 class="mt-2 text-xl font-semibold text-slate-900">Panorama das assinaturas</h3><p class="mt-1 text-sm text-slate-500">Dados da última sincronização com {{ 'o Mercado Pago' if sandbox_mp else 'o Asaas' }}. Organizações que exigem atenção aparecem primeiro.</p></div>
+            <div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Carteira</p><h3 class="mt-2 text-xl font-semibold text-slate-900">Panorama das assinaturas</h3><p class="mt-1 text-sm text-slate-500">Dados da última sincronização com {{ 'o Mercado Pago' if mp_active else 'o Asaas' }}. Organizações que exigem atenção aparecem primeiro.</p></div>
         </div>
         {% set situation_styles = {'verificar': 'bg-amber-50 text-amber-800', 'liberada': 'bg-violet-50 text-violet-800', 'inadimplente': 'bg-rose-50 text-rose-700', 'aguardando_cartao': 'bg-sky-50 text-sky-700', 'aguardando_pagamento': 'bg-amber-50 text-amber-800', 'suspensa': 'bg-slate-100 text-slate-700', 'sem_assinatura': 'bg-slate-100 text-slate-600', 'sem_cliente': 'bg-slate-100 text-slate-500', 'ativa': 'bg-emerald-50 text-emerald-800', 'outra': 'bg-slate-100 text-slate-600'} %}
         {% set portfolio_payment_labels = {'PIX': 'Pix', 'BOLETO': 'Boleto', 'CREDIT_CARD': 'Cartão'} %}
@@ -60,9 +60,9 @@
         {% else %}<p class="mt-4 text-sm text-slate-500">Nenhuma organização cadastrada.</p>{% endif %}
     </section>
 
-    {% if sandbox_mp and mp_config_error %}
+    {% if mp_active and mp_config_error %}
     <p role="status" class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{{ mp_config_error }}</p>
-    {% elif not sandbox_mp and (asaas_config_error or not asaas_webhook_ready) %}
+    {% elif not mp_active and (asaas_config_error or not asaas_webhook_ready) %}
     <section class="rounded-[2rem] border border-rose-200 bg-rose-50 p-5 text-sm text-rose-900" data-stock-fade-panel data-asaas-config-warning>
         <p class="font-semibold">Integração com o Asaas incompleta</p>
         {% if asaas_config_error %}<p class="mt-1">{{ asaas_config_error }} Sem isso, nenhuma assinatura pode ser criada ou atualizada.</p>{% endif %}
@@ -71,8 +71,8 @@
     {% endif %}
     {% if organization %}
     <section id="gerenciamento" class="scroll-mt-28 stock-panel rounded-[2rem] border border-slate-200 bg-white p-5 shadow-panel sm:p-6" data-stock-fade-panel>
-        <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Gerenciamento comercial</p><h3 class="mt-2 text-xl font-semibold text-slate-900">{{ organization.name }} · #{{ organization.id }}</h3><p class="mt-1 text-sm text-slate-500">Consulte a assinatura atual, as cobranças e as ações disponíveis.</p></div>{% if not sandbox_mp %}<span class="rounded-full px-3 py-1 text-xs font-semibold {% if billing and billing.asaas_customer_id %}bg-emerald-50 text-emerald-800{% else %}bg-amber-50 text-amber-800{% endif %}">{% if billing and billing.asaas_customer_id %}Cliente Asaas vinculado{% else %}Cliente Asaas não vinculado{% endif %}</span>{% endif %}</div>
-        {% include "_mercadopago_management.html" if sandbox_mp else "_subscription_management.html" %}
+        <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Gerenciamento comercial</p><h3 class="mt-2 text-xl font-semibold text-slate-900">{{ organization.name }} · #{{ organization.id }}</h3><p class="mt-1 text-sm text-slate-500">Consulte a assinatura atual, as cobranças e as ações disponíveis.</p></div>{% if not mp_active %}<span class="rounded-full px-3 py-1 text-xs font-semibold {% if billing and billing.asaas_customer_id %}bg-emerald-50 text-emerald-800{% else %}bg-amber-50 text-amber-800{% endif %}">{% if billing and billing.asaas_customer_id %}Cliente Asaas vinculado{% else %}Cliente Asaas não vinculado{% endif %}</span>{% endif %}</div>
+        {% include "_mercadopago_management.html" if mp_active else "_subscription_management.html" %}
     </section>
     {% endif %}
 </div>
@@ -109,6 +109,38 @@
     mobile.addEventListener?.('change', schedule);
     header?.addEventListener('transitionend', schedule);
     update();
+
+    // Modais de gerenciamento/liberação manual, atalhos de prazo e proteção contra envio duplo.
+    document.addEventListener('click', (event) => {
+        const opener = event.target.closest('[data-dialog-open]');
+        if (opener) {
+            opener.closest('details[data-row-menu]')?.removeAttribute('open');
+            document.getElementById(opener.dataset.dialogOpen)?.showModal();
+            return;
+        }
+        if (event.target.closest('[data-dialog-close]')) {
+            event.target.closest('dialog')?.close();
+            return;
+        }
+        if (event.target.tagName === 'DIALOG') event.target.close();
+    });
+    document.addEventListener('click', (event) => {
+        const preset = event.target.closest('[data-grant-days]');
+        if (!preset) return;
+        const input = preset.closest('form')?.querySelector('[data-grant-end]');
+        if (!input) return;
+        const date = new Date();
+        date.setDate(date.getDate() + Number(preset.dataset.grantDays));
+        input.value = date.toISOString().slice(0, 10);
+    });
+    document.querySelectorAll('[data-busy-form]').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            const button = form.querySelector('button:not([type="button"])');
+            if (form.dataset.sending) { event.preventDefault(); return; }
+            form.dataset.sending = '1';
+            if (button) { button.disabled = true; button.textContent = 'Processando…'; }
+        });
+    });
 })();
 </script>
 {% endblock %}

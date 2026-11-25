@@ -100,7 +100,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(run_billing_notice_loop()),
         asyncio.create_task(run_whatsapp_lifecycle_loop()),
     ]
-    if settings.mercadopago_sandbox:
+    if settings.mercadopago_sandbox or settings.mercadopago_live_enabled:
         background_tasks.append(asyncio.create_task(run_mercadopago_loop()))
     else:
         background_tasks.extend([

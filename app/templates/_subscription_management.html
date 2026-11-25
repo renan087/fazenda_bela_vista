@@ -279,30 +279,11 @@
     const money = (value) => Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     const cycleLabels = { MONTHLY: 'mês', QUARTERLY: 'trimestre', SEMIANNUALLY: 'semestre', YEARLY: 'ano' };
 
-    // Janelas de confirmacao, menus de linha e protecao contra envio duplo.
+    // Menus de linha (modais, atalhos de liberação e envio duplo ficam em subscriptions.html).
     document.addEventListener('click', (event) => {
-        const opener = event.target.closest('[data-dialog-open]');
-        if (opener) {
-            opener.closest('details[data-row-menu]')?.removeAttribute('open');
-            document.getElementById(opener.dataset.dialogOpen)?.showModal();
-            return;
-        }
-        if (event.target.closest('[data-dialog-close]')) {
-            event.target.closest('dialog')?.close();
-            return;
-        }
-        if (event.target.tagName === 'DIALOG') event.target.close();
         document.querySelectorAll('details[data-row-menu][open]').forEach((menu) => {
             if (!menu.contains(event.target)) menu.removeAttribute('open');
         });
-    });
-    document.addEventListener('click', (event) => {
-        const preset = event.target.closest('[data-grant-days]');
-        if (!preset) return;
-        const input = preset.closest('form').querySelector('[data-grant-end]');
-        const date = new Date();
-        date.setDate(date.getDate() + Number(preset.dataset.grantDays));
-        input.value = date.toISOString().slice(0, 10);
     });
     // Menu "⋯": posicionado pela janela (o painel da pagina corta o que passa da borda) e abre para cima se faltar espaco.
     const placeMenu = (menu) => {
@@ -326,14 +307,6 @@
     const closeMenus = () => document.querySelectorAll('details[data-row-menu][open]').forEach((menu) => menu.removeAttribute('open'));
     window.addEventListener('scroll', closeMenus, { passive: true });
     window.addEventListener('resize', closeMenus);
-    document.querySelectorAll('[data-busy-form]').forEach((form) => {
-        form.addEventListener('submit', (event) => {
-            const button = form.querySelector('button:not([type="button"])');
-            if (form.dataset.sending) { event.preventDefault(); return; }
-            form.dataset.sending = '1';
-            if (button) { button.disabled = true; button.textContent = 'Consultando o Asaas…'; }
-        });
-    });
 
     document.addEventListener('click', async (event) => {
         const button = event.target.closest('[data-copy-link]');

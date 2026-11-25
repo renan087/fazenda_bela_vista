@@ -24,12 +24,16 @@ PAYMENT_REVIEW = {"REFUNDED", "REFUND_REQUESTED", "REFUND_IN_PROGRESS", "CHARGEB
 
 
 def has_confirmed_subscription_payment(db: Session, subscription_id: int) -> bool:
-    status = (db.query(OrganizationSubscriptionPayment.status)
+    payment = latest_settled_subscription_payment(db, subscription_id)
+    return payment is not None and payment.status in PAID
+
+
+def latest_settled_subscription_payment(db: Session, subscription_id: int) -> OrganizationSubscriptionPayment | None:
+    return (db.query(OrganizationSubscriptionPayment)
               .filter_by(subscription_id=subscription_id)
               .filter(OrganizationSubscriptionPayment.status.in_(PAID | PAYMENT_REVIEW))
               .order_by(OrganizationSubscriptionPayment.due_date.desc().nullslast(),
-                        OrganizationSubscriptionPayment.id.desc()).limit(1).scalar())
-    return status in PAID
+                        OrganizationSubscriptionPayment.id.desc()).first())
 
 
 def monthly(amount, cycle: str) -> Decimal:

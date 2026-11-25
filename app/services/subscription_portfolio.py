@@ -13,8 +13,9 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.services.subscription_plans import cycle_months
-from app.services.billing_environment import MERCADOPAGO_TEST, billing_environment
-from app.services.access_grants import active_grants_by_organization, is_expiring_soon
+from app.services.billing_environment import MERCADOPAGO_ENVIRONMENTS, MERCADOPAGO_LIVE, billing_environment
+from app.services.access_grants import active_grants_by_organization, is_expiring_soon, subscription_renewal_due
+from app.services.plan_changes import PAYMENT_REVIEW
 from app.models import (
     Organization,
     OrganizationBilling,
@@ -90,7 +91,7 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
         return portfolio
 
     environment = billing_environment()
-    sandbox_mp = environment == MERCADOPAGO_TEST
+    uses_mercadopago = environment in MERCADOPAGO_ENVIRONMENTS
     billing_by_org = {
         item.organization_id: item
         for item in db.query(OrganizationBilling).filter(OrganizationBilling.organization_id.in_(org_ids)).all()
@@ -114,19 +115,35 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
     grants = active_grants_by_organization(db, org_ids, today)
     overdue_by_org: dict[int, list[OrganizationSubscriptionPayment]] = defaultdict(list)
     payment_review_orgs: set[int] = set()
+    dispute_orgs: set[int] = set()
     paid_subscriptions: set[int] = set()
+    latest_paid_by_subscription: dict[int, OrganizationSubscriptionPayment] = {}
+    latest_outcomes: set[int] = set()
     if org_by_subscription:
         payments = db.query(OrganizationSubscriptionPayment).filter(
             OrganizationSubscriptionPayment.subscription_id.in_(list(org_by_subscription))
-        ).all()
+        ).order_by(OrganizationSubscriptionPayment.due_date.desc().nullslast(),
+                   OrganizationSubscriptionPayment.id.desc()).all()
         for payment in payments:
-            if payment.status in PAID_STATUSES:
-                paid_subscriptions.add(payment.subscription_id)
             org_id = org_by_subscription[payment.subscription_id]
+            if not uses_mercadopago:
+                if payment.status in PAID_STATUSES:
+                    paid_subscriptions.add(payment.subscription_id)
+            else:
+                if payment.status in {"CHARGEBACK_REQUESTED", "CHARGEBACK_DISPUTE"}:
+                    payment_review_orgs.add(org_id)
+                    dispute_orgs.add(org_id)
+                if payment.subscription_id not in latest_outcomes and payment.status in PAID_STATUSES | PAYMENT_REVIEW:
+                    latest_outcomes.add(payment.subscription_id)
+                    if payment.status in PAID_STATUSES:
+                        paid_subscriptions.add(payment.subscription_id)
+                        latest_paid_by_subscription[payment.subscription_id] = payment
+                    elif payment.subscription_id in current_ids:
+                        payment_review_orgs.add(org_id)
             if payment.operation_state == "verificar":
                 payment_review_orgs.add(org_id)
             # Inclui cobrancas de assinaturas anteriores: o valor continua devido.
-            if _is_overdue(payment, today) and (not sandbox_mp or payment.subscription_id in current_ids):
+            if _is_overdue(payment, today) and (not uses_mercadopago or payment.subscription_id in current_ids):
                 overdue_by_org[org_id].append(payment)
 
     for organization in organizations:
@@ -145,10 +162,25 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
         if due_dates:
             row.oldest_overdue_due_date = min(due_dates)
             row.days_overdue = max((today - row.oldest_overdue_due_date).days, 0)
+        renewal_overdue = False
+        if (environment == MERCADOPAGO_LIVE and subscription and subscription.billing_status == "ACTIVE"
+                and subscription.id in latest_paid_by_subscription):
+            renewal_due = subscription_renewal_due(subscription, latest_paid_by_subscription[subscription.id])
+            if renewal_due and renewal_due < today and (not row.oldest_overdue_due_date or renewal_due < row.oldest_overdue_due_date):
+                row.oldest_overdue_due_date = renewal_due
+                row.days_overdue = (today - renewal_due).days
+                renewal_overdue = True
 
-        needs_review = organization.id in open_migration_review or (subscription and (subscription.status in _PENDING_REVIEW_STATUSES or organization.id in payment_review_orgs))
+        needs_review = (
+            organization.id in open_migration_review
+            or organization.id in dispute_orgs
+            or (subscription and (subscription.status in _PENDING_REVIEW_STATUSES or organization.id in payment_review_orgs))
+        )
         if needs_review:
-            row.attention_reason = (subscription.sync_issue if subscription else None) or migration_errors.get(organization.id) or "Conferência automática em andamento."
+            default_reason = "Há contestação de pagamento em aberto no Mercado Pago." if organization.id in dispute_orgs else "Conferência automática em andamento."
+            row.attention_reason = (subscription.sync_issue if subscription else None) or migration_errors.get(organization.id) or default_reason
+        elif renewal_overdue and not overdue:
+            row.attention_reason = "Renovação aguardando confirmação de pagamento."
         row.grant = grants.get(organization.id)
         if row.grant:
             # Liberacao manual prevalece para o acesso; atraso e receita continuam visiveis nos numeros.
@@ -156,7 +188,7 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
             row.grant_expiring = is_expiring_soon(row.grant, today)
         elif needs_review:
             row.situation = "verificar"
-        elif overdue:
+        elif overdue or renewal_overdue:
             row.situation = "inadimplente"
         elif not subscription and organization.id in awaiting_card_contract:
             row.situation = "aguardando_cartao"
@@ -168,16 +200,16 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
             row.situation = "aguardando_pagamento"
         elif subscription and subscription.billing_status == "ACTIVE":
             row.situation = "ativa"
-        elif not subscription and not row.has_customer and not sandbox_mp:
+        elif not subscription and not row.has_customer and not uses_mercadopago:
             row.situation = "sem_cliente"
         elif not subscription:
             row.situation = "sem_assinatura"
         portfolio.rows.append(row)
 
-        if subscription and subscription.billing_status == "ACTIVE" and (not sandbox_mp or subscription.id in paid_subscriptions):
+        if subscription and subscription.billing_status == "ACTIVE" and (not uses_mercadopago or subscription.id in paid_subscriptions):
             portfolio.active_count += 1
             portfolio.monthly_recurring_revenue += monthly_amount(subscription)
-        if overdue:
+        if overdue or renewal_overdue:
             portfolio.delinquent_count += 1
             portfolio.overdue_total += row.overdue_amount
         if not subscription:

@@ -5,19 +5,21 @@ Regras:
 - motivo de uma lista fechada + justificativa obrigatoria (fica na auditoria);
 - sempre tem data de fim, no maximo 90 dias a partir de hoje (prorrogavel, com nova justificativa);
 - uma liberacao ativa por organizacao; encerramento antecipado exige motivo;
-- nao cria, altera ou quita cobrancas: receita e inadimplencia continuam refletindo o Asaas.
+- nao cria, altera ou quita cobrancas: receita e inadimplencia continuam refletindo o provedor.
 """
 
 from __future__ import annotations
 
+from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.models import OrganizationAccessGrant, OrganizationSubscription, SubscriptionPlan
-from app.services.plan_changes import effective_plan_id, has_confirmed_subscription_payment
-from app.services.billing_environment import MERCADOPAGO_TEST
+from app.models import OrganizationAccessGrant, OrganizationSubscription, OrganizationSubscriptionPayment, SubscriptionPlan
+from app.services.plan_changes import PAID, effective_plan_id, has_confirmed_subscription_payment, latest_settled_subscription_payment
+from app.services.subscription_plans import cycle_months
+from app.services.billing_environment import MERCADOPAGO_LIVE, MERCADOPAGO_TEST, billing_environment
 
 GRANT_REASONS: dict[str, str] = {
     "erro_interno": "Erro ou falha da SiSFarm",
@@ -47,6 +49,7 @@ class AccessStatus:
     source: str | None  # "assinatura", "liberacao" ou None
     grant: OrganizationAccessGrant | None = None
     plan_id: int | None = None
+    renewal_due: date | None = None
 
     @property
     def manual(self) -> bool:
@@ -117,7 +120,9 @@ def create_grant(db: Session, *, organization_id: int, reason: str, justificatio
     text = _validate(reason, justification, ends_on, today, today)
     if active_grant(db, organization_id, today):
         raise GrantValidationError("Já existe uma liberação ativa. Prorrogue ou encerre a atual.")
-    current = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, is_current=True).first()
+    current = db.query(OrganizationSubscription).filter_by(
+        organization_id=organization_id, environment=billing_environment(), is_current=True,
+    ).first()
     resolved_plan = plan_id or (current.plan_id if current else None)
     if resolved_plan is not None and not db.get(SubscriptionPlan, resolved_plan):
         raise GrantValidationError("Plano inválido.")
@@ -155,6 +160,63 @@ def revoke_grant(grant: OrganizationAccessGrant, *, reason: str, user) -> None:
     grant.revoke_reason = text[:255]
 
 
+def cancelled_paid_period(db: Session, organization_id: int, today: date):
+    subscriptions = db.query(OrganizationSubscription).filter_by(
+        organization_id=organization_id, environment=MERCADOPAGO_LIVE, status="encerrada",
+    ).order_by(OrganizationSubscription.mercadopago_ended_at.desc().nullslast(), OrganizationSubscription.id.desc()).all()
+    best: tuple[OrganizationSubscription | None, date | None] = (None, None)
+    for subscription in subscriptions:
+        payment = latest_settled_subscription_payment(db, subscription.id)
+        if not payment or payment.status not in PAID:
+            continue
+        candidates = [day for day in (payment.due_date, payment.paid_date) if day and day <= today]
+        if not candidates:
+            continue
+        start = min(candidates)
+        end = _cycle_end(start, subscription.cycle)
+        if today < end and (best[1] is None or end > best[1]):
+            best = (subscription, end)
+    return best
+
+
+def _cycle_end(start: date, cycle: str) -> date:
+    year, month_index = divmod(start.year * 12 + start.month - 1 + cycle_months(cycle), 12)
+    month = month_index + 1
+    return date(year, month, min(start.day, monthrange(year, month)[1]))
+
+
+def subscription_renewal_due(subscription: OrganizationSubscription, payment: OrganizationSubscriptionPayment | None) -> date | None:
+    """Próxima data esperada de renovação, respeitando variações de meses (28/29/30/31 dias)."""
+    if not payment:
+        return None
+    start = payment.due_date or payment.paid_date
+    if not start:
+        return None
+    base_due = _cycle_end(start, subscription.cycle)
+    if subscription.next_due_date and base_due < subscription.next_due_date <= base_due + timedelta(days=4):
+        return subscription.next_due_date
+    return base_due
+
+
+def _awaiting_scheduled_first_charge(db: Session, subscription: OrganizationSubscription, today: date) -> bool:
+    """Evita bloqueio no 1º dia após o teste grátis enquanto o Mercado Pago processa o débito agendado."""
+    if not subscription.first_due_date or today > subscription.first_due_date:
+        return False
+    has_overdue_or_failed = db.query(OrganizationSubscriptionPayment.id).filter(
+        OrganizationSubscriptionPayment.subscription_id == subscription.id,
+        OrganizationSubscriptionPayment.status == "OVERDUE",
+    ).first()
+    if has_overdue_or_failed:
+        return False
+    trial = db.query(OrganizationAccessGrant.id).filter(
+        OrganizationAccessGrant.organization_id == subscription.organization_id,
+        OrganizationAccessGrant.reason == TRIAL_GRANT_REASON,
+        OrganizationAccessGrant.revoked_at.is_(None),
+        OrganizationAccessGrant.ends_on >= subscription.first_due_date - timedelta(days=1),
+    ).first()
+    return trial is not None
+
+
 def organization_access(db: Session, organization_id: int, today: date, *, environment: str | None = None) -> AccessStatus:
     """Acesso pela assinatura em dia ou por liberacao manual. A etapa de inadimplencia aplica o bloqueio a partir daqui."""
     grant = active_grant(db, organization_id, today)
@@ -166,9 +228,23 @@ def organization_access(db: Session, organization_id: int, today: date, *, envir
     current = query.first()
     plan_id = effective_plan_id(current, today)
     if current and current.billing_status == "ACTIVE":
+        if current.environment == MERCADOPAGO_LIVE:
+            payment = latest_settled_subscription_payment(db, current.id)
+            if not payment:
+                if _awaiting_scheduled_first_charge(db, current, today):
+                    return AccessStatus(True, "assinatura", None, plan_id)
+                return AccessStatus(False, None, None, plan_id)
+            if payment.status not in PAID:
+                return AccessStatus(False, None, None, plan_id)
+            renewal_due = subscription_renewal_due(current, payment)
+            return AccessStatus(True, "assinatura", None, plan_id, renewal_due=renewal_due)
         if current.environment in {"production", MERCADOPAGO_TEST} and not has_confirmed_subscription_payment(db, current.id):
             return AccessStatus(False, None, None, plan_id)
         return AccessStatus(True, "assinatura", None, plan_id)
+    if not current and environment == MERCADOPAGO_LIVE:
+        previous, _ = cancelled_paid_period(db, organization_id, today)
+        if previous:
+            return AccessStatus(True, "assinatura", None, effective_plan_id(previous, today))
     return AccessStatus(False, None, None, plan_id)
 
 

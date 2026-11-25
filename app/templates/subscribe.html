@@ -7,11 +7,12 @@
         <h2 class="mt-2 text-2xl font-semibold text-slate-900">Contratar plano</h2>
         <p class="mt-1 text-sm text-slate-500">
             {% if entitlements.trial_ended %}Seu teste terminou. Ao contratar, o sistema volta a liberar cadastros e edições.
-            {% elif entitlements.trial_ends_on %}Você continua no teste até {{ entitlements.trial_ends_on.strftime('%d/%m/%Y') }}; a primeira cobrança vence nessa data.
+            {% elif entitlements.trial_ends_on %}Você continua no teste até {{ entitlements.trial_ends_on.strftime('%d/%m/%Y') }}; a primeira cobrança vence em {{ first_due.strftime('%d/%m/%Y') }}.
             {% else %}Confira o plano escolhido e continue para o pagamento.{% endif %}
         </p>
     </section>
 
+    {% if checkout_unavailable %}<p role="status" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Novas contratações estão temporariamente indisponíveis.</p>{% endif %}
     {% if error %}<div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">{{ error }}</div>{% endif %}
 
     <form method="post" action="/minha-assinatura/contratar" class="grid gap-6 lg:grid-cols-[1fr_320px]" data-subscribe-form data-busy-form>
@@ -37,8 +38,8 @@
             {# 2. Pagamento #}
             <section class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 class="font-semibold text-slate-900">2. Forma de pagamento</h3>
-                {% if sandbox_mp %}
-                <p class="mt-3 text-sm text-slate-600">Autorize a assinatura na página do Mercado Pago. O checkout mostrará os meios de pagamento disponíveis no ambiente de teste.</p>
+                {% if mp_active %}
+                <p class="mt-3 text-sm text-slate-600">Autorize a assinatura na página do Mercado Pago. O checkout mostrará os meios de pagamento disponíveis{% if sandbox_mp %} no ambiente de teste{% endif %}.</p>
                 {% else %}
                 <div class="mt-4 grid gap-3 sm:grid-cols-3">
                     {% for code, label in billing_types.items() %}
@@ -54,10 +55,10 @@
 
             {# 3. Dados de cobranca #}
             <section class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 class="font-semibold text-slate-900">{{ '3. Dados de cobrança' if sandbox_mp else '3. Dados para a nota e a cobrança' }}</h3>
-                {% if sandbox_mp %}
+                <h3 class="font-semibold text-slate-900">{{ '3. Dados de cobrança' if mp_active else '3. Dados para a nota e a cobrança' }}</h3>
+                {% if mp_active %}
                 <div class="mt-4 grid gap-4 sm:grid-cols-2">
-                    <label class="block"><span class="mb-1 block text-sm font-medium text-slate-700">E-mail do comprador de teste</span><input name="email" type="email" value="{{ form.email }}" class="{{ field }}" required maxlength="254"></label>
+                    <label class="block"><span class="mb-1 block text-sm font-medium text-slate-700">{{ 'E-mail do comprador de teste' if sandbox_mp else 'E-mail para as cobranças' }}</span><input name="email" type="email" value="{{ form.email }}" class="{{ field }}" required maxlength="254"></label>
                 </div>
                 {% else %}
                 <div class="mt-3 inline-flex gap-1 rounded-xl bg-slate-100 p-1">
@@ -90,8 +91,8 @@
                 <input type="checkbox" name="accepted_terms" value="1" required class="mt-1 rounded">
                 <span>Autorizo a cobrança recorrente conforme o resumo e aceito os <a href="/termos" target="_blank" rel="noopener" class="underline">Termos de Uso</a>.</span>
             </label>
-            <button class="mt-5 w-full rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40" data-summary-submit>{{ 'Continuar para pagamento' if sandbox_mp else 'Contratar' }}</button>
-            <p class="mt-3 text-xs text-slate-500">{{ 'Mercado Pago · Ambiente de teste' if sandbox_mp else 'Pagamentos processados pelo Asaas.' }}</p>
+            <button class="mt-5 w-full rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40" data-summary-submit {% if checkout_unavailable %}data-checkout-unavailable disabled{% endif %}>{{ 'Continuar para pagamento' if mp_active else 'Contratar' }}</button>
+            <p class="mt-3 text-xs text-slate-500">{{ 'Mercado Pago · Ambiente de teste' if sandbox_mp else 'Pagamentos processados pelo Mercado Pago.' if mp_active else 'Pagamentos processados pelo Asaas.' }}</p>
         </aside>
     </form>
 </div>
@@ -106,7 +107,8 @@
         const cycle = form.querySelector('[data-cycle-option]:checked');
         const price = cycle ? prices[cycle.value] : null;
         form.querySelector('[data-summary-price]').textContent = price ? `${money(price)} / ${units[cycle.value]}` : '—';
-        form.querySelector('[data-summary-submit]').disabled = !price;
+        const submit = form.querySelector('[data-summary-submit]');
+        submit.disabled = !price || submit.hasAttribute('data-checkout-unavailable');
         const company = form.querySelector('[data-person-type]:checked')?.value === 'JURIDICA';
         const documentLabel = form.querySelector('[data-doc-label]');
         const nameLabel = form.querySelector('[data-name-label]');
@@ -114,6 +116,12 @@
         if (nameLabel) nameLabel.textContent = company ? 'Razão social' : 'Nome completo';
     };
     form.addEventListener('change', sync);
+    form.addEventListener('submit', (event) => {
+        if (form.dataset.sending) { event.preventDefault(); return; }
+        form.dataset.sending = '1';
+        const submit = form.querySelector('[data-summary-submit]');
+        if (submit) { submit.disabled = true; submit.textContent = 'Abrindo pagamento…'; }
+    });
     sync();
 })();
 </script>

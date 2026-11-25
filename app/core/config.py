@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     mercadopago_access_token: str | None = None
     mercadopago_webhook_secret: str | None = None
     mercadopago_sandbox: bool = False
+    mercadopago_live_enabled: bool = False
+    mercadopago_live_checkout_enabled: bool = False
+    mercadopago_live_seller_id: int | None = None
+    mercadopago_live_access_token: str | None = None
+    mercadopago_live_webhook_secret: str | None = None
     # Chave mestra do cofre de certificados A1 (AES-256-GCM). Mínimo 32 caracteres; nunca vai ao banco.
     # Não troque depois de enviar certificados: os já guardados deixam de abrir.
     nfe_cert_master_key: str | None = None

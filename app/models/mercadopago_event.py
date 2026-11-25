@@ -13,6 +13,7 @@ class MercadoPagoEvent(Base):
     delivery_key: Mapped[str] = mapped_column(String(64), unique=True)
     request_key: Mapped[str] = mapped_column(String(64), unique=True)
     topic: Mapped[str] = mapped_column(String(48))
+    environment: Mapped[str] = mapped_column(String(20), server_default="mercadopago_test")
     resource_id: Mapped[str] = mapped_column(String(80))
     state: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)

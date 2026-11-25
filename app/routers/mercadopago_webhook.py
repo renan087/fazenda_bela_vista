@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models import MercadoPagoEvent
+from app.services.billing_environment import MERCADOPAGO_LIVE, MERCADOPAGO_TEST, mercadopago_environment
 from app.services.mercadopago_subscriptions import TOPICS, configuration_error, resource_id
 
 logger = logging.getLogger(__name__)
@@ -35,9 +36,10 @@ def _signature_valid(secret, signature, request_id, identifier):
     return hmac.compare_digest(computed, digest.lower())
 
 
-def _enqueue(db, topic, identifier, key, request_key):
+def _enqueue(db, environment, topic, identifier, key, request_key):
     try:
-        db.add(MercadoPagoEvent(topic=topic, resource_id=identifier, delivery_key=key, request_key=request_key))
+        db.add(MercadoPagoEvent(environment=environment, topic=topic, resource_id=identifier,
+                               delivery_key=key, request_key=request_key))
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -46,19 +48,29 @@ def _enqueue(db, topic, identifier, key, request_key):
         )).first():
             raise
         return
-    logger.info("Mercado Pago sandbox: webhook recebido tópico=%s recurso=%s", topic, identifier)
+    logger.info("Mercado Pago: webhook recebido ambiente=%s tópico=%s recurso=%s", environment, topic, identifier)
 
 
 @router.post("/test")
 async def mercadopago_test_webhook(request: Request, db: Session = Depends(get_db)):
+    return await _webhook(request, db, MERCADOPAGO_TEST)
+
+
+@router.post("")
+async def mercadopago_live_webhook(request: Request, db: Session = Depends(get_db)):
+    return await _webhook(request, db, MERCADOPAGO_LIVE)
+
+
+async def _webhook(request: Request, db: Session, environment: str):
     settings = get_settings()
-    if configuration_error(settings):
-        raise HTTPException(status_code=503, detail="Webhook de teste indisponível")
+    if mercadopago_environment(settings) != environment or configuration_error(settings):
+        raise HTTPException(status_code=503, detail="Webhook indisponível neste ambiente")
+    secret = settings.mercadopago_live_webhook_secret if environment == MERCADOPAGO_LIVE else settings.mercadopago_webhook_secret
     identifiers = request.query_params.getlist("data.id")
     identifier = resource_id(identifiers[0]) if len(identifiers) == 1 else None
     request_id = request.headers.get("x-request-id", "")
     signature = request.headers.get("x-signature", "")
-    if not identifier or not _signature_valid(settings.mercadopago_webhook_secret.strip(), signature, request_id, identifier):
+    if not identifier or not _signature_valid(secret.strip(), signature, request_id, identifier):
         raise HTTPException(status_code=401, detail="Assinatura da notificação inválida")
     try:
         body = await request.json()
@@ -73,9 +85,10 @@ async def mercadopago_test_webhook(request: Request, db: Session = Depends(get_d
     # O worker consulta o recurso na API e valida a conta e o vínculo antes de aplicar pagamentos.
     # O identificador da notificação é distinto do ID da assinatura ou do pagamento.
     event_id = resource_id(body.get("id")) or request_id
-    date_created = str(body.get("date_created") or "")[:64]
+    date_created = str(body.get("date_created") or body.get("date") or "")[:64]
     action = str(body.get("action") or "")[:64]
-    key = hashlib.sha256(f"{topic}:{identifier}:{event_id}:{date_created}:{action}".encode()).hexdigest()
-    request_key = hashlib.sha256(f"{identifier}:{request_id}".encode()).hexdigest()
-    await run_in_threadpool(_enqueue, db, topic, identifier, key, request_key)
+    prefix = "live:" if environment == MERCADOPAGO_LIVE else ""
+    key = hashlib.sha256(f"{prefix}{topic}:{identifier}:{event_id}:{date_created}:{action}".encode()).hexdigest()
+    request_key = hashlib.sha256(f"{prefix}{identifier}:{request_id}".encode()).hexdigest()
+    await run_in_threadpool(_enqueue, db, environment, topic, identifier, key, request_key)
     return {"received": True}

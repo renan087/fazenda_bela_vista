@@ -27,7 +27,7 @@
 </div>
 {% elif ent.billing_state == 'restrito' %}
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900" role="alert" data-billing-banner="restrito">
-    <p><strong>Modo somente leitura.</strong> Há pagamento em atraso há {{ ent.days_overdue }} dia(s) (R$ {{ ent.overdue_amount|decimal_br }}). Você pode consultar e exportar, mas não cadastrar nem editar até regularizar.</p>
+    <p><strong>Modo somente leitura.</strong> Há pagamento em atraso há {{ ent.days_overdue }} dia(s){% if ent.overdue_amount and ent.overdue_amount > 0 %} (R$ {{ ent.overdue_amount|decimal_br }}){% endif %}. Você pode consultar e exportar, mas não cadastrar nem editar até regularizar.</p>
     {% if can_pay %}<a href="/minha-assinatura" class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">Regularizar pagamento</a>{% else %}<span class="text-xs">Avise o responsável financeiro da sua organização.</span>{% endif %}
 </div>
 {% elif ent.billing_state == 'aviso' %}

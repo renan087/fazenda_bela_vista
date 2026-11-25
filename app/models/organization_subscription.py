@@ -33,6 +33,7 @@ class OrganizationSubscription(Base):
     mercadopago_version: Mapped[int | None] = mapped_column(Integer)
     mercadopago_checkout_url: Mapped[str | None] = mapped_column(String(512))
     mercadopago_payer_email: Mapped[str | None] = mapped_column(String(254))
+    mercadopago_ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     sync_issue: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Troca de plano: data da ultima troca e downgrade agendado para o fim do ciclo pago.

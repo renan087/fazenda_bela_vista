@@ -37,7 +37,7 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
     e o mesmo token em ASAAS_WEBHOOK_TOKEN e no painel Asaas.
     """
     settings = get_settings()
-    if getattr(settings, "mercadopago_sandbox", False):
+    if getattr(settings, "mercadopago_sandbox", False) or getattr(settings, "mercadopago_live_enabled", False):
         raise HTTPException(status_code=404)
     expected = (settings.asaas_webhook_token or "").strip()
     if not expected:

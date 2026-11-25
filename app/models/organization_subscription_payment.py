@@ -15,6 +15,7 @@ class OrganizationSubscriptionPayment(Base):
     asaas_payment_id: Mapped[str | None] = mapped_column(String(80), unique=True, index=True)
     mercadopago_invoice_id: Mapped[str | None] = mapped_column(String(80), unique=True)
     mercadopago_payment_id: Mapped[str | None] = mapped_column(String(80), unique=True)
+    refunded_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     status: Mapped[str] = mapped_column(String(40), nullable=False)
     billing_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     operation_state: Mapped[str | None] = mapped_column(String(30), nullable=True)
