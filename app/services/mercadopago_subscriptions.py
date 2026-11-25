@@ -210,7 +210,15 @@ class MercadoPagoAPI:
             data = response.json()
         except ValueError:
             raise MercadoPagoError("resposta_invalida") from None
-        if not isinstance(data, dict) or data.get("live_mode") is True:
+        if not isinstance(data, dict):
+            raise MercadoPagoError("resposta_invalida")
+        live_mode = data.get("live_mode")
+        if path.startswith("/v1/payments/"):
+            # Credenciais da aplicação fictícia podem retornar live_mode=true até para cartões de teste.
+            owned_test_payment = bool(seller) and str(data.get("collector_id")) == str(seller["id"])
+            if live_mode is not False and not (live_mode is True and owned_test_payment):
+                raise MercadoPagoError("resposta_fora_do_sandbox")
+        elif live_mode is True:
             raise MercadoPagoError("resposta_fora_do_sandbox")
         return data
 
@@ -225,15 +233,23 @@ class MercadoPagoAPI:
 
     def search(self, path, **filters):
         offset = 0
+        invoice_search = path == "/authorized_payments/search"
+        params = dict(filters)
+        if not invoice_search:
+            params["limit"] = 25
         while True:
-            page = self.request("GET", path, params={**filters, "offset": offset, "limit": 25})
+            if offset:
+                params["offset"] = offset
+            page = self.request("GET", path, params=params)
             rows, paging = page.get("results"), page.get("paging", {})
             if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
                 raise MercadoPagoError("lista_invalida")
             yield from rows
             offset += len(rows)
-            total = paging.get("total") if isinstance(paging, dict) else None
-            if not rows or (offset >= total if isinstance(total, int) else len(rows) < 25):
+            paging = paging if isinstance(paging, dict) else {}
+            total = paging.get("total")
+            limit = paging.get("limit", 12 if invoice_search else 25)
+            if not rows or (offset >= total if isinstance(total, int) else len(rows) < limit):
                 break
 
 
@@ -354,9 +370,8 @@ def _apply_invoice(db, api, invoice):
         raise MercadoPagoError("valor_da_fatura_divergente")
     payment_id = _invoice_payment_id(invoice)
     payment = api.get("payment", payment_id) if payment_id else {}
-    if payment and (payment.get("live_mode") is not False or payment.get("currency_id") != "BRL"
-                    or _amount(payment.get("transaction_amount")) != amount):
-        raise MercadoPagoError("pagamento_divergente_ou_fora_do_sandbox")
+    if payment and (payment.get("currency_id") != "BRL" or _amount(payment.get("transaction_amount")) != amount):
+        raise MercadoPagoError("pagamento_divergente")
     remote_status = payment.get("status")
     due = _date(invoice.get("debit_date"))
     status = "PENDING"

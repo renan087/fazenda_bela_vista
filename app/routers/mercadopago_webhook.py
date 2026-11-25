@@ -68,11 +68,9 @@ async def mercadopago_test_webhook(request: Request, db: Session = Depends(get_d
     if not isinstance(data, dict) or resource_id(data.get("id")) != identifier:
         raise HTTPException(status_code=400, detail="Recurso da notificação divergente")
     topic = body.get("type")
-    if body.get("live_mode") is not False:
-        logger.info("Mercado Pago sandbox: webhook ignorado por ambiente recurso=%s", identifier)
-        return {"received": True}
     if not isinstance(topic, str) or topic not in TOPICS:
         return {"received": True}
+    # O worker consulta o recurso na API e valida a conta e o vínculo antes de aplicar pagamentos.
     # O identificador da notificação é distinto do ID da assinatura ou do pagamento.
     event_id = resource_id(body.get("id")) or request_id
     date_created = str(body.get("date_created") or "")[:64]

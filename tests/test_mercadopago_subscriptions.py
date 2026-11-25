@@ -203,6 +203,8 @@ def test_signed_endpoint_deduplicates_and_queues_retriable_processing(database, 
         assert _notify(client, bad_signature=True).status_code == 401
         assert _notify(client, body_id="OTHER").status_code == 400
         assert _notify(client, live=True).status_code == 200
+        with database() as db:
+            assert db.query(MercadoPagoEvent).count() == 1
         assert _notify(client).status_code == 200
         assert _notify(client, request_id="request-2").status_code == 200
         assert _notify(client, event_id=72).status_code == 200
@@ -270,6 +272,63 @@ def test_verified_test_seller_creates_pending_subscription_without_stage(setting
     result = api.request("POST", "/preapproval", payload={"payer_email": "test_user_33@testuser.com", "status": "pending"})
     assert result["status"] == "pending"
     assert calls == [("GET", "/users/me"), ("POST", "/preapproval")]
+
+
+def test_reconciliation_applies_payment_from_verified_test_seller(database, settings, monkeypatch):
+    with database() as db:
+        row = prepare(db)
+        row.mercadopago_id = "TESTID"
+        row.mercadopago_status = "pending"
+        db.commit()
+        gateway = Gateway(row, "authorized")
+        gateway.charge(11, 101, collector_id=22)
+        gateway.payments["101"]["live_mode"] = True
+
+        def send(client, request, **kwargs):
+            path = request.url.path
+            if path == "/users/me":
+                data = {"id": 22, "site_id": "MLB", "tags": ["test_user"], "email": "test_user_22@testuser.com"}
+            elif path == "/preapproval/TESTID":
+                data = gateway.subscription
+            elif path == "/authorized_payments/search":
+                assert "limit" not in request.url.params
+                assert request.url.params["preapproval_id"] == "TESTID"
+                data = {"results": [gateway.invoices["11"]], "paging": {"offset": 0, "limit": 12, "total": 1}}
+            elif path == "/authorized_payments/11":
+                data = gateway.invoices["11"]
+            else:
+                assert path == "/v1/payments/101"
+                data = gateway.payments["101"]
+            return httpx.Response(200, json=data)
+
+        monkeypatch.setattr(httpx.Client, "send", send)
+        api = mp.MercadoPagoAPI()
+        mp.reconcile(db, api, row)
+        db.commit()
+        assert row.mercadopago_status == "authorized"
+        assert db.query(OrganizationSubscriptionPayment).one().status == "CONFIRMED"
+        assert organization_access(db, row.organization_id, TODAY, environment=mp.MERCADOPAGO_TEST).has_access
+
+        gateway.payments["101"]["collector_id"] = 23
+        with pytest.raises(mp.MercadoPagoError, match="resposta_fora_do_sandbox"):
+            api.get("payment", 101)
+
+
+def test_invoice_search_follows_provider_pagination(settings, monkeypatch):
+    offsets = []
+
+    def page(method, path, *, params):
+        assert "limit" not in params
+        offset = params.get("offset", 0)
+        offsets.append(offset)
+        invoices = [{"id": i} for i in range(offset, min(offset + 12, 13))]
+        return {"results": invoices, "paging": {"offset": offset, "limit": 12, "total": 13}}
+
+    api = mp.MercadoPagoAPI()
+    monkeypatch.setattr(api, "request", page)
+    results = list(api.search("/authorized_payments/search", preapproval_id="TESTID"))
+    assert [row["id"] for row in results] == list(range(13))
+    assert offsets == [0, 12]
 
 
 def test_customer_checkout_uses_the_sisfarm_screen_and_redirects_to_the_sandbox(database, settings, monkeypatch):
