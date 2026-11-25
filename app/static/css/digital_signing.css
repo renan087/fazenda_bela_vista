@@ -678,6 +678,8 @@
 .ds-ceremony-grid[data-ds-already-signed="yes"] .ds-success-actions .sf-btn {
   width: auto;
   min-width: 12.5rem;
+  justify-content: center;
+  text-align: center;
 }
 .ds-viewer { overflow: hidden; padding: 0; }
 .ds-toolbar {
@@ -1077,6 +1079,7 @@ input[type="checkbox"].ds-switch-input:checked::after {
 }
 .ds-success-pane p { font-size: 0.83rem; color: var(--ds-muted); }
 .ds-success-actions { width: 100%; display: grid; gap: 0.55rem; margin-top: 0.35rem; }
+.ds-success-actions .sf-btn { justify-content: center; text-align: center; }
 .sf-btn-soft { background: var(--ds-brand-soft); color: var(--ds-brand-dark); border: 1px solid transparent; }
 .sf-btn-soft:hover { background: #E1ECDC; }
 .ds-btn-danger { background: var(--ds-err-fg); color: #FFFFFF; border: 1px solid var(--ds-err-fg); }
