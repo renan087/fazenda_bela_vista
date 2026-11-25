@@ -2616,9 +2616,19 @@ input[type="checkbox"].ds-switch-input:checked::after {
   .ds-only-mobile { display: block; }
   .ds-mob-pickers.ds-only-mobile { display: grid; }
   .ds-mob-sticky-bar.ds-only-mobile { display: grid; }
-  .ds-wizard-page { padding-bottom: 6.5rem; overflow-x: hidden; }
+  .ds-wizard-page { padding-bottom: 6.5rem; grid-template-columns: minmax(0, 1fr); }
+  .ds-wizard-page .ds-wiz-steps {
+    flex: 1 1 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    margin-left: 0;
+  }
   .ds-wizard-page .ds-wiz-foot { display: none; }
-  .ds-wizard-page .ds-wiz-main { padding: 1rem; min-width: 0; overflow: hidden; }
+  .ds-wizard-page .ds-wiz-main,
+  .ds-wizard-page .ds-wiz-pane { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+  .ds-wizard-page .ds-wiz-main { padding: 1rem; }
+  .ds-wizard-page .ds-loaded-file-info { flex-basis: 100%; }
+  .ds-wizard-page [data-ds-wiz-file-name] { overflow-wrap: anywhere; }
   .ds-form-grid-title { grid-template-columns: minmax(0, 1fr); }
   .ds-ch-grid { grid-template-columns: minmax(0, 1fr); }
   .ds-policy-bar { flex-wrap: wrap; }
