@@ -12,7 +12,9 @@ class OrganizationSubscriptionPayment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     subscription_id: Mapped[int] = mapped_column(ForeignKey("organization_subscriptions.id", ondelete="RESTRICT"), nullable=False, index=True)
-    asaas_payment_id: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    asaas_payment_id: Mapped[str | None] = mapped_column(String(80), unique=True, index=True)
+    mercadopago_invoice_id: Mapped[str | None] = mapped_column(String(80), unique=True)
+    mercadopago_payment_id: Mapped[str | None] = mapped_column(String(80), unique=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False)
     billing_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     operation_state: Mapped[str | None] = mapped_column(String(30), nullable=True)

@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import Farm, Organization, OrganizationSubscription, SubscriptionPlan, User
-from app.services.asaas_environment import asaas_env_name
+from app.services.billing_environment import billing_environment
 from app.services.entitlements import Entitlements, compute_entitlements
 from app.services.plan_changes import effective_plan_id, has_confirmed_subscription_payment
 
@@ -77,9 +77,11 @@ def user_exceeds_plan(db: Session, entitlements: Entitlements, user_id: int) -> 
 
 def confirmed_plan_for_usage(db: Session, organization_id: int, today) -> SubscriptionPlan | None:
     subscription = db.query(OrganizationSubscription).filter_by(
-        organization_id=organization_id, environment=asaas_env_name(), is_current=True, asaas_status="ACTIVE",
+        organization_id=organization_id, environment=billing_environment(), is_current=True,
     ).first()
-    if not subscription or not subscription.asaas_subscription_id or not has_confirmed_subscription_payment(db, subscription.id):
+    if (not subscription or subscription.billing_status != "ACTIVE"
+            or not (subscription.asaas_subscription_id or subscription.mercadopago_id)
+            or not has_confirmed_subscription_payment(db, subscription.id)):
         return None
     plan_id = effective_plan_id(subscription, today)
     return db.get(SubscriptionPlan, plan_id) if plan_id else None

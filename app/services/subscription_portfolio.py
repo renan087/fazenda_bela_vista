@@ -13,7 +13,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.services.subscription_plans import cycle_months
-from app.services.asaas_environment import asaas_env_name
+from app.services.billing_environment import MERCADOPAGO_TEST, billing_environment
 from app.services.access_grants import active_grants_by_organization, is_expiring_soon
 from app.models import (
     Organization,
@@ -89,7 +89,8 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
     if not org_ids:
         return portfolio
 
-    environment = asaas_env_name()
+    environment = billing_environment()
+    sandbox_mp = environment == MERCADOPAGO_TEST
     billing_by_org = {
         item.organization_id: item
         for item in db.query(OrganizationBilling).filter(OrganizationBilling.organization_id.in_(org_ids)).all()
@@ -99,6 +100,7 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
         OrganizationSubscription.organization_id.in_(org_ids), OrganizationSubscription.environment == environment
     ).all()
     current_by_org = {item.organization_id: item for item in subscriptions if item.is_current}
+    current_ids = {item.id for item in current_by_org.values()}
     org_by_subscription = {item.id: item.organization_id for item in subscriptions}
     open_migrations = db.query(OrganizationCardMigration).filter(
         OrganizationCardMigration.organization_id.in_(org_ids),
@@ -124,7 +126,7 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
             if payment.operation_state == "verificar":
                 payment_review_orgs.add(org_id)
             # Inclui cobrancas de assinaturas anteriores: o valor continua devido.
-            if _is_overdue(payment, today):
+            if _is_overdue(payment, today) and (not sandbox_mp or payment.subscription_id in current_ids):
                 overdue_by_org[org_id].append(payment)
 
     for organization in organizations:
@@ -146,7 +148,7 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
 
         needs_review = organization.id in open_migration_review or (subscription and (subscription.status in _PENDING_REVIEW_STATUSES or organization.id in payment_review_orgs))
         if needs_review:
-            row.attention_reason = (subscription.sync_issue if subscription else None) or migration_errors.get(organization.id) or "Conferência automática com o Asaas em andamento."
+            row.attention_reason = (subscription.sync_issue if subscription else None) or migration_errors.get(organization.id) or "Conferência automática em andamento."
         row.grant = grants.get(organization.id)
         if row.grant:
             # Liberacao manual prevalece para o acesso; atraso e receita continuam visiveis nos numeros.
@@ -158,20 +160,21 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
             row.situation = "inadimplente"
         elif not subscription and organization.id in awaiting_card_contract:
             row.situation = "aguardando_cartao"
-        elif subscription and subscription.asaas_status == "INACTIVE":
+        elif subscription and subscription.billing_status == "INACTIVE":
             row.situation = "suspensa"
-        elif subscription and subscription.asaas_status == "ACTIVE" and subscription.id not in paid_subscriptions:
+        elif subscription and (subscription.billing_status == "PENDING" or
+                               (subscription.billing_status == "ACTIVE" and subscription.id not in paid_subscriptions)):
             # Assinatura nova: so fica "Em dia" depois que o primeiro pagamento for confirmado.
             row.situation = "aguardando_pagamento"
-        elif subscription and subscription.asaas_status == "ACTIVE":
+        elif subscription and subscription.billing_status == "ACTIVE":
             row.situation = "ativa"
-        elif not subscription and not row.has_customer:
+        elif not subscription and not row.has_customer and not sandbox_mp:
             row.situation = "sem_cliente"
         elif not subscription:
             row.situation = "sem_assinatura"
         portfolio.rows.append(row)
 
-        if subscription and subscription.asaas_status == "ACTIVE":
+        if subscription and subscription.billing_status == "ACTIVE" and (not sandbox_mp or subscription.id in paid_subscriptions):
             portfolio.active_count += 1
             portfolio.monthly_recurring_revenue += monthly_amount(subscription)
         if overdue:

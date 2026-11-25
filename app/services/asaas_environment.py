@@ -45,6 +45,8 @@ def asaas_env_name() -> str:
 def asaas_configuration_error(settings=None, *, read_only: bool = False) -> str | None:
     """Motivo pelo qual o modulo nao pode chamar o Asaas, ou None se esta pronto."""
     settings = settings or get_settings()
+    if getattr(settings, "mercadopago_sandbox", False):
+        return "Cobrança configurada para o Mercado Pago em ambiente de teste."
     name = (getattr(settings, "asaas_environment", None) or "sandbox").strip().lower()
     if name not in ENVIRONMENTS:
         return "ASAAS_ENVIRONMENT deve ser 'sandbox' ou 'production'."

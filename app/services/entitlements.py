@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models import Farm, Organization, OrganizationAccessGrant, OrganizationSubscription, OrganizationSubscriptionPayment, SubscriptionPlan, User
 from app.services.access_grants import TRIAL_GRANT_REASON, organization_access
-from app.services.asaas_environment import asaas_env_name
+from app.services.billing_environment import MERCADOPAGO_TEST, billing_environment
 from app.services.subscription_plans import PLAN_MODULES, plan_modules
 
 DEFAULT_ORGANIZATION_SLUG = "sisfarm"
@@ -82,7 +82,7 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
     organization = db.get(Organization, organization_id)
     if not organization or organization.slug == DEFAULT_ORGANIZATION_SLUG:
         return Entitlements(organization_id=organization_id, exempt=True)
-    env = asaas_env_name()
+    env = billing_environment()
     access = organization_access(db, organization_id, today, environment=env)
     is_trial = bool(access.grant and access.grant.reason == TRIAL_GRANT_REASON)
     plan_id = access.plan_id
@@ -103,7 +103,7 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
     locked = frozenset(code for code in MODULE_LABELS if modules is not None and code not in modules)
 
     subscription_query = db.query(OrganizationSubscription.id).filter_by(organization_id=organization_id, environment=env)
-    if env == "production":
+    if env in {"production", MERCADOPAGO_TEST}:
         subscription_query = subscription_query.filter_by(is_current=True)
     subscription_ids = [row[0] for row in subscription_query.all()]
     days_overdue, overdue_amount, oldest = 0, Decimal("0.00"), None

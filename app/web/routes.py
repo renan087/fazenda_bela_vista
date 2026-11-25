@@ -199,6 +199,8 @@ from app.services.self_signup import TRIAL_DAYS as SELF_SIGNUP_TRIAL_DAYS
 from app.services.asaas_environment import asaas_pilot_allows, app_public_base, asaas_api_key, asaas_configuration_error, asaas_env_name, asaas_ready, current_asaas_environment
 from app.services.asaas_card_checkout import cancel_sandbox_checkout, create_sandbox_card_checkout_session, safe_asaas_link
 from app.services.commercial_audit import record_commercial_event
+from app.services import mercadopago_subscriptions as mp
+from app.services.billing_environment import MERCADOPAGO_TEST, billing_environment
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
 from app.services.subscription_reconciliation import close_card_checkout, reconcile_organization
@@ -10599,6 +10601,7 @@ def subscriptions_page(
     repo = _repository(db)
     organizations = repo.list_organizations()
     portfolio = build_subscription_portfolio(db, organizations, today_in_app_timezone())
+    sandbox_mp = billing_environment() == MERCADOPAGO_TEST
     organization = next((item for item in organizations if item.id == organizacao), None) if organizacao is not None else None
     if organizacao is not None and not organization:
         raise HTTPException(status_code=404, detail="Organização não encontrada")
@@ -10611,6 +10614,8 @@ def subscriptions_page(
         billing = db.query(OrganizationBilling).filter_by(organization_id=organization.id).first()
         subscriptions = db.query(OrganizationSubscription).filter_by(organization_id=organization.id).order_by(OrganizationSubscription.id.desc()).all()
         for item in subscriptions:
+            if sandbox_mp and item.environment != MERCADOPAGO_TEST:
+                continue
             if item.is_current:
                 current[organization.id] = item
             else:
@@ -10629,6 +10634,7 @@ def subscriptions_page(
         subscription_payments=payments, portfolio=portfolio, situation_labels=SITUATION_LABELS,
         available_plans=active_plans(db), plan_prices_of=plan_prices, today_iso=today_in_app_timezone().isoformat(),
         selected_row=next((row for row in portfolio.rows if organization and row.organization.id == organization.id), None),
+        sandbox_mp=sandbox_mp, mp_config_error=mp.configuration_error() if sandbox_mp else None,
         saved_card=_saved_card_charge(db, organization.id) if organization else None,
         asaas_config_error=asaas_configuration_error(get_settings()), asaas_webhook_ready=bool((get_settings().asaas_webhook_token or '').strip()),
         access_grants=db.query(OrganizationAccessGrant).filter_by(organization_id=organization.id).order_by(OrganizationAccessGrant.id.desc()).all() if organization else [],
@@ -10666,7 +10672,7 @@ def subscription_plans_page(
         entry["total"] += 1
         if subscription.is_current:
             entry["current"] += 1
-            if subscription.asaas_status == "ACTIVE":
+            if subscription.environment != MERCADOPAGO_TEST and subscription.billing_status == "ACTIVE":
                 entry["mrr"] += monthly_amount(subscription)
     families: dict[str, list[SubscriptionPlan]] = {}
     for plan in plans:
@@ -10804,24 +10810,29 @@ def _customer_subscription_display(subscription, migration, charges, today):
     payable = [charge for charge in current_charges if charge.status in {"PENDING", "OVERDUE"} and not charge.operation_state]
     payable.sort(key=lambda charge: charge.due_date or today)
     overdue = [charge for charge in payable if charge.status == "OVERDUE" or (charge.due_date and charge.due_date < today)]
+    safe_billing_link = mp.safe_link if subscription and subscription.mercadopago_reference else safe_asaas_link
     invoice_url = next((link for charge in (overdue or payable)
-                        if (link := safe_asaas_link(charge.invoice_url) or safe_asaas_link(charge.bank_slip_url))), None)
+                        if (link := safe_billing_link(charge.invoice_url) or safe_billing_link(charge.bank_slip_url))), None)
     checkout_url = safe_asaas_link(migration.checkout_link) if migration and migration.status == "aguardando" else None
 
     if subscription:
-        if subscription.asaas_status in {"INACTIVE", "EXPIRED", "DELETED", "NOT_FOUND"}:
-            state = "suspended" if subscription.asaas_status == "INACTIVE" else "ended"
+        billing_status = subscription.billing_status
+        if subscription.mercadopago_reference and subscription.mercadopago_status == "pending":
+            checkout_url = mp.safe_link(subscription.mercadopago_checkout_url)
+            invoice_url = checkout_url or invoice_url
+        if billing_status in {"INACTIVE", "EXPIRED", "DELETED", "NOT_FOUND"}:
+            state = "suspended" if billing_status == "INACTIVE" else "ended"
         elif latest_result and not paid:
             state = "review"
         elif awaiting_confirmation and not paid:
             state = "confirming"
-        elif subscription.asaas_status == "ACTIVE" and overdue:
+        elif billing_status == "ACTIVE" and overdue:
             state = "overdue"
-        elif subscription.asaas_status == "ACTIVE" and paid:
+        elif billing_status == "ACTIVE" and paid:
             state = "active"
         elif paid or (migration and migration.status == "pago"):
             state = "confirming"
-        elif subscription.asaas_status == "ACTIVE" or payable:
+        elif billing_status in {"ACTIVE", "PENDING"} or payable:
             state = "pending"
         else:
             state = "review"
@@ -10841,7 +10852,8 @@ def _customer_subscription_display(subscription, migration, charges, today):
 
 def _customer_subscription_context(db: Session, organization: Organization) -> dict:
     """Tudo o que a organizacao ve sobre a propria assinatura. Nunca recebe id de organizacao da requisicao."""
-    env = asaas_env_name()
+    env = billing_environment()
+    sandbox_mp = env == MERCADOPAGO_TEST
     subscriptions = db.query(OrganizationSubscription).filter_by(organization_id=organization.id, environment=env).order_by(OrganizationSubscription.id.desc()).all()
     current = next((item for item in subscriptions if item.is_current), None)
     ids = [item.id for item in subscriptions]
@@ -10849,7 +10861,8 @@ def _customer_subscription_context(db: Session, organization: Organization) -> d
     if ids:
         charges = db.query(OrganizationSubscriptionPayment).filter(OrganizationSubscriptionPayment.subscription_id.in_(ids)).order_by(OrganizationSubscriptionPayment.due_date.desc().nullslast(), OrganizationSubscriptionPayment.id.desc()).all()
     today = today_in_app_timezone()
-    open_charges = [item for item in charges if item.status in {"PENDING", "OVERDUE"}]
+    open_charges = [item for item in charges if item.status in {"PENDING", "OVERDUE"}
+                    and (not sandbox_mp or (current and item.subscription_id == current.id))]
     open_charges.sort(key=lambda item: item.due_date or today)
     paid_charges = [item for item in charges if item.status in {"CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"}][:24]
     migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization.id, is_open=True, environment=asaas_env_name()).first()
@@ -10859,12 +10872,13 @@ def _customer_subscription_context(db: Session, organization: Organization) -> d
     return {
         "organization": organization,
         "subscription": current,
+        "sandbox_mp": sandbox_mp,
         "open_charges": open_charges,
         "paid_charges": paid_charges,
         "card_migration": migration,
         "subscription_display": _customer_subscription_display(current, migration, charges, today),
         "situation": portfolio.rows[0] if portfolio.rows else None,
-        "saved_card": _saved_card_charge(db, organization.id),
+        "saved_card": None if sandbox_mp else _saved_card_charge(db, organization.id),
         "plan": plan,
         "plan_module_labels": [module_labels[code] for code in plan_modules(plan)] if plan else [],
         "today_iso": today.isoformat(),
@@ -10895,9 +10909,10 @@ SUBSCRIBE_BILLING_TYPES = {"CREDIT_CARD": "Cartão de crédito", "PIX": "Pix", "
 def _subscribe_blocker(db: Session, organization_id: int) -> str | None:
     """Motivo para nao abrir uma nova contratacao (ja existe assinatura ou checkout em andamento)."""
     current = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, is_current=True).first()
-    if current:
+    sandbox_mp = billing_environment() == MERCADOPAGO_TEST
+    if current and not (sandbox_mp and current.environment == "sandbox"):
         return "Sua organização já tem uma assinatura. Gerencie por aqui."
-    if db.query(OrganizationCardMigration.id).filter_by(organization_id=organization_id, is_open=True).first():
+    if not sandbox_mp and db.query(OrganizationCardMigration.id).filter_by(organization_id=organization_id, is_open=True).first():
         return "Já existe um pagamento com cartão em andamento. Conclua ou aguarde a confirmação."
     return None
 
@@ -10907,11 +10922,14 @@ def _render_subscribe(request, db, user, csrf_token, plan, *, form=None, error=N
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization.id).first()
     ent = _entitlements_for(db, user)
     prices = plan_prices(plan)
+    sandbox_mp = billing_environment() == MERCADOPAGO_TEST
+    if sandbox_mp:
+        prices = {cycle: value for cycle, value in prices.items() if cycle in mp.CYCLES}
     defaults = {
-        "cycle": "MONTHLY" if "MONTHLY" in prices else next(iter(prices)), "billing_type": "CREDIT_CARD",
+        "cycle": "MONTHLY" if "MONTHLY" in prices else next(iter(prices), ""), "billing_type": "CREDIT_CARD",
         "person_type": "JURIDICA" if billing and len(billing.cpf_cnpj or "") == 14 else "FISICA",
         "name": (billing.contact_name if billing else organization.name) or "", "cpf_cnpj": (billing.cpf_cnpj if billing else "") or "",
-        "email": (billing.contact_email if billing else user.email) or "", "mobile_phone": (billing.contact_phone if billing else user.phone) or "",
+        "email": "" if sandbox_mp else (billing.contact_email if billing else user.email) or "", "mobile_phone": (billing.contact_phone if billing else user.phone) or "",
         "postal_code": (billing.postal_code if billing else "") or "", "address_number": (billing.address_number if billing else "") or "",
     }
     defaults.update(form or {})
@@ -10921,6 +10939,7 @@ def _render_subscribe(request, db, user, csrf_token, plan, *, form=None, error=N
         request, user, csrf_token, "subscribe", title="Contratar plano", _repo=_repository(db),
         selected_plan=plan, selected_prices=prices,
         billing_types=SUBSCRIBE_BILLING_TYPES, form=defaults,
+        sandbox_mp=sandbox_mp,
         price_json={cycle: str(value) for cycle, value in prices.items()}, error=error, first_due=first_due, entitlements=ent,
     ))
     response.status_code = status_code
@@ -10942,6 +10961,9 @@ def subscribe_page(request: Request, db: Session = Depends(get_db), user: User =
     plan = _subscription_catalog_plan(db, plan_id)
     if not plan:
         _flash(request, "error", "Escolha um plano disponível.")
+        return _redirect("/planos-disponiveis")
+    if billing_environment() == MERCADOPAGO_TEST and not (mp.CYCLES.keys() & plan_prices(plan).keys()):
+        _flash(request, "info", "Escolha um plano com preço mensal ou anual.")
         return _redirect("/planos-disponiveis")
     issues = _plan_limit_issues(db, user.organization_id, plan)
     if issues:
@@ -10977,6 +10999,49 @@ def subscribe_action(
     if accepted_terms != "1":
         return fail("Confirme os termos e as condições da cobrança para contratar.")
     settings = get_settings()
+    if getattr(settings, "mercadopago_sandbox", False):
+        if mp.configuration_error(settings):
+            return fail("A contratação de teste está indisponível no momento.")
+        if cycle not in mp.CYCLES:
+            return fail("Escolha a periodicidade mensal ou anual.")
+        email = email.strip()
+        if len(email) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+            return fail("Informe um e-mail válido do comprador de teste.")
+        try:
+            plan, price = resolve_plan_selection(db, plan.id, cycle)
+        except PlanValidationError as exc:
+            return fail(str(exc))
+        blocker = _subscribe_blocker(db, organization.id)
+        if blocker:
+            _flash(request, "info", blocker)
+            return _customer_target()
+        entitlements = _entitlements_for(db, user)
+        today = today_in_app_timezone()
+        due = max(entitlements.trial_ends_on or today, today)
+        try:
+            subscription = mp.reserve_checkout(db, organization=organization, plan=plan, amount=price,
+                                               cycle=cycle, due=due, email=email)
+            issues = _plan_limit_issues(db, organization.id, plan)
+            if issues:
+                db.rollback()
+                return _incompatible_plan(request, issues)
+            record_commercial_event(
+                db, user=user, organization_id=organization.id, resource="assinatura", resource_id=subscription.id,
+                action="aceitar_contratacao", outcome="success",
+                details={"termos_versao": SUBSCRIPTION_TERMS_VERSION, "provedor": "mercadopago", "ambiente": "teste",
+                         "plano_id": plan.id, "plano_versao": plan.version, "valor": str(price),
+                         "ciclo": cycle, "primeiro_vencimento": due.isoformat()},
+            )
+            db.commit()
+            link = mp.create_checkout(db, mp.MercadoPagoAPI(settings), subscription)
+        except mp.MercadoPagoError as exc:
+            db.rollback()
+            if str(exc) == "assinatura_existente":
+                return _customer_target()
+            return fail("O Mercado Pago não confirmou o checkout. Confira a situação em Minha assinatura.")
+        if link:
+            return RedirectResponse(link, status_code=status.HTTP_303_SEE_OTHER)
+        return _customer_target()
     if not asaas_ready(settings):
         return fail("A contratação está indisponível no momento. Tente novamente mais tarde ou fale com a equipe SiSFarm.")
     if not asaas_pilot_allows(organization.id, settings):
@@ -11059,6 +11124,56 @@ def _customer_target() -> RedirectResponse:
     return _redirect("/minha-assinatura")
 
 
+@router.post("/minha-assinatura/mercadopago")
+@router.post("/assinaturas/{organization_id}/mercadopago")
+def manage_mercadopago_subscription(
+    request: Request, action: str = Form(...), csrf_token: str = Form(...), subscription_id: int = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    organization_param = request.path_params.get("organization_id")
+    admin_operation = organization_param is not None
+    if admin_operation:
+        denied = _require_super_admin(request, user)
+        if denied:
+            return denied
+        if not organization_param.isdigit():
+            raise HTTPException(status_code=404)
+        organization_id = int(organization_param)
+    else:
+        organization_id = user.organization_id
+        if not organization_id or WRITE_FINANCE not in permission_codes_for_user(db, user):
+            raise HTTPException(status_code=403)
+    target = _grant_target(organization_id) if admin_operation else _customer_target()
+    actions = {"cancelar": "canceled", "pausar": "paused", "reativar": "authorized"}
+    if action not in {"sincronizar", "cancelar"} and (not admin_operation or action not in actions):
+        raise HTTPException(status_code=400, detail="Ação de assinatura inválida")
+    row = db.query(OrganizationSubscription).filter_by(
+        id=subscription_id, organization_id=organization_id, is_current=True, environment=MERCADOPAGO_TEST,
+    ).with_for_update().first()
+    if not row:
+        _flash(request, "info", "Nenhuma assinatura de teste em andamento.")
+        return target
+    try:
+        api = mp.MercadoPagoAPI()
+        if action == "sincronizar":
+            mp.reconcile(db, api, row)
+        else:
+            mp.change_status(api, row, actions[action])
+        record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura",
+                                resource_id=row.id, action=action, outcome="success",
+                                details={"provedor": "mercadopago", "ambiente": "teste"})
+        db.commit()
+    except mp.MercadoPagoError as exc:
+        db.rollback()
+        mp.logger.warning("Mercado Pago sandbox: organização=%s ação=%s erro=%s", organization_id, action, exc)
+        _flash(request, "error", "Não foi possível confirmar a operação no Mercado Pago. Confira o status após a sincronização.")
+    else:
+        _flash(request, "success", "Assinatura de teste atualizada.")
+    return target
+
+
 @router.post("/minha-assinatura/cartao")
 def my_subscription_card_action(request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
     """O proprio cliente cadastra (ou troca) o cartao: abre o checkout do Asaas e o redireciona para ele."""
@@ -11128,7 +11243,7 @@ def create_access_grant_action(
     if not organization or organization.archived_at:
         raise HTTPException(status_code=404, detail="Organização não encontrada")
     if confirm != "1":
-        _flash(request, "error", "Confirme que a liberação não altera as cobranças no Asaas.")
+        _flash(request, "error", "Confirme que a liberação de acesso é independente das cobranças.")
         return _grant_target(organization_id)
     try:
         selected_plan = int(plan_id) if (plan_id or "").strip() else None
@@ -11207,9 +11322,11 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
     organization_id = user.organization_id
     recorded = _current_commercial_subscription(db, organization_id)
     recorded_plan_id = effective_plan_id(recorded, today_in_app_timezone())
-    confirmed = bool(recorded and recorded.asaas_subscription_id and has_confirmed_subscription_payment(db, recorded.id))
+    confirmed = bool(recorded and (recorded.asaas_subscription_id or recorded.mercadopago_id)
+                     and has_confirmed_subscription_payment(db, recorded.id))
     subscription = recorded if confirmed and _subscription_can_change(db, recorded) else None
-    catalog = active_plans(db)
+    sandbox_mp = billing_environment() == MERCADOPAGO_TEST
+    catalog = [plan for plan in active_plans(db) if not sandbox_mp or mp.CYCLES.keys() & plan_prices(plan).keys()]
     if recorded_plan_id and all(plan.id != recorded_plan_id for plan in catalog):
         recorded_plan = db.get(SubscriptionPlan, recorded_plan_id)
         if recorded_plan:
@@ -11229,7 +11346,9 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
         premium_plan_id=_premium_plan_id(ordered),
         title="Planos disponíveis", module_code=module_code, module_label=MODULE_LABELS.get(module_code),
         module_pitch=MODULE_PITCH.get(module_code), plans_catalog=ordered,
-        plan_modules_of=plan_modules, plan_prices_of=plan_prices, module_labels=MODULE_LABELS, support_email=(get_settings().support_email or "").strip() or None,
+        plan_modules_of=plan_modules,
+        plan_prices_of=(lambda plan: {cycle: price for cycle, price in plan_prices(plan).items() if cycle in mp.CYCLES}) if sandbox_mp else plan_prices,
+        module_labels=MODULE_LABELS, support_email=(get_settings().support_email or "").strip() or None,
         _repo=_repository(db),
     ))
 
@@ -11238,7 +11357,7 @@ def _current_commercial_subscription(db: Session, organization_id: int | None) -
     if not organization_id:
         return None
     return db.query(OrganizationSubscription).filter_by(
-        organization_id=organization_id, is_current=True, environment=asaas_env_name(),
+        organization_id=organization_id, is_current=True, environment=billing_environment(),
     ).first()
 
 

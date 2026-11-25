@@ -19,6 +19,7 @@ from app.core.timezone import app_now, today_in_app_timezone
 from app.db.session import SessionLocal
 from app.models import Organization, OrganizationBilling, OrganizationSubscription, OrganizationSubscriptionPayment, SubscriptionNotice
 from app.services.asaas_environment import app_public_base, asaas_env_name
+from app.services.billing_environment import MERCADOPAGO_TEST, billing_environment
 from app.services.email_service import send_plain_email
 from app.services.entitlements import compute_entitlements, grace_days
 
@@ -195,6 +196,8 @@ def _tick() -> None:
         except Exception:
             db.rollback()
             logger.exception("Falha ao processar avisos de teste grátis")
+    if billing_environment() == MERCADOPAGO_TEST:
+        return
     with SessionLocal() as db:
         organization_ids = [row[0] for row in db.query(OrganizationSubscription.organization_id).filter_by(environment=asaas_env_name()).distinct().all()]
     for organization_id in organization_ids:

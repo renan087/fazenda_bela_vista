@@ -27,6 +27,12 @@ class OrganizationSubscription(Base):
     asaas_subscription_id: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True)
     asaas_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
     asaas_last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    mercadopago_id: Mapped[str | None] = mapped_column(String(80), unique=True)
+    mercadopago_reference: Mapped[str | None] = mapped_column(String(80), unique=True)
+    mercadopago_status: Mapped[str | None] = mapped_column(String(30))
+    mercadopago_version: Mapped[int | None] = mapped_column(Integer)
+    mercadopago_checkout_url: Mapped[str | None] = mapped_column(String(512))
+    mercadopago_payer_email: Mapped[str | None] = mapped_column(String(254))
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     sync_issue: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Troca de plano: data da ultima troca e downgrade agendado para o fim do ciclo pago.
@@ -44,3 +50,10 @@ class OrganizationSubscription(Base):
     organization = relationship("Organization")
     plan = relationship("SubscriptionPlan", foreign_keys=[plan_id])
     pending_plan = relationship("SubscriptionPlan", foreign_keys=[pending_plan_id])
+
+    @property
+    def billing_status(self) -> str | None:
+        if self.mercadopago_reference:
+            return {"authorized": "ACTIVE", "paused": "INACTIVE", "pending": "PENDING",
+                    "cancelled": "DELETED", "canceled": "DELETED"}.get(self.mercadopago_status)
+        return self.asaas_status

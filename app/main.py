@@ -25,6 +25,7 @@ from app.services.rbac_service import seed_rbac_for_all_organizations
 from app.models import User
 from app.repositories.farm import FarmRepository
 from app.routers.asaas_webhook import router as asaas_webhook_router
+from app.routers.mercadopago_webhook import router as mercadopago_webhook_router
 from app.routers.whatsapp_webhook import router as whatsapp_webhook_router
 from app.routers.whatsapp_record_access import router as whatsapp_record_access_router
 from app.routers.assistant_shared_reports import router as assistant_shared_reports_router
@@ -36,6 +37,7 @@ from app.services.backup_service import run_backup_automation_loop, run_backup_r
 from app.services.coffee_quotes import seed_cepea_coffee_quotes_from_bundle
 from app.services.coffee_quote_sync_service import run_coffee_quote_sync_loop
 from app.services.asaas_card_migration_worker import run_card_migration_loop
+from app.services.mercadopago_subscriptions import run_mercadopago_loop
 from app.services.subscription_reconciliation import run_subscription_reconciliation_loop
 from app.services.billing_notices import run_billing_notice_loop
 from app.services.whatsapp_lifecycle import run_whatsapp_lifecycle_loop
@@ -95,11 +97,16 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(audio_retention_loop()),
         asyncio.create_task(run_backup_automation_loop()),
         asyncio.create_task(run_backup_repository_monitor_loop()),
-        asyncio.create_task(run_card_migration_loop()),
-        asyncio.create_task(run_subscription_reconciliation_loop()),
         asyncio.create_task(run_billing_notice_loop()),
         asyncio.create_task(run_whatsapp_lifecycle_loop()),
     ]
+    if settings.mercadopago_sandbox:
+        background_tasks.append(asyncio.create_task(run_mercadopago_loop()))
+    else:
+        background_tasks.extend([
+            asyncio.create_task(run_card_migration_loop()),
+            asyncio.create_task(run_subscription_reconciliation_loop()),
+        ])
     if settings.coffee_quote_sync_enabled:
         background_tasks.append(asyncio.create_task(run_coffee_quote_sync_loop()))
     if settings.memory_monitor_enabled:
@@ -349,6 +356,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(auth_router)
 app.include_router(asaas_webhook_router)
+app.include_router(mercadopago_webhook_router)
 app.include_router(whatsapp_webhook_router)
 app.include_router(whatsapp_record_access_router)
 app.include_router(assistant_shared_reports_router)

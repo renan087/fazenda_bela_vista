@@ -562,7 +562,7 @@ def test_most_expensive_plan_gets_premium_theme(db, monkeypatch):
 
 
 def test_production_requires_current_confirmed_charge_and_preserves_read_access(db, monkeypatch):
-    monkeypatch.setattr(ent, 'asaas_env_name', lambda: 'production')
+    monkeypatch.setattr(ent, 'billing_environment', lambda: 'production')
     org = _org(db)
     subscription = db.query(OrganizationSubscription).filter_by(organization_id=org.id).one()
     subscription.environment = 'production'
@@ -631,7 +631,8 @@ def test_paid_plan_is_current_during_full_trial_and_limits_apply_after_trial(db,
 
     flashes = _self_service_env(db, monkeypatch)
     monkeypatch.setattr(routes, 'asaas_env_name', lambda: 'production')
-    monkeypatch.setattr(ent, 'asaas_env_name', lambda: 'production')
+    monkeypatch.setattr(ent, 'billing_environment', lambda: 'production')
+    monkeypatch.setattr(routes, 'billing_environment', lambda: 'production')
     monkeypatch.setattr(routes, 'asaas_ready', lambda settings: True)
     monkeypatch.setattr(routes, 'asaas_pilot_allows', lambda *args: True)
     monkeypatch.setattr(routes, 'today_in_app_timezone', lambda: TODAY)

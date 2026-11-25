@@ -1,0 +1,31 @@
+{% if not organization.archived_at %}{% include "partials/access_grant_panel.html" %}{% endif %}
+{% set subscription = subscriptions_by_organization.get(organization.id) %}
+{% set previous = previous_subscriptions_by_organization.get(organization.id, []) %}
+{% set states = {'authorized': 'Autorizada', 'pending': 'Aguardando autorização', 'paused': 'Pausada', 'canceled': 'Cancelada', 'cancelled': 'Cancelada'} %}
+{% set payment_states = {'CONFIRMED': 'Pago', 'PENDING': 'Pendente', 'OVERDUE': 'Em atraso', 'REFUNDED': 'Estornado', 'CHARGEBACK_REQUESTED': 'Em contestação', 'AWAITING_RISK_ANALYSIS': 'Em processamento'} %}
+{% if not subscription %}<p class="mt-4 text-sm text-slate-600">Nenhuma assinatura de teste em andamento.</p>{% endif %}
+{% for item in ([subscription] if subscription else []) + previous %}
+<section class="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+    <h4 class="font-semibold text-slate-900">{{ item.plan_name }} · {{ states.get(item.mercadopago_status, 'Em verificação') }}</h4>
+    <p class="mt-1 text-sm text-slate-600">R$ {{ item.amount|decimal_br }} / {{ cycle_unit_labels.get(item.cycle, item.cycle) }}{% if item.next_due_date %} · Próxima cobrança em {{ item.next_due_date.strftime('%d/%m/%Y') }}{% endif %}</p>
+    {% if item.mercadopago_id %}<p class="mt-1 text-xs text-slate-500">Assinatura Mercado Pago <span class="font-mono">{{ item.mercadopago_id }}</span></p>{% endif %}
+    {% if item.sync_issue %}<p role="status" class="mt-2 text-sm text-amber-800">{{ item.sync_issue }}</p>{% endif %}
+    {% if item == subscription and not mp_config_error %}
+    <form class="mt-3 flex flex-wrap gap-2" method="post" action="/assinaturas/{{ organization.id }}/mercadopago">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="subscription_id" value="{{ item.id }}">
+        <button class="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm" name="action" value="sincronizar">Sincronizar cobranças</button>
+        {% if item.mercadopago_status == 'authorized' %}<button class="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm" name="action" value="pausar">Pausar</button>{% endif %}
+        {% if item.mercadopago_status == 'paused' %}<button class="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm" name="action" value="reativar">Reativar</button>{% endif %}
+        {% if item.mercadopago_id %}<button class="rounded-xl border border-rose-200 bg-white px-3 py-1.5 text-sm text-rose-800" name="action" value="cancelar" onclick="return confirm('Cancelar a assinatura de teste?');">Cancelar assinatura</button>{% endif %}
+    </form>
+    {% endif %}
+    {% set charges = subscription_payments.get(item.id, []) %}
+    <h5 class="mt-4 text-sm font-semibold">Cobranças</h5>
+    <ul class="divide-y divide-slate-200 text-sm text-slate-600">
+        {% for charge in charges %}
+        <li class="py-2">{{ payment_states.get(charge.status, charge.status) }} · R$ {{ charge.amount|decimal_br }}{% if charge.due_date %} · {{ charge.due_date.strftime('%d/%m/%Y') }}{% endif %} · Fatura {{ charge.mercadopago_invoice_id }}{% if charge.mercadopago_payment_id %} · Pagamento {{ charge.mercadopago_payment_id }}{% endif %}</li>
+        {% else %}<li class="py-2">Nenhuma cobrança registrada.</li>{% endfor %}
+    </ul>
+</section>
+{% endfor %}

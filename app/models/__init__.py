@@ -48,6 +48,7 @@ from app.models.system_maintenance import SystemMaintenance
 from app.models.subscription_notice import SubscriptionNotice
 from app.models.organization_card_migration import OrganizationCardMigration
 from app.models.organization_subscription_payment import OrganizationSubscriptionPayment, AsaasWebhookEvent
+from app.models.mercadopago_event import MercadoPagoEvent
 from app.models.password_reset_token import PasswordResetToken
 from app.models.password_change_verification import PasswordChangeVerification
 from app.models.pesticide import PestIncident

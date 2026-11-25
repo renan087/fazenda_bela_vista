@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     subscription_grace_days: int = 10
     # Token do webhook (campo "Token de autenticação" no Asaas); enviado no header asaas-access-token.
     asaas_webhook_token: str | None = None
+    mercadopago_public_key: str | None = None
+    mercadopago_access_token: str | None = None
+    mercadopago_webhook_secret: str | None = None
+    mercadopago_sandbox: bool = False
     # Chave mestra do cofre de certificados A1 (AES-256-GCM). Mínimo 32 caracteres; nunca vai ao banco.
     # Não troque depois de enviar certificados: os já guardados deixam de abrir.
     nfe_cert_master_key: str | None = None

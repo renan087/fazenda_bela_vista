@@ -1,0 +1,83 @@
+import hashlib
+import hmac
+import logging
+import re
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
+
+from app.core.config import get_settings
+from app.db.session import get_db
+from app.models import MercadoPagoEvent
+from app.services.mercadopago_subscriptions import TOPICS, configuration_error, resource_id
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/webhooks/mercadopago", tags=["mercadopago-webhook"])
+
+
+def _signature_valid(secret, signature, request_id, identifier):
+    fields = {}
+    for item in signature.split(","):
+        key, sep, value = item.strip().partition("=")
+        if not sep or key in fields:
+            return False
+        fields[key] = value
+    timestamp, digest = fields.get("ts", ""), fields.get("v1", "")
+    if not re.fullmatch(r"[0-9]{1,20}", timestamp) or not re.fullmatch(r"[a-fA-F0-9]{64}", digest):
+        return False
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{1,160}", request_id):
+        return False
+    manifest = f"id:{identifier.lower()};request-id:{request_id};ts:{timestamp};"
+    computed = hmac.new(secret.encode(), manifest.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(computed, digest.lower())
+
+
+def _enqueue(db, topic, identifier, key, request_key):
+    try:
+        db.add(MercadoPagoEvent(topic=topic, resource_id=identifier, delivery_key=key, request_key=request_key))
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if not db.query(MercadoPagoEvent.id).filter(or_(
+            MercadoPagoEvent.delivery_key == key, MercadoPagoEvent.request_key == request_key,
+        )).first():
+            raise
+        return
+    logger.info("Mercado Pago sandbox: webhook recebido tópico=%s recurso=%s", topic, identifier)
+
+
+@router.post("/test")
+async def mercadopago_test_webhook(request: Request, db: Session = Depends(get_db)):
+    settings = get_settings()
+    if configuration_error(settings):
+        raise HTTPException(status_code=503, detail="Webhook de teste indisponível")
+    identifiers = request.query_params.getlist("data.id")
+    identifier = resource_id(identifiers[0]) if len(identifiers) == 1 else None
+    request_id = request.headers.get("x-request-id", "")
+    signature = request.headers.get("x-signature", "")
+    if not identifier or not _signature_valid(settings.mercadopago_webhook_secret.strip(), signature, request_id, identifier):
+        raise HTTPException(status_code=401, detail="Assinatura da notificação inválida")
+    try:
+        body = await request.json()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Notificação inválida") from None
+    data = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(data, dict) or resource_id(data.get("id")) != identifier:
+        raise HTTPException(status_code=400, detail="Recurso da notificação divergente")
+    topic = body.get("type")
+    if body.get("live_mode") is not False:
+        logger.info("Mercado Pago sandbox: webhook ignorado por ambiente recurso=%s", identifier)
+        return {"received": True}
+    if not isinstance(topic, str) or topic not in TOPICS:
+        return {"received": True}
+    # O identificador da notificação é distinto do ID da assinatura ou do pagamento.
+    event_id = resource_id(body.get("id")) or request_id
+    date_created = str(body.get("date_created") or "")[:64]
+    action = str(body.get("action") or "")[:64]
+    key = hashlib.sha256(f"{topic}:{identifier}:{event_id}:{date_created}:{action}".encode()).hexdigest()
+    request_key = hashlib.sha256(f"{identifier}:{request_id}".encode()).hexdigest()
+    await run_in_threadpool(_enqueue, db, topic, identifier, key, request_key)
+    return {"received": True}

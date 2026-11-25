@@ -17,10 +17,12 @@ from sqlalchemy.orm import Session
 
 from app.models import OrganizationAccessGrant, OrganizationSubscription, SubscriptionPlan
 from app.services.plan_changes import effective_plan_id, has_confirmed_subscription_payment
+from app.services.billing_environment import MERCADOPAGO_TEST
 
 GRANT_REASONS: dict[str, str] = {
     "erro_interno": "Erro ou falha da SiSFarm",
     "instabilidade_asaas": "Instabilidade ou falha no Asaas",
+    "instabilidade_mercadopago": "Instabilidade ou falha no Mercado Pago",
     "negociacao_comercial": "Negociação comercial em andamento",
     "bonus_cortesia": "Bônus ou cortesia",
     "implantacao": "Implantação / período de avaliação",
@@ -163,8 +165,8 @@ def organization_access(db: Session, organization_id: int, today: date, *, envir
         query = query.filter_by(environment=environment)
     current = query.first()
     plan_id = effective_plan_id(current, today)
-    if current and current.asaas_status == "ACTIVE":
-        if current.environment == "production" and not has_confirmed_subscription_payment(db, current.id):
+    if current and current.billing_status == "ACTIVE":
+        if current.environment in {"production", MERCADOPAGO_TEST} and not has_confirmed_subscription_payment(db, current.id):
             return AccessStatus(False, None, None, plan_id)
         return AccessStatus(True, "assinatura", None, plan_id)
     return AccessStatus(False, None, None, plan_id)
