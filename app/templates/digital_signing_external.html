@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/styles.css?v=20261123ex8">
-  <link rel="stylesheet" href="/static/css/digital_signing.css?v=11">
+  <link rel="stylesheet" href="/static/css/digital_signing.css?v=12">
 </head>
 <body class="ds-pub-body ds-ext-pub-body">
   <header class="ds-pub-topbar">
@@ -128,8 +128,8 @@
               <span>Código:</span> <strong>{{ verification_code }}</strong>
             </div>
             <div class="ds-success-actions">
-              <a class="sf-btn sf-btn-primary ds-full" href="{{ pdf_url }}" target="_blank" rel="noopener">{{ icon('download', 16) }} Baixar PDF assinado</a>
-              <a class="sf-btn sf-btn-secondary ds-full" href="/validar/{{ verification_code }}" target="_blank" rel="noopener">{{ icon('qr', 16) }} Abrir página de validação</a>
+              <a class="sf-btn sf-btn-primary" href="{{ pdf_url }}" target="_blank" rel="noopener">{{ icon('download', 16) }} Baixar PDF assinado</a>
+              <a class="sf-btn sf-btn-secondary" href="/validar/{{ verification_code }}" target="_blank" rel="noopener">{{ icon('qr', 16) }} Abrir página de validação</a>
             </div>
           </div>
           {% else %}
@@ -239,8 +239,8 @@
               <span>Código:</span> <strong data-ds-signed-code>{{ verification_code }}</strong>
             </div>
             <div class="ds-success-actions">
-              <a class="sf-btn sf-btn-primary ds-full" href="{{ pdf_url }}" target="_blank" rel="noopener">{{ icon('download', 16) }} Baixar PDF assinado</a>
-              <a class="sf-btn sf-btn-secondary ds-full" href="/validar/{{ verification_code }}" target="_blank" rel="noopener">{{ icon('qr', 16) }} Abrir página de validação</a>
+              <a class="sf-btn sf-btn-primary" href="{{ pdf_url }}" target="_blank" rel="noopener">{{ icon('download', 16) }} Baixar PDF assinado</a>
+              <a class="sf-btn sf-btn-secondary" href="/validar/{{ verification_code }}" target="_blank" rel="noopener">{{ icon('qr', 16) }} Abrir página de validação</a>
             </div>
           </div>
           {% endif %}

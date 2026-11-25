@@ -635,10 +635,50 @@
 .ds-ws-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; margin-bottom: 0.35rem; }
 .ds-ws-sigcount { font-size: 0.78rem; font-weight: 600; color: var(--ds-muted); }
 .ds-ceremony-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(20rem, 0.95fr); gap: 1rem; align-items: start; }
-.ds-ceremony-grid.is-completed { grid-template-columns: minmax(0, 32rem); justify-content: center; }
+.ds-ceremony-grid.is-completed,
+.ds-ceremony-grid[data-ds-already-signed="yes"] {
+  grid-template-columns: minmax(0, 46rem);
+  justify-content: center;
+}
 .ds-ceremony-grid.is-completed .ds-viewer,
-.ds-ceremony-grid.is-completed .ds-mini-steps { display: none !important; }
-.ds-ceremony-grid.is-completed .ds-ceremony-side { position: static; width: 100%; }
+.ds-ceremony-grid.is-completed .ds-mini-steps,
+.ds-ceremony-grid[data-ds-already-signed="yes"] .ds-viewer,
+.ds-ceremony-grid[data-ds-already-signed="yes"] .ds-mini-steps { display: none !important; }
+.ds-ceremony-grid.is-completed .ds-ceremony-side,
+.ds-ceremony-grid[data-ds-already-signed="yes"] .ds-ceremony-side { position: static; width: 100%; max-width: 100%; }
+.ds-ceremony-grid.is-completed .ds-ceremony-card,
+.ds-ceremony-grid[data-ds-already-signed="yes"] .ds-ceremony-card {
+  padding: 2.25rem 2rem;
+  min-height: 24rem;
+  justify-content: center;
+}
+.ds-ceremony-grid.is-completed .ds-success-pane,
+.ds-ceremony-grid[data-ds-already-signed="yes"] .ds-success-pane {
+  padding: 1.25rem 0.5rem;
+  gap: 1.05rem;
+  max-width: 34rem;
+  margin: 0 auto;
+}
+.ds-ceremony-grid.is-completed .ds-success-pane p,
+.ds-ceremony-grid[data-ds-already-signed="yes"] .ds-success-pane p {
+  max-width: 30rem;
+  line-height: 1.55;
+}
+.ds-ceremony-grid.is-completed .ds-success-actions,
+.ds-ceremony-grid[data-ds-already-signed="yes"] .ds-success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  width: auto;
+  margin-top: 0.6rem;
+}
+.ds-ceremony-grid.is-completed .ds-success-actions .sf-btn,
+.ds-ceremony-grid[data-ds-already-signed="yes"] .ds-success-actions .sf-btn {
+  width: auto;
+  min-width: 12.5rem;
+}
 .ds-viewer { overflow: hidden; padding: 0; }
 .ds-toolbar {
   display: flex;
@@ -791,8 +831,8 @@
 .ds-stamp-mode-btn small { display: block; font-size: 0.69rem; color: var(--ds-muted); margin-top: 0.1rem; }
 
 /* Ceremony Right Side Panel */
-.ds-ceremony-side { position: sticky; top: 1rem; }
-.ds-ceremony-card { gap: 1.05rem; }
+.ds-ceremony-side { position: sticky; top: 1rem; min-width: 0; max-width: 100%; }
+.ds-ceremony-card { gap: 1.05rem; min-width: 0; max-width: 100%; width: 100%; box-sizing: border-box; }
 .ds-mini-steps { display: flex; gap: 0.45rem; list-style: none; margin: 0; padding: 0; }
 .ds-mini-steps li {
   display: inline-flex;
@@ -811,15 +851,33 @@
 .ds-mini-steps li.is-done { border-color: #BFE2BE; background: var(--ds-ok-bg); color: var(--ds-ok-fg); }
 .ds-mini-steps li.is-done span { background: var(--ds-ok-fg); color: #FFF; }
 
-.ds-step-pane { display: grid; gap: 0.9rem; }
-.ds-step-title h2 { font-size: 1.05rem; font-weight: 700; }
-.ds-step-title p { font-size: 0.8125rem; color: var(--ds-muted); margin-top: 0.25rem; line-height: 1.45; }
+.ds-step-pane {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.9rem;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ds-step-title { min-width: 0; max-width: 100%; }
+.ds-step-title h2 { font-size: 1.05rem; font-weight: 700; overflow-wrap: anywhere; }
+.ds-step-title p { font-size: 0.8125rem; color: var(--ds-muted); margin-top: 0.25rem; line-height: 1.45; overflow-wrap: anywhere; word-break: break-word; }
 
-.ds-field { display: grid; gap: 0.35rem; }
-.ds-field > span, .ds-field-label { font-size: 0.8rem; font-weight: 600; color: var(--ds-ink); }
+.ds-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.ds-field > span, .ds-field-label { font-size: 0.8rem; font-weight: 600; color: var(--ds-ink); min-width: 0; }
 .ds-field > span small, .ds-field-label small { font-weight: 400; color: var(--ds-muted-2); }
 .ds-field :is(input, select) {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   min-height: 2.65rem;
   padding: 0.5rem 0.72rem;
   border-radius: 10px;
@@ -833,7 +891,8 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 1.15rem !important;
   font-weight: 700;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.22em;
+  padding-inline: 0.5rem !important;
 }
 /* Modern Switch Control */
 .ds-switch-box { padding: 0.8rem 0.9rem; border-radius: 12px; background: var(--ds-soft); border: 1px solid var(--ds-line); display: grid; gap: 0.5rem; }
@@ -981,7 +1040,14 @@ input[type="checkbox"].ds-switch-input:checked::after {
   background: var(--ds-brand-soft);
   color: var(--ds-brand-dark);
   font-size: 0.8rem;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
+.ds-cert-confirm-chip span { min-width: 0; flex: 1; }
 .ds-full { width: 100%; justify-content: center; min-height: 2.75rem; }
 .ds-inline-action {
   display: inline-flex;
@@ -2805,7 +2871,7 @@ input[type="checkbox"].ds-switch-input:checked::after {
 .ds-ext-steps li { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 1023px) {
-  .ds-ext-grid {
+  .ds-ext-grid:not(.is-completed):not([data-ds-already-signed="yes"]) {
     grid-template-columns: minmax(0, 1fr);
     gap: 1rem;
   }
@@ -2857,4 +2923,18 @@ input[type="checkbox"].ds-switch-input:checked::after {
   .ds-placer-stage { padding: 0.65rem; }
   .ds-placer-foot { flex-direction: column-reverse; }
   .ds-placer-foot .sf-btn { width: 100%; justify-content: center; }
+  .ds-ceremony-grid.is-completed .ds-ceremony-card,
+  .ds-ceremony-grid[data-ds-already-signed="yes"] .ds-ceremony-card {
+    padding: 1.5rem 1rem;
+    min-height: 0;
+  }
+  .ds-ceremony-grid.is-completed .ds-success-actions,
+  .ds-ceremony-grid[data-ds-already-signed="yes"] .ds-success-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+  .ds-ceremony-grid.is-completed .ds-success-actions .sf-btn,
+  .ds-ceremony-grid[data-ds-already-signed="yes"] .ds-success-actions .sf-btn {
+    width: 100%;
+  }
 }
