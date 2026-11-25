@@ -50,18 +50,30 @@ CHECKOUT_ERROR_MESSAGES = {
     "comprador_igual_ao_vendedor": "O Mercado Pago exige contas diferentes para vendedor e comprador. Use o e-mail do comprador de teste.",
     "email_do_comprador": "O Mercado Pago recusou o e-mail informado. Confira o e-mail da conta de comprador de teste.",
     "data_da_cobranca": "O Mercado Pago recusou a data de cobrança. Informe à equipe SiSFarm a data que aparece no resumo do plano.",
+    "credencial_invalida": "O Mercado Pago recusou o Access Token. Confira se ele pertence à aplicação usada neste teste de assinaturas.",
+    "politica_do_mercado_pago": "O Mercado Pago bloqueou a solicitação por uma política de acesso. Informe ao suporte do Mercado Pago o código e a referência desta tentativa.",
 }
 
 
 def _preapproval_error_reason(response: httpx.Response) -> str | None:
     """Classifica mensagens do provedor sem repassar seu conteúdo aos logs ou à interface."""
-    if response.status_code not in {400, 422}:
+    if response.status_code not in CHECKOUT_REJECTIONS:
         return None
     try:
         data = response.json()
     except ValueError:
         return None
     if not isinstance(data, dict):
+        return None
+    if response.status_code in {401, 403}:
+        # Retorne somente classificações conhecidas. A resposta pode conter outros dados da conta.
+        codes = {str(data.get(field, "")).casefold() for field in ("error", "code")}
+        if "pa_unauthorized_result_from_policies" in codes:
+            return "politica_do_mercado_pago"
+        if codes & {"invalid_credentials", "invalid_token"}:
+            return "credencial_invalida"
+        return None
+    if response.status_code not in {400, 422}:
         return None
     cause = data.get("cause")
     entries = cause if isinstance(cause, list) else [cause]
@@ -104,7 +116,7 @@ def configuration_error(settings=None) -> str | None:
     missing = [name.upper() for name in ("mercadopago_access_token", "mercadopago_public_key", "mercadopago_webhook_secret")
                if not (getattr(settings, name) or "").strip()]
     if missing:
-        return "Configure " + ", ".join(missing) + " com os dados da aba Teste."
+        return "Configure " + ", ".join(missing) + " com os dados da aplicação usada para homologação."
     return None
 
 
@@ -155,12 +167,36 @@ class MercadoPagoAPI:
         if configuration_error(settings):
             raise MercadoPagoError("sandbox_indisponivel")
         self.token = settings.mercadopago_access_token.strip()
+        self._test_seller: dict | None = None
+
+    def _verified_test_seller(self, client: httpx.Client) -> dict:
+        if self._test_seller is None:
+            self._test_seller = {}
+            try:
+                response = client.get("/users/me")
+                account = response.json() if response.is_success else {}
+            except (httpx.HTTPError, ValueError):
+                return self._test_seller
+            if (isinstance(account, dict) and isinstance(account.get("id"), int)
+                    and account.get("site_id") == "MLB" and isinstance(account.get("tags"), list)
+                    and "test_user" in account["tags"] and str(account.get("email") or "").lower().endswith("@testuser.com")):
+                self._test_seller = {"id": account["id"], "email": account["email"].lower()}
+        return self._test_seller
 
     def request(self, method, path, *, params=None, payload=None):
-        headers = {"Authorization": f"Bearer {self.token}", "X-scope": "stage", "Accept": "application/json"}
+        headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
         try:
             with httpx.Client(base_url=API_URL, headers=headers, timeout=8.0) as client:
-                response = client.request(method, path, params=params, json=payload)
+                seller = self._verified_test_seller(client)
+                # O endpoint de assinaturas recusa X-scope: stage para a aplicação do vendedor fictício.
+                if seller and method == "POST" and path == "/preapproval":
+                    email = str((payload or {}).get("payer_email") or "").strip().lower()
+                    if not re.fullmatch(r"[a-z0-9._+-]+@testuser\.com", email):
+                        raise MercadoPagoError("comprador_de_teste_invalido", reason="email_do_comprador")
+                    if email == seller["email"]:
+                        raise MercadoPagoError("comprador_de_teste_invalido", reason="comprador_igual_ao_vendedor")
+                scope = {} if seller else {"X-scope": "stage"}
+                response = client.request(method, path, params=params, json=payload, headers=scope)
         except httpx.HTTPError:
             logger.warning("Mercado Pago sandbox: falha de conexão method=%s endpoint=%s", method, path)
             raise MercadoPagoError("falha_de_conexao") from None
@@ -278,7 +314,7 @@ def create_checkout(db, api, subscription):
         subscription.sync_issue = f"Criação da assinatura em teste: {' · '.join(filter(None, diagnostic))}."
         subscription.status = "revisao"
         # Falhas inconclusivas são recuperadas por referência, sem repetir o POST.
-        if error.http_status in CHECKOUT_REJECTIONS:
+        if error.http_status in CHECKOUT_REJECTIONS or str(error) == "comprador_de_teste_invalido":
             subscription.is_current = False
             subscription.status = "falhou"
         db.commit()
@@ -414,7 +450,8 @@ def change_status(api, row, target):
         return
     if row.mercadopago_status not in allowed[target]:
         raise MercadoPagoError("acao_indisponivel")
-    api.request("PUT", f"/preapproval/{row.mercadopago_id}", payload={"status": target})
+    remote_target = "cancelled" if target == "canceled" else target
+    api.request("PUT", f"/preapproval/{row.mercadopago_id}", payload={"status": remote_target})
     _apply_subscription(row, api.get("subscription_preapproval", row.mercadopago_id))
     if row.mercadopago_status not in expected:
         raise MercadoPagoError("acao_nao_confirmada")

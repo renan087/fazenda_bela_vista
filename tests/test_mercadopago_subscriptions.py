@@ -172,6 +172,7 @@ def test_events_track_renewal_and_revocation_without_duplicate_invoices(database
         assert row.billing_status == "INACTIVE"
         mp.change_status(gateway, row, "authorized")
         mp.change_status(gateway, row, "canceled")
+        assert ("PUT", "/preapproval/TESTID", {"status": "cancelled"}) in gateway.calls
         db.commit()
         assert not row.is_current and row.next_due_date is None
         assert db.query(OrganizationSubscriptionPayment).count() == 2
@@ -230,8 +231,11 @@ def test_signed_endpoint_deduplicates_and_queues_retriable_processing(database, 
 def test_gateway_never_uses_production_or_accepts_live_payments(database, settings, monkeypatch):
     def response(request):
         assert request.url.host == "api.mercadopago.com"
-        assert request.headers["X-scope"] == "stage"
         assert request.headers["Authorization"] == "Bearer TEST-token"
+        if request.url.path == "/users/me":
+            assert "X-scope" not in request.headers
+            return httpx.Response(200, json={"id": 22, "site_id": "MLB", "tags": []})
+        assert request.headers["X-scope"] == "stage"
         return httpx.Response(200, json={"id": 101, "live_mode": True})
 
     monkeypatch.setattr(httpx.Client, "send", lambda self, request, **kwargs: response(request))
@@ -241,6 +245,31 @@ def test_gateway_never_uses_production_or_accepts_live_payments(database, settin
     settings.mercadopago_sandbox = False
     with pytest.raises(mp.MercadoPagoError, match="sandbox_indisponivel"):
         mp.MercadoPagoAPI()
+
+
+def test_verified_test_seller_creates_pending_subscription_without_stage(settings, monkeypatch):
+    calls = []
+
+    def send(client, request, **kwargs):
+        assert request.url.host == "api.mercadopago.com"
+        assert request.headers["Authorization"] == "Bearer TEST-token"
+        assert "X-scope" not in request.headers
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/users/me":
+            return httpx.Response(200, json={"id": 22, "site_id": "MLB", "tags": ["test_user"],
+                                             "email": "test_user_22@testuser.com"})
+        return httpx.Response(201, json={"id": "subscription-test", "status": "pending"})
+
+    monkeypatch.setattr(httpx.Client, "send", send)
+    api = mp.MercadoPagoAPI()
+    for email, reason in (("customer@example.com", "email_do_comprador"),
+                          ("test_user_22@testuser.com", "comprador_igual_ao_vendedor")):
+        with pytest.raises(mp.MercadoPagoError, match="comprador_de_teste_invalido") as raised:
+            api.request("POST", "/preapproval", payload={"payer_email": email, "status": "pending"})
+        assert raised.value.reason == reason
+    result = api.request("POST", "/preapproval", payload={"payer_email": "test_user_33@testuser.com", "status": "pending"})
+    assert result["status"] == "pending"
+    assert calls == [("GET", "/users/me"), ("POST", "/preapproval")]
 
 
 def test_customer_checkout_uses_the_sisfarm_screen_and_redirects_to_the_sandbox(database, settings, monkeypatch):
@@ -301,6 +330,10 @@ def test_customer_checkout_uses_the_sisfarm_screen_and_redirects_to_the_sandbox(
      "comprador_igual_ao_vendedor", "contas diferentes"),
     ({"message": "Restricted token test@example.com"}, 403,
      None, "recusou a credencial"),
+    ({"code": "PA_UNAUTHORIZED_RESULT_FROM_POLICIES"}, 403,
+     "politica_do_mercado_pago", "política de acesso"),
+    ({"error": "invalid_credentials"}, 403,
+     "credencial_invalida", "recusou o Access Token"),
 ])
 def test_checkout_reports_provider_rejections_without_exposing_response(
     database, settings, monkeypatch, caplog, response_body, status_code, expected_reason, message_fragment,

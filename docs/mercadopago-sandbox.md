@@ -1,6 +1,6 @@
 # Assinaturas do Mercado Pago em ambiente de teste
 
-Use uma aplicação brasileira na área [Integrações do Mercado Pago](https://www.mercadopago.com.br/developers/panel/app). No ambiente **Teste**, copie a Public Key e o Access Token. Confira o seletor do painel: um token com prefixo `APP_USR` também pode ser de teste.
+Abra [Integrações do Mercado Pago](https://www.mercadopago.com.br/developers/panel/app) e crie contas fictícias brasileiras de vendedor e comprador. O [guia específico de Assinaturas](https://www.mercadopago.com.br/developers/pt/news/2023/11/16/Questions-on-how-to-test-your-integration--) orienta criar a aplicação na conta fictícia do vendedor e usar o Access Token da aba **Produção** dessa aplicação para o fluxo de assinatura pendente. Use as credenciais dessa conta fictícia exclusivamente na homologação.
 
 Configure as variáveis no ambiente de homologação do SiSFarm:
 
@@ -25,5 +25,9 @@ Ativar `MERCADOPAGO_SANDBOX` direciona as novas contratações ao Mercado Pago e
 A fila de webhook registra tópico, ID do recurso, situação, tentativa e resultado em `mercadopago_events`. O log da aplicação identifica falhas de API e, quando enviado pelo Mercado Pago, o ID da requisição. Assinaturas com respostas incertas são buscadas novamente por referência e e-mail do comprador de teste. Verifique a referência no Mercado Pago se a criação continuar em revisão. O sistema conserva a reserva e evita reenviar a criação enquanto o resultado for inconclusivo.
 
 Se o checkout recusar a contratação, consulte a tentativa em **Assinaturas → Organização**. `http_400` e `http_422` indicam que a API rejeitou os dados. `http_401` e `http_403` indicam que é preciso conferir o token e o acesso da aplicação. Quando a API informa uma incompatibilidade entre vendedor e comprador, confira de qual conta vieram o token e o e-mail do comprador. O Mercado Pago também publica [instruções específicas para testar Assinaturas com vendedor e comprador fictícios](https://www.mercadopago.com.br/developers/pt/news/2023/11/16/Questions-on-how-to-test-your-integration--).
+
+Em caso de `http_403`, confirme qual conta é dona da aplicação e de qual aba veio o Access Token. Se a API continuar retornando `403`, informe ao suporte do Mercado Pago o endpoint `POST /preapproval`, o horário e a referência exibida no checkout.
+
+O SiSFarm consulta `GET /users/me` com o token da integração. Quando o Mercado Pago confirma que a conta é um vendedor fictício brasileiro, o SiSFarm omite o header `X-scope: stage` e exige um e-mail de comprador do domínio `testuser.com`, diferente do e-mail do vendedor. A inclusão desse header na criação de uma assinatura pendente com o vendedor fictício causou `403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES` na homologação.
 
 [API de Assinaturas](https://www.mercadopago.com.br/developers/pt/reference/online-payments/subscriptions/overview) · [Teste de compra](https://www.mercadopago.com.br/developers/pt/docs/subscriptions/integration-test/payment-approval) · [Webhooks](https://www.mercadopago.com.br/developers/pt/docs/subscriptions/additional-content/your-integrations/notifications/webhooks)
