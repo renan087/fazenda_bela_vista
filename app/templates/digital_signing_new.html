@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=10">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=11">{% endblock %}
 {% block content %}
 <main class="sf-page pd-page ds-page ds-wizard-page" data-ds-wizard data-csrf="{{ csrf_token }}">
   <script type="application/json" data-ds-colleagues-data>{{ (colleagues_payload or [])|tojson }}</script>
@@ -211,24 +211,40 @@
               <input type="text" maxlength="160" placeholder="Ex.: Carlos Comprador" data-ds-ext-name>
             </label>
             <label class="ds-field">
+              <span>CPF do signatário</span>
+              <input type="text" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" data-ds-cpf-mask data-ds-ext-cpf>
+            </label>
+            <label class="ds-field">
               <span>Papel no documento</span>
               <input type="text" maxlength="60" value="Signatário" placeholder="Ex.: Comprador, Testemunha" data-ds-ext-role>
             </label>
             <label class="ds-field">
-              <span>Canal de envio do link</span>
+              <span>Canal de envio do link e código</span>
               <select data-ds-ext-channel>
                 <option value="whatsapp" selected>WhatsApp</option>
                 <option value="email">E-mail</option>
               </select>
             </label>
-            <label class="ds-field" data-ds-ext-phone-wrap>
+            <label class="ds-field ds-field--span2" data-ds-ext-phone-wrap>
               <span>WhatsApp (com DDD)</span>
               <input type="tel" maxlength="20" placeholder="(35) 99999-0000" data-ds-phone-mask data-ds-ext-phone>
             </label>
-            <label class="ds-field" data-ds-ext-email-wrap hidden>
+            <label class="ds-field ds-field--span2" data-ds-ext-email-wrap hidden>
               <span>E-mail do signatário</span>
               <input type="email" maxlength="160" placeholder="contato@empresa.com.br" data-ds-ext-email>
             </label>
+          </div>
+          <div class="ds-ext-stamp-cfg">
+            <label class="ds-switch-row">
+              <span>
+                <strong>Mostrar selo visual com QR Code no PDF</strong>
+                <small data-ds-ext-stamp-summary>Selo Completo · posição padrão (você pode ajustar no PDF)</small>
+              </span>
+              <input type="checkbox" class="ds-switch-input" role="switch" data-ds-ext-show-stamp checked>
+            </label>
+            <div class="ds-ext-stamp-actions" data-ds-ext-stamp-actions>
+              <button type="button" class="sf-btn sf-btn-secondary ds-btn-sm" data-ds-ext-open-placer>{{ icon('pen', 14) }} Posicionar selo no PDF</button>
+            </div>
           </div>
           <div class="ds-ext-adder-foot">
             <p class="ds-feedback" data-ds-ext-err role="alert" hidden></p>
@@ -377,11 +393,15 @@
         <input type="text" maxlength="160" placeholder="Ex.: Carlos Comprador" data-ds-mob-ext-name>
       </label>
       <label class="ds-field">
+        <span>CPF do signatário</span>
+        <input type="text" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" data-ds-cpf-mask data-ds-mob-ext-cpf>
+      </label>
+      <label class="ds-field">
         <span>Papel no documento</span>
         <input type="text" maxlength="60" value="Signatário" placeholder="Ex.: Comprador, Testemunha" data-ds-mob-ext-role>
       </label>
       <div class="ds-field">
-        <span>Canal de envio do link</span>
+        <span>Canal de envio do link e código</span>
         <div class="ds-mob-ext-ch-grid" role="radiogroup" aria-label="Canal externo">
           <button type="button" class="ds-mob-ext-ch-btn is-wa-active" data-ds-mob-ext-ch="whatsapp" role="radio" aria-checked="true">WhatsApp</button>
           <button type="button" class="ds-mob-ext-ch-btn" data-ds-mob-ext-ch="email" role="radio" aria-checked="false">E-mail</button>
@@ -391,13 +411,68 @@
         <span data-ds-mob-ext-contact-lbl>WhatsApp (com DDD)</span>
         <input type="tel" maxlength="160" placeholder="(35) 99999-0000" data-ds-mob-ext-contact>
       </label>
+      <label class="ds-switch-row ds-mob-stamp-row">
+        <span>
+          <strong>Mostrar selo visual no PDF</strong>
+          <small>Você pode ajustar a posição no PDF após adicionar.</small>
+        </span>
+        <input type="checkbox" class="ds-switch-input" role="switch" data-ds-mob-ext-show-stamp checked>
+      </label>
       <p class="ds-feedback" data-ds-mob-ext-err role="alert" hidden></p>
     </div>
     <footer class="ds-dialog-foot">
       <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-mob-ext-save>Adicionar signatário</button>
     </footer>
   </dialog>
+
+  <!-- MODAL INTERATIVO: POSICIONAR SELO DE ASSINATURA NO PDF (EMITENTE) -->
+  <dialog class="ds-dialog ds-placer-dialog" data-ds-placer-dialog aria-label="Posicionar selo de assinatura no PDF">
+    <header class="ds-dialog-head">
+      <div class="min-w-0">
+        <h2>Posicionar selo de assinatura</h2>
+        <p data-ds-placer-sub>Arraste o carimbo para o local exato onde o signatário irá assinar.</p>
+      </div>
+      <button type="button" class="ds-icon-btn" data-ds-close-dialog aria-label="Fechar">✕</button>
+    </header>
+    <div class="ds-placer-controls">
+      <label class="ds-switch-row ds-placer-switch">
+        <span><strong>Mostrar selo visual no PDF</strong></span>
+        <input type="checkbox" class="ds-switch-input" role="switch" data-ds-placer-visible checked>
+      </label>
+      <div class="ds-placer-style-group" data-ds-placer-style-wrap role="radiogroup" aria-label="Estilo do selo">
+        <button type="button" class="ds-placer-style-btn" data-ds-placer-style="full" role="radio" aria-checked="true">Completo</button>
+        <button type="button" class="ds-placer-style-btn" data-ds-placer-style="compact" role="radio" aria-checked="false">Enxuto</button>
+      </div>
+      <div class="ds-pager ds-placer-pager">
+        <button type="button" class="ds-icon-btn" data-ds-placer-prev aria-label="Página anterior">‹</button>
+        <span>Pág. <strong data-ds-placer-pg>1</strong> de <strong data-ds-placer-pages>1</strong></span>
+        <button type="button" class="ds-icon-btn" data-ds-placer-next aria-label="Próxima página">›</button>
+      </div>
+    </div>
+    <div class="ds-dialog-body ds-placer-stage" data-ds-placer-stage>
+      <p class="ds-preview-status" data-ds-placer-status>Carregando prévia do PDF…</p>
+      <div class="ds-sheet ds-placer-sheet" data-ds-placer-sheet hidden>
+        <canvas data-ds-placer-canvas aria-label="Prévia do PDF para posicionar selo"></canvas>
+        <div class="ds-stamp is-electronic" data-ds-placer-stamp tabindex="0" role="group" aria-label="Arraste para posicionar o selo de assinatura">
+          <span class="ds-stamp-head">SISFARM · ASSINATURA ELETRÔNICA</span>
+          <div class="ds-stamp-body-row">
+            <span class="ds-stamp-qr" aria-hidden="true">{{ icon('qr', 22) }}</span>
+            <div class="ds-stamp-lines">
+              <span class="ds-stamp-name" data-ds-placer-stamp-name>SIGNATÁRIO</span>
+              <span class="ds-stamp-meta" data-ds-placer-stamp-cpf>CPF •••.•••.•••-••</span>
+              <span class="ds-stamp-url">app.sisfarm.com.br/validar</span>
+            </div>
+          </div>
+          <span class="ds-stamp-handle" data-ds-placer-handle aria-hidden="true"></span>
+        </div>
+      </div>
+    </div>
+    <footer class="ds-dialog-foot ds-placer-foot">
+      <button type="button" class="sf-btn sf-btn-secondary" data-ds-close-dialog>Cancelar</button>
+      <button type="button" class="sf-btn sf-btn-primary" data-ds-placer-confirm>Salvar posição do selo</button>
+    </footer>
+  </dialog>
   {% endif %}
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=16"></script>
+<script type="module" src="/static/js/digital_signing.js?v=17"></script>
 {% endblock %}

@@ -2573,3 +2573,288 @@ input[type="checkbox"].ds-switch-input:checked::after {
     height: 0;
   }
 }
+
+
+/* =========================================================================
+   EXPERIÊNCIA DO SIGNATÁRIO EXTERNO + POSICIONAMENTO PELO EMITENTE (v11)
+   ========================================================================= */
+
+/* Bloco de configuração do selo visual no formulário do emitente */
+.ds-ext-stamp-cfg {
+  padding: 0.72rem 0.85rem;
+  border-radius: 12px;
+  background: var(--ds-soft);
+  border: 1px solid var(--ds-line);
+  display: grid;
+  gap: 0.6rem;
+}
+.ds-ext-stamp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ds-mob-stamp-row {
+  padding: 0.65rem 0.75rem;
+  border-radius: 11px;
+  background: var(--ds-soft);
+  border: 1px solid var(--ds-line);
+}
+.ds-signer-stamp-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  padding: 0.5rem 0.68rem;
+  border-radius: 10px;
+  background: var(--ds-soft);
+  border: 1px solid #E6ECE5;
+  font-size: 0.74rem;
+  color: var(--ds-muted);
+}
+.ds-signer-stamp-bar strong { color: var(--ds-ink); font-weight: 600; }
+
+/* Modal interativo de posicionamento do selo no PDF (Emitente) */
+.ds-placer-dialog {
+  width: min(56rem, 96vw);
+  max-width: 96vw;
+  max-height: 92dvh;
+  border: 0;
+  padding: 0;
+  border-radius: 18px;
+  background: #FFFFFF;
+  box-shadow: 0 24px 60px rgba(15, 21, 19, 0.28);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ds-placer-dialog[open] { display: flex; }
+.ds-placer-dialog::backdrop { background: rgba(15, 21, 19, 0.5); }
+.ds-placer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.7rem 1.1rem;
+  background: #FAFBF9;
+  border-bottom: 1px solid var(--ds-line);
+}
+.ds-placer-switch { gap: 0.6rem; }
+.ds-placer-style-group {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: #ECEFE9;
+  gap: 3px;
+}
+.ds-placer-style-btn {
+  min-height: 32px;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ds-muted);
+  cursor: pointer;
+}
+.ds-placer-style-btn[aria-checked="true"] {
+  background: #FFFFFF;
+  color: var(--ds-ink);
+  box-shadow: 0 1px 4px rgba(15, 21, 19, 0.1);
+}
+.ds-placer-pager { gap: 0.45rem; font-size: 0.8rem; color: var(--ds-muted); }
+.ds-placer-stage {
+  flex: 1 1 auto;
+  min-height: 20rem;
+  overflow: auto;
+  background: #E5EAE4;
+  padding: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+.ds-placer-sheet {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  box-shadow: 0 10px 28px rgba(15, 21, 19, 0.16);
+  background: #FFFFFF;
+}
+.ds-placer-sheet canvas { display: block; max-width: 100%; height: auto; }
+.ds-placer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.85rem 1.1rem;
+  border-top: 1px solid var(--ds-line);
+  background: #FFFFFF;
+}
+
+/* Carimbo fixo somente leitura no PDF do signatário externo */
+.ds-stamp.is-readonly {
+  border-style: solid;
+  border-color: rgba(68, 106, 54, 0.65);
+  cursor: default;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(15, 21, 19, 0.1);
+}
+
+/* Cartão somente leitura dos dados do signatário externo */
+.ds-ro-identity-card {
+  border-radius: 14px;
+  border: 1px solid #DDE4DA;
+  background: #FAFBF9;
+  overflow: hidden;
+  min-width: 0;
+  width: 100%;
+}
+.ds-ro-id-top {
+  padding: 0.85rem 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+.ds-ro-id-copy { min-width: 0; flex: 1; }
+.ds-ro-id-copy strong {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--ds-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-ro-id-copy small {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--ds-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-ro-id-row {
+  padding: 0.65rem 0.9rem;
+  border-top: 1px solid #EEF1ED;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  font-size: 0.8rem;
+  min-width: 0;
+}
+.ds-ro-id-row span { color: var(--ds-muted); flex: 0 0 auto; }
+.ds-ro-id-row strong {
+  color: var(--ds-ink);
+  font-weight: 700;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ds-ro-id-row.is-channel {
+  background: var(--ds-brand-soft);
+}
+.ds-ro-id-row.is-channel strong {
+  color: var(--ds-ok-fg);
+}
+
+/* Página pública /assinar/{token} — alinhamento impecável Desktop e Mobile */
+.ds-pub-brand { min-width: 0; flex: 1 1 auto; }
+.ds-pub-brand-copy { min-width: 0; overflow: hidden; }
+.ds-pub-brand-copy strong,
+.ds-pub-brand-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-ext-doc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  min-width: 0;
+}
+.ds-ext-doc-copy { min-width: 0; flex: 1 1 16rem; }
+.ds-ext-doc-actions { flex: 0 0 auto; }
+.ds-ext-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(21rem, 0.95fr);
+  gap: 1.25rem;
+  align-items: start;
+  min-width: 0;
+}
+.ds-ext-viewer, .ds-ext-side, .ds-ext-card {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.ds-ext-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+}
+.ds-ext-steps li { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 1023px) {
+  .ds-ext-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+  .ds-ext-viewer .ds-canvas-scroll {
+    max-height: 58dvh;
+  }
+}
+
+@media (max-width: 639px) {
+  .ds-ext-pub-body,
+  .ds-ext-pub-body * {
+    box-sizing: border-box;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .ds-ext-pub-body::-webkit-scrollbar,
+  .ds-ext-pub-body *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+  .ds-ext-pub-body { overflow-x: hidden; }
+  .ds-ext-page {
+    padding: 0.85rem 0.85rem 7rem;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  .ds-ext-doc-head { gap: 0.65rem; }
+  .ds-ext-doc-head .sf-page-title { font-size: 1.25rem; line-height: 1.25; }
+  .ds-ext-doc-actions { width: 100%; }
+  .ds-ext-doc-actions .sf-btn { width: 100%; justify-content: center; }
+  .ds-ext-toolbar { padding: 0.5rem 0.65rem; gap: 0.4rem; flex-wrap: nowrap; }
+  .ds-ext-viewer .ds-canvas-scroll { padding: 0.65rem; max-height: 50dvh; }
+  .ds-ext-card { padding: 1rem; }
+  .ds-ext-desk-cta { display: none; }
+  .ds-ext-mob-bar.ds-only-mobile { display: grid; }
+  .ds-ro-id-top { flex-wrap: wrap; }
+  .ds-ro-id-row { flex-wrap: wrap; gap: 0.25rem 0.5rem; }
+  .ds-ro-id-row strong { text-align: left; }
+  .ds-placer-dialog {
+    margin: auto 0 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 94dvh;
+    border-radius: 22px 22px 0 0;
+  }
+  .ds-placer-controls { padding: 0.65rem 0.85rem; }
+  .ds-placer-stage { padding: 0.65rem; }
+  .ds-placer-foot { flex-direction: column-reverse; }
+  .ds-placer-foot .sf-btn { width: 100%; justify-content: center; }
+}

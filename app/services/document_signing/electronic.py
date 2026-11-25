@@ -46,7 +46,7 @@ from app.models.signed_document import (
 )
 from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink
 from app.services.digital_certificates import encryption_key, seal, unseal, utc
-from app.services.document_signing.pdf import a1_signer, check_appearance, read_pdf, sign_document, validate_pdf
+from app.services.document_signing.pdf import a1_signer, check_appearance, read_pdf, sign_document, signing_options, validate_pdf
 from app.services.email_service import send_plain_email
 from app.services.whatsapp import (
     SERVICE_WINDOW_SECONDS,
@@ -949,6 +949,41 @@ def _dispatch_external_invite(
     return sent, err, whatsapp_share_url
 
 
+def _sanitize_preset_appearance(appearance: dict | None) -> dict | None:
+    if not isinstance(appearance, dict):
+        return None
+    if not appearance.get("visible"):
+        return {"visible": False}
+    style = "compact" if str(appearance.get("style") or "").strip().lower() == "compact" else "full"
+    try:
+        page = max(0, int(appearance.get("page", 0)))
+    except (TypeError, ValueError):
+        page = 0
+    raw_box = appearance.get("box")
+    if isinstance(raw_box, (list, tuple)) and len(raw_box) == 4:
+        try:
+            box = [round(float(v), 2) for v in raw_box]
+            return {"visible": True, "style": style, "page": page, "box": box}
+        except (TypeError, ValueError):
+            pass
+    return {"visible": True, "style": style, "page": page}
+
+
+def format_cpf(digits_or_raw: str | None) -> str:
+    d = re.sub(r"\D", "", digits_or_raw or "")
+    if len(d) != 11:
+        return (digits_or_raw or "").strip()
+    return f"{d[:3]}.{d[3:6]}.{d[6:9]}-{d[9:]}"
+
+
+def decrypt_cpf(cpf_encrypted: str | None, doc_id: str) -> str:
+    if not cpf_encrypted:
+        return ""
+    key = encryption_key("digital_document_key")
+    raw = unseal(base64.b64decode(cpf_encrypted.encode("ascii")), key, f"sisfarm:cpf:{doc_id}".encode("utf-8"))
+    return raw.decode("utf-8")
+
+
 def create_external_signer(
     db,
     *,
@@ -961,6 +996,8 @@ def create_external_signer(
     channel: str,
     role_label: str,
     base_url: str,
+    cpf_raw: str | None = None,
+    appearance: dict | None = None,
 ) -> tuple[SigningExternalSigner, str, bool, str | None, str]:
     clean_name = (name or "").strip()[:160]
     if len(clean_name) < 2:
@@ -974,16 +1011,28 @@ def create_external_signer(
         raise ValueError("Informe um e-mail válido para o signatário externo.")
     clean_role = (role_label or "Signatário").strip()[:64] or "Signatário"
 
+    cpf_masked: str | None = None
+    cpf_encrypted: str | None = None
+    if cpf_raw is not None and str(cpf_raw).strip():
+        cpf_digits = validate_cpf(cpf_raw)
+        cpf_masked = mask_cpf(cpf_digits)
+        cpf_encrypted = _encrypt_cpf(cpf_digits, doc.id)
+
+    clean_appearance = _sanitize_preset_appearance(appearance)
+
     raw_token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
     signer = SigningExternalSigner(
         id=uuid4().hex,
         document_id=doc.id,
         name=clean_name,
+        cpf_masked=cpf_masked,
+        cpf_encrypted=cpf_encrypted,
         email=clean_email,
         phone=clean_phone,
         channel=chan,
         role_label=clean_role,
+        appearance=clean_appearance,
         access_token_hash=hash_persistent_token(raw_token),
         token_expires_at=now + timedelta(days=EXTERNAL_TOKEN_DAYS),
         status="pending",
@@ -1123,6 +1172,13 @@ def issue_electronic_challenge(
     # Valida posição do carimbo (ou invisível)
     reader = read_pdf(pdf_bytes)
     if appearance.get("visible"):
+        if not appearance.get("box"):
+            suggested = (signing_options(reader).get("suggested") or {})
+            appearance = {
+                **appearance,
+                "page": appearance.get("page") if isinstance(appearance.get("page"), int) else int(suggested.get("page", 0)),
+                "box": suggested.get("box") or [45, 70, 265, 132],
+            }
         approved = check_appearance(reader, appearance)
     else:
         approved = {"visible": False, "style": "compact" if appearance.get("style") == "compact" else "full"}

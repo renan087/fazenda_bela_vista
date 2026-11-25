@@ -536,6 +536,257 @@ function renderChannelSelectorHtml({ keyPrefix, activeChannel, email, phone, all
   `;
 }
 
+function describeStampConfig(appearance) {
+  if (!appearance || !appearance.visible) {
+    return "Sem selo visual (assinatura com Manifesto final)";
+  }
+  const styleTxt = appearance.style === "compact" ? "Selo Enxuto" : "Selo Completo";
+  if (typeof appearance.page === "number" && Array.isArray(appearance.box) && appearance.box.length === 4) {
+    return `${styleTxt} · Página ${appearance.page + 1} (posição definida)`;
+  }
+  return `${styleTxt} · posição padrão (ajuste no PDF se quiser)`;
+}
+
+function createStampPlacer(dialog) {
+  if (!dialog) return { open: () => {} };
+  const statusEl = dialog.querySelector("[data-ds-placer-status]");
+  const sheet = dialog.querySelector("[data-ds-placer-sheet]");
+  const canvas = dialog.querySelector("[data-ds-placer-canvas]");
+  const stage = dialog.querySelector("[data-ds-placer-stage]");
+  const stamp = dialog.querySelector("[data-ds-placer-stamp]");
+  const stampNameEl = dialog.querySelector("[data-ds-placer-stamp-name]");
+  const stampCpfEl = dialog.querySelector("[data-ds-placer-stamp-cpf]");
+  const subEl = dialog.querySelector("[data-ds-placer-sub]");
+  const visCheck = dialog.querySelector("[data-ds-placer-visible]");
+  const styleWrap = dialog.querySelector("[data-ds-placer-style-wrap]");
+  const styleBtns = [...dialog.querySelectorAll("[data-ds-placer-style]")];
+  const prevBtn = dialog.querySelector("[data-ds-placer-prev]");
+  const nextBtn = dialog.querySelector("[data-ds-placer-next]");
+  const pgEl = dialog.querySelector("[data-ds-placer-pg]");
+  const pagesEl = dialog.querySelector("[data-ds-placer-pages]");
+  const confirmBtn = dialog.querySelector("[data-ds-placer-confirm]");
+
+  let pdf = null;
+  let pageNumber = 1;
+  let renderedPage = 0;
+  let viewport = null;
+  let drawTask = null;
+  let drawVersion = 0;
+  let chosen = null;
+  let stampStyle = "full";
+  let showStamp = true;
+  let drag = null;
+  let onSaveCb = null;
+  let currentSourceKey = null;
+
+  const pixelRect = (loc) => {
+    const [x1, y1, x2, y2] = viewport.convertToViewportRectangle(loc.box);
+    return [Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)];
+  };
+  const fromPixels = (left, top, width, height) => {
+    const [x1, y1] = viewport.convertToPdfPoint(left, top);
+    const [x2, y2] = viewport.convertToPdfPoint(left + width, top + height);
+    return { page: renderedPage - 1, box: [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)] };
+  };
+  const defaultLoc = () => {
+    if (!viewport) return;
+    const isCompact = stampStyle === "compact";
+    const width = viewport.width * (isCompact ? 0.30 : 0.42);
+    const height = Math.min(
+      viewport.height * (isCompact ? 0.18 : 0.24),
+      Math.max(viewport.height * (isCompact ? 0.095 : 0.12), width * (433 / 1024)),
+    );
+    chosen = fromPixels(
+      viewport.width - width - viewport.width * 0.06,
+      viewport.height - height - viewport.height * 0.06,
+      width,
+      height,
+    );
+  };
+
+  const drawStamp = () => {
+    if (styleWrap) styleWrap.hidden = !showStamp;
+    for (const b of styleBtns) b.setAttribute("aria-checked", String(b.dataset.dsPlacerStyle === stampStyle));
+    if (!stamp) return;
+    stamp.classList.toggle("is-compact", stampStyle === "compact");
+    if (!showStamp || !viewport || !chosen) {
+      stamp.hidden = true;
+      return;
+    }
+    if (chosen.page + 1 !== renderedPage) {
+      // Bring stamp to current page when user navigates and wants to place it here
+      stamp.hidden = true;
+      return;
+    }
+    stamp.hidden = false;
+    const [left, top, width, height] = pixelRect(chosen);
+    Object.assign(stamp.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
+  };
+
+  const renderPage = async () => {
+    if (!pdf) return;
+    const version = ++drawVersion;
+    if (drawTask) drawTask.cancel();
+    try {
+      const page = await pdf.getPage(pageNumber);
+      if (version !== drawVersion) return;
+      const raw = page.getViewport({ scale: 1 });
+      const avail = Math.max(240, Math.min((stage?.clientWidth || 640) - 36, 720));
+      const scale = Math.min(avail / raw.width, 1.35);
+      const nextVp = page.getViewport({ scale: Math.max(0.05, scale) });
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(nextVp.width * ratio);
+      canvas.height = Math.round(nextVp.height * ratio);
+      canvas.style.width = `${nextVp.width}px`;
+      canvas.style.height = `${nextVp.height}px`;
+      drawTask = page.render({ canvas, viewport: nextVp, transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0] });
+      await drawTask.promise;
+      if (version !== drawVersion) return;
+      viewport = nextVp;
+      renderedPage = pageNumber;
+      if (statusEl) statusEl.hidden = true;
+      if (sheet) sheet.hidden = false;
+      if (pgEl) pgEl.textContent = String(pageNumber);
+      if (pagesEl) pagesEl.textContent = String(pdf.numPages);
+      if (prevBtn) prevBtn.disabled = pageNumber <= 1;
+      if (nextBtn) nextBtn.disabled = pageNumber >= pdf.numPages;
+      if (showStamp && !chosen) defaultLoc();
+      drawStamp();
+    } catch (err) {
+      if (version !== drawVersion || err.name === "RenderingCancelledException") return;
+      if (statusEl) {
+        statusEl.hidden = false;
+        statusEl.textContent = "Não foi possível desenhar esta página do PDF.";
+      }
+    }
+  };
+
+  const moveOrResize = (dx, dy, start, resize) => {
+    let [left, top, width, height] = start;
+    if (resize) {
+      const min = Math.max(16, viewport.scale * 29);
+      width = Math.max(Math.min(width, min), Math.min(viewport.width - left, width + dx));
+      height = Math.max(Math.min(height, min), Math.min(viewport.height - top, height + dy));
+    } else {
+      left = Math.max(0, Math.min(viewport.width - width, left + dx));
+      top = Math.max(0, Math.min(viewport.height - height, top + dy));
+    }
+    chosen = fromPixels(left, top, width, height);
+    drawStamp();
+  };
+
+  stamp?.addEventListener("pointerdown", (ev) => {
+    if (!viewport || !chosen || ev.button !== 0) return;
+    stamp.setPointerCapture(ev.pointerId);
+    drag = { x: ev.clientX, y: ev.clientY, start: pixelRect(chosen), resize: ev.target.matches("[data-ds-placer-handle]") };
+    ev.preventDefault();
+  });
+  stamp?.addEventListener("pointermove", (ev) => {
+    if (drag) moveOrResize(ev.clientX - drag.x, ev.clientY - drag.y, drag.start, drag.resize);
+  });
+  stamp?.addEventListener("lostpointercapture", () => { drag = null; });
+  canvas?.addEventListener("click", (ev) => {
+    if (!showStamp || !viewport) return;
+    const rect = canvas.getBoundingClientRect();
+    const isCompact = stampStyle === "compact";
+    const width = viewport.width * (isCompact ? 0.30 : 0.42);
+    const height = Math.min(viewport.height * (isCompact ? 0.18 : 0.24), Math.max(viewport.height * (isCompact ? 0.095 : 0.12), width * (433 / 1024)));
+    const left = Math.max(0, Math.min(viewport.width - width, ev.clientX - rect.left - width / 2));
+    const top = Math.max(0, Math.min(viewport.height - height, ev.clientY - rect.top - height / 2));
+    chosen = fromPixels(left, top, width, height);
+    drawStamp();
+  });
+
+  visCheck?.addEventListener("change", () => {
+    showStamp = visCheck.checked;
+    if (showStamp && (!chosen || chosen.page + 1 !== renderedPage)) defaultLoc();
+    drawStamp();
+  });
+  for (const b of styleBtns) {
+    b.addEventListener("click", () => {
+      stampStyle = b.dataset.dsPlacerStyle === "compact" ? "compact" : "full";
+      defaultLoc();
+      drawStamp();
+    });
+  }
+  prevBtn?.addEventListener("click", () => {
+    if (!pdf || pageNumber <= 1) return;
+    pageNumber -= 1;
+    renderPage().then(() => { if (showStamp) { defaultLoc(); drawStamp(); } });
+  });
+  nextBtn?.addEventListener("click", () => {
+    if (!pdf || pageNumber >= pdf.numPages) return;
+    pageNumber += 1;
+    renderPage().then(() => { if (showStamp) { defaultLoc(); drawStamp(); } });
+  });
+  confirmBtn?.addEventListener("click", () => {
+    const result = showStamp && chosen
+      ? { visible: true, style: stampStyle, page: chosen.page, box: chosen.box.map((v) => Math.round(v * 100) / 100) }
+      : { visible: false };
+    dialog.close();
+    if (typeof onSaveCb === "function") onSaveCb(result);
+  });
+  dialog.addEventListener("click", (ev) => {
+    if (ev.target === dialog) dialog.close();
+  });
+  for (const b of dialog.querySelectorAll("[data-ds-close-dialog]")) {
+    b.addEventListener("click", () => dialog.close());
+  }
+
+  return {
+    async open({ file = null, pdfUrl = "", signerName = "", cpf = "", appearance = null, onSave = null }) {
+      onSaveCb = onSave;
+      showStamp = appearance ? Boolean(appearance.visible) : true;
+      stampStyle = appearance?.style === "compact" ? "compact" : "full";
+      if (visCheck) visCheck.checked = showStamp;
+      if (stampNameEl) stampNameEl.textContent = (signerName || "SIGNATÁRIO").trim().toUpperCase();
+      if (stampCpfEl) stampCpfEl.textContent = cpf ? `CPF ${maskCpfPublic(cpf)}` : "CPF •••.•••.•••-••";
+      if (subEl) subEl.textContent = `Arraste o selo ou clique na folha para definir onde ${signerName || "o signatário"} irá assinar.`;
+      chosen = (appearance && appearance.visible && Array.isArray(appearance.box) && appearance.box.length === 4)
+        ? { page: Number(appearance.page || 0), box: [...appearance.box] }
+        : null;
+
+      dialog.showModal();
+      const sourceKey = file ? `file:${file.name}:${file.size}:${file.lastModified}` : `url:${pdfUrl}`;
+      if (pdf && currentSourceKey === sourceKey) {
+        pageNumber = chosen ? Math.min(pdf.numPages, Math.max(1, chosen.page + 1)) : pdf.numPages;
+        await renderPage();
+        return;
+      }
+      if (statusEl) {
+        statusEl.hidden = false;
+        statusEl.textContent = "Carregando prévia do PDF…";
+      }
+      if (sheet) sheet.hidden = true;
+      try {
+        const lib = await import(vendor + "legacy/build/pdf.min.mjs");
+        lib.GlobalWorkerOptions.workerSrc = vendor + "legacy/build/pdf.worker.min.mjs";
+        const docParams = {
+          cMapUrl: vendor + "cmaps/", cMapPacked: true,
+          standardFontDataUrl: vendor + "standard_fonts/", wasmUrl: vendor + "wasm/",
+          isEvalSupported: false, enableXfa: false, maxImageSize: 24_000_000, stopAtErrors: true,
+        };
+        if (file) {
+          docParams.data = new Uint8Array(await file.arrayBuffer());
+        } else if (pdfUrl) {
+          docParams.url = pdfUrl;
+        } else {
+          throw new Error("Nenhum arquivo PDF selecionado.");
+        }
+        pdf = await lib.getDocument(docParams).promise;
+        currentSourceKey = sourceKey;
+        pageNumber = chosen ? Math.min(pdf.numPages, Math.max(1, chosen.page + 1)) : pdf.numPages;
+        await renderPage();
+      } catch (err) {
+        if (statusEl) {
+          statusEl.hidden = false;
+          statusEl.textContent = err.message || "Não foi possível carregar o PDF para posicionamento.";
+        }
+      }
+    },
+  };
+}
+
 function initWizard(root) {
   const form = root.querySelector("[data-ds-wiz-form]");
   if (!form) return;
@@ -623,15 +874,21 @@ function initWizard(root) {
   const extAdder = root.querySelector("[data-ds-ext-adder]");
   const extCancelBtn = root.querySelector("[data-ds-ext-cancel]");
   const extName = root.querySelector("[data-ds-ext-name]");
+  const extCpf = root.querySelector("[data-ds-ext-cpf]");
   const extRole = root.querySelector("[data-ds-ext-role]");
   const extChannel = root.querySelector("[data-ds-ext-channel]");
   const extPhoneWrap = root.querySelector("[data-ds-ext-phone-wrap]");
   const extEmailWrap = root.querySelector("[data-ds-ext-email-wrap]");
   const extPhone = root.querySelector("[data-ds-ext-phone]");
   const extEmail = root.querySelector("[data-ds-ext-email]");
+  const extShowStamp = root.querySelector("[data-ds-ext-show-stamp]");
+  const extStampSummary = root.querySelector("[data-ds-ext-stamp-summary]");
+  const extStampActions = root.querySelector("[data-ds-ext-stamp-actions]");
+  const extOpenPlacerBtn = root.querySelector("[data-ds-ext-open-placer]");
   const extAddBtn = root.querySelector("[data-ds-ext-add-btn]");
   const extErr = root.querySelector("[data-ds-ext-err]");
   const manifestoNote = root.querySelector("[data-ds-manifesto-note]");
+  const placer = createStampPlacer(root.querySelector("[data-ds-placer-dialog]"));
 
   // Mobile Bottom Sheets
   const teamSheet = root.querySelector("[data-ds-team-sheet]");
@@ -643,10 +900,12 @@ function initWizard(root) {
   const extSheet = root.querySelector("[data-ds-ext-sheet]");
   const mobOpenExtBtn = root.querySelector("[data-ds-mob-open-ext]");
   const mobExtName = root.querySelector("[data-ds-mob-ext-name]");
+  const mobExtCpf = root.querySelector("[data-ds-mob-ext-cpf]");
   const mobExtRole = root.querySelector("[data-ds-mob-ext-role]");
   const mobExtChBtns = [...root.querySelectorAll("[data-ds-mob-ext-ch]")];
   const mobExtContactLbl = root.querySelector("[data-ds-mob-ext-contact-lbl]");
   const mobExtContact = root.querySelector("[data-ds-mob-ext-contact]");
+  const mobExtShowStamp = root.querySelector("[data-ds-mob-ext-show-stamp]");
   const mobExtErr = root.querySelector("[data-ds-mob-ext-err]");
   const mobExtSave = root.querySelector("[data-ds-mob-ext-save]");
 
@@ -657,6 +916,7 @@ function initWizard(root) {
   let deskPolicyOpen = false;
   let editingKey = null;
   let mobExtChannel = "whatsapp";
+  let pendingExtAppearance = { visible: true, style: "full" };
   const externalSigners = [];
 
   const WHO_META = {
@@ -857,11 +1117,12 @@ function initWizard(root) {
               <span class="ds-avatar is-ext">EXT</span>
               <div class="ds-signer-card-copy">
                 <strong>${dsEsc(ext.name)} <span>· ${dsEsc(ext.role_label || "Signatário")}</span></strong>
+                ${ext.cpf ? `<small>CPF ${dsEsc(ext.cpf)} · somente conferência para o signatário</small>` : ""}
               </div>
             </div>
             <button type="button" class="ds-rm-btn" data-ds-rm-ext="${idx}" aria-label="Remover ${dsEsc(ext.name)}" title="Remover">✕</button>
           </div>
-          <span class="ds-signer-ch-label">Forma de envio do link exclusivo:</span>
+          <span class="ds-signer-ch-label">Canal travado de envio do link e código:</span>
           ${renderChannelSelectorHtml({
             keyPrefix: `ext:${idx}`,
             activeChannel: ext.channel,
@@ -870,6 +1131,10 @@ function initWizard(root) {
             allowEditEmail: true,
             editingKey,
           })}
+          <div class="ds-signer-stamp-bar">
+            <span><strong>Selo no PDF:</strong> ${dsEsc(describeStampConfig(ext.appearance))}</span>
+            <button type="button" class="ds-inline-link" data-ds-pos-ext="${idx}">Posicionar / alterar selo</button>
+          </div>
         </div>
       `);
     });
@@ -983,6 +1248,25 @@ function initWizard(root) {
         externalSigners.splice(Number(btn.dataset.dsRmExt), 1);
         feedback(statusEl);
         syncUI();
+      });
+    }
+
+    for (const btn of selectedList.querySelectorAll("[data-ds-pos-ext]")) {
+      btn.addEventListener("click", () => {
+        const idx = Number(btn.dataset.dsPosExt);
+        const ext = externalSigners[idx];
+        const file = selectedFile || fileInput?.files?.[0];
+        if (!ext || !file) return;
+        placer.open({
+          file,
+          signerName: ext.name,
+          cpf: ext.cpf || "",
+          appearance: ext.appearance || { visible: true, style: "full" },
+          onSave: (res) => {
+            ext.appearance = res;
+            syncUI();
+          },
+        });
       });
     }
   }
@@ -1266,17 +1550,50 @@ function initWizard(root) {
     feedback(extErr);
   });
 
+  const syncPendingStampUI = () => {
+    const show = Boolean(extShowStamp?.checked);
+    if (!show) pendingExtAppearance = { visible: false };
+    else if (!pendingExtAppearance.visible) pendingExtAppearance = { visible: true, style: "full" };
+    if (extStampActions) extStampActions.hidden = !show;
+    if (extStampSummary) extStampSummary.textContent = describeStampConfig(pendingExtAppearance);
+  };
+  extShowStamp?.addEventListener("change", syncPendingStampUI);
+  extOpenPlacerBtn?.addEventListener("click", () => {
+    const file = selectedFile || fileInput?.files?.[0];
+    if (!file) {
+      feedback(extErr, "Escolha um arquivo PDF no Passo 1 antes de posicionar o selo.", true);
+      return;
+    }
+    placer.open({
+      file,
+      signerName: (extName?.value || "").trim() || "Signatário externo",
+      cpf: (extCpf?.value || "").trim(),
+      appearance: pendingExtAppearance,
+      onSave: (res) => {
+        pendingExtAppearance = res;
+        if (extShowStamp) extShowStamp.checked = Boolean(res.visible);
+        syncPendingStampUI();
+      },
+    });
+  });
+
   function tryCommitPendingExternal() {
     if (signingPolicy === "icp_brasil" || extAdder?.hidden) return true;
     const name = (extName?.value || "").trim();
+    const cpf = maskCpf(extCpf?.value || "");
     const phone = (extPhone?.value || "").trim();
     const email = (extEmail?.value || "").trim();
-    if (!name && !phone && !email) return true;
+    if (!name && !cpf && !phone && !email) return true;
     const role_label = (extRole?.value || "").trim() || "Signatário";
     const channel = extChannel?.value === "email" ? "email" : "whatsapp";
     if (name.length < 3) {
       feedback(extErr, "Informe o nome completo do signatário externo.", true);
       extName?.focus();
+      return false;
+    }
+    if (!isValidCpf(cpf)) {
+      feedback(extErr, "Informe um CPF válido para o signatário externo.", true);
+      extCpf?.focus();
       return false;
     }
     if (channel === "whatsapp" && !dsIsValidPhone(phone)) {
@@ -1291,14 +1608,20 @@ function initWizard(root) {
     }
     externalSigners.push({
       name,
+      cpf,
       role_label,
       channel,
       phone: channel === "whatsapp" ? maskPhone(phone) : "",
       email: channel === "email" ? email : "",
+      appearance: { ...pendingExtAppearance },
     });
     if (extName) extName.value = "";
+    if (extCpf) extCpf.value = "";
     if (extPhone) extPhone.value = "";
     if (extEmail) extEmail.value = "";
+    pendingExtAppearance = { visible: true, style: "full" };
+    if (extShowStamp) extShowStamp.checked = true;
+    syncPendingStampUI();
     if (extAdder) extAdder.hidden = true;
     feedback(extErr);
     syncUI();
@@ -1338,11 +1661,17 @@ function initWizard(root) {
   });
   mobExtSave?.addEventListener("click", () => {
     const name = (mobExtName?.value || "").trim();
+    const cpf = maskCpf(mobExtCpf?.value || "");
     const role_label = (mobExtRole?.value || "").trim() || "Signatário";
     const contact = (mobExtContact?.value || "").trim();
     if (name.length < 3) {
       feedback(mobExtErr, "Informe o nome completo do signatário.", true);
       mobExtName?.focus();
+      return;
+    }
+    if (!isValidCpf(cpf)) {
+      feedback(mobExtErr, "Informe um CPF válido para o signatário.", true);
+      mobExtCpf?.focus();
       return;
     }
     if (mobExtChannel === "whatsapp" && !dsIsValidPhone(contact)) {
@@ -1355,14 +1684,18 @@ function initWizard(root) {
       mobExtContact?.focus();
       return;
     }
+    const showStampMob = mobExtShowStamp ? Boolean(mobExtShowStamp.checked) : true;
     externalSigners.push({
       name,
+      cpf,
       role_label,
       channel: mobExtChannel,
       phone: mobExtChannel === "whatsapp" ? maskPhone(contact) : "",
       email: mobExtChannel === "email" ? contact : "",
+      appearance: showStampMob ? { visible: true, style: "full" } : { visible: false },
     });
     if (mobExtName) mobExtName.value = "";
+    if (mobExtCpf) mobExtCpf.value = "";
     if (mobExtContact) mobExtContact.value = "";
     feedback(mobExtErr);
     extSheet?.close();
@@ -2212,6 +2545,10 @@ function initWorkspace(root) {
   const extWsChannel = find("[data-ds-ws-ext-channel]");
   const extWsPhoneWrap = find("[data-ds-ws-ext-phone-wrap]");
   const extWsEmailWrap = find("[data-ds-ws-ext-email-wrap]");
+  const extWsShowStamp = find("[data-ds-ws-ext-show-stamp]");
+  const extWsStampSummary = find("[data-ds-ws-ext-stamp-summary]");
+  const extWsStampActions = find("[data-ds-ws-ext-stamp-actions]");
+  const extWsOpenPlacer = find("[data-ds-ws-ext-open-placer]");
   const extWsStatus = find("[data-ds-ext-ws-status]");
   const extLinkBox = find("[data-ds-ext-link-box]");
   const extLinkTitle = find("[data-ds-ext-link-title]");
@@ -2219,6 +2556,30 @@ function initWorkspace(root) {
   const extLinkInput = find("[data-ds-ext-link-input]");
   const extWaBtn = find("[data-ds-ext-wa-btn]");
   const copyExtLinkBtn = find("[data-ds-copy-ext-link]");
+  const wsPlacer = createStampPlacer(root.querySelector("[data-ds-placer-dialog]"));
+  let wsExtAppearance = { visible: true, style: "full" };
+
+  const syncWsExtStampUI = () => {
+    const show = Boolean(extWsShowStamp?.checked);
+    if (!show) wsExtAppearance = { visible: false };
+    else if (!wsExtAppearance.visible) wsExtAppearance = { visible: true, style: "full" };
+    if (extWsStampActions) extWsStampActions.hidden = !show;
+    if (extWsStampSummary) extWsStampSummary.textContent = describeStampConfig(wsExtAppearance);
+  };
+  extWsShowStamp?.addEventListener("change", syncWsExtStampUI);
+  extWsOpenPlacer?.addEventListener("click", () => {
+    wsPlacer.open({
+      pdfUrl: root.dataset.pdfUrl,
+      signerName: (extForm?.elements.name?.value || "").trim() || "Signatário externo",
+      cpf: (extForm?.elements.cpf?.value || "").trim(),
+      appearance: wsExtAppearance,
+      onSave: (res) => {
+        wsExtAppearance = res;
+        if (extWsShowStamp) extWsShowStamp.checked = Boolean(res.visible);
+        syncWsExtStampUI();
+      },
+    });
+  });
 
   function showExternalLinkBox(res) {
     if (!extLinkBox || !extLinkInput) return;
@@ -2265,6 +2626,12 @@ function initWorkspace(root) {
 
   extForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const cpfVal = maskCpf(extForm.elements.cpf?.value || "");
+    if (!isValidCpf(cpfVal)) {
+      feedback(extWsStatus, "Informe um CPF válido para o signatário externo.", true);
+      extForm.elements.cpf?.focus();
+      return;
+    }
     const button = extForm.querySelector('button[type="submit"]');
     button.disabled = true;
     feedback(extWsStatus, "Gerando link exclusivo e enviando convite…");
@@ -2273,10 +2640,12 @@ function initWorkspace(root) {
       const res = await request(root, endpoint + "/externos", {
         json: {
           name: extForm.elements.name.value.trim(),
+          cpf: cpfVal,
           role_label: (extForm.elements.role_label.value || "Signatário").trim(),
           channel,
           phone: channel === "whatsapp" ? extForm.elements.phone.value.trim() : "",
           email: channel === "email" ? extForm.elements.email.value.trim() : "",
+          appearance: { ...wsExtAppearance },
         },
       });
       extForm.reset();
@@ -2670,54 +3039,55 @@ function initCertificates(root) {
 
 function initExternalSigning(root) {
   const find = (selector) => root.querySelector(selector);
-  const options = JSON.parse(find("[data-ds-options]").textContent);
+  const parseJson = (sel, fallback) => {
+    const el = find(sel);
+    if (!el) return fallback;
+    try { return JSON.parse(el.textContent || ""); } catch { return fallback; }
+  };
+  const options = parseJson("[data-ds-options]", { pages: 1 });
+  const presetAppearance = parseJson("[data-ds-preset-appearance]", { visible: false });
   const token = root.dataset.token;
-  const verCode = root.dataset.verificationCode || "";
+  const lockedChannel = root.dataset.lockedChannel === "whatsapp" ? "whatsapp" : "email";
+  const hasPresetCpf = root.dataset.hasPresetCpf === "yes";
+
   const view = find("[data-ds-scroll]");
   const previewStatus = find("[data-ds-preview-status]");
   const sheet = find("[data-ds-sheet]");
   const canvas = find("[data-ds-canvas]");
   const thumbnails = find("[data-ds-thumbs]");
-  const thumbnailToggle = find("[data-ds-thumbs-toggle]");
   const pageInput = find("[data-ds-page]");
   const previous = find("[data-ds-prev]");
   const next = find("[data-ds-next]");
-  const stamp = find("[data-ds-stamp]");
-  const stampLabel = find("[data-ds-stamp-label]");
-  const stampDoc = find("[data-ds-stamp-doc]");
-  const stampDate = find("[data-ds-stamp-date]");
-  const stampUrl = find("[data-ds-stamp-url]");
-  const stampModesWrap = find("[data-ds-stamp-modes]");
-  const stampModeButtons = [...root.querySelectorAll("[data-ds-stamp-style]")];
+  const roStamp = find("[data-ds-ro-stamp]");
   const jumpStamp = find("[data-ds-jump-stamp]");
-  const visible = find("[data-ds-visible]");
-  const placeOnPage = find("[data-ds-place-current]");
-  const elNameInput = find("[data-ds-el-name]");
   const elCpfInput = find("[data-ds-el-cpf]");
-  const elChannelSelect = find("[data-ds-el-channel]");
-  const elOverrideEmailWrap = find("[data-ds-el-override-email-wrap]");
-  const elOverrideEmail = find("[data-ds-el-override-email]");
-  const waActivateNote = find("[data-ds-wa-activate-note]");
   const consent = find("[data-ds-consent]");
   const authorize = find("[data-ds-ext-authorize]");
   const status = find("[data-ds-status]");
   const confirmForm = find("[data-ds-ext-confirm-form]");
   const dialogStatus = find("[data-ds-confirm-status]");
 
-  let pdf;
+  const mobBar = find("[data-ds-ext-mob-bar]");
+  const mobHint = find("[data-ds-ext-mob-hint]");
+  const mobCta = find("[data-ds-ext-mob-cta]");
+  const mobPill = document.querySelector("[data-ds-ext-mob-pill]");
+
+  let pdf = null;
   let pageNumber = 1;
   let renderedPage = 0;
   let zoom = 1;
-  let viewport;
-  let drawTask;
+  let viewport = null;
+  let drawTask = null;
   let drawVersion = 0;
-  let chosenLocation = null;
-  let drag;
   let busy = false;
-  let challengeId;
-  let stampStyle = "full";
+  let challengeId = null;
+  let currentStep = 1;
+
+  const hasVisibleStamp = Boolean(presetAppearance && presetAppearance.visible);
+  const stampTargetPage = typeof presetAppearance?.page === "number" ? presetAppearance.page + 1 : 1;
 
   function setStep(step) {
+    currentStep = step;
     for (const pane of root.querySelectorAll("[data-ds-step-pane]")) {
       pane.hidden = Number(pane.dataset.dsStepPane) !== step;
     }
@@ -2732,92 +3102,72 @@ function initExternalSigning(root) {
     const isDone = step === 3;
     if (grid) grid.classList.toggle("is-completed", isDone);
     if (viewer) viewer.hidden = isDone;
-    if (isDone) window.scrollTo({top: 0, behavior: "smooth"});
-  }
-
-  function syncExternalChannelFields() {
-    const ch = elChannelSelect?.value || "email";
-    if (elOverrideEmailWrap) elOverrideEmailWrap.hidden = ch !== "email";
-    if (waActivateNote) waActivateNote.hidden = ch !== "whatsapp";
+    if (mobBar) mobBar.hidden = isDone;
+    if (mobPill) mobPill.textContent = isDone ? "✓" : `${step}/2`;
+    syncAuthorization();
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function syncAuthorization() {
     if (!consent || !authorize) return;
-    syncExternalChannelFields();
-    const nameOk = Boolean((elNameInput?.value || "").trim().length >= 3);
-    const cpfOk = isValidCpf(elCpfInput?.value || "");
-    const ch = elChannelSelect?.value || "email";
-    const emailOk = ch !== "email" || !elOverrideEmail || elOverrideEmailWrap?.hidden || (elOverrideEmail.value || "").trim().includes("@");
-    const readyIdentity = nameOk && cpfOk && emailOk;
-    if (!readyIdentity) consent.checked = false;
-    consent.disabled = !readyIdentity;
+    const cpfOk = hasPresetCpf || isValidCpf(elCpfInput?.value || "");
+    if (!cpfOk) consent.checked = false;
+    consent.disabled = !cpfOk;
     const consentBox = find("[data-ds-consent-box]");
-    if (consentBox) consentBox.classList.toggle("is-disabled", !readyIdentity);
-    const canPlace = !visible?.checked || chosenLocation;
-    authorize.disabled = !viewport || !consent.checked || !readyIdentity || !canPlace || busy;
+    if (consentBox) consentBox.classList.toggle("is-disabled", !cpfOk);
+
+    const canSend = Boolean(consent.checked && cpfOk && !busy);
+    authorize.disabled = !canSend;
+
+    if (mobCta) {
+      if (currentStep === 1) {
+        mobCta.disabled = !canSend;
+        mobCta.textContent = lockedChannel === "whatsapp" ? "Enviar código no WhatsApp →" : "Enviar código por e-mail →";
+        if (mobHint) {
+          mobHint.textContent = !cpfOk
+            ? "Informe seu CPF acima"
+            : (consent.checked ? "Pronto para enviar o código" : 'Marque "Li e concordo" acima');
+        }
+      } else if (currentStep === 2) {
+        mobCta.disabled = busy;
+        mobCta.textContent = "Concluir assinatura agora";
+        if (mobHint) mobHint.textContent = "Digite o código de 8 dígitos acima";
+      }
+    }
   }
 
-  function pixelRect(location) {
-    const [x1, y1, x2, y2] = viewport.convertToViewportRectangle(location.box);
-    return [Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)];
-  }
-
-  function fromPixels(left, top, width, height) {
-    const [x1, y1] = viewport.convertToPdfPoint(left, top);
-    const [x2, y2] = viewport.convertToPdfPoint(left + width, top + height);
-    return {page: renderedPage - 1, box: [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)]};
-  }
-
-  function defaultLocation() {
-    if (!viewport) return;
-    const isCompact = stampStyle === "compact";
-    const width = viewport.width * (isCompact ? 0.30 : 0.42);
-    const height = Math.min(
-      viewport.height * (isCompact ? 0.18 : 0.24),
-      Math.max(viewport.height * (isCompact ? 0.095 : 0.12), width * (433 / 1024)),
-    );
-    chosenLocation = fromPixels(viewport.width - width - viewport.width * 0.06, viewport.height - height - viewport.height * 0.06, width, height);
-  }
-
-  function focusStampElement() {
-    if (!stamp || stamp.hidden) return;
-    stamp.scrollIntoView({behavior: "smooth", block: "center"});
-    stamp.focus({preventScroll: true});
-  }
-
-  function drawStamp() {
-    if (!authorize) {
-      if (stamp) stamp.hidden = true;
+  function drawReadOnlyStamp() {
+    if (!roStamp) return;
+    if (!hasVisibleStamp || !viewport) {
+      roStamp.hidden = true;
       if (jumpStamp) jumpStamp.hidden = true;
       return;
     }
-    const location = visible?.checked ? chosenLocation : null;
-    stamp.hidden = !viewport || !location || location.page + 1 !== renderedPage;
-    stamp.classList.toggle("is-compact", stampStyle === "compact");
-    if (jumpStamp) jumpStamp.hidden = !location;
-    if (!stamp.hidden) {
-      const [left, top, width, height] = pixelRect(location);
-      Object.assign(stamp.style, {left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`});
-      const nowStr = formatTime.format(new Date());
-      const signerName = ((elNameInput?.value || "SIGNATÁRIO").trim()).toUpperCase();
-      const maskedCpf = maskCpfPublic(elCpfInput?.value || "");
-      stampLabel.textContent = signerName;
-      if (stampStyle === "compact") {
-        if (stampDoc) { stampDoc.textContent = [maskedCpf, nowStr].filter(Boolean).join(" · "); stampDoc.hidden = false; }
-        if (stampDate) stampDate.hidden = true;
-        if (stampUrl) stampUrl.textContent = `Código: ${verCode}`;
-      } else {
-        if (stampDoc) { stampDoc.textContent = maskedCpf ? `CPF ${maskedCpf} · Lei 14.063/2020` : "Lei 14.063/2020 · MP 2.200-2"; stampDoc.hidden = false; }
-        if (stampDate) { stampDate.textContent = `Data: ${nowStr} (BRT)`; stampDate.hidden = false; }
-        if (stampUrl) stampUrl.textContent = `Validar: /validar/${verCode}`;
-      }
+    if (jumpStamp) jumpStamp.hidden = stampTargetPage === renderedPage;
+    if (stampTargetPage !== renderedPage) {
+      roStamp.hidden = true;
+      return;
     }
-    if (stampModesWrap) stampModesWrap.hidden = !visible?.checked;
-    if (placeOnPage) placeOnPage.hidden = !visible?.checked || !chosenLocation || chosenLocation.page + 1 === renderedPage;
-    for (const btn of stampModeButtons) {
-      btn.setAttribute("aria-checked", String(btn.dataset.dsStampStyle === stampStyle));
+    roStamp.hidden = false;
+    if (Array.isArray(presetAppearance.box) && presetAppearance.box.length === 4) {
+      const [x1, y1, x2, y2] = viewport.convertToViewportRectangle(presetAppearance.box);
+      Object.assign(roStamp.style, {
+        left: `${Math.min(x1, x2)}px`,
+        top: `${Math.min(y1, y2)}px`,
+        width: `${Math.abs(x2 - x1)}px`,
+        height: `${Math.abs(y2 - y1)}px`,
+      });
+    } else {
+      const isCompact = presetAppearance.style === "compact";
+      const w = viewport.width * (isCompact ? 0.30 : 0.42);
+      const h = Math.min(viewport.height * (isCompact ? 0.18 : 0.24), Math.max(viewport.height * 0.10, w * (433 / 1024)));
+      Object.assign(roStamp.style, {
+        left: `${viewport.width - w - viewport.width * 0.06}px`,
+        top: `${viewport.height - h - viewport.height * 0.06}px`,
+        width: `${w}px`,
+        height: `${h}px`,
+      });
     }
-    syncAuthorization();
   }
 
   async function render() {
@@ -2827,50 +3177,53 @@ function initExternalSigning(root) {
     try {
       const page = await pdf.getPage(pageNumber);
       if (version !== drawVersion) return;
-      const raw = page.getViewport({scale: 1});
+      const raw = page.getViewport({ scale: 1 });
       const padding = parseFloat(getComputedStyle(view).paddingLeft) * 2;
-      const availableWidth = Math.max(220, view.clientWidth - padding);
+      const availableWidth = Math.max(200, view.clientWidth - padding);
       const fitted = Math.min(availableWidth / raw.width, 1.32);
       const scale = Math.min(fitted * zoom, 2000 / Math.max(raw.width, raw.height));
-      const nextViewport = page.getViewport({scale: Math.max(0.02, scale)});
+      const nextViewport = page.getViewport({ scale: Math.max(0.02, scale) });
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.round(nextViewport.width * ratio);
       canvas.height = Math.round(nextViewport.height * ratio);
       canvas.style.width = `${nextViewport.width}px`;
       canvas.style.height = `${nextViewport.height}px`;
-      drawTask = page.render({canvas, viewport: nextViewport, transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0]});
+      drawTask = page.render({ canvas, viewport: nextViewport, transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0] });
       await drawTask.promise;
       if (version !== drawVersion) return;
       viewport = nextViewport;
       renderedPage = pageNumber;
-      previewStatus.hidden = true;
-      sheet.hidden = false;
-      pageInput.value = String(pageNumber);
-      pageInput.max = String(pdf.numPages);
-      find("[data-ds-pages]").textContent = String(pdf.numPages);
-      previous.disabled = pageNumber <= 1;
-      next.disabled = pageNumber >= pdf.numPages;
-      thumbnails.querySelector("[aria-current]")?.removeAttribute("aria-current");
-      thumbnails.querySelector(`[data-page="${pageNumber}"]`)?.setAttribute("aria-current", "page");
-      if (visible?.checked && !chosenLocation) defaultLocation();
-      drawStamp();
+      if (previewStatus) previewStatus.hidden = true;
+      if (sheet) sheet.hidden = false;
+      if (pageInput) {
+        pageInput.value = String(pageNumber);
+        pageInput.max = String(pdf.numPages);
+      }
+      const pagesLabel = find("[data-ds-pages]");
+      if (pagesLabel) pagesLabel.textContent = String(pdf.numPages);
+      if (previous) previous.disabled = pageNumber <= 1;
+      if (next) next.disabled = pageNumber >= pdf.numPages;
+      thumbnails?.querySelector("[aria-current]")?.removeAttribute("aria-current");
+      thumbnails?.querySelector(`[data-page="${pageNumber}"]`)?.setAttribute("aria-current", "page");
+      drawReadOnlyStamp();
+      syncAuthorization();
     } catch (error) {
       if (version !== drawVersion || error.name === "RenderingCancelledException") return;
       viewport = null;
-      sheet.hidden = true;
-      previewStatus.hidden = false;
-      previewStatus.textContent = "Não foi possível desenhar esta página do PDF.";
-      syncAuthorization();
+      if (sheet) sheet.hidden = true;
+      if (previewStatus) {
+        previewStatus.hidden = false;
+        previewStatus.textContent = "Não foi possível desenhar esta página do PDF.";
+      }
     }
   }
 
   function changePage(value) {
     if (!pdf) return;
     pageNumber = Math.max(1, Math.min(pdf.numPages, value || 1));
-    pageInput.value = String(pageNumber);
-    view.scrollTop = 0;
+    if (pageInput) pageInput.value = String(pageNumber);
+    if (view) view.scrollTop = 0;
     viewport = null;
-    syncAuthorization();
     render();
   }
 
@@ -2883,10 +3236,15 @@ function initExternalSigning(root) {
         standardFontDataUrl: vendor + "standard_fonts/", wasmUrl: vendor + "wasm/",
         isEvalSupported: false, enableXfa: false, maxImageSize: 24_000_000, stopAtErrors: true,
       }).promise;
+      if (hasVisibleStamp && stampTargetPage >= 1 && stampTargetPage <= pdf.numPages) {
+        pageNumber = stampTargetPage;
+      }
       await render();
     } catch {
-      previewStatus.hidden = false;
-      previewStatus.textContent = "A prévia não está disponível. Use Baixar PDF acima para ler o documento.";
+      if (previewStatus) {
+        previewStatus.hidden = false;
+        previewStatus.textContent = "A prévia não está disponível. Use Baixar PDF acima para ler o documento.";
+      }
     }
   }
 
@@ -2902,101 +3260,42 @@ function initExternalSigning(root) {
   }
   find("[data-ds-fit]")?.addEventListener("click", () => { zoom = 1; render(); });
   jumpStamp?.addEventListener("click", () => {
-    if (!chosenLocation) return;
-    if (chosenLocation.page + 1 !== renderedPage) changePage(chosenLocation.page + 1);
-    else focusStampElement();
+    if (stampTargetPage !== renderedPage) changePage(stampTargetPage);
+    else roStamp?.scrollIntoView({ behavior: "smooth", block: "center" });
   });
 
-  function resizeOrMove(dx, dy, start, resize) {
-    let [left, top, width, height] = start;
-    if (resize) {
-      const minimum = Math.max(12, viewport.scale * 29);
-      width = Math.max(Math.min(width, minimum), Math.min(viewport.width - left, width + dx));
-      height = Math.max(Math.min(height, minimum), Math.min(viewport.height - top, height + dy));
-    } else {
-      left = Math.max(0, Math.min(viewport.width - width, left + dx));
-      top = Math.max(0, Math.min(viewport.height - height, top + dy));
-    }
-    chosenLocation = fromPixels(left, top, width, height);
-    drawStamp();
-  }
-
-  stamp?.addEventListener("pointerdown", (event) => {
-    if (!viewport || !chosenLocation || event.button !== 0) return;
-    stamp.setPointerCapture(event.pointerId);
-    drag = {x: event.clientX, y: event.clientY, start: pixelRect(chosenLocation), resize: event.target.matches("[data-ds-handle]")};
-    event.preventDefault();
-  });
-  stamp?.addEventListener("pointermove", (event) => {
-    if (drag) resizeOrMove(event.clientX - drag.x, event.clientY - drag.y, drag.start, drag.resize);
-  });
-  stamp?.addEventListener("lostpointercapture", () => { drag = null; });
-  stamp?.addEventListener("keydown", (event) => {
-    const moves = {ArrowLeft: [-8, 0], ArrowRight: [8, 0], ArrowUp: [0, -8], ArrowDown: [0, 8]};
-    if (!moves[event.key] || !chosenLocation) return;
-    event.preventDefault();
-    resizeOrMove(...moves[event.key], pixelRect(chosenLocation), event.shiftKey);
-  });
-
-  elNameInput?.addEventListener("input", drawStamp);
-  elCpfInput?.addEventListener("input", drawStamp);
-  elChannelSelect?.addEventListener("change", syncAuthorization);
-  elOverrideEmail?.addEventListener("input", syncAuthorization);
-  visible?.addEventListener("change", () => {
-    if (visible.checked && !chosenLocation) defaultLocation();
-    drawStamp();
-    if (visible.checked) requestAnimationFrame(() => focusStampElement());
-  });
-  for (const btn of stampModeButtons) {
-    btn.addEventListener("click", () => {
-      stampStyle = btn.dataset.dsStampStyle === "compact" ? "compact" : "full";
-      defaultLocation();
-      drawStamp();
-      requestAnimationFrame(() => focusStampElement());
-    });
-  }
-  placeOnPage?.addEventListener("click", () => {
-    defaultLocation();
-    drawStamp();
-    requestAnimationFrame(() => focusStampElement());
-  });
+  elCpfInput?.addEventListener("input", syncAuthorization);
   consent?.addEventListener("change", syncAuthorization);
 
-  authorize?.addEventListener("click", async () => {
-    const appearance = visible?.checked
-      ? {visible: true, style: stampStyle, ...chosenLocation}
-      : {visible: false};
-    const channel = elChannelSelect?.value || "email";
+  async function triggerAuthorize() {
+    if (busy || !consent?.checked) return;
     busy = true;
     syncAuthorization();
-    feedback(status, channel === "whatsapp" ? "Enviando código por WhatsApp…" : "Enviando código por e-mail…");
+    feedback(status, lockedChannel === "whatsapp" ? "Enviando código por WhatsApp…" : "Enviando código por e-mail…");
     try {
-      const data = await request(root, `/assinar/${token}/autorizar`, {
-        json: {
-          signer_name: (elNameInput?.value || "").trim(),
-          cpf: (elCpfInput?.value || "").trim(),
-          channel,
-          email: (elOverrideEmail?.value || "").trim(),
-          appearance,
-          consent: consent.checked,
-        },
-      });
+      const payload = { consent: true };
+      if (!hasPresetCpf && elCpfInput) payload.cpf = elCpfInput.value.trim();
+      const data = await request(root, `/assinar/${token}/autorizar`, { json: payload });
       challengeId = data.challenge_id;
       const step2Sub = find("[data-ds-step2-sub]");
       if (step2Sub) step2Sub.textContent = `Enviamos um código de 8 dígitos para ${data.destination_masked || "seu contato"}.`;
-      const holderEl = find("[data-ds-confirm-holder]");
-      if (holderEl) holderEl.textContent = (elNameInput?.value || "").trim();
       feedback(status);
       feedback(dialogStatus);
-      confirmForm.reset();
+      confirmForm?.reset();
       setStep(2);
-      confirmForm.elements.code.focus();
+      confirmForm?.elements.code?.focus();
     } catch (error) {
       feedback(status, error.message, true);
     } finally {
       busy = false;
       syncAuthorization();
     }
+  }
+
+  authorize?.addEventListener("click", triggerAuthorize);
+  mobCta?.addEventListener("click", () => {
+    if (currentStep === 1) triggerAuthorize();
+    else if (currentStep === 2) confirmForm?.requestSubmit();
   });
 
   find("[data-ds-back-step1]")?.addEventListener("click", () => {
@@ -3007,11 +3306,13 @@ function initExternalSigning(root) {
   confirmForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = confirmForm.querySelector("[type=submit]");
-    button.disabled = true;
+    if (button) button.disabled = true;
+    busy = true;
+    syncAuthorization();
     feedback(dialogStatus, "Registrando sua assinatura eletrônica…");
     try {
       const result = await request(root, `/assinar/${token}/assinar`, {
-        json: {consent: true, challenge_id: challengeId, code: confirmForm.elements.code.value.trim()},
+        json: { consent: true, challenge_id: challengeId, code: confirmForm.elements.code.value.trim() },
       });
       const successMsg = find("[data-ds-success-msg]");
       if (successMsg && result.sealed) {
@@ -3021,62 +3322,14 @@ function initExternalSigning(root) {
     } catch (error) {
       feedback(dialogStatus, error.message, true);
     } finally {
-      button.disabled = false;
+      busy = false;
+      if (button) button.disabled = false;
+      syncAuthorization();
     }
   });
 
-  // Mobile embedded viewer parity
-  const ceremonyGrid = find("[data-ds-ceremony-grid]");
-  const viewerSection = find("[data-ds-viewer-section]");
-  const mobileViewerSlot = find("[data-ds-mobile-viewer-slot]");
-  const toggleViewerBtns = [...root.querySelectorAll("[data-ds-toggle-viewer]")];
-  const isAlreadySigned = ceremonyGrid?.dataset.dsAlreadySigned === "yes";
-  const mobileMq = window.matchMedia("(max-width: 1023px)");
-  let pdfStarted = false;
-  let mobileViewerExpanded = false;
-
-  const ensurePdfLoaded = () => {
-    if (!pdfStarted) {
-      pdfStarted = true;
-      loadPdf();
-    } else if (pdf) {
-      requestAnimationFrame(() => render());
-    }
-  };
-
-  function syncMobileViewer() {
-    if (!viewerSection || !ceremonyGrid) return;
-    const isMobile = mobileMq.matches;
-    if (isMobile && !isAlreadySigned && mobileViewerSlot) {
-      mobileViewerSlot.hidden = false;
-      if (viewerSection.parentElement !== mobileViewerSlot) mobileViewerSlot.append(viewerSection);
-      viewerSection.classList.add("is-mobile-embedded");
-      viewerSection.classList.remove("is-mobile-collapsed");
-      ensurePdfLoaded();
-    } else if (isMobile && isAlreadySigned) {
-      if (mobileViewerSlot) mobileViewerSlot.hidden = true;
-      if (viewerSection.parentElement !== ceremonyGrid) ceremonyGrid.prepend(viewerSection);
-      viewerSection.classList.remove("is-mobile-embedded");
-      viewerSection.classList.toggle("is-mobile-collapsed", !mobileViewerExpanded);
-      if (mobileViewerExpanded) ensurePdfLoaded();
-    } else {
-      if (mobileViewerSlot) mobileViewerSlot.hidden = true;
-      if (viewerSection.parentElement !== ceremonyGrid) ceremonyGrid.prepend(viewerSection);
-      viewerSection.classList.remove("is-mobile-embedded", "is-mobile-collapsed");
-      ensurePdfLoaded();
-    }
-  }
-
-  for (const btn of toggleViewerBtns) {
-    btn.addEventListener("click", () => {
-      mobileViewerExpanded = !mobileViewerExpanded;
-      syncMobileViewer();
-      btn.setAttribute("aria-expanded", String(mobileViewerExpanded));
-    });
-  }
-  mobileMq.addEventListener?.("change", syncMobileViewer);
   syncAuthorization();
-  syncMobileViewer();
+  loadPdf();
 }
 
 function initPublicValidate(root) {

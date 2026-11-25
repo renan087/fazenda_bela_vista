@@ -1118,3 +1118,100 @@ def test_external_signer_email_and_whatsapp_template_dispatch(web_db, monkeypatc
     assert len(wa_templates) == 1
     assert wa_templates[0][0] == "5535992223344"
     assert wa_templates[0][1] == "sisfarm_convite_assinatura"
+
+
+
+def test_external_signer_preset_cpf_locked_channel_and_stamp_position(web_db, monkeypatch):
+    from app.services.document_signing import electronic
+
+    sessions, _ = web_db
+    emails = []
+    monkeypatch.setattr(electronic, "send_plain_email", lambda *args: emails.append(args))
+
+    web = FastAPI()
+    web.add_middleware(SessionMiddleware, secret_key="secret-preset-ext")
+    web.include_router(router)
+    web.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+    def db_dep():
+        with sessions() as db:
+            yield db
+
+    def user_dep(request: Request):
+        with sessions() as db:
+            return db.get(User, request.session["user_id"])
+
+    @web.get("/test-login")
+    def login(request: Request, user_id: int, farm_id: int = 1):
+        request.session.clear()
+        request.session["user_id"] = user_id
+        request.session["active_farm_id"] = farm_id
+        return {"csrf": ensure_csrf_token(request)}
+
+    web.dependency_overrides[get_db] = db_dep
+    web.dependency_overrides[get_current_user_web] = user_dep
+
+    client = LocalTestClient(web)
+    headers = {"X-CSRF-Token": client.get("/test-login", params={"user_id": 1, "farm_id": 1}).json()["csrf"]}
+
+    original = _original()
+    created = client.post("/assinatura-digital/documentos", content=original, headers={
+        **headers,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "contrato_travado.pdf",
+        "X-Document-Owner-Signs": "0",
+        "X-Document-Signing-Policy": "electronic",
+    })
+    assert created.status_code == 201, created.text
+    endpoint = created.json()["url"]
+
+    preset_box = [240.0, 80.0, 480.0, 145.0]
+    ext_res = client.post(endpoint + "/externos", headers=headers, json={
+        "name": "Carlos Eduardo Mendes",
+        "cpf": "111.444.777-35",
+        "role_label": "Comprador",
+        "channel": "email",
+        "email": "carlos@comprador.test",
+        "appearance": {"visible": True, "style": "compact", "page": 0, "box": preset_box},
+    })
+    assert ext_res.status_code == 201, ext_res.text
+    body = ext_res.json()
+    assert body["cpf_masked"] == "•••.444.777-••"
+    assert body["appearance"]["visible"] is True
+    assert body["appearance"]["style"] == "compact"
+    token = body["sign_url"].rsplit("/assinar/", 1)[1]
+
+    # Public signing page renders read-only data, locked channel, read-only stamp and ZERO stamp/channel controls
+    ext_client = LocalTestClient(web)
+    page = ext_client.get(f"/assinar/{token}")
+    assert page.status_code == 200
+    assert "Carlos Eduardo Mendes" in page.text
+    assert "111.444.777-35" in page.text
+    assert "Somente conferência" in page.text
+    assert "data-ds-ro-stamp" in page.text
+    assert "data-ds-visible" not in page.text
+    assert "data-ds-el-channel" not in page.text
+    assert "data-ds-el-cpf" not in page.text
+    ext_csrf = re.search(r'data-csrf="([^"]+)"', page.text).group(1)
+
+    # Authorize works with ONLY consent=True and strictly ignores tampered name/cpf/channel/appearance
+    auth = ext_client.post(f"/assinar/{token}/autorizar", headers={"X-CSRF-Token": ext_csrf}, json={
+        "consent": True,
+        "signer_name": "Outro Nome Tentativa",
+        "cpf": "999.999.999-99",
+        "channel": "whatsapp",
+        "appearance": {"visible": False},
+    })
+    assert auth.status_code == 201, auth.text
+    # OTP must have been sent via emitter's locked channel (email)
+    otp_email = emails[-1]
+    assert otp_email[0] == "carlos@comprador.test"
+    otp = re.search(r"\b(\d{8})\b", otp_email[2]).group(1)
+
+    done = ext_client.post(f"/assinar/{token}/assinar", headers={"X-CSRF-Token": ext_csrf}, json={
+        "consent": True,
+        "challenge_id": auth.json()["challenge_id"],
+        "code": otp,
+    })
+    assert done.status_code == 200, done.text
+    assert done.json()["sealed"] is True

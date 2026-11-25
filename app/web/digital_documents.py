@@ -748,11 +748,15 @@ async def add_external_signer(document_id: str, request: Request, db: Session = 
             channel=str(data.get("channel") or "email"),
             role_label=str(data.get("role_label") or "Signatário"),
             base_url=_public_base_url(request),
+            cpf_raw=str(data.get("cpf") or "") or None,
+            appearance=data.get("appearance") if isinstance(data.get("appearance"), dict) else None,
         )
         return _json({
             "ok": True,
             "signer_id": signer.id,
             "signer_name": signer.name,
+            "cpf_masked": signer.cpf_masked,
+            "appearance": signer.appearance,
             "sign_url": sign_url,
             "whatsapp_share_url": wa_share_url,
             "channel": signer.channel,
@@ -1099,6 +1103,21 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
         if bot_wa
         else ""
     )
+    cpf_digits = ""
+    if signer.cpf_encrypted:
+        try:
+            cpf_digits = electronic.decrypt_cpf(signer.cpf_encrypted, doc.id)
+        except Exception:
+            cpf_digits = ""
+    cpf_display = electronic.format_cpf(cpf_digits) if cpf_digits else ""
+    cpf_masked_for_stamp = signer.cpf_masked or (electronic.mask_cpf(cpf_digits) if cpf_digits else "")
+    locked_channel = "whatsapp" if signer.channel == "whatsapp" else "email"
+    locked_contact_display = (
+        _format_phone_br(signer.phone)
+        if locked_channel == "whatsapp"
+        else (signer.email or "")
+    )
+    preset_appearance = signer.appearance if isinstance(signer.appearance, dict) else {"visible": False}
     db.commit()
     return templates.TemplateResponse(
         request,
@@ -1109,6 +1128,7 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
             "csrf_token": ensure_csrf_token(request),
             "token": token,
             "signer": signer,
+            "signer_initials": _user_initials(signer.name),
             "doc": doc,
             "farm": farm,
             "display_title": display_title,
@@ -1116,6 +1136,12 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
             "verification_code": ver_code,
             "pending_count": pending_count,
             "already_signed": signer.status == "signed",
+            "cpf_display": cpf_display,
+            "cpf_masked_for_stamp": cpf_masked_for_stamp,
+            "has_preset_cpf": bool(cpf_display),
+            "locked_channel": locked_channel,
+            "locked_contact_display": locked_contact_display,
+            "preset_appearance": preset_appearance,
             "phone_masked": electronic.mask_phone(signer.phone) if signer.phone else "",
             "email_masked": electronic.mask_email(signer.email) if signer.email else "",
             "whatsapp_ready": whatsapp_ready,
@@ -1156,6 +1182,18 @@ async def external_request_code(token: str, request: Request, db: Session = Depe
     try:
         revision = workflow.current_revision(db, doc)
         pdf_bytes = workflow.revision_bytes(doc, revision)
+        preset_cpf = ""
+        if signer.cpf_encrypted:
+            try:
+                preset_cpf = electronic.decrypt_cpf(signer.cpf_encrypted, doc.id)
+            except Exception:
+                preset_cpf = ""
+        locked_channel = "whatsapp" if signer.channel == "whatsapp" else "email"
+        locked_appearance = (
+            signer.appearance
+            if isinstance(signer.appearance, dict)
+            else (data.get("appearance") if isinstance(data.get("appearance"), dict) else {"visible": False})
+        )
         result = await run_in_threadpool(
             _limited,
             electronic.issue_electronic_challenge,
@@ -1165,12 +1203,12 @@ async def external_request_code(token: str, request: Request, db: Session = Depe
             pdf_bytes=pdf_bytes,
             user=None,
             external_signer=signer,
-            signer_name=str(data.get("signer_name") or signer.name),
-            cpf_raw=str(data.get("cpf") or ""),
-            auth_channel=str(data.get("channel") or signer.channel or "email"),
-            appearance=data.get("appearance") if isinstance(data.get("appearance"), dict) else {"visible": False},
+            signer_name=signer.name,
+            cpf_raw=preset_cpf or str(data.get("cpf") or ""),
+            auth_channel=locked_channel,
+            appearance=locked_appearance,
             consent=data.get("consent") is True,
-            override_email=str(data.get("email") or "") or None,
+            override_email=None,
         )
         return _json(result, 201)
     except (ValueError, PermissionError, workflow.WorkflowError, IntegrityError) as exc:
