@@ -36,9 +36,65 @@ CONFIRMATION_PENDING = {"in_process", "authorized", "in_mediation"}
 
 
 class MercadoPagoError(Exception):
-    def __init__(self, code: str, http_status: int | None = None):
+    def __init__(self, code: str, http_status: int | None = None, *, reason: str | None = None,
+                 request_id: str | None = None):
         super().__init__(code)
         self.http_status = http_status
+        self.reason = reason
+        self.request_id = request_id
+
+
+CHECKOUT_REJECTIONS = {400, 401, 403, 404, 422}
+CHECKOUT_ERROR_MESSAGES = {
+    "ambiente_do_comprador": "O Mercado Pago recusou a combinação das contas. Confira se o vendedor e o comprador pertencem ao mesmo ambiente de teste.",
+    "comprador_igual_ao_vendedor": "O Mercado Pago exige contas diferentes para vendedor e comprador. Use o e-mail do comprador de teste.",
+    "email_do_comprador": "O Mercado Pago recusou o e-mail informado. Confira o e-mail da conta de comprador de teste.",
+    "data_da_cobranca": "O Mercado Pago recusou a data de cobrança. Informe à equipe SiSFarm a data que aparece no resumo do plano.",
+}
+
+
+def _preapproval_error_reason(response: httpx.Response) -> str | None:
+    """Classifica mensagens do provedor sem repassar seu conteúdo aos logs ou à interface."""
+    if response.status_code not in {400, 422}:
+        return None
+    try:
+        data = response.json()
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    cause = data.get("cause")
+    entries = cause if isinstance(cause, list) else [cause]
+    messages = [data.get("message"), data.get("error")]
+    for entry in entries:
+        if isinstance(entry, dict):
+            messages.extend(entry.get(field) for field in ("code", "description", "message"))
+    detail = " ".join(value[:512] for value in messages if isinstance(value, str)).casefold()
+    if "real or test users" in detail or "invalid users involved" in detail:
+        return "ambiente_do_comprador"
+    if ("payer" in detail and "collector" in detail
+            and any(word in detail for word in ("different", "the same", "same user", "iguais"))):
+        return "comprador_igual_ao_vendedor"
+    if any(marker in detail for marker in ("payer_email", "payer email", "email of the payer", "invalid email", "payer not found")):
+        return "email_do_comprador"
+    if any(marker in detail for marker in ("start_date", "end_date", "billing date")):
+        return "data_da_cobranca"
+    return None
+
+
+def checkout_error_message(error: MercadoPagoError) -> str:
+    if error.reason in CHECKOUT_ERROR_MESSAGES:
+        message = CHECKOUT_ERROR_MESSAGES[error.reason]
+    elif error.http_status in {401, 403}:
+        message = "O Mercado Pago recusou a credencial ou a permissão da aplicação. Confira a configuração com a equipe SiSFarm."
+    elif error.http_status in CHECKOUT_REJECTIONS:
+        message = "O Mercado Pago recusou a criação da assinatura de teste. Informe o código da tentativa à equipe SiSFarm."
+    elif str(error) == "organizacao_indisponivel":
+        return "A organização está indisponível para uma nova contratação."
+    else:
+        message = "A tentativa está em verificação. Acompanhe a situação em Minha assinatura."
+    reference = f" Referência do Mercado Pago {error.request_id}." if error.request_id else ""
+    return f"{message} Código {error}.{reference}"
 
 
 def configuration_error(settings=None) -> str | None:
@@ -110,9 +166,10 @@ class MercadoPagoAPI:
             raise MercadoPagoError("falha_de_conexao") from None
         if not response.is_success:
             response_id = resource_id(response.headers.get("x-request-id"))
-            logger.warning("Mercado Pago sandbox: method=%s endpoint=%s status=%s request_id=%s",
-                           method, path, response.status_code, response_id or "-")
-            raise MercadoPagoError(f"http_{response.status_code}", response.status_code)
+            reason = _preapproval_error_reason(response) if method == "POST" and path == "/preapproval" else None
+            logger.warning("Mercado Pago sandbox: method=%s endpoint=%s status=%s request_id=%s motivo=%s",
+                           method, path, response.status_code, response_id or "-", reason or "-")
+            raise MercadoPagoError(f"http_{response.status_code}", response.status_code, reason=reason, request_id=response_id)
         try:
             data = response.json()
         except ValueError:
@@ -217,10 +274,11 @@ def create_checkout(db, api, subscription):
         _apply_subscription(subscription, api.request("POST", "/preapproval", payload=payload))
     except MercadoPagoError as error:
         subscription.last_synced_at = _now()
-        subscription.sync_issue = f"Criação da assinatura em teste: {error}."
+        diagnostic = [str(error), error.reason, error.request_id]
+        subscription.sync_issue = f"Criação da assinatura em teste: {' · '.join(filter(None, diagnostic))}."
         subscription.status = "revisao"
         # Falhas inconclusivas são recuperadas por referência, sem repetir o POST.
-        if error.http_status in {400, 401, 403, 404, 422}:
+        if error.http_status in CHECKOUT_REJECTIONS:
             subscription.is_current = False
             subscription.status = "falhou"
         db.commit()

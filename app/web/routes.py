@@ -11038,7 +11038,7 @@ def subscribe_action(
             db.rollback()
             if str(exc) == "assinatura_existente":
                 return _customer_target()
-            return fail("O Mercado Pago não confirmou o checkout. Confira a situação em Minha assinatura.")
+            return fail(mp.checkout_error_message(exc))
         if link:
             return RedirectResponse(link, status_code=status.HTTP_303_SEE_OTHER)
         return _customer_target()

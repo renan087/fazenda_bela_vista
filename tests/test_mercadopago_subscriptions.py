@@ -290,3 +290,41 @@ def test_customer_checkout_uses_the_sisfarm_screen_and_redirects_to_the_sandbox(
         row = db.query(OrganizationSubscription).one()
         assert row.cycle == "YEARLY" and row.environment == mp.MERCADOPAGO_TEST
         assert routes._customer_subscription_display(row, None, [], TODAY)["payment_url"] == LINK
+
+
+@pytest.mark.parametrize(("response_body", "status_code", "expected_reason", "message_fragment"), [
+    ({"message": "Both payer and collector must be real or test users"}, 400,
+     "ambiente_do_comprador", "mesmo ambiente de teste"),
+    ({"cause": [{"description": "Invalid payer_email"}]}, 422,
+     "email_do_comprador", "e-mail informado"),
+    ({"message": "The payer and collector must be different"}, 400,
+     "comprador_igual_ao_vendedor", "contas diferentes"),
+    ({"message": "Restricted token test@example.com"}, 403,
+     None, "recusou a credencial"),
+])
+def test_checkout_reports_provider_rejections_without_exposing_response(
+    database, settings, monkeypatch, caplog, response_body, status_code, expected_reason, message_fragment,
+):
+    def send(client, request, **kwargs):
+        return httpx.Response(status_code, headers={"x-request-id": "request-123"},
+                              json={**response_body, "context": "secret-context test@example.com"})
+
+    monkeypatch.setattr(httpx.Client, "send", send)
+    with database() as db:
+        row = prepare(db)
+        with pytest.raises(mp.MercadoPagoError) as raised:
+            mp.create_checkout(db, mp.MercadoPagoAPI(), row)
+
+        error = raised.value
+        assert error.reason == expected_reason
+        message = mp.checkout_error_message(error)
+        assert message_fragment in message
+        assert f"http_{status_code}" in message and "request-123" in message
+        assert row.status == "falhou" and not row.is_current
+        assert f"http_{status_code}" in row.sync_issue and "request-123" in row.sync_issue
+        if expected_reason:
+            assert expected_reason in row.sync_issue
+        for output in (message, row.sync_issue, caplog.text):
+            assert "test@example.com" not in output
+            assert "secret-context" not in output
+            assert "TEST-token" not in output
