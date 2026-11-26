@@ -202,6 +202,7 @@ from app.services.commercial_audit import record_commercial_event
 from app.services import mercadopago_subscriptions as mp
 from app.services.billing_environment import MERCADOPAGO_ENVIRONMENTS, MERCADOPAGO_LIVE, MERCADOPAGO_TEST, billing_environment, mercadopago_environment
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
+from app.services.organizations_overview import build_organizations_overview
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
 from app.services.subscription_reconciliation import close_card_checkout, reconcile_organization
 from app.services.plan_changes import (
@@ -10533,6 +10534,19 @@ def organizations_page(
             details = {}
         history.append({"date": event.created_at, "actor": event.actor_email,
                         "old": details.get("anterior"), "new": details.get("novo")})
+    blocked_login_users = [item for item in users if login_throttle.email_blocked_for(item.email)]
+    org_overview = build_organizations_overview(
+        db,
+        organizations=organizations,
+        users=users,
+        farms=farms,
+        primary_users=primary_users,
+        billing_by_organization=billing_by_organization,
+        signup_suggestions=signup_suggestions,
+        responsible_history=responsible_history,
+        blocked_user_ids={item.id for item in blocked_login_users},
+        current_user_id=user.id if user else None,
+    )
     return templates.TemplateResponse(
         "organizations.html",
         _base_context(
@@ -10547,7 +10561,8 @@ def organizations_page(
             primary_users=primary_users,
             signup_suggestions=signup_suggestions,
             responsible_history=responsible_history,
-            blocked_login_users=[item for item in users if login_throttle.email_blocked_for(item.email)],
+            blocked_login_users=blocked_login_users,
+            org_overview=org_overview,
             users=users,
             farms=farms,
             _repo=repo,
@@ -12702,6 +12717,16 @@ def rename_organization_action(
     return _redirect_with_query("/organizacoes", organizacao=organization.id)
 
 
+def _organizations_redirect(return_tab: str | None = None, return_org: str | int | None = None) -> RedirectResponse:
+    params = {}
+    if return_tab in {"orgs", "users", "farms"}:
+        params["aba"] = return_tab
+    org_id = _int_or_none(str(return_org)) if return_org is not None else None
+    if org_id:
+        params["organizacao"] = org_id
+    return _redirect_with_query("/organizacoes", **params) if params else _redirect("/organizacoes")
+
+
 @router.post("/organizacoes/usuarios/vincular")
 def link_user_organization_action(
     request: Request,
@@ -12710,6 +12735,8 @@ def link_user_organization_action(
     organization_id: int = Form(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
+    return_tab: str | None = Form(None),
+    return_org: str | None = Form(None),
 ):
     denied = _require_super_admin(request, user)
     if denied:
@@ -12719,16 +12746,16 @@ def link_user_organization_action(
     target_user = db.query(User).filter_by(id=user_id).with_for_update().populate_existing().first()
     organization = repo.get_organization(organization_id)
     if not target_user or not organization:
-        _flash(request, "error", "Usuario ou organizacao nao encontrado.")
-        return _redirect("/organizacoes")
+        _flash(request, "error", "Usuário ou organização não encontrado.")
+        return _organizations_redirect(return_tab, return_org)
     if target_user.id == user.id:
-        _flash(request, "error", "Nao altere a organizacao do usuario atualmente logado.")
-        return _redirect("/organizacoes")
+        _flash(request, "error", "Não altere a organização do usuário atualmente logado.")
+        return _organizations_redirect(return_tab, return_org)
     if target_user.organization_id != organization.id and target_user.is_active:
         entitlements = quota_write_entitlements(db, organization.id, today_in_app_timezone())
         if error := user_limit_error(db, entitlements):
             _flash(request, "error", error)
-            return _redirect("/organizacoes")
+            return _organizations_redirect(return_tab, return_org)
     if target_user.organization_id != organization.id and target_user.organization_id:
         previous_org = db.query(Organization).filter_by(id=target_user.organization_id).with_for_update().first()
         if previous_org and previous_org.primary_user_id == target_user.id:
@@ -12744,8 +12771,8 @@ def link_user_organization_action(
     repo.update(target_user, data)
     db.refresh(target_user)
     sync_roles_from_admin_flag(db, target_user)
-    _flash(request, "success", "Usuario vinculado a organizacao com sucesso.")
-    return _redirect("/organizacoes")
+    _flash(request, "success", f"{target_user.name} vinculado à organização {organization.name}.")
+    return _organizations_redirect(return_tab, return_org)
 
 
 @router.post("/organizacoes/fazendas/vincular")
@@ -12756,6 +12783,8 @@ def link_farm_organization_action(
     organization_id: int = Form(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
+    return_tab: str | None = Form(None),
+    return_org: str | None = Form(None),
 ):
     denied = _require_super_admin(request, user)
     if denied:
@@ -12765,16 +12794,58 @@ def link_farm_organization_action(
     farm = repo.get_farm(farm_id)
     organization = repo.get_organization(organization_id)
     if not farm or not organization:
-        _flash(request, "error", "Fazenda ou organizacao nao encontrada.")
-        return _redirect("/organizacoes")
-    if farm.organization_id != organization.id and not farm.operations_paused:
-        entitlements = quota_write_entitlements(db, organization.id, today_in_app_timezone())
+        _flash(request, "error", "Fazenda ou organização não encontrada.")
+        return _organizations_redirect(return_tab, return_org)
+    if farm.organization_id != organization.id:
+        if _farm_name_taken(db, organization.id, farm.name, exclude_id=farm.id):
+            _flash(
+                request,
+                "error",
+                f'A organização {organization.name} já possui uma fazenda chamada "{farm.name}". Renomeie antes de transferir.',
+            )
+            return _organizations_redirect(return_tab, return_org)
+        if not farm.operations_paused:
+            entitlements = quota_write_entitlements(db, organization.id, today_in_app_timezone())
+            if error := farm_limit_error(db, entitlements, adding_farm=True, area_delta=Decimal(farm.total_area or 0)):
+                _flash(request, "error", error)
+                return _organizations_redirect(return_tab, return_org)
+    repo.update(farm, {"organization_id": organization.id})
+    _flash(request, "success", f'Fazenda "{farm.name}" vinculada à organização {organization.name}.')
+    return _organizations_redirect(return_tab, return_org)
+
+
+@router.post("/organizacoes/fazendas/{farm_id}/operacoes")
+def toggle_organization_farm_operations_action(
+    farm_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    action: str = Form(...),
+    return_tab: str | None = Form(None),
+    return_org: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    farm = db.query(Farm).filter_by(id=farm_id).with_for_update().first()
+    if not farm or action not in {"pause", "resume"}:
+        _flash(request, "error", "Fazenda ou ação não encontrada.")
+        return _organizations_redirect(return_tab, return_org)
+    if action == "resume" and farm.operations_paused and farm.organization_id:
+        entitlements = quota_write_entitlements(db, farm.organization_id, today_in_app_timezone())
         if error := farm_limit_error(db, entitlements, adding_farm=True, area_delta=Decimal(farm.total_area or 0)):
             _flash(request, "error", error)
-            return _redirect("/organizacoes")
-    repo.update(farm, {"organization_id": organization.id})
-    _flash(request, "success", "Fazenda vinculada a organizacao com sucesso.")
-    return _redirect("/organizacoes")
+            return _organizations_redirect(return_tab, return_org)
+    farm.operations_paused = action == "pause"
+    db.commit()
+    _flash(
+        request,
+        "success",
+        f'Operações de "{farm.name}" pausadas.' if farm.operations_paused else f'Operações de "{farm.name}" retomadas.',
+    )
+    return _organizations_redirect(return_tab, return_org)
 
 
 @router.post("/organizacoes/{organization_id}/status")
