@@ -277,7 +277,10 @@
                     {%- endif %}
                     {%- endfor %}
                     <div class="sf-m-acct">
-                        <a href="/meu-perfil" class="sf-m-row">{{ sf_avatar('sf-av sf-av-l') }}<span class="sf-grow">{{ sf_user_name }}<small>Meu perfil{% if mv.get('finance') %} e assinatura{% endif %}</small></span>{{ sf_icon('chev', 'sf-ic sf-m-chev') }}</a>
+                        <a href="/meu-perfil" class="sf-m-row">{{ sf_avatar('sf-av sf-av-l') }}<span class="sf-grow">{{ sf_user_name }}<small>Meu perfil</small></span>{{ sf_icon('chev', 'sf-ic sf-m-chev') }}</a>
+                        {%- if mv.get('finance') %}
+                        <a href="{{ module_href('/minha-assinatura') }}" class="sf-m-row{% if page == 'my_subscription' %} is-current{% endif %}"{% if page == 'my_subscription' %} aria-current="page"{% endif %}>{{ sf_icon('card') }}<span class="sf-grow">Minha assinatura{{ module_lock('/minha-assinatura') }}</span>{{ sf_icon('chev', 'sf-ic sf-m-chev') }}</a>
+                        {%- endif %}
                         <a href="/logout" class="sf-m-row is-danger">{{ sf_icon('logout') }}<span class="sf-grow">Sair</span></a>
                     </div>
                 </div>
