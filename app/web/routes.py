@@ -48,7 +48,7 @@ from app.models.assistant_thread import AssistantThread
 from app.models.assistant_audio import AssistantAudio
 from app.models.assistant_attachment import AssistantAttachment
 from app.models.whatsapp import WhatsAppLink, WhatsAppRecordAccess, WhatsAppSurvey, WhatsAppSurveyComment
-from app.services import whatsapp_bot
+from app.services import login_throttle, whatsapp_bot
 from app.services.whatsapp import is_configured as whatsapp_is_configured, mask_phone
 from app.services.chat_format import to_html as chat_to_html
 from app.models.stock_assistant_draft import StockAssistantDraft
@@ -10541,11 +10541,34 @@ def organizations_page(
             primary_users=primary_users,
             signup_suggestions=signup_suggestions,
             responsible_history=responsible_history,
+            blocked_login_users=[item for item in users if login_throttle.email_blocked_for(item.email)],
             users=users,
             farms=farms,
             _repo=repo,
         ),
     )
+
+
+@router.post("/organizacoes/usuarios/{user_id}/desbloquear-login")
+def unlock_organization_user_login_action(
+    user_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+
+    target_user = _repository(db).get_user(user_id)
+    if not target_user:
+        _flash(request, "error", "Usuário não encontrado.")
+        return _redirect("/organizacoes")
+
+    _unlock_user_login(request, user, target_user)
+    return _redirect("/organizacoes")
 
 
 @router.get("/organizacoes/avaliacoes-pezinho")
@@ -12898,6 +12921,8 @@ def users_page(
     assignable_roles = assignable_roles_for_editing(db, user.organization_id)
     assignable_role_groups = assignable_role_groups_for_editing(db, user.organization_id)
     edit_user_role_ids = role_ids_for_user_in_org(db, edit_user) if edit_user else []
+    users = [item for item in repo.list_users(organization_id=user.organization_id)
+             if item.organization_id == user.organization_id]
     return templates.TemplateResponse(
         "users.html",
         _base_context(
@@ -12906,7 +12931,8 @@ def users_page(
             csrf_token,
             "users",
             title="Administracao de Usuarios",
-            users=repo.list_users(organization_id=user.organization_id),
+            users=users,
+            login_blocked_user_ids={item.id for item in users if login_throttle.email_blocked_for(item.email)},
             edit_user=edit_user,
             rbac_role_labels=rbac_role_labels,
             assignable_roles=assignable_roles,
@@ -12919,6 +12945,41 @@ def users_page(
             _repo=repo,
         ),
     )
+
+
+def _unlock_user_login(request: Request, user: User, target_user: User) -> None:
+    if not login_throttle.unlock_email(target_user.email):
+        _flash(request, "success", "Este usuário já está sem bloqueio por tentativas.")
+        return
+
+    append_audit_event(
+        request=request,
+        actor_user=user,
+        organization_id=target_user.organization_id,
+        event_type="auth.login.unlock",
+        metadata={"target_user_id": target_user.id},
+    )
+    _flash(request, "success", f"Bloqueio por tentativas removido para {target_user.name}.")
+
+
+@router.post("/usuarios/{user_id}/desbloquear-login")
+def unlock_user_login_action(
+    user_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user, db)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    target_user = _repository(db).get_user(user_id)
+    if not target_user or target_user.organization_id != user.organization_id:
+        _flash(request, "error", "Usuário não encontrado.")
+        return _redirect("/usuarios")
+    _unlock_user_login(request, user, target_user)
+    return _redirect("/usuarios")
 
 
 @router.get("/usuarios/{user_id}/avatar")

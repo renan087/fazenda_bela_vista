@@ -38,6 +38,38 @@
         <article><span class="org-icon">{{ icon('farm') }}</span><div><span>Fazendas</span><strong>{{ farms|length }}</strong></div></article>
     </section>
 
+    {% if blocked_login_users %}
+    <section class="org-panel org-directory" aria-labelledby="org-blocked-logins">
+        <div class="org-directory-head">
+            <h3 id="org-blocked-logins">{{ icon('shield') }} Usuários bloqueados por tentativas</h3>
+        </div>
+        <div class="org-table-scroll">
+            <table class="org-table">
+                <thead><tr><th scope="col">Usuário</th><th scope="col">Organização</th><th scope="col">Ação</th></tr></thead>
+                <tbody>
+                {% for item in blocked_login_users %}
+                <tr>
+                    <td data-label="Usuário">
+                        <div>
+                            <span class="org-primary">{{ item.name }}</span>
+                            <small class="org-email">{{ item.email }}{% if not item.is_active %} · Inativo{% endif %}</small>
+                        </div>
+                    </td>
+                    <td data-label="Organização">{{ item.organization.name if item.organization else 'Sem organização' }}</td>
+                    <td data-label="Ação">
+                        <form method="post" action="/organizacoes/usuarios/{{ item.id }}/desbloquear-login" class="org-row-actions">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="org-button org-button-outline" aria-label="Desbloquear login de {{ item.name }}">Desbloquear login</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
     <section class="org-panel org-directory">
         <div class="org-directory-head">
             <h3>{{ icon('building') }} Organizações cadastradas</h3>
