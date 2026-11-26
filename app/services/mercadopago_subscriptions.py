@@ -646,6 +646,10 @@ def _tick():
             row = db.query(OrganizationSubscription).filter(
                 OrganizationSubscription.environment == getattr(api, "environment", MERCADOPAGO_TEST),
                 or_(
+                    OrganizationSubscription.mercadopago_reference.is_(None),
+                    ~OrganizationSubscription.mercadopago_reference.like("sisfarm-pix-%"),
+                ),
+                or_(
                     OrganizationSubscription.is_current.is_(True) & (
                         OrganizationSubscription.last_synced_at.is_(None)
                         | (OrganizationSubscription.last_synced_at < now - timedelta(minutes=5))

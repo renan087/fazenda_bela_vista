@@ -161,6 +161,36 @@
                 {% elif can_change_plan and prices %}
                 <button type="button" data-dialog-open="change-plan-{{ plan.id }}" class="{{ cta_class }}">Escolher {{ plan.name }}</button>
                 {% include "partials/plan_change_dialog.html" %}
+                {% elif can_change_pix_plan and prices %}
+                <button type="button" data-dialog-open="change-pix-plan-{{ plan.id }}" class="{{ cta_class }}">Mudar para {{ plan.name }} via Pix</button>
+                <dialog id="change-pix-plan-{{ plan.id }}" class="app-modal pc-request-dialog" aria-labelledby="change-pix-title-{{ plan.id }}">
+                    <form method="post" action="/minha-assinatura/pix/alterar-plano" data-busy-form>
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="plan_id" value="{{ plan.id }}">
+                        <header class="pc-dialog-head">
+                            <div>
+                                <h3 id="change-pix-title-{{ plan.id }}">Alterar para {{ plan.name }} via Pix</h3>
+                                <p>Escolha a periodicidade e gere o QR Code Pix.</p>
+                            </div>
+                            <button type="button" class="sf-icon-btn" data-dialog-close aria-label="Fechar">✕</button>
+                        </header>
+                        <div class="pc-dialog-body">
+                            <p class="pc-dialog-copy">Seu plano atual continua valendo normalmente até o pagamento do Pix ser confirmado. Assim que o Pix for pago, o plano <strong>{{ plan.name }}</strong> é ativado com um novo ciclo.</p>
+                            <div class="px-cycle-choices" role="radiogroup" aria-label="Periodicidade do novo plano">
+                                {% for code, price in prices.items() %}
+                                <label class="px-cycle-opt">
+                                    <input type="radio" name="cycle" value="{{ code }}" {% if code == main_cycle %}checked{% endif %} required>
+                                    <span><strong>{{ 'Mensal' if code == 'MONTHLY' else 'Anual' }}</strong> · R$ {{ price|decimal_br }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <footer class="pc-request-actions">
+                            <button type="button" class="pc-button" data-dialog-close>Voltar</button>
+                            <button type="submit" class="pc-button pc-button-primary">Gerar QR Code Pix</button>
+                        </footer>
+                    </form>
+                </dialog>
                 {% elif awaiting_first_payment %}
                 <a href="/minha-assinatura" class="pc-button">Acompanhar assinatura</a>
                 {% else %}

@@ -199,6 +199,7 @@ from app.services.self_signup import TRIAL_DAYS as SELF_SIGNUP_TRIAL_DAYS
 from app.services.asaas_environment import asaas_pilot_allows, app_public_base, asaas_api_key, asaas_configuration_error, asaas_env_name, asaas_ready, current_asaas_environment
 from app.services.asaas_card_checkout import cancel_sandbox_checkout, create_sandbox_card_checkout_session, safe_asaas_link
 from app.services.commercial_audit import record_commercial_event
+from app.services import mercadopago_pix_orders as mp_pix
 from app.services import mercadopago_subscriptions as mp
 from app.services.billing_environment import MERCADOPAGO_ENVIRONMENTS, MERCADOPAGO_LIVE, MERCADOPAGO_TEST, billing_environment, mercadopago_environment
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
@@ -10924,7 +10925,8 @@ def _customer_subscription_context(db: Session, organization: Organization) -> d
     else:
         plan = db.get(SubscriptionPlan, migration.plan_id) if migration and migration.plan_id else None
     cancellation_period_end = None
-    if env == MERCADOPAGO_LIVE and current and current.mercadopago_id:
+    is_pix_subscription = mp_pix.is_pix_order_subscription(current)
+    if env == MERCADOPAGO_LIVE and current and (current.mercadopago_id or is_pix_subscription):
         latest = next((item for item in charges if item.subscription_id == current.id and item.status in history_statuses), None)
         end = paid_cycle_end(current, latest, today)
         if end and end > today:
@@ -10932,7 +10934,42 @@ def _customer_subscription_context(db: Session, organization: Organization) -> d
     module_labels = dict(PLAN_MODULES)
     grant = active_grant(db, organization.id, today)
     display = _customer_subscription_display(current, migration, charges, today)
+    if is_pix_subscription and display:
+        # Pagamento Pix acontece dentro do próprio SiSFarm (sem redirecionar para checkout externo).
+        display["payment_url"] = None
     state = display["state"] if display else ""
+
+    pix_available = mp_pix.pix_active_for_environment(env)
+    active_pix_payment = mp_pix.latest_active_pix_payment(db, current.id) if is_pix_subscription else None
+    now_utc = mp_pix._now()
+    active_pix_expired = bool(
+        active_pix_payment
+        and (
+            active_pix_payment.status == "EXPIRED"
+            or (active_pix_payment.pix_expires_at is not None and active_pix_payment.pix_expires_at <= now_utc)
+        )
+    )
+    active_pix_qr_uri = (
+        mp_pix.pix_qr_data_uri(active_pix_payment)
+        if active_pix_payment and active_pix_payment.status == "PENDING" and not active_pix_expired
+        else None
+    )
+    active_pix_expires_local = (
+        active_pix_payment.pix_expires_at.replace(tzinfo=timezone.utc).astimezone(app_now().tzinfo)
+        if active_pix_payment and active_pix_payment.pix_expires_at
+        else None
+    )
+    active_pix_expires_iso = (
+        active_pix_payment.pix_expires_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if active_pix_payment and active_pix_payment.pix_expires_at
+        else None
+    )
+    can_renew_pix = mp_pix.can_renew_pix_now(current, today) and pix_available
+    pix_plan_prices = (
+        {c: p for c, p in plan_prices(current.plan).items() if c in mp.CYCLES}
+        if is_pix_subscription and current and current.plan
+        else {}
+    )
 
     # Progresso do período atual (para o painel de ciclo/renovação)
     cycle_days_left = None
@@ -11003,6 +11040,15 @@ def _customer_subscription_context(db: Session, organization: Organization) -> d
         "total_paid_amount": total_paid_amount,
         "paid_charges_count": len(confirmed_paid),
         "pending_charges_count": pending_charges_count,
+        "is_pix_subscription": is_pix_subscription,
+        "pix_available": pix_available,
+        "active_pix_payment": active_pix_payment,
+        "active_pix_qr_uri": active_pix_qr_uri,
+        "active_pix_expires_local": active_pix_expires_local,
+        "active_pix_expires_iso": active_pix_expires_iso,
+        "active_pix_expired": active_pix_expired,
+        "can_renew_pix": can_renew_pix,
+        "pix_plan_prices": pix_plan_prices,
     }
 
 
@@ -11057,10 +11103,13 @@ def _render_subscribe(request, db, user, csrf_token, plan, *, form=None, error=N
     prices = plan_prices(plan)
     environment = billing_environment()
     mp_active = environment in MERCADOPAGO_ENVIRONMENTS
+    pix_available = mp_pix.pix_checkout_available() if mp_active else False
+    card_available = (not mp.checkout_configuration_error()) if mp_active else False
     if mp_active:
         prices = {cycle: value for cycle, value in prices.items() if cycle in mp.CYCLES}
+    default_billing_type = "PIX" if (mp_active and pix_available and not card_available) else "CREDIT_CARD"
     defaults = {
-        "cycle": "MONTHLY" if "MONTHLY" in prices else next(iter(prices), ""), "billing_type": "CREDIT_CARD",
+        "cycle": "MONTHLY" if "MONTHLY" in prices else next(iter(prices), ""), "billing_type": default_billing_type,
         "person_type": "JURIDICA" if billing and len(billing.cpf_cnpj or "") == 14 else "FISICA",
         "name": (billing.contact_name if billing else organization.name) or "", "cpf_cnpj": (billing.cpf_cnpj if billing else "") or "",
         "email": "" if environment == MERCADOPAGO_TEST else (billing.contact_email if billing else user.email) or "", "mobile_phone": (billing.contact_phone if billing else user.phone) or "",
@@ -11072,12 +11121,14 @@ def _render_subscribe(request, db, user, csrf_token, plan, *, form=None, error=N
         first_due = mp.first_due_date(ent.trial_ends_on, today)
     else:
         first_due = max(ent.trial_ends_on or today, today) if not ent.trial_ended else today
+    checkout_unavailable = (mp.checkout_configuration_error() if not pix_available else None) if mp_active else None
     response = templates.TemplateResponse("subscribe.html", _base_context(
         request, user, csrf_token, "subscribe", title="Contratar plano", _repo=_repository(db),
         selected_plan=plan, selected_prices=prices,
         billing_types=SUBSCRIBE_BILLING_TYPES, form=defaults,
         mp_active=mp_active, sandbox_mp=environment == MERCADOPAGO_TEST,
-        checkout_unavailable=mp.checkout_configuration_error() if mp_active else None,
+        pix_available=pix_available, card_available=card_available,
+        checkout_unavailable=checkout_unavailable,
         price_json={cycle: str(value) for cycle, value in prices.items()}, error=error, first_due=first_due, entitlements=ent,
     ))
     response.status_code = status_code
@@ -11142,6 +11193,51 @@ def subscribe_action(
     settings = get_settings()
     environment = mercadopago_environment(settings)
     if environment:
+        if billing_type == "PIX":
+            if not mp_pix.pix_checkout_available(settings):
+                return fail("O pagamento via Pix está indisponível no momento.")
+            if cycle not in mp.CYCLES:
+                return fail("Escolha a periodicidade mensal ou anual.")
+            email = email.strip().lower()
+            if len(email) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+                return fail("Informe um e-mail válido para a cobrança.")
+            try:
+                plan, price = resolve_plan_selection(db, plan.id, cycle)
+            except PlanValidationError as exc:
+                return fail(str(exc))
+            entitlements = _entitlements_for(db, user)
+            today = today_in_app_timezone()
+            due = mp.first_due_date(entitlements.trial_ends_on, today)
+            try:
+                subscription, payment, reused = mp_pix.reserve_pix_checkout(
+                    db, organization=organization, plan=plan, amount=price,
+                    cycle=cycle, due=due, email=email, environment=environment,
+                )
+                if environment == MERCADOPAGO_LIVE and cancelled_paid_period(db, organization.id, today)[1]:
+                    db.rollback()
+                    return fail("Seu plano segue disponível até o término do período pago.")
+                issues = _plan_limit_issues(db, organization.id, plan)
+                if issues:
+                    db.rollback()
+                    return _incompatible_plan(request, issues)
+                if not reused:
+                    record_commercial_event(
+                        db, user=user, organization_id=organization.id, resource="assinatura", resource_id=subscription.id,
+                        action="aceitar_contratacao_pix", outcome="success",
+                        details={"termos_versao": SUBSCRIPTION_TERMS_VERSION, "provedor": "mercadopago_pix", "ambiente": environment,
+                                 "plano_id": plan.id, "plano_versao": plan.version, "valor": str(price),
+                                 "ciclo": cycle, "primeiro_vencimento": due.isoformat(), "payment_id": payment.id},
+                    )
+                db.commit()
+                if not reused:
+                    mp_pix.create_pix_order_for_payment(db, mp_pix.MercadoPagoPixOrdersAPI(environment, settings), payment)
+            except mp.MercadoPagoError as exc:
+                db.rollback()
+                if str(exc) == "assinatura_existente":
+                    return _customer_target()
+                return fail(mp_pix.pix_error_message(exc))
+            _flash(request, "success", "QR Code Pix gerado! Conclua o pagamento abaixo para ativar seu plano.")
+            return _redirect("/minha-assinatura#pix-pagamento")
         if mp.checkout_configuration_error(settings):
             return fail("A contratação está indisponível no momento.")
         if cycle not in mp.CYCLES:
@@ -11269,10 +11365,265 @@ def _customer_target() -> RedirectResponse:
     return _redirect("/minha-assinatura")
 
 
+@router.get("/minha-assinatura/pix/{payment_id}/status")
+def my_subscription_pix_status(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    if not user.organization_id:
+        raise HTTPException(status_code=403)
+    env = billing_environment()
+    payment = (
+        db.query(OrganizationSubscriptionPayment)
+        .join(OrganizationSubscription, OrganizationSubscription.id == OrganizationSubscriptionPayment.subscription_id)
+        .filter(
+            OrganizationSubscriptionPayment.id == payment_id,
+            OrganizationSubscription.organization_id == user.organization_id,
+            OrganizationSubscription.environment == env,
+            OrganizationSubscriptionPayment.mercadopago_order_reference.isnot(None),
+        )
+        .first()
+    )
+    if not payment:
+        raise HTTPException(status_code=404)
+    expired = bool(
+        payment.status == "EXPIRED"
+        or (payment.status == "PENDING" and payment.pix_expires_at is not None and payment.pix_expires_at <= mp_pix._now())
+    )
+    return JSONResponse(
+        {
+            "payment_id": payment.id,
+            "status": payment.status,
+            "order_status": payment.mercadopago_order_status,
+            "confirmed": payment.status == "CONFIRMED",
+            "expired": expired,
+            "refunded": payment.status == "REFUNDED",
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/minha-assinatura/pix/{payment_id}/sincronizar")
+def sync_my_pix_payment_action(
+    payment_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    if not user.organization_id:
+        raise HTTPException(status_code=403)
+    env = billing_environment()
+    payment = (
+        db.query(OrganizationSubscriptionPayment)
+        .join(OrganizationSubscription, OrganizationSubscription.id == OrganizationSubscriptionPayment.subscription_id)
+        .filter(
+            OrganizationSubscriptionPayment.id == payment_id,
+            OrganizationSubscription.organization_id == user.organization_id,
+            OrganizationSubscription.environment == env,
+            OrganizationSubscriptionPayment.mercadopago_order_reference.isnot(None),
+        )
+        .first()
+    )
+    if not payment:
+        _flash(request, "info", "Cobrança Pix não encontrada.")
+        return _customer_target()
+    try:
+        api = mp_pix.MercadoPagoPixOrdersAPI(env)
+        new_status = mp_pix.reconcile_pix_payment(db, api, payment)
+        db.commit()
+    except mp.MercadoPagoError as exc:
+        db.rollback()
+        _flash(request, "error", mp_pix.pix_error_message(exc))
+    else:
+        if new_status == "CONFIRMED":
+            _flash(request, "success", "Pagamento Pix confirmado! Sua assinatura está ativa.")
+        elif new_status == "EXPIRED":
+            _flash(request, "info", "Este código Pix expirou. Gere um novo código abaixo.")
+        elif new_status == "REFUNDED":
+            _flash(request, "info", "Este pagamento Pix foi estornado.")
+        else:
+            _flash(request, "info", "Pagamento ainda aguardando confirmação pelo banco. Tente novamente em instantes.")
+    return _redirect("/minha-assinatura#pix-pagamento")
+
+
+@router.post("/minha-assinatura/pix/{payment_id}/cancelar")
+def cancel_my_pix_payment_action(
+    payment_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    if not user.organization_id or WRITE_FINANCE not in permission_codes_for_user(db, user):
+        raise HTTPException(status_code=403)
+    env = billing_environment()
+    payment = (
+        db.query(OrganizationSubscriptionPayment)
+        .join(OrganizationSubscription, OrganizationSubscription.id == OrganizationSubscriptionPayment.subscription_id)
+        .filter(
+            OrganizationSubscriptionPayment.id == payment_id,
+            OrganizationSubscription.organization_id == user.organization_id,
+            OrganizationSubscription.environment == env,
+            OrganizationSubscriptionPayment.mercadopago_order_reference.isnot(None),
+        )
+        .first()
+    )
+    if not payment:
+        _flash(request, "info", "Cobrança Pix não encontrada.")
+        return _customer_target()
+    try:
+        api = mp_pix.MercadoPagoPixOrdersAPI(env)
+        status_after = mp_pix.cancel_pix_payment(db, api, payment)
+        record_commercial_event(
+            db, user=user, organization_id=user.organization_id, resource="assinatura",
+            resource_id=payment.subscription_id, action="cancelar_pix", outcome="success",
+            details={"provedor": "mercadopago_pix", "ambiente": env, "payment_id": payment.id, "status": status_after},
+        )
+        db.commit()
+    except mp.MercadoPagoError as exc:
+        db.rollback()
+        _flash(request, "error", mp_pix.pix_error_message(exc))
+    else:
+        if status_after == "CONFIRMED":
+            _flash(request, "success", "O Pix já havia sido pago e sua assinatura foi confirmada.")
+        else:
+            _flash(request, "success", "Código Pix pendente cancelado.")
+    return _redirect("/minha-assinatura#pix-pagamento")
+
+
+@router.post("/minha-assinatura/pix/gerar")
+def generate_pix_renewal_or_retry_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    cycle: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    if not user.organization_id or WRITE_FINANCE not in permission_codes_for_user(db, user):
+        raise HTTPException(status_code=403)
+    env = billing_environment()
+    if not mp_pix.pix_active_for_environment(env):
+        _flash(request, "error", "O pagamento via Pix está indisponível no momento.")
+        return _customer_target()
+    subscription = db.query(OrganizationSubscription).filter_by(
+        organization_id=user.organization_id, environment=env, is_current=True,
+    ).first()
+    if not subscription or not mp_pix.is_pix_order_subscription(subscription) or not subscription.plan_id:
+        _flash(request, "info", "Nenhuma assinatura Pix disponível para gerar cobrança.")
+        return _customer_target()
+    selected_cycle = cycle if cycle in mp.CYCLES else subscription.cycle
+    try:
+        plan, price = resolve_plan_selection(db, subscription.plan_id, selected_cycle)
+    except PlanValidationError as exc:
+        _flash(request, "error", str(exc))
+        return _customer_target()
+    today = today_in_app_timezone()
+    if subscription.mercadopago_status in {None, "pending"}:
+        charge_kind = "contratacao"
+    elif mp_pix.can_renew_pix_now(subscription, today) or _entitlements_for(db, user).days_overdue > 0:
+        charge_kind = "renovacao"
+    else:
+        _flash(request, "info", "A renovação via Pix fica disponível a partir de 7 dias antes do vencimento.")
+        return _customer_target()
+    try:
+        payment, reused, to_cancel = mp_pix.reserve_pix_charge_for_subscription(
+            db, subscription=subscription, plan=plan, amount=price, cycle=selected_cycle, charge_kind=charge_kind,
+        )
+        if not reused:
+            record_commercial_event(
+                db, user=user, organization_id=user.organization_id, resource="assinatura",
+                resource_id=subscription.id, action=f"gerar_pix_{charge_kind}", outcome="success",
+                details={"provedor": "mercadopago_pix", "ambiente": env, "plano_id": plan.id,
+                         "ciclo": selected_cycle, "valor": str(price), "payment_id": payment.id},
+            )
+        db.commit()
+        if not reused:
+            mp_pix.create_pix_order_for_payment(
+                db, mp_pix.MercadoPagoPixOrdersAPI(env), payment, cancel_previous=to_cancel,
+            )
+    except mp.MercadoPagoError as exc:
+        db.rollback()
+        _flash(request, "error", mp_pix.pix_error_message(exc))
+        return _customer_target()
+    _flash(request, "success", "QR Code Pix pronto para pagamento.")
+    return _redirect("/minha-assinatura#pix-pagamento")
+
+
+@router.post("/minha-assinatura/pix/alterar-plano")
+def change_pix_plan_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    plan_id: str = Form(""),
+    cycle: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    if not user.organization_id or WRITE_FINANCE not in permission_codes_for_user(db, user):
+        _flash(request, "error", "Somente um responsável financeiro pode alterar o plano.")
+        return _redirect("/planos-disponiveis")
+    env = billing_environment()
+    if not mp_pix.pix_active_for_environment(env):
+        _flash(request, "error", "O pagamento via Pix está indisponível no momento.")
+        return _redirect("/planos-disponiveis")
+    subscription = _current_commercial_subscription(db, user.organization_id)
+    if (
+        not subscription
+        or not mp_pix.is_pix_order_subscription(subscription)
+        or subscription.mercadopago_status != "authorized"
+        or not has_confirmed_subscription_payment(db, subscription.id)
+    ):
+        _flash(request, "error", "A alteração direta via Pix está disponível apenas para assinaturas Pix ativas.")
+        return _redirect("/planos-disponiveis")
+    plan = _subscription_catalog_plan(db, plan_id)
+    if not plan or cycle not in mp.CYCLES:
+        _flash(request, "error", "Escolha um plano e uma periodicidade mensal ou anual.")
+        return _redirect("/planos-disponiveis")
+    try:
+        plan, price = resolve_plan_selection(db, plan.id, cycle)
+    except PlanValidationError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/planos-disponiveis")
+    if plan.id == subscription.plan_id and cycle == subscription.cycle:
+        _flash(request, "info", "Este plano e periodicidade já estão ativos na sua assinatura.")
+        return _redirect("/planos-disponiveis")
+    issues = _plan_limit_issues(db, user.organization_id, plan)
+    if issues:
+        return _incompatible_plan(request, issues)
+    try:
+        payment, reused, to_cancel = mp_pix.reserve_pix_charge_for_subscription(
+            db, subscription=subscription, plan=plan, amount=price, cycle=cycle, charge_kind="alteracao_plano",
+        )
+        if not reused:
+            record_commercial_event(
+                db, user=user, organization_id=user.organization_id, resource="assinatura",
+                resource_id=subscription.id, action="alterar_plano_pix", outcome="success",
+                details={"provedor": "mercadopago_pix", "ambiente": env, "plano_anterior_id": subscription.plan_id,
+                         "plano_novo_id": plan.id, "ciclo": cycle, "valor": str(price), "payment_id": payment.id},
+            )
+        db.commit()
+        if not reused:
+            mp_pix.create_pix_order_for_payment(
+                db, mp_pix.MercadoPagoPixOrdersAPI(env), payment, cancel_previous=to_cancel,
+            )
+    except mp.MercadoPagoError as exc:
+        db.rollback()
+        _flash(request, "error", mp_pix.pix_error_message(exc))
+        return _redirect("/planos-disponiveis")
+    _flash(request, "success", f"QR Code Pix gerado para mudar para {plan.name}. O novo plano ativa assim que o pagamento for confirmado.")
+    return _redirect("/minha-assinatura#pix-pagamento")
+
+
 @router.post("/minha-assinatura/mercadopago")
 @router.post("/assinaturas/{organization_id}/mercadopago")
 def manage_mercadopago_subscription(
     request: Request, action: str = Form(...), csrf_token: str = Form(...), subscription_id: int = Form(...),
+    payment_id: int | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -11292,7 +11643,7 @@ def manage_mercadopago_subscription(
             raise HTTPException(status_code=403)
     target = _grant_target(organization_id) if admin_operation else _customer_target()
     actions = {"cancelar": "canceled", "pausar": "paused", "reativar": "authorized"}
-    admin_only_actions = set(actions) | {"liberar"}
+    admin_only_actions = set(actions) | {"liberar", "estornar_pix", "cancelar_pix"}
     if action not in {"sincronizar", "cancelar"} and (not admin_operation or action not in admin_only_actions):
         raise HTTPException(status_code=400, detail="Ação de assinatura inválida")
     environment = mercadopago_environment()
@@ -11301,11 +11652,53 @@ def manage_mercadopago_subscription(
     subscription_query = db.query(OrganizationSubscription).filter_by(
         id=subscription_id, organization_id=organization_id, environment=environment,
     )
-    if action != "sincronizar" or not admin_operation:
+    if action not in {"sincronizar", "estornar_pix", "cancelar_pix"} or not admin_operation:
         subscription_query = subscription_query.filter_by(is_current=True)
     row = subscription_query.with_for_update().first()
     if not row:
         _flash(request, "info", "Nenhuma assinatura disponível para esta operação.")
+        return target
+    if mp_pix.is_pix_order_subscription(row):
+        try:
+            if action == "sincronizar":
+                mp_pix.reconcile_pix_subscription(db, mp_pix.MercadoPagoPixOrdersAPI(environment), row)
+            elif action == "cancelar":
+                pix_api = mp_pix.MercadoPagoPixOrdersAPI(environment) if mp_pix.pix_active_for_environment(environment) else None
+                mp_pix.cancel_pix_subscription(db, pix_api, row)
+            elif action in {"pausar", "reativar"}:
+                mp_pix.pause_or_resume_pix_subscription(db, row, actions[action])
+            elif action in {"estornar_pix", "cancelar_pix"}:
+                if not payment_id:
+                    raise mp.MercadoPagoError("acao_indisponivel")
+                pay_row = db.query(OrganizationSubscriptionPayment).filter_by(id=payment_id, subscription_id=row.id).first()
+                if not pay_row:
+                    raise mp.MercadoPagoError("acao_indisponivel")
+                pix_api = mp_pix.MercadoPagoPixOrdersAPI(environment)
+                if action == "estornar_pix":
+                    mp_pix.refund_pix_payment(db, pix_api, pay_row)
+                else:
+                    mp_pix.cancel_pix_payment(db, pix_api, pay_row)
+            else:
+                raise mp.MercadoPagoError("acao_indisponivel")
+            record_commercial_event(
+                db, user=user, organization_id=organization_id, resource="assinatura",
+                resource_id=row.id, action=action, outcome="partial" if action == "sincronizar" and row.sync_issue else "success",
+                details={"provedor": "mercadopago_pix", "ambiente": environment, "payment_id": payment_id},
+            )
+            db.commit()
+        except mp.MercadoPagoError as exc:
+            db.rollback()
+            mp_pix.logger.warning("Mercado Pago Pix: ambiente=%s organização=%s ação=%s erro=%s", environment, organization_id, action, exc)
+            _flash(request, "error", mp_pix.pix_error_message(exc))
+        else:
+            if action == "estornar_pix":
+                _flash(request, "success", "Estorno Pix solicitado e confirmado na API de Orders.")
+            elif action == "cancelar_pix":
+                _flash(request, "success", "Cobrança Pix pendente cancelada.")
+            elif action == "sincronizar" and row.sync_issue:
+                _flash(request, "info", "A situação da assinatura Pix foi consultada com pendências de sincronização.")
+            else:
+                _flash(request, "success", "Assinatura Pix atualizada.")
         return target
     try:
         api = mp.MercadoPagoAPI()
@@ -11488,10 +11881,18 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
     organization_id = user.organization_id
     recorded = _current_commercial_subscription(db, organization_id)
     recorded_plan_id = effective_plan_id(recorded, today_in_app_timezone())
-    confirmed = bool(recorded and (recorded.asaas_subscription_id or recorded.mercadopago_id)
+    confirmed = bool(recorded and (recorded.asaas_subscription_id or recorded.mercadopago_id or mp_pix.is_pix_order_subscription(recorded))
                      and has_confirmed_subscription_payment(db, recorded.id))
     subscription = recorded if confirmed and _subscription_can_change(db, recorded) else None
     mp_active = billing_environment() in MERCADOPAGO_ENVIRONMENTS
+    can_change_pix_plan = bool(
+        mp_active
+        and recorded
+        and confirmed
+        and mp_pix.is_pix_order_subscription(recorded)
+        and recorded.mercadopago_status == "authorized"
+        and mp_pix.pix_active_for_environment()
+    )
     catalog = [plan for plan in active_plans(db) if not mp_active or mp.CYCLES.keys() & plan_prices(plan).keys()]
     if recorded_plan_id and all(plan.id != recorded_plan_id for plan in catalog):
         recorded_plan = db.get(SubscriptionPlan, recorded_plan_id)
@@ -11500,7 +11901,7 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
     ordered = sorted(catalog, key=lambda plan: (0 if module_code and module_code in plan_modules(plan) else 1, plan.display_order, plan.name.lower()))
     can_write_finance = WRITE_FINANCE in permission_codes_for_user(db, user)
     can_subscribe = (bool(organization_id) and can_write_finance and not _subscribe_blocker(db, organization_id)
-                     and (not mp_active or not mp.checkout_configuration_error()))
+                     and (not mp_active or not mp.checkout_configuration_error() or mp_pix.pix_checkout_available()))
     trial_plan_id = entitlements.plan_id if entitlements.trial_ends_on and not entitlements.trial_ended else None
     current_modules = set(plan_modules(subscription.plan)) if subscription and subscription.plan else set()
     prices_fn = (lambda plan: {cycle: price for cycle, price in plan_prices(plan).items() if cycle in mp.CYCLES}) if mp_active else plan_prices
@@ -11534,7 +11935,9 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
 
     return templates.TemplateResponse("plan_upgrade.html", _base_context(
         request, user, csrf_token, "plan_upgrade", current_subscription=subscription, current_modules=current_modules,
-        can_change_plan=bool(subscription) and can_write_finance, can_subscribe=can_subscribe,
+        can_change_plan=bool(subscription) and can_write_finance,
+        can_change_pix_plan=can_change_pix_plan and can_write_finance,
+        can_subscribe=can_subscribe,
         trial_plan_id=trial_plan_id, recorded_plan_id=recorded_plan_id,
         current_plan_id=recorded_plan_id if confirmed else None, awaiting_first_payment=bool(recorded and not confirmed),
         plan_limit_issues={plan.id: _plan_limit_issues(db, organization_id, plan) for plan in ordered} if organization_id else {},

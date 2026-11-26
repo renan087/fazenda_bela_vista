@@ -92,6 +92,16 @@ class Settings(BaseSettings):
     mercadopago_live_seller_id: int | None = None
     mercadopago_live_access_token: str | None = None
     mercadopago_live_webhook_secret: str | None = None
+    # Mercado Pago Pix (aplicação independente via Checkout Transparente / API de Orders).
+    mercadopago_pix_enabled: bool = False
+    mercadopago_pix_application_id: str = "7441327382083069"
+    mercadopago_pix_seller_id: int = 82986976
+    mercadopago_pix_access_token: str | None = None
+    mercadopago_pix_public_key: str | None = None
+    mercadopago_pix_webhook_secret: str | None = None
+    mercadopago_pix_test_access_token: str | None = None
+    mercadopago_pix_test_public_key: str | None = None
+    mercadopago_pix_test_webhook_secret: str | None = None
     # Chave mestra do cofre de certificados A1 (AES-256-GCM). Mínimo 32 caracteres; nunca vai ao banco.
     # Não troque depois de enviar certificados: os já guardados deixam de abrir.
     nfe_cert_master_key: str | None = None

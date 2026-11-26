@@ -228,6 +228,94 @@ def process_trial_notices(db, today: date, *, send=send_plain_email) -> list[tup
     return delivered
 
 
+def pix_renewal_reminder_kind(next_due: date, today: date, already_sent: set[str]) -> str | None:
+    """Lembretes de renovação para assinaturas Pix (sem recorrência automática): 7d, 3d e no dia."""
+    days_left = (next_due - today).days
+    if days_left == 0 and "pix_renovacao_hoje" not in already_sent:
+        return "pix_renovacao_hoje"
+    if 1 <= days_left <= 3 and "pix_renovacao_3d" not in already_sent:
+        return "pix_renovacao_3d"
+    if 4 <= days_left <= 7 and "pix_renovacao_7d" not in already_sent:
+        return "pix_renovacao_7d"
+    return None
+
+
+def compose_pix_renewal_reminder(kind: str, *, organization: Organization, subscription: OrganizationSubscription) -> tuple[str, str]:
+    link = f"{app_public_base()}/minha-assinatura"
+    due = subscription.next_due_date.strftime("%d/%m/%Y") if subscription.next_due_date else "-"
+    value = f"R$ {_money(subscription.amount)}"
+    if kind == "pix_renovacao_hoje":
+        subject = f"SiSFarm: sua assinatura Pix vence hoje ({due})"
+        lead = f"O ciclo do plano {subscription.plan_name} da {organization.name} vence hoje ({due})."
+    elif kind == "pix_renovacao_3d":
+        subject = f"SiSFarm: sua assinatura Pix vence em breve ({due})"
+        lead = f"Faltam poucos dias para o vencimento do plano {subscription.plan_name} da {organization.name}, em {due}."
+    else:
+        subject = f"SiSFarm: lembrete de renovação do plano ({due})"
+        lead = f"O período atual do plano {subscription.plan_name} da {organization.name} termina em {due}."
+    body = (
+        f"Olá,\n\n{lead}\n"
+        f"Como o pagamento por Pix não é cobrado automaticamente, gere o novo QR Code Pix ({value}) quando preferir "
+        "para continuar usando o SiSFarm sem interrupções:\n"
+        f"{link}\n\n"
+        "Se você já renovou, desconsidere esta mensagem.\n\nEquipe SiSFarm"
+    )
+    return subject, body
+
+
+def process_pix_renewal_reminders(db, today: date, *, send=send_plain_email) -> list[tuple[int, str]]:
+    """Envia lembretes antecipados de renovação para assinaturas Pix ativas em produção."""
+    if billing_environment() != MERCADOPAGO_LIVE:
+        return []
+    subscriptions = (
+        db.query(OrganizationSubscription)
+        .filter(
+            OrganizationSubscription.environment == MERCADOPAGO_LIVE,
+            OrganizationSubscription.is_current.is_(True),
+            OrganizationSubscription.mercadopago_status == "authorized",
+            OrganizationSubscription.mercadopago_reference.like("sisfarm-pix-live-%"),
+            OrganizationSubscription.next_due_date.isnot(None),
+            OrganizationSubscription.next_due_date >= today,
+            OrganizationSubscription.next_due_date <= today + timedelta(days=7),
+        )
+        .all()
+    )
+    delivered: list[tuple[int, str]] = []
+    for subscription in subscriptions:
+        recipient = (subscription.mercadopago_payer_email or "").strip()
+        if not recipient:
+            continue
+        organization = db.get(Organization, subscription.organization_id)
+        if not organization or organization.archived_at or not organization.is_active:
+            continue
+        settled = latest_settled_subscription_payment(db, subscription.id)
+        if not settled or settled.status not in PAID:
+            continue
+        sent = {row.kind for row in db.query(SubscriptionNotice.kind).filter_by(payment_id=settled.id).all()}
+        kind = pix_renewal_reminder_kind(subscription.next_due_date, today, sent)
+        if not kind:
+            continue
+        subject, body = compose_pix_renewal_reminder(kind, organization=organization, subscription=subscription)
+        notice = SubscriptionNotice(
+            organization_id=organization.id, payment_id=settled.id, kind=kind, recipient=recipient, outcome="enviando",
+        )
+        db.add(notice)
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            continue
+        try:
+            send(recipient, subject, body, "lembrete de renovação Pix")
+            notice.outcome = "enviado"
+            delivered.append((organization.id, kind))
+        except Exception:
+            logger.exception("Falha ao enviar lembrete Pix %s da organização %s", kind, organization.id)
+            db.delete(notice)
+        db.commit()
+    return delivered
+
+
 def _tick() -> None:
     if app_now().hour not in BUSINESS_HOURS:
         return
@@ -241,6 +329,13 @@ def _tick() -> None:
     environment = billing_environment()
     if environment == MERCADOPAGO_TEST:
         return
+    if environment == MERCADOPAGO_LIVE:
+        with SessionLocal() as db:
+            try:
+                process_pix_renewal_reminders(db, today)
+            except Exception:
+                db.rollback()
+                logger.exception("Falha ao processar lembretes de renovação Pix")
     with SessionLocal() as db:
         organization_ids = [row[0] for row in db.query(OrganizationSubscription.organization_id).filter_by(environment=environment).distinct().all()]
     for organization_id in organization_ids:

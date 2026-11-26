@@ -80,7 +80,8 @@ def confirmed_plan_for_usage(db: Session, organization_id: int, today) -> Subscr
         organization_id=organization_id, environment=billing_environment(), is_current=True,
     ).first()
     if (not subscription or subscription.billing_status != "ACTIVE"
-            or not (subscription.asaas_subscription_id or subscription.mercadopago_id)
+            or not (subscription.asaas_subscription_id or subscription.mercadopago_id
+                    or (subscription.mercadopago_reference or "").startswith(("sisfarm-pix-live-", "sisfarm-pix-test-")))
             or not has_confirmed_subscription_payment(db, subscription.id)):
         return None
     plan_id = effective_plan_id(subscription, today)

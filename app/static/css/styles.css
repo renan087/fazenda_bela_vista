@@ -12601,3 +12601,47 @@ b.fc-filled { animation: none; color: #1f7a3a; }
 @media (prefers-reduced-motion: reduce) {
     .og-drawer, .og-drawer-backdrop, .og-hover-tip, .og-meter > i, .og-collapse-btn svg { transition:none; }
 }
+
+/* ===== Pix Orders (Minha assinatura / Checkout Pix) ===== */
+.px-panel { display:flex; flex-direction:column; gap:18px; border-color:#CFE0C9; background:linear-gradient(180deg, #FFFFFF 0%, #FAFDF9 100%); }
+.px-head { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:14px; }
+.px-head-meta { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+.px-amount { font-size:1.5rem; line-height:1.15; font-weight:700; color:#16201A; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; }
+.px-grid { display:grid; grid-template-columns:240px minmax(0, 1fr); gap:20px; align-items:start; }
+.px-qr-col { display:flex; flex-direction:column; align-items:center; gap:10px; }
+.px-qr-frame { background:#FFFFFF; border:1px solid #E3E8E2; border-radius:16px; padding:12px; display:flex; align-items:center; justify-content:center; width:100%; max-width:240px; }
+.px-qr-img { display:block; width:100%; height:auto; max-width:216px; border-radius:8px; }
+.px-expiry { text-align:center; display:flex; flex-direction:column; gap:3px; font-size:12.5px; color:#5B6660; }
+.px-countdown { display:inline-block; font-weight:700; color:#446A36; background:#EEF3EB; padding:3px 10px; border-radius:999px; font-size:12px; margin:2px auto 0; }
+.px-copy-col { display:flex; flex-direction:column; gap:14px; min-width:0; }
+.px-steps { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; font-size:13.5px; color:#334139; }
+.px-steps li { display:flex; align-items:flex-start; gap:10px; }
+.px-steps li span { flex:0 0 22px; height:22px; border-radius:999px; background:#EEF3EB; color:#294127; font-weight:700; font-size:12px; display:inline-flex; align-items:center; justify-content:center; margin-top:1px; }
+.px-code-box { background:#F6F8F5; border:1px solid #E3E8E2; border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+.px-code-label { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:#5B6660; }
+.px-code-field { width:100%; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:12.5px; color:#16201A; background:#FFFFFF; border:1px solid #D6DDD5; border-radius:10px; padding:10px 12px; resize:none; word-break:break-all; }
+.px-code-field:focus-visible { outline:2px solid #446A36; outline-offset:2px; }
+.px-copy-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+.px-copy-btn { min-height:2.75rem; }
+.px-inline-form { display:inline-flex; }
+.px-live-feedback { margin:0; font-size:13px; min-height:1.1em; color:#5B6660; }
+.px-live-feedback.is-ok { color:#1F7A3A; font-weight:600; }
+.px-live-feedback.is-warn { color:#7A4F00; font-weight:600; }
+.px-secondary-links { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding-top:4px; }
+.px-text-danger { background:none; border:0; padding:6px 0; min-height:44px; font-size:13px; font-weight:600; color:#B42318; cursor:pointer; }
+.px-text-danger:hover { text-decoration:underline; }
+.px-expired-fallback { padding:14px; border-radius:14px; border:1px solid #F0D9A6; background:#FFF6E5; color:#7A4F00; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; font-size:13.5px; }
+.px-expired-fallback p { margin:0; }
+.px-actions-row { display:flex; flex-wrap:wrap; gap:10px; }
+.px-renew-form { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px; padding-top:4px; }
+.px-cycle-choices { display:flex; flex-wrap:wrap; gap:8px; }
+.px-cycle-opt { display:inline-flex; align-items:center; gap:8px; min-height:44px; padding:8px 14px; border-radius:12px; border:1px solid #D6DDD5; background:#FFFFFF; cursor:pointer; font-size:13.5px; color:#16201A; }
+.px-cycle-opt:has(input:checked) { border-color:#446A36; background:#EEF3EB; color:#294127; }
+.px-cycle-opt input { accent-color:#446A36; }
+
+@media (max-width: 720px) {
+    .px-grid { grid-template-columns:1fr; }
+    .px-head-meta { align-items:flex-start; }
+    .px-copy-actions, .px-actions-row, .px-renew-form { flex-direction:column; align-items:stretch; }
+    .px-copy-actions .sf-btn, .px-copy-actions .px-inline-form, .px-copy-actions .px-inline-form .sf-btn, .px-renew-form .sf-btn { width:100%; justify-content:center; }
+}

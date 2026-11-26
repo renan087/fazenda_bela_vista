@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.models import MercadoPagoEvent
 from app.services.billing_environment import MERCADOPAGO_LIVE, MERCADOPAGO_TEST, mercadopago_environment
+from app.services.mercadopago_pix_orders import pix_event_environment, pix_webhook_available
 from app.services.mercadopago_subscriptions import TOPICS, configuration_error, resource_id
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,52 @@ def _enqueue(db, environment, topic, identifier, key, request_key):
             raise
         return
     logger.info("Mercado Pago: webhook recebido ambiente=%s tópico=%s recurso=%s", environment, topic, identifier)
+
+
+@router.post("/pix/test")
+async def mercadopago_pix_test_webhook(request: Request, db: Session = Depends(get_db)):
+    return await _pix_webhook(request, db, MERCADOPAGO_TEST)
+
+
+@router.post("/pix")
+async def mercadopago_pix_live_webhook(request: Request, db: Session = Depends(get_db)):
+    return await _pix_webhook(request, db, MERCADOPAGO_LIVE)
+
+
+async def _pix_webhook(request: Request, db: Session, environment: str):
+    """Recebe notificações de Order (Pix) da aplicação independente SiSFarm Pix."""
+    settings = get_settings()
+    if not pix_webhook_available(environment, settings):
+        raise HTTPException(status_code=503, detail="Webhook Pix indisponível neste ambiente")
+    secret = (
+        settings.mercadopago_pix_webhook_secret
+        if environment == MERCADOPAGO_LIVE
+        else settings.mercadopago_pix_test_webhook_secret
+    )
+    identifiers = request.query_params.getlist("data.id")
+    identifier = resource_id(identifiers[0]) if len(identifiers) == 1 else None
+    request_id = request.headers.get("x-request-id", "")
+    signature = request.headers.get("x-signature", "")
+    if not identifier or not secret or not _signature_valid(secret.strip(), signature, request_id, identifier):
+        raise HTTPException(status_code=401, detail="Assinatura da notificação Pix inválida")
+    try:
+        body = await request.json()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Notificação inválida") from None
+    data = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(data, dict) or resource_id(data.get("id")) != identifier:
+        raise HTTPException(status_code=400, detail="Recurso da notificação divergente")
+    topic = str(body.get("type") or "").strip().lower()
+    if topic not in {"order", "orders"}:
+        return {"received": True}
+    event_id = resource_id(body.get("id")) or request_id
+    date_created = str(body.get("date_created") or body.get("date") or "")[:64]
+    action = str(body.get("action") or "")[:64]
+    prefix = "pix-live:" if environment == MERCADOPAGO_LIVE else "pix-test:"
+    key = hashlib.sha256(f"{prefix}order:{identifier}:{event_id}:{date_created}:{action}".encode()).hexdigest()
+    request_key = hashlib.sha256(f"{prefix}{identifier}:{request_id}".encode()).hexdigest()
+    await run_in_threadpool(_enqueue, db, pix_event_environment(environment), "order", identifier, key, request_key)
+    return {"received": True}
 
 
 @router.post("/test")

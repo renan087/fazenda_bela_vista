@@ -57,7 +57,7 @@
 {% set provider = 'Mercado Pago' if mp_active else 'Asaas' %}
 {% set can_pay = subscription_display and subscription_display.payment_url and (not mp_active or can_change_payment) %}
 {% set can_sync = mp_active and subscription and can_change_payment %}
-{% set can_cancel = can_sync and subscription.mercadopago_id %}
+{% set can_cancel = can_sync and (subscription.mercadopago_id or is_pix_subscription) %}
 {% set can_manage = can_cancel or (not mp_active and subscription and can_change_payment and support_email) or contracted %}
 {% set show_open_charges_link = open_charges and state in ['overdue', 'pending'] %}
 {% set progress = cycle_progress|default({'days_left': none, 'percent': none}) %}
@@ -120,7 +120,7 @@
         <div class="ms-card-head">
             <div>
                 <h2 class="ms-subtitle">Forma de pagamento</h2>
-                <p class="ms-copy">{{ 'Última forma utilizada' if paid_until else 'Cobrança recorrente' }}</p>
+                <p class="ms-copy">{{ 'Última forma utilizada' if paid_until else ('Pagamento por ciclo via Pix' if is_pix_subscription else 'Cobrança recorrente') }}</p>
             </div>
             {% if contracted %}
             <span class="ms-provider-pill">{{ provider }}{% if sandbox_mp %} · Teste{% endif %}</span>
@@ -138,13 +138,15 @@
                 •••• •••• •••• {{ card_on_file.card_last4 }}
                 {% elif has_active_card %}
                 Cartão de crédito ativo
+                {% elif is_pix_subscription %}
+                Pix · Pagamento por ciclo
                 {% else %}
                 {{ method_label }}
                 {% endif %}
             </div>
             <div class="ms-pay-visual-foot">
                 <span>{{ organization.name }}</span>
-                <span>{{ 'Recorrência encerrada' if paid_until else ('Ativo' if state == 'active' else 'Configurado') }}</span>
+                <span>{{ 'Renovação encerrada' if paid_until else ('Sem débito automático' if is_pix_subscription else ('Ativo' if state == 'active' else 'Configurado')) }}</span>
             </div>
         </div>
         {% else %}
@@ -158,7 +160,9 @@
     <div class="ms-pay-panel-foot">
         <span class="ms-shield-note">{{ icon('shield') }}Dados protegidos</span>
         {% if subscription %}
-            {% if mp_active and can_change_payment %}
+            {% if is_pix_subscription and can_change_payment %}
+            <a href="#pix-pagamento" class="ms-link">Gerenciar Pix →</a>
+            {% elif mp_active and can_change_payment %}
             <a href="https://www.mercadopago.com.br/subscriptions" target="_blank" rel="noopener noreferrer" class="ms-link">{{ icon('external') }}Gerenciar no Mercado Pago</a>
             {% elif not mp_active %}
             <button type="button" data-dialog-open="payment-method-dialog" class="ms-link">{{ 'Acompanhar troca de cartão' if card_migration else ('Gerenciar cartão →' if can_change_payment else 'Ver forma de pagamento') }}</button>
@@ -353,6 +357,10 @@
 
     <!-- ABA 1: VISAO GERAL -->
     <div class="ms-view" id="visao-geral" data-subscription-overview>
+        {% if is_pix_subscription and (active_pix_payment or active_pix_expired or can_renew_pix or state in ['pending', 'overdue']) %}
+            {% include "partials/pix_payment_panel.html" %}
+        {% endif %}
+
         <!-- Card Hero do Plano + Painel de Ciclo -->
         <section class="ms-card ms-hero{% if renews_on or first_due or access_through or trial %} ms-hero-split{% endif %}"{% if state %} data-status="{{ state }}"{% endif %} aria-labelledby="ms-plan-title">
             <div class="ms-hero-main">
@@ -433,7 +441,7 @@
                             {% if access_through %}Renovação automática desligada
                             {% elif first_due %}Aguardando confirmação pelo {{ provider }}
                             {% elif renews_on %}
-                                {{ 'Cobrança automática' if subscription.billing_type == 'CREDIT_CARD' else 'Cobrança recorrente' }}
+                                {{ 'Cobrança automática' if subscription.billing_type == 'CREDIT_CARD' else ('Renovação manual via Pix' if is_pix_subscription else 'Cobrança recorrente') }}
                                 {% if progress.days_left is not none %} · faltam {{ progress.days_left }} {{ 'dia' if progress.days_left == 1 else 'dias' }}{% endif %}
                             {% elif trial %}
                                 {% if progress.days_left is not none %}Faltam {{ progress.days_left }} {{ 'dia' if progress.days_left == 1 else 'dias' }} de avaliação{% else %}Acesso temporário{% endif %}
@@ -591,7 +599,9 @@
                 <div class="ms-kpi-foot">
                     <span>{{ provider if contracted else 'Disponível ao contratar' }}</span>
                     {% if subscription %}
-                        {% if mp_active and can_change_payment %}
+                        {% if is_pix_subscription and can_change_payment %}
+                        <a href="#pix-pagamento" class="ms-inline-cta">Ver Pix</a>
+                        {% elif mp_active and can_change_payment %}
                         <a href="https://www.mercadopago.com.br/subscriptions" target="_blank" rel="noopener noreferrer" class="ms-inline-cta">Gerenciar</a>
                         {% elif not mp_active %}
                         <button type="button" data-dialog-open="payment-method-dialog" class="ms-inline-cta">{{ 'Acompanhar' if card_migration else 'Trocar' }}</button>
@@ -796,7 +806,7 @@
             </header>
             <div class="ms-dialog-content">
                 <div class="ms-banner ms-banner-warn" role="alert">
-                    <div>O cancelamento encerra a recorrência no Mercado Pago. Seus dados da fazenda não são excluídos.</div>
+                    <div>{{ 'O cancelamento encerra esta assinatura Pix e cancela eventuais códigos Pix pendentes. Seus dados da fazenda não são excluídos.' if is_pix_subscription else 'O cancelamento encerra a recorrência no Mercado Pago. Seus dados da fazenda não são excluídos.' }}</div>
                 </div>
                 {% if cancellation_period_end %}
                 <dl class="ms-summary-dl">

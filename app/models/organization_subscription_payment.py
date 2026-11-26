@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, func, text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -15,6 +15,15 @@ class OrganizationSubscriptionPayment(Base):
     asaas_payment_id: Mapped[str | None] = mapped_column(String(80), unique=True, index=True)
     mercadopago_invoice_id: Mapped[str | None] = mapped_column(String(80), unique=True)
     mercadopago_payment_id: Mapped[str | None] = mapped_column(String(80), unique=True)
+    mercadopago_order_id: Mapped[str | None] = mapped_column(String(80), unique=True)
+    mercadopago_order_reference: Mapped[str | None] = mapped_column(String(64), unique=True)
+    mercadopago_order_status: Mapped[str | None] = mapped_column(String(40))
+    pix_qr_code: Mapped[str | None] = mapped_column(Text)
+    pix_qr_code_base64: Mapped[str | None] = mapped_column(Text)
+    pix_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
+    charge_kind: Mapped[str | None] = mapped_column(String(24))
+    target_plan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("subscription_plans.id", ondelete="RESTRICT"), nullable=True)
+    target_cycle: Mapped[str | None] = mapped_column(String(20), nullable=True)
     refunded_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     status: Mapped[str] = mapped_column(String(40), nullable=False)
     billing_type: Mapped[str | None] = mapped_column(String(30), nullable=True)

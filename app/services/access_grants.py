@@ -188,9 +188,11 @@ def _cycle_end(start: date, cycle: str) -> date:
 
 
 def subscription_renewal_due(subscription: OrganizationSubscription, payment: OrganizationSubscriptionPayment | None) -> date | None:
-    """Próxima data esperada de renovação, respeitando variações de meses (28/29/30/31 dias)."""
+    """Próxima data esperada de renovação, respeitando variações de meses (28/29/30/31 dias) e ciclos Pix."""
     if not payment:
         return None
+    if (subscription.mercadopago_reference or "").startswith(("sisfarm-pix-live-", "sisfarm-pix-test-")) and subscription.next_due_date:
+        return subscription.next_due_date
     start = payment.due_date or payment.paid_date
     if not start:
         return None

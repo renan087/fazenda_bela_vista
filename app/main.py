@@ -37,6 +37,7 @@ from app.services.backup_service import run_backup_automation_loop, run_backup_r
 from app.services.coffee_quotes import seed_cepea_coffee_quotes_from_bundle
 from app.services.coffee_quote_sync_service import run_coffee_quote_sync_loop
 from app.services.asaas_card_migration_worker import run_card_migration_loop
+from app.services.mercadopago_pix_orders import run_mercadopago_pix_loop
 from app.services.mercadopago_subscriptions import run_mercadopago_loop
 from app.services.subscription_reconciliation import run_subscription_reconciliation_loop
 from app.services.billing_notices import run_billing_notice_loop
@@ -107,6 +108,8 @@ async def lifespan(app: FastAPI):
             asyncio.create_task(run_card_migration_loop()),
             asyncio.create_task(run_subscription_reconciliation_loop()),
         ])
+    if settings.mercadopago_pix_enabled or (settings.mercadopago_pix_test_access_token or "").strip():
+        background_tasks.append(asyncio.create_task(run_mercadopago_pix_loop()))
     if settings.coffee_quote_sync_enabled:
         background_tasks.append(asyncio.create_task(run_coffee_quote_sync_loop()))
     if settings.memory_monitor_enabled:
