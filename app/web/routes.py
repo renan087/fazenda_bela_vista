@@ -10930,6 +10930,53 @@ def _customer_subscription_context(db: Session, organization: Organization) -> d
         if end and end > today:
             cancellation_period_end = end
     module_labels = dict(PLAN_MODULES)
+    grant = active_grant(db, organization.id, today)
+    display = _customer_subscription_display(current, migration, charges, today)
+    state = display["state"] if display else ""
+
+    # Progresso do período atual (para o painel de ciclo/renovação)
+    cycle_days_left = None
+    cycle_percent = None
+    if state == "active" and current and current.next_due_date:
+        cycle_months = SUBSCRIPTION_CYCLES.get(current.cycle, ("", 1))[1]
+        total_days = max(1, cycle_months * 30)
+        days_left = max(0, (current.next_due_date - today).days)
+        cycle_days_left = days_left
+        cycle_percent = max(4, min(100, round(((total_days - min(days_left, total_days)) / total_days) * 100)))
+    elif state == "overdue":
+        cycle_days_left = 0
+        cycle_percent = 100
+    elif state in {"pending", "confirming"}:
+        cycle_days_left = 0
+        cycle_percent = 100
+    elif paid_last_day:
+        days_left = max(0, (paid_last_day - today).days)
+        cycle_days_left = days_left
+        cycle_percent = max(4, min(100, round(((30 - min(days_left, 30)) / 30) * 100)))
+    elif grant and grant.ends_on:
+        total_days = max(1, (grant.ends_on - grant.starts_on).days) if grant.starts_on else 14
+        days_left = max(0, (grant.ends_on - today).days)
+        cycle_days_left = days_left
+        cycle_percent = max(4, min(100, round(((total_days - min(days_left, total_days)) / total_days) * 100)))
+
+    # Economia no ciclo anual (quando o cliente está no mensal e o plano oferece anual)
+    yearly_savings = None
+    if plan and current and current.cycle == "MONTHLY" and state == "active":
+        p_prices = {c: v for c, v in plan_prices(plan).items() if (not mp_active or c in mp.CYCLES)}
+        if "MONTHLY" in p_prices and "YEARLY" in p_prices:
+            annualized = p_prices["MONTHLY"] * Decimal("12")
+            diff = annualized - p_prices["YEARLY"]
+            if diff > 0 and annualized > 0:
+                yearly_savings = {
+                    "amount": diff,
+                    "percent": int(round((diff / annualized) * 100)),
+                    "yearly_price": p_prices["YEARLY"],
+                }
+
+    confirmed_paid = [item for item in charges if item.status in {"CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"} and item.amount is not None]
+    total_paid_amount = sum((item.amount for item in confirmed_paid), Decimal("0.00"))
+    pending_charges_count = len(open_charges) + (1 if state == "confirming" and not open_charges else 0)
+
     return {
         "organization": organization,
         "subscription": current,
@@ -10943,14 +10990,19 @@ def _customer_subscription_context(db: Session, organization: Organization) -> d
         "open_charges": open_charges,
         "paid_charges": paid_charges,
         "card_migration": migration,
-        "subscription_display": _customer_subscription_display(current, migration, charges, today),
+        "subscription_display": display,
         "situation": portfolio.rows[0] if portfolio.rows else None,
         "saved_card": None if mp_active else _saved_card_charge(db, organization.id),
         "plan": plan,
         "plan_module_labels": [module_labels[code] for code in plan_modules(plan)] if plan else [],
         "today_iso": today.isoformat(),
         "support_email": (get_settings().support_email or "").strip() or None,
-        "active_access_grant": active_grant(db, organization.id, today),
+        "active_access_grant": grant,
+        "cycle_progress": {"days_left": cycle_days_left, "percent": cycle_percent},
+        "yearly_savings": yearly_savings,
+        "total_paid_amount": total_paid_amount,
+        "paid_charges_count": len(confirmed_paid),
+        "pending_charges_count": pending_charges_count,
     }
 
 
@@ -11034,7 +11086,7 @@ def _render_subscribe(request, db, user, csrf_token, plan, *, form=None, error=N
 
 @router.get("/minha-assinatura/contratar")
 def subscribe_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
-                   csrf_token: str = Depends(get_csrf_token), plan_id: str | None = None):
+                   csrf_token: str = Depends(get_csrf_token), plan_id: str | None = None, cycle: str | None = None):
     if not user.organization or WRITE_FINANCE not in permission_codes_for_user(db, user):
         _flash(request, "error", "Somente o responsável pela organização pode contratar o plano.")
         return _redirect("/minha-assinatura")
@@ -11048,13 +11100,16 @@ def subscribe_page(request: Request, db: Session = Depends(get_db), user: User =
     if not plan:
         _flash(request, "error", "Escolha um plano disponível.")
         return _redirect("/planos-disponiveis")
-    if billing_environment() in MERCADOPAGO_ENVIRONMENTS and not (mp.CYCLES.keys() & plan_prices(plan).keys()):
+    mp_active = billing_environment() in MERCADOPAGO_ENVIRONMENTS
+    valid_prices = {c: v for c, v in plan_prices(plan).items() if not mp_active or c in mp.CYCLES}
+    if mp_active and not valid_prices:
         _flash(request, "info", "Escolha um plano com preço mensal ou anual.")
         return _redirect("/planos-disponiveis")
     issues = _plan_limit_issues(db, user.organization_id, plan)
     if issues:
         return _incompatible_plan(request, issues)
-    return _render_subscribe(request, db, user, csrf_token, plan)
+    initial_form = {"cycle": cycle} if cycle and cycle in valid_prices else None
+    return _render_subscribe(request, db, user, csrf_token, plan, form=initial_form)
 
 
 @router.post("/minha-assinatura/contratar")
@@ -11426,7 +11481,7 @@ def revoke_access_grant_action(
 
 
 @router.get("/planos-disponiveis")
-def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Session = Depends(get_db), user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token)):
+def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Session = Depends(get_db), user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token), ciclo: str | None = Query(None)):
     """Pagina para conhecer os planos; destino dos modulos com cadeado."""
     entitlements = _entitlements_for(db, user)
     module_code = modulo if modulo in MODULE_LABELS else None
@@ -11448,6 +11503,35 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
                      and (not mp_active or not mp.checkout_configuration_error()))
     trial_plan_id = entitlements.plan_id if entitlements.trial_ends_on and not entitlements.trial_ended else None
     current_modules = set(plan_modules(subscription.plan)) if subscription and subscription.plan else set()
+    prices_fn = (lambda plan: {cycle: price for cycle, price in plan_prices(plan).items() if cycle in mp.CYCLES}) if mp_active else plan_prices
+
+    # Ciclos disponíveis no catálogo e desconto anual máximo para o seletor Mensal/Anual
+    cycle_order = [code for code in SUBSCRIPTION_CYCLES if any(code in prices_fn(plan) for plan in ordered)]
+    requested_cycle = ciclo.upper() if isinstance(ciclo, str) else None
+    if requested_cycle in cycle_order:
+        selected_cycle = requested_cycle
+    elif "MONTHLY" in cycle_order:
+        selected_cycle = "MONTHLY"
+    else:
+        selected_cycle = cycle_order[0] if cycle_order else "MONTHLY"
+
+    max_yearly_discount_pct = 0
+    for plan in ordered:
+        p = prices_fn(plan)
+        if "MONTHLY" in p and "YEARLY" in p and p["MONTHLY"] > 0:
+            annualized = p["MONTHLY"] * Decimal("12")
+            pct = int(round(((annualized - p["YEARLY"]) / annualized) * 100))
+            if pct > max_yearly_discount_pct:
+                max_yearly_discount_pct = pct
+
+    pending_charges_count = 0
+    if organization_id and recorded:
+        pending_charges_count = db.query(OrganizationSubscriptionPayment).filter(
+            OrganizationSubscriptionPayment.subscription_id == recorded.id,
+            OrganizationSubscriptionPayment.status.in_(["PENDING", "OVERDUE"]),
+        ).count()
+    org_name = user.organization.name if getattr(user, "organization", None) else None
+
     return templates.TemplateResponse("plan_upgrade.html", _base_context(
         request, user, csrf_token, "plan_upgrade", current_subscription=subscription, current_modules=current_modules,
         can_change_plan=bool(subscription) and can_write_finance, can_subscribe=can_subscribe,
@@ -11459,7 +11543,12 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
         title="Planos disponíveis", module_code=module_code, module_label=MODULE_LABELS.get(module_code),
         module_pitch=MODULE_PITCH.get(module_code), plans_catalog=ordered,
         plan_modules_of=plan_modules,
-        plan_prices_of=(lambda plan: {cycle: price for cycle, price in plan_prices(plan).items() if cycle in mp.CYCLES}) if mp_active else plan_prices,
+        plan_prices_of=prices_fn,
+        available_cycles=cycle_order,
+        selected_cycle=selected_cycle,
+        max_yearly_discount_pct=max_yearly_discount_pct,
+        pending_charges_count=pending_charges_count,
+        organization_name=org_name,
         module_labels=MODULE_LABELS, support_email=(get_settings().support_email or "").strip() or None,
         _repo=_repository(db),
     ))

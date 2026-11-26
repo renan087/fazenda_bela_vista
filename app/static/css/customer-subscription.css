@@ -1,217 +1,795 @@
-/* Minha assinatura */
+/* Minha assinatura · Padrao oficial SiSFarm (alinhado ao prototipo aprovado) */
 .my-subscription {
-    gap: 1rem;
-    max-width: 76rem;
+    max-width: 1280px;
+    gap: 1.125rem;
 }
-.my-subscription .ms-header { gap: .75rem 1.25rem; }
-.ms-header .sf-page-title { font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -.045em; }
-.ms-organization { margin-bottom: .375rem; color: var(--sf-muted); font-size: .8125rem; font-weight: 650; }
-.ms-view { display: grid; gap: 1rem; min-width: 0; }
 .my-subscription [hidden] { display: none !important; }
+.ms-tabular { font-variant-numeric: tabular-nums; }
+.ms-view { display: grid; gap: 1rem; min-width: 0; }
 .ms-view, #detalhes-do-plano, #faturas-em-aberto { scroll-margin-top: 5rem; }
-.ms-card {
-    min-width: 0;
-    padding: clamp(1rem, 2vw, 1.375rem);
-    border: 1px solid var(--sf-line);
-    border-radius: 1rem;
-    background: #fff;
-    box-shadow: 0 2px 8px rgba(22, 32, 26, .025);
-}
-.ms-card-heading, .ms-history-head {
+
+/* Breadcrumb e cabecalho */
+.ms-breadcrumb {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
-    gap: .5rem 1rem;
+    gap: .375rem;
+    font-size: .75rem;
+    font-weight: 500;
+    color: var(--sf-muted);
+    margin-bottom: -.5rem;
 }
-.ms-subtitle { font-size: 1.075rem; font-weight: 720; letter-spacing: -.02em; line-height: 1.3; }
-.ms-copy { margin-top: .25rem; color: var(--sf-muted); font-size: .875rem; line-height: 1.5; }
-.ms-icon { width: 1.125rem; height: 1.125rem; flex: none; }
+.ms-breadcrumb strong { color: var(--sf-ink); font-weight: 600; }
+.ms-header { gap: .75rem 1.25rem; }
+.ms-header-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+/* Tipografia e icones */
+.ms-eyebrow {
+    display: inline-block;
+    font-size: .75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--sf-muted);
+}
+.ms-subtitle {
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -.015em;
+    line-height: 1.3;
+    color: var(--sf-ink);
+}
+.ms-copy {
+    margin-top: .2rem;
+    color: var(--sf-muted);
+    font-size: .8125rem;
+    line-height: 1.48;
+}
+.ms-icon { width: 1.05rem; height: 1.05rem; flex: none; }
 .ms-icon-tile {
     display: inline-grid;
+    place-items: center;
     width: 2.25rem;
     height: 2.25rem;
     flex: none;
-    place-items: center;
     border-radius: .625rem;
     background: var(--sf-brand-soft);
     color: var(--sf-brand);
 }
+.ms-icon-tile-lg { width: 2.5rem; height: 2.5rem; border-radius: .75rem; }
+
+/* Cartoes */
+.ms-card {
+    min-width: 0;
+    padding: 1.25rem;
+    border: 1px solid var(--sf-line);
+    border-radius: 1rem;
+    background: #FFFFFF;
+}
+.ms-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .5rem 1rem;
+}
+
+/* Badges e status */
+.ms-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .375rem;
+    width: fit-content;
+    padding: .22rem .65rem;
+    border-radius: 999px;
+    font-size: .78rem;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+.ms-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: currentColor;
+    flex: none;
+}
+.ms-badge-ok { background: #E6F4E2; color: #1F7A3A; }
+.ms-badge-warn { background: #FFF6E5; color: #7A4F00; }
+.ms-badge-err { background: #FDECEA; color: #B42318; }
+.ms-badge-info { background: #E8F1FB; color: #1F5FA8; }
+.ms-badge-muted { background: #E9EEEA; color: #46534A; }
+
+.ms-cycle-pill,
+.ms-provider-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: .2rem .6rem;
+    border-radius: 999px;
+    border: 1px solid var(--sf-line);
+    background: var(--sf-soft);
+    color: var(--sf-muted);
+    font-size: .75rem;
+    font-weight: 600;
+}
+.ms-provider-pill { border-radius: .5rem; font-size: .7rem; }
+
+/* Links e botoes auxiliares */
 .ms-link {
     display: inline-flex;
     align-items: center;
     gap: .375rem;
-    color: var(--sf-brand-dark);
-    font-size: .875rem;
-    font-weight: 650;
-    text-align: left;
+    color: var(--sf-brand);
+    font-size: .84rem;
+    font-weight: 600;
+    text-decoration: none;
+    background: transparent;
+    border: 0;
+    padding: .25rem 0;
+    cursor: pointer;
 }
 .ms-link:hover { text-decoration: underline; text-underline-offset: .2em; }
-button.ms-link { min-height: 2rem; }
-.ms-link:focus-visible, .ms-invoice-link:focus-visible { outline: 2px solid var(--sf-brand); outline-offset: 3px; }
-.ms-notice {
+.ms-inline-cta {
+    color: var(--sf-brand);
+    font-size: .78rem;
+    font-weight: 600;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: none;
+}
+.ms-inline-cta:hover { text-decoration: underline; }
+.ms-ghost-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .375rem;
+    padding: .375rem .625rem;
+    border-radius: .5rem;
+    border: 0;
+    background: transparent;
+    color: var(--sf-brand-dark);
+    font-size: .78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.ms-ghost-btn:hover { background: var(--sf-brand-soft); }
+.ms-btn-xs { min-height: 2.125rem; padding: .35rem .75rem; font-size: .78rem; }
+.ms-danger { border: 1px solid #B42318; background: #B42318; color: #FFFFFF; }
+.ms-danger:hover { border-color: #912018; background: #912018; color: #FFFFFF; }
+
+/* Banners contextuais */
+.ms-banners { display: grid; gap: .75rem; }
+.ms-banners:empty { display: none; }
+.ms-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
     padding: .875rem 1rem;
-    border: 1px solid var(--sf-line);
-    border-radius: .75rem;
-    background: var(--sf-soft);
-    color: #3c5341;
+    border: 1px solid var(--sf-line-strong);
+    border-radius: .875rem;
+    background: #FFFFFF;
     font-size: .875rem;
     line-height: 1.45;
+    color: var(--sf-ink);
 }
-.ms-notice-warning, #regularizacao-plano.ms-card { border-color: #eddbb7; background: #fff8e9; color: #674917; }
-.ms-notice-with-action, .ms-trial { display: flex; align-items: center; gap: .75rem; }
-.ms-notice-with-action { flex-wrap: wrap; justify-content: space-between; }
-.ms-trial { background: #f0f6ed; color: var(--sf-brand-dark); }
-.ms-trial h2 { font-size: .9375rem; font-weight: 700; }
+.ms-banner > .ms-icon { margin-top: .15rem; }
+.ms-banner p { margin-top: .15rem; font-size: .8125rem; }
+.ms-banner-text { flex: 1 1 16rem; }
+.ms-banner-between { flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.ms-banner-muted { color: var(--sf-muted); }
+.ms-banner-muted strong { color: var(--sf-ink); }
+.ms-banner-ok { border-color: #CFE0C8; background: #EEF3EB; color: #294127; }
+.ms-banner-warn { border-color: #F0D9A6; background: #FFF6E5; color: #7A4F00; }
+.ms-banner-err { border-color: #F6C5C0; background: #FDECEA; color: #B42318; }
+.ms-banner-info { border-color: #C8DCF5; background: #E8F1FB; color: #1F5FA8; }
 
-.ms-plan {
+/* Hero do plano + Painel de ciclo */
+.ms-hero {
     display: grid;
-    grid-template-areas: "summary" "actions";
-    gap: .875rem 1.5rem;
+    gap: 1.5rem;
+    padding: 1.5rem;
 }
-.ms-plan-with-date {
-    grid-template-columns: minmax(0, 1fr) minmax(12.5rem, 28%);
-    grid-template-areas: "summary renewal" "actions renewal";
+.ms-hero-split {
+    grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.9fr);
+    align-items: center;
 }
-.ms-plan-summary { grid-area: summary; min-width: 0; }
 .ms-plan-kicker {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: .375rem .625rem;
-    margin-bottom: .3125rem;
-    color: var(--sf-muted);
-    font-size: .8125rem;
-    font-weight: 650;
+    gap: .5rem;
 }
-.ms-plan-intro { display: flex; flex-wrap: wrap; align-items: baseline; gap: .1875rem .875rem; }
+.ms-plan-intro {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .25rem 1rem;
+    margin-top: .625rem;
+}
 .ms-plan-intro h2 {
-    font-size: clamp(1.5rem, 2.5vw, 2rem);
-    font-weight: 755;
-    line-height: 1.13;
-    letter-spacing: -.04em;
-    overflow-wrap: anywhere;
+    font-size: clamp(1.5rem, 2.4vw, 1.875rem);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -.03em;
+    color: var(--sf-ink);
 }
 .ms-price { color: var(--sf-muted); font-size: .875rem; }
-.ms-price strong { color: var(--sf-ink); font-size: 1.1875rem; font-weight: 730; font-variant-numeric: tabular-nums; }
-.ms-plan-actions { grid-area: actions; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; min-width: 0; }
-.my-subscription .sf-btn { justify-content: center; text-align: center; white-space: normal; }
-.ms-renewal {
-    grid-area: renewal;
-    align-self: center;
+.ms-price strong {
+    color: var(--sf-ink);
+    font-size: 1.25rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.ms-hero-copy {
+    margin-top: .45rem;
+    max-width: 56ch;
+    color: var(--sf-muted);
+    font-size: .875rem;
+    line-height: 1.5;
+}
+.ms-plan-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .625rem;
+    margin-top: 1.125rem;
+}
+
+.ms-cycle-panel {
+    border: 1px solid var(--sf-line);
+    border-radius: 1rem;
+    background: var(--sf-soft);
+    padding: 1.125rem 1.25rem;
+}
+.ms-cycle-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .75rem;
+}
+.ms-cycle-date {
+    display: block;
+    margin-top: .25rem;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--sf-ink);
+    font-variant-numeric: tabular-nums;
+}
+.ms-cycle-sub {
+    display: block;
+    margin-top: .2rem;
+    font-size: .78rem;
+    color: var(--sf-muted);
+}
+.ms-cycle-bar { margin-top: 1rem; }
+.ms-cycle-bar-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: .375rem;
+    font-size: .75rem;
+    color: var(--sf-muted);
+}
+.ms-cycle-bar-head strong { color: var(--sf-ink); }
+.ms-savings-callout {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-top: .875rem;
+    padding: .55rem .75rem;
+    border: 1px solid #D4E3CE;
+    border-radius: .75rem;
+    background: #EEF3EB;
+    font-size: .78rem;
+    color: #294127;
+}
+.ms-savings-callout a {
+    flex: none;
+    font-weight: 700;
+    color: #446A36;
+    text-decoration: none;
+}
+.ms-savings-callout a:hover { text-decoration: underline; }
+
+/* Grid Visao Geral: Uso + Forma de Pagamento */
+.ms-overview-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(290px, 1fr);
+    gap: 1rem;
+}
+.ms-overview-grid-single { grid-template-columns: 1fr; }
+
+.ms-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .75rem;
+    margin-top: 1rem;
+}
+.ms-metric-card {
+    border: 1px solid #EEF1ED;
+    border-radius: .875rem;
+    background: var(--sf-soft);
+    padding: .875rem;
+}
+.ms-metric-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .5rem;
+}
+.ms-metric-lead {
     display: flex;
     align-items: center;
     gap: .625rem;
     min-width: 0;
-    padding: .75rem;
-    border: 1px solid #e1e9de;
-    border-radius: .6875rem;
-    background: #f5f8f3;
 }
-.ms-renewal span:not(.ms-icon-tile), .ms-renewal strong { display: block; }
-.ms-renewal span:not(.ms-icon-tile) { color: var(--sf-muted); font-size: .8125rem; line-height: 1.35; }
-.ms-renewal strong { margin: .125rem 0; font-size: .9375rem; font-weight: 720; }
-
-.ms-badge {
-    display: inline-flex;
-    width: fit-content;
-    align-items: center;
-    gap: .25rem;
-    padding: .25rem .5625rem;
-    border-radius: 999px;
-    font-size: .8125rem;
-    font-weight: 650;
+.ms-metric-label {
+    font-size: .7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--sf-muted);
+}
+.ms-metric-value {
+    margin-top: .15rem;
+    font-variant-numeric: tabular-nums;
     line-height: 1.25;
 }
-.ms-badge .ms-icon { width: .8125rem; height: .8125rem; stroke-width: 2.2; }
-.ms-badge-green { color: #2d5c31; background: #e7f4e5; }
-.ms-badge-amber { color: #774b10; background: #fff0d4; }
-.ms-badge-red { color: #922e35; background: #fbe9e9; }
-.ms-badge-neutral { color: #46534a; background: #e9eeea; }
+.ms-metric-value strong { font-size: .95rem; font-weight: 700; color: var(--sf-ink); }
+.ms-metric-value span { display: block; font-size: .75rem; color: var(--sf-muted); }
 
-.ms-overview-grid, .ms-payment-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 1rem; }
-.ms-overview-grid-single { grid-template-columns: 1fr; }
-.ms-metrics { display: grid; gap: .75rem; margin-top: .875rem; }
-.ms-metric { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: .625rem; }
-.ms-metric-caption {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: .125rem .5rem;
-    color: var(--sf-muted);
-    font-size: .8125rem;
-}
-.ms-metric-caption > span:first-child, .ms-metric-caption strong { color: var(--sf-ink); font-weight: 650; }
-.ms-meter { appearance: none; display: block; width: 100%; height: .375rem; margin-top: .3125rem; border: 0; border-radius: 999px; background: #e9eee8; }
-.ms-meter::-webkit-progress-bar { border-radius: 999px; background: #e9eee8; }
-.ms-meter::-webkit-progress-value { border-radius: 999px; background: #709760; }
-.ms-meter::-moz-progress-bar { border-radius: 999px; background: #709760; }
-.ms-meter-full::-webkit-progress-value { background: #95672d; }
-.ms-meter-full::-moz-progress-bar { background: #95672d; }
-.ms-payment-method {
-    display: flex;
-    gap: .625rem;
-    align-items: center;
-    margin-top: .75rem;
-    padding: .6875rem;
+.ms-pct-pill {
+    padding: .15rem .45rem;
+    border-radius: 999px;
     border: 1px solid var(--sf-line);
-    border-radius: .6875rem;
+    background: #FFFFFF;
+    font-size: .72rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.ms-pct-ok { color: #446A36; }
+.ms-pct-warn { color: #D18A00; }
+.ms-pct-err { color: #B42318; }
+
+.ms-meter-track {
+    width: 100%;
+    height: 7px;
+    margin-top: .75rem;
+    border-radius: 999px;
+    background: #E8EDE7;
+    overflow: hidden;
+}
+.ms-meter-fill { height: 100%; border-radius: 999px; transition: width .3s ease; }
+.ms-fill-ok { background: #446A36; }
+.ms-fill-warn { background: #D18A00; }
+.ms-fill-err { background: #B42318; }
+
+.ms-metric-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-top: .45rem;
+    font-size: .75rem;
+}
+.ms-helper-ok { color: var(--sf-muted); }
+.ms-helper-warn { color: #7A4F00; font-weight: 600; }
+.ms-helper-err { color: #B42318; font-weight: 600; }
+
+/* Cartao visual de pagamento */
+.ms-pay-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+.ms-pay-visual {
+    position: relative;
+    overflow: hidden;
+    margin-top: 1rem;
+    padding: 1rem 1.125rem;
+    border-radius: .875rem;
+    background: linear-gradient(135deg, #16201A 0%, #243828 100%);
+    color: #F4F7F3;
+}
+.ms-pay-visual::after {
+    content: "";
+    position: absolute;
+    top: -45px;
+    right: -35px;
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(155, 203, 107, .24) 0%, rgba(155, 203, 107, 0) 70%);
+    pointer-events: none;
+}
+.ms-pay-visual-top,
+.ms-pay-visual-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    font-size: .75rem;
+    color: #B7C7B4;
+}
+.ms-pay-brand { font-weight: 600; color: #9BCB6B; }
+.ms-pay-number {
+    margin: .75rem 0 .5rem;
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    font-variant-numeric: tabular-nums;
+}
+.ms-pay-empty {
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px dashed var(--sf-line-strong);
+    border-radius: .875rem;
+    background: var(--sf-soft);
+    text-align: center;
+}
+.ms-pay-empty strong { display: block; font-size: .875rem; color: var(--sf-ink); }
+.ms-pay-empty p { margin-top: .25rem; font-size: .78rem; color: var(--sf-muted); }
+
+.ms-pay-panel-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-top: 1rem;
+    padding-top: .875rem;
+    border-top: 1px solid #EEF1ED;
+}
+.ms-shield-note {
+    display: inline-flex;
+    align-items: center;
+    gap: .375rem;
+    font-size: .78rem;
+    color: var(--sf-muted);
+}
+.ms-shield-note svg { color: var(--sf-brand); }
+
+/* Tabela de faturas + filtros */
+.ms-history { padding: 0; overflow: hidden; }
+.ms-history-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem 1rem;
+    padding: 1rem 1.25rem;
+}
+.ms-history-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .625rem;
+}
+.ms-chip-group { display: flex; flex-wrap: wrap; gap: .375rem; }
+.ms-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .375rem;
+    min-height: 2.125rem;
+    padding: .3rem .75rem;
+    border-radius: 999px;
+    border: 1px solid var(--sf-line-strong);
+    background: #FFFFFF;
+    color: var(--sf-ink);
+    font-size: .78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s ease;
+}
+.ms-chip:hover { background: var(--sf-soft); }
+.ms-chip[aria-pressed="true"] {
+    background: var(--sf-ink);
+    border-color: var(--sf-ink);
+    color: #FFFFFF;
+}
+.ms-chip-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.2rem;
+    height: 1.2rem;
+    padding: 0 .35rem;
+    border-radius: 999px;
+    font-size: .72rem;
+    font-variant-numeric: tabular-nums;
+    background: rgba(22, 32, 26, .08);
+}
+.ms-chip[aria-pressed="true"] .ms-chip-count { background: rgba(255, 255, 255, .2); }
+
+.ms-search-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.ms-search-wrap svg {
+    position: absolute;
+    left: .75rem;
+    width: .95rem;
+    height: .95rem;
+    color: #7A857E;
+    pointer-events: none;
+}
+.ms-search-wrap input {
+    width: 14rem;
+    min-height: 2.125rem;
+    padding: .35rem .75rem .35rem 2.125rem;
+    border: 1px solid var(--sf-line-strong);
+    border-radius: .625rem;
+    background: #FFFFFF;
+    font-size: .8125rem;
+    color: var(--sf-ink);
+}
+
+.ms-table-wrap { overflow-x: auto; border-top: 1px solid #EEF1ED; }
+.ms-invoices { width: 100%; border-collapse: collapse; font-size: .875rem; text-align: left; }
+.ms-invoices thead th {
+    background: var(--sf-soft);
+    color: var(--sf-muted);
+    font-size: .75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    padding: .75rem .75rem;
+}
+.ms-invoices tbody th,
+.ms-invoices tbody td {
+    padding: .8rem .75rem;
+    border-top: 1px solid #EEF1ED;
+    vertical-align: middle;
+}
+.ms-invoices tbody tr:hover { background: #FAFBF9; }
+.ms-invoices th:first-child { padding-left: 1.25rem; }
+.ms-invoices th:last-child,
+.ms-invoices td:last-child { padding-right: 1.25rem; text-align: right; }
+.ms-invoice-title { font-weight: 600; color: var(--sf-ink); }
+.ms-invoice-sub, .ms-refund { display: block; margin-top: .1rem; font-size: .75rem; font-weight: 400; color: var(--sf-muted); }
+.ms-invoice-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: .375rem; }
+.ms-invoice-link {
+    display: inline-grid;
+    place-items: center;
+    width: 2.125rem;
+    height: 2.125rem;
+    border: 1px solid var(--sf-line-strong);
+    border-radius: .55rem;
+    color: var(--sf-brand-dark);
+}
+.ms-invoice-link:hover { background: var(--sf-soft); }
+.ms-history-empty {
+    border-top: 1px solid #EEF1ED;
+    padding: 2rem 1.25rem;
+    text-align: center;
+    color: var(--sf-muted);
+    font-size: .875rem;
+}
+.ms-history-empty strong { display: block; color: var(--sf-ink); }
+.ms-history-empty p { margin-top: .25rem; font-size: .8125rem; }
+
+/* Gerenciamento e detalhes */
+.ms-manage {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .875rem 1.25rem;
+}
+.ms-manage-lead { display: flex; align-items: flex-start; gap: .875rem; flex: 1 1 16rem; }
+.ms-details summary {
+    cursor: pointer;
+    font-size: .9375rem;
+    font-weight: 600;
+    color: var(--sf-ink);
+}
+.ms-limits-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .625rem;
+    margin: 1rem 0;
+    padding: .75rem;
+    border-radius: .75rem;
+    background: var(--sf-soft);
+    text-align: center;
+}
+.ms-limits-summary dt { font-size: .72rem; color: var(--sf-muted); }
+.ms-limits-summary dd { margin-top: .15rem; font-size: .95rem; font-weight: 700; color: var(--sf-ink); font-variant-numeric: tabular-nums; }
+.ms-modules-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .5rem 1rem;
+    margin-top: .75rem;
+    font-size: .875rem;
+    color: var(--sf-ink);
+}
+.ms-modules-grid li { display: flex; align-items: center; gap: .5rem; }
+.ms-modules-grid span { color: #1F7A3A; font-weight: 700; }
+
+/* Aba Pagamentos: KPIs e Faturas em aberto */
+.ms-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+}
+.ms-kpi-card { display: flex; flex-direction: column; }
+.ms-kpi-value {
+    margin-top: .45rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    color: var(--sf-ink);
+}
+.ms-kpi-value-sm { font-size: 1.125rem; }
+.ms-kpi-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-top: .375rem;
+    font-size: .8125rem;
+    color: var(--sf-muted);
+}
+.ms-kpi-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+
+.ms-open-charges { border-color: #F0D9A6; background: #FFFDF8; }
+.ms-open-list { display: grid; gap: .75rem; margin-top: 1rem; }
+.ms-open-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: 1rem;
+    border: 1px solid var(--sf-line);
+    border-radius: .875rem;
+    background: #FFFFFF;
+}
+.ms-open-late { border-color: #F6C5C0; background: #FFF6F5; }
+.ms-open-top { display: flex; align-items: center; gap: .5rem; }
+.ms-open-top strong { font-size: 1rem; font-weight: 700; color: var(--sf-ink); }
+.ms-open-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+
+/* Modais <dialog> */
+.ms-dialog {
+    width: min(35rem, calc(100% - 2rem));
+    max-height: 88dvh;
+    padding: 0;
+    margin: auto;
+    border: 1px solid var(--sf-line);
+    border-radius: 1.125rem;
+    background: #FFFFFF;
+    color: var(--sf-ink);
+    box-shadow: 0 24px 70px rgba(15, 21, 19, .28);
+    overflow: hidden;
+}
+.ms-dialog::backdrop { background: rgba(15, 21, 19, .45); backdrop-filter: blur(2px); }
+.ms-dialog-shell { display: flex; flex-direction: column; max-height: 88dvh; }
+.ms-dialog-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: 1.125rem 1.25rem;
+    border-bottom: 1px solid var(--sf-line);
+}
+.ms-dialog-content {
+    overflow-y: auto;
+    padding: 1.125rem 1.25rem;
+    display: grid;
+    gap: .875rem;
+    font-size: .875rem;
+}
+.ms-dialog-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .5rem;
+    padding: .875rem 1.25rem;
+    border-top: 1px solid var(--sf-line);
     background: var(--sf-soft);
 }
-.ms-payment-method strong { font-size: .9375rem; font-weight: 690; }
-.ms-payment-method p { margin-top: .1875rem; color: var(--sf-muted); font-size: .8125rem; }
-.ms-method-action { margin-top: .75rem; }
-.ms-payment-status { margin-top: .625rem; }
-.ms-payment-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.ms-criteria-list { display: grid; gap: .625rem; }
+.ms-criteria-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: .625rem;
+    padding: .75rem;
+    border-radius: .75rem;
+    background: var(--sf-soft);
+}
+.ms-criteria-list span { font-weight: 700; color: var(--sf-brand); }
 
-.ms-history { padding: 0; overflow: hidden; }
-.ms-history-head { padding: 1rem clamp(.875rem, 2vw, 1.375rem); }
-.ms-history-filter select { border: 1px solid var(--sf-line-strong); border-radius: .625rem; font-size: .875rem; }
-.ms-invoices { width: 100%; border-collapse: collapse; font-size: .875rem; }
-.ms-invoices th, .ms-invoices td { padding: .5625rem .75rem; border-top: 1px solid var(--sf-line); text-align: left; vertical-align: middle; }
-.ms-invoices thead th { background: var(--sf-soft); color: var(--sf-muted); font-weight: 650; }
-.ms-invoices th:first-child { padding-left: clamp(.875rem, 2vw, 1.375rem); }
-.ms-invoices th:last-child, .ms-invoices td:last-child { padding-right: clamp(.875rem, 2vw, 1.375rem); text-align: right; }
-.ms-invoices tbody th, .ms-invoices strong { font-weight: 650; }
-.ms-invoice-date { display: flex; gap: .375rem; align-items: center; }
-.ms-invoice-date svg { width: 1rem; height: 1rem; color: var(--sf-brand); }
-.ms-invoice-method, .ms-refund { display: block; margin-top: .125rem; color: var(--sf-muted); font-size: .75rem; font-weight: 400; }
-.ms-invoice-link { display: inline-grid; width: 2rem; height: 2rem; place-items: center; border: 1px solid var(--sf-line); border-radius: .5rem; color: var(--sf-brand-dark); }
-.ms-invoice-link:hover { background: var(--sf-soft); }
-.ms-invoice-link svg { width: .875rem; height: .875rem; }
-.ms-history-empty { border-top: 1px solid var(--sf-line); padding: .875rem 1.375rem; color: var(--sf-muted); font-size: .875rem; }
+.ms-inv-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem;
+    border-radius: .875rem;
+    background: var(--sf-soft);
+}
+.ms-inv-amount { display: block; margin-top: .15rem; font-size: 1.5rem; font-weight: 700; color: var(--sf-ink); }
+.ms-summary-dl { display: grid; }
+.ms-summary-dl > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .625rem 0;
+    border-bottom: 1px solid #EEF1ED;
+    font-size: .875rem;
+}
+.ms-summary-dl dt { color: var(--sf-muted); }
+.ms-summary-dl dd { font-weight: 600; color: var(--sf-ink); text-align: right; }
 
-.ms-manage { display: flex; flex-wrap: wrap; align-items: center; gap: .625rem; }
-.ms-manage > div { flex: 1 1 12rem; }
-.ms-dialog { width: min(33rem, calc(100% - 2rem)); max-height: 88dvh; padding: 0; border: 1px solid var(--sf-line); border-radius: 1.25rem; color: var(--sf-ink); box-shadow: 0 22px 70px rgba(15, 33, 23, .28); }
-.ms-dialog-body { padding: clamp(1rem, 3vw, 1.5rem); background: #fff; }
-.ms-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .625rem; }
-.ms-dialog-heading .sf-icon-btn { width: 2.25rem; height: 2.25rem; flex: none; }
-.ms-dialog-list { display: grid; gap: .6875rem; margin-top: .875rem; color: var(--sf-muted); font-size: .875rem; }
-.ms-dialog-list li { display: flex; align-items: flex-start; gap: .625rem; }
-.ms-dialog-list svg { color: var(--sf-brand); }
-.ms-manage-options { display: grid; gap: .5rem; margin-top: 1rem; }
-.ms-manage-options .sf-btn { justify-content: flex-start; }
-.ms-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
-.ms-danger-text { color: #932e36; }
-.ms-danger { border: 1px solid #9e3039; background: #9e3039; color: #fff; }
-.ms-danger:hover { border-color: #7f2229; background: #7f2229; color: #fff; }
-.ms-cancel-dates { display: grid; gap: .5rem; margin: .875rem 0; padding: .875rem; border-radius: .75rem; background: var(--sf-soft); font-size: .875rem; }
-.ms-cancel-dates > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem .6rem; }
-.ms-cancel-dates dd { font-weight: 700; }
+.ms-manage-list { display: grid; gap: .5rem; }
+.ms-option-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    width: 100%;
+    padding: .875rem 1rem;
+    border: 1px solid var(--sf-line);
+    border-radius: .875rem;
+    background: #FFFFFF;
+    text-align: left;
+    text-decoration: none;
+    color: var(--sf-ink);
+    cursor: pointer;
+}
+.ms-option-card:hover { background: var(--sf-soft); }
+.ms-option-card strong { display: block; font-size: .875rem; font-weight: 600; }
+.ms-option-card span { display: block; font-size: .78rem; color: var(--sf-muted); margin-top: .15rem; }
+.ms-option-danger { border-color: #F6C5C0; background: #FFF8F7; color: #B42318; }
+.ms-option-danger:hover { background: #FDECEA; }
+.ms-option-danger span { color: #8E1C13; }
+.ms-pay-dialog-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 
-@media (max-width: 700px) {
-    .ms-plan-with-date { grid-template-columns: 1fr; grid-template-areas: "summary" "renewal" "actions"; }
-    .ms-renewal { padding: .625rem; }
-    .ms-overview-grid, .ms-payment-grid { grid-template-columns: minmax(0, 1fr); }
-    .ms-invoices th, .ms-invoices td { padding: .5rem .3125rem; font-size: .8125rem; }
-    .ms-invoices th:first-child { padding-left: .625rem; }
-    .ms-invoices th:last-child, .ms-invoices td:last-child { padding-right: .625rem; }
-    .ms-invoice-date svg, .ms-invoices .ms-badge svg { display: none; }
-    .ms-invoices .ms-badge { font-size: .75rem; padding: .25rem .375rem; }
+/* Toast */
+.ms-toast {
+    position: fixed;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    max-width: min(25rem, calc(100% - 2.5rem));
+    padding: .75rem 1rem;
+    border-radius: .75rem;
+    background: #16201A;
+    color: #FFFFFF;
+    font-size: .875rem;
+    font-weight: 500;
+    box-shadow: 0 12px 32px rgba(15, 21, 19, .25);
+}
+
+/* Responsividade */
+@media (max-width: 1023px) {
+    .ms-hero-split { grid-template-columns: 1fr; }
+    .ms-overview-grid { grid-template-columns: 1fr; }
+    .ms-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 767px) {
+    .ms-metrics-grid { grid-template-columns: 1fr; }
+    .ms-kpi-grid { grid-template-columns: 1fr; }
+    .ms-col-hide-md { display: none; }
+    .ms-modules-grid { grid-template-columns: 1fr; }
+    .ms-search-wrap input { width: 100%; }
 }
 @media (max-width: 639px) {
-    .ms-dialog { width: 100%; max-width: none; margin: auto 0 0; max-height: 92dvh; border-radius: 1.125rem 1.125rem 0 0; }
-    .ms-dialog-body { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+    .ms-hero { padding: 1.125rem; }
+    .ms-col-hide-sm { display: none; }
+    .ms-dialog {
+        width: 100%;
+        max-width: none;
+        margin: auto 0 0;
+        max-height: 92dvh;
+        border-radius: 1.375rem 1.375rem 0 0;
+    }
+    .ms-dialog-footer { padding-bottom: calc(.875rem + env(safe-area-inset-bottom)); }
 }

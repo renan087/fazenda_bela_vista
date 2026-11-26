@@ -1,21 +1,25 @@
 {% set selected_subscription_page = customer_subscription_page|default('overview') %}
 {% set catalog_navigation = selected_subscription_page == 'plans' %}
 {% set show_subscription_tabs = not catalog_navigation or permission_codes is not defined or 'page.finance' in permission_codes %}
+{% set nav_pending_count = pending_charges_count|default(0) %}
 <nav class="customer-subscription-nav" aria-label="Seções da assinatura">
     {% if show_subscription_tabs %}
     <a href="{{ '/minha-assinatura' if catalog_navigation else '#visao-geral' }}"{% if not catalog_navigation %} data-subscription-tab="overview"{% endif %}{% if selected_subscription_page == 'overview' %} aria-current="page"{% endif %}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M9 21v-7h6v7"/></svg>
-        Visão geral
+        <span>Visão geral</span>
     </a>
     {% endif %}
     <a href="/planos-disponiveis"{% if catalog_navigation %} aria-current="page"{% endif %}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/></svg>
-        Planos
+        <span>Planos e comparativo</span>
     </a>
     {% if show_subscription_tabs %}
     <a href="{{ '/minha-assinatura#pagamentos' if catalog_navigation else '#pagamentos' }}"{% if not catalog_navigation %} data-subscription-tab="payments"{% endif %}{% if selected_subscription_page == 'payments' %} aria-current="page"{% endif %}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18m-14 5h3"/></svg>
-        Pagamentos
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18m-14 5h4"/></svg>
+        <span>Pagamentos e faturas</span>
+        {% if nav_pending_count > 0 %}
+        <span class="csn-badge" aria-label="{{ nav_pending_count }} pendências">{{ nav_pending_count }}</span>
+        {% endif %}
     </a>
     {% endif %}
 </nav>

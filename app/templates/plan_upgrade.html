@@ -1,27 +1,69 @@
 {% extends "base.html" %}
 {% block head_extra %}
-<link rel="stylesheet" href="{{ url_for('static', path='css/customer-subscription-nav.css') }}?v=20261125">
-<link rel="stylesheet" href="{{ url_for('static', path='css/customer-plan-catalog.css') }}?v=20261125">
-<script src="{{ url_for('static', path='js/customer-plan-catalog.js') }}?v=20261125" defer></script>
+<link rel="stylesheet" href="{{ url_for('static', path='css/customer-subscription-nav.css') }}?v=20261126">
+<link rel="stylesheet" href="{{ url_for('static', path='css/customer-plan-catalog.css') }}?v=20261126">
+<script src="{{ url_for('static', path='js/customer-plan-catalog.js') }}?v=20261126" defer></script>
 {% endblock %}
 {% block content %}
 {% set customer_subscription_page = 'plans' %}
 {% set modules_by_plan = {} %}
 {% for plan in plans_catalog %}{% set _ = modules_by_plan.update({plan.id: plan_modules_of(plan)}) %}{% endfor %}
 {% set i_check %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>{% endset %}
-<div class="pc-catalog mx-auto max-w-6xl" data-plan-upgrade>
-    <header class="pc-header">
-        {% if module_label %}
-        <h1>{{ module_label }} nos planos SiSFarm</h1>
-        {% if module_pitch %}<p>{{ module_pitch }}</p>{% endif %}
-        {% else %}
-        <h1>Planos disponíveis</h1>
-        <p>Compare os recursos e limites de cada plano.</p>
+{% set cycles = available_cycles|default([]) %}
+{% set initial_cycle = selected_cycle|default('MONTHLY') %}
+{% set yearly_discount = max_yearly_discount_pct|default(0) %}
+{% set cycle_names = {'MONTHLY': 'Mensal', 'QUARTERLY': 'Trimestral', 'SEMIANNUAL': 'Semestral', 'YEARLY': 'Anual'} %}
+
+<div class="sf-page pc-catalog mx-auto" data-plan-upgrade data-initial-cycle="{{ initial_cycle }}">
+    {% if organization_name %}
+    <nav aria-label="Caminho" class="pc-breadcrumb">
+        <span>{{ organization_name }}</span>
+        <span aria-hidden="true">/</span>
+        <span>Conta</span>
+        <span aria-hidden="true">/</span>
+        <strong>Minha assinatura</strong>
+    </nav>
+    {% endif %}
+
+    <header class="sf-page-header pc-header">
+        <div>
+            {% if module_label %}
+            <h1 class="sf-page-title">{{ module_label }} nos planos SiSFarm</h1>
+            {% if module_pitch %}<p class="sf-page-subtitle">{{ module_pitch }}</p>{% endif %}
+            {% else %}
+            <h1 class="sf-page-title">Minha assinatura</h1>
+            <p class="sf-page-subtitle">Gerencie seu plano, acompanhe os limites da organização e consulte suas faturas em um só lugar.</p>
+            {% endif %}
+        </div>
+        {% if support_email %}
+        <a class="sf-btn sf-btn-secondary" href="mailto:{{ support_email }}">Preciso de ajuda</a>
         {% endif %}
     </header>
+
     {% include "partials/customer_subscription_nav.html" %}
 
     {% if plans_catalog %}
+    <!-- Barra de introducao + Seletor Mensal/Anual -->
+    <div class="pc-intro-bar">
+        <div>
+            <h2 class="pc-section-title">{{ 'Compare os planos disponíveis' if module_label else 'Escolha o plano ideal para a fazenda' }}</h2>
+            <p class="pc-section-sub">Todos os planos incluem backup automático, segurança e atualizações contínuas.</p>
+        </div>
+        {% if cycles|length > 1 %}
+        <div class="pc-cycle-picker" role="group" aria-label="Periodicidade de cobrança" data-cycle-picker>
+            {% for code in cycles %}
+            <button type="button" class="pc-cycle-btn" data-cycle-switch="{{ code }}" aria-pressed="{{ 'true' if code == initial_cycle else 'false' }}">
+                <span>{{ cycle_names.get(code, code) }}</span>
+                {% if code == 'YEARLY' and yearly_discount > 0 %}
+                <span class="pc-discount-pill">-{{ yearly_discount }}%</span>
+                {% endif %}
+            </button>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Grid de Planos -->
     <section class="pc-cards" aria-label="Planos disponíveis" data-plan-cards>
         {% for plan in plans_catalog %}
         {% set modules = modules_by_plan[plan.id] %}
@@ -33,43 +75,76 @@
         {% set featured = not limit_issues and (includes_module or (not module_code and plan.is_featured)) %}
         {% set premium = not limit_issues and not featured and plan.id == premium_plan_id %}
         {% set prices = plan_prices_of(plan) %}
-        {% set main_cycle = 'MONTHLY' if 'MONTHLY' in prices else (prices|first if prices else none) %}
+        {% set main_cycle = initial_cycle if initial_cycle in prices else ('MONTHLY' if 'MONTHLY' in prices else (prices|first if prices else none)) %}
         {% set feature_codes = ([module_code] if includes_module else []) + (modules|reject('equalto', module_code)|list) %}
         {% set cta_class = 'pc-button pc-button-primary' if featured or premium else 'pc-button' %}
-        <article class="pc-card{% if is_current %} pc-card-current{% endif %}">
+        <article class="pc-card{% if is_current %} pc-card-current{% elif featured %} pc-card-featured{% endif %}" data-plan-card>
             <div class="pc-card-top">
-                <span class="pc-plan-icon">{{ plan_icon(plan.icon, 'h-5 w-5') }}</span>
+                <span class="pc-plan-icon{% if is_current %} pc-plan-icon-current{% endif %}">{{ plan_icon(plan.icon, 'h-5 w-5') }}</span>
                 {% if is_current or is_trial or featured or premium %}
                 <div class="pc-plan-badges">
                     {% if is_current %}<span class="pc-chip pc-chip-current">Plano atual</span>{% endif %}
                     {% if is_trial %}<span class="pc-chip pc-chip-trial">Benefícios do teste grátis</span>{% endif %}
-                    {% if featured %}<span class="pc-chip">{{ ('Inclui ' ~ module_label) if includes_module else 'Mais escolhido' }}</span>{% endif %}
-                    {% if premium %}<span class="pc-chip pc-chip-premium">Plano mais completo</span>{% endif %}
+                    {% if featured and not is_current %}<span class="pc-chip pc-chip-featured">{{ ('Inclui ' ~ module_label) if includes_module else 'Mais escolhido' }}</span>{% endif %}
+                    {% if premium and not is_current %}<span class="pc-chip pc-chip-premium">Plano mais completo</span>{% endif %}
                 </div>
                 {% endif %}
             </div>
-            <h2 class="pc-plan-name">{{ plan.name }}</h2>
+
+            <h3 class="pc-plan-name">{{ plan.name }}</h3>
             {% if plan.description %}<p class="pc-plan-description">{{ plan.description }}</p>{% endif %}
+
             {% if main_cycle %}
-            <div class="pc-plan-pricing">
-                <p><strong>R$ {{ prices[main_cycle]|decimal_br }}</strong><span> / {{ cycle_unit_labels[main_cycle] }}</span></p>
-                {% if prices|length > 1 %}
-                <p class="pc-other-prices">{% for code, price in prices.items() if code != main_cycle %}<span>R$ {{ price|decimal_br }}/{{ cycle_unit_labels[code] }}</span>{% endfor %}</p>
-                {% endif %}
+            <div class="pc-plan-pricing"
+                 data-plan-pricing
+                 {% for code, price in prices.items() %}
+                 data-price-{{ code|lower }}="{{ price }}"
+                 data-unit-{{ code|lower }}="{{ cycle_unit_labels[code] }}"
+                 {% endfor %}>
+                <div class="pc-price-main">
+                    <strong data-price-value>R$ {{ prices[main_cycle]|decimal_br }}</strong>
+                    <span data-price-unit>/ {{ cycle_unit_labels[main_cycle] }}</span>
+                </div>
+                <p class="pc-price-hint" data-price-hint>
+                    {% if main_cycle == 'YEARLY' %}
+                        Equivale a R$ {{ (prices['YEARLY'] / 12)|decimal_br }}/mês
+                    {% elif 'YEARLY' in prices and 'MONTHLY' in prices and prices['MONTHLY'] > 0 %}
+                        {% set pct_off = (((prices['MONTHLY'] * 12 - prices['YEARLY']) / (prices['MONTHLY'] * 12)) * 100)|round|int %}
+                        Ou R$ {{ prices['YEARLY']|decimal_br }}/ano{% if pct_off > 0 %} com {{ pct_off }}% de desconto{% endif %}
+                    {% elif prices|length > 1 %}
+                        {% for code, price in prices.items() if code != main_cycle %}<span>R$ {{ price|decimal_br }}/{{ cycle_unit_labels[code] }}</span>{% endfor %}
+                    {% endif %}
+                </p>
             </div>
             {% endif %}
+
+            <!-- Grid de 3 limites no padrao do prototipo -->
+            <div class="pc-limits-box">
+                <div>
+                    <strong>{{ plan.max_farms if plan.max_farms is not none else 'Livre' }}</strong>
+                    <span>{{ 'fazenda' if plan.max_farms == 1 else 'fazendas' }}</span>
+                </div>
+                <div class="pc-limits-mid">
+                    <strong>{{ plan.max_users if plan.max_users is not none else 'Livre' }}</strong>
+                    <span>{{ 'usuário' if plan.max_users == 1 else 'usuários' }}</span>
+                </div>
+                <div>
+                    <strong>{% if plan.max_hectares is not none %}{{ plan.max_hectares|decimal_br(0 if plan.max_hectares == plan.max_hectares|int else 2) }} ha{% else %}Livre{% endif %}</strong>
+                    <span>área</span>
+                </div>
+            </div>
+
             <div class="pc-card-inclusions">
                 <ul class="pc-feature-list">
-                    <li>{{ i_check }}<span>{{ (plan.max_farms ~ (' fazenda' if plan.max_farms == 1 else ' fazendas')) if plan.max_farms is not none else 'Fazendas sem limite' }} · {{ (plan.max_users ~ (' usuário' if plan.max_users == 1 else ' usuários')) if plan.max_users is not none else 'Usuários sem limite' }}</span></li>
-                    <li>{{ i_check }}<span>{% if plan.max_hectares is not none %}Até {{ plan.max_hectares|decimal_br(0 if plan.max_hectares == plan.max_hectares|int else 2) }} ha{% else %}Área sem limite{% endif %}</span></li>
-                    {% for code in feature_codes[:3] %}
+                    {% for code in feature_codes[:4] %}
                     <li{% if code == module_code %} class="pc-feature-requested"{% endif %}>{{ i_check }}<span>{{ module_labels[code] }}</span></li>
                     {% endfor %}
                 </ul>
             </div>
+
             <div class="pc-card-actions">
                 {% if is_recorded %}
-                <p class="pc-button pc-button-static">{{ 'Já contratado' if is_current else 'Plano registrado' }}</p>
+                <p class="pc-button pc-button-static">{{ 'Seu plano atual' if is_current else 'Plano registrado' }}</p>
                 {% elif limit_issues %}
                 <details class="pc-unavailable" data-plan-unavailable>
                     <summary class="pc-button pc-button-static">
@@ -82,7 +157,7 @@
                     </div>
                 </details>
                 {% elif can_subscribe and prices %}
-                <a href="/minha-assinatura/contratar?plan_id={{ plan.id }}" class="{{ cta_class }}">Escolher {{ plan.name }}</a>
+                <a href="/minha-assinatura/contratar?plan_id={{ plan.id }}" data-subscribe-link data-base-href="/minha-assinatura/contratar?plan_id={{ plan.id }}" class="{{ cta_class }}">Escolher {{ plan.name }}</a>
                 {% elif can_change_plan and prices %}
                 <button type="button" data-dialog-open="change-plan-{{ plan.id }}" class="{{ cta_class }}">Escolher {{ plan.name }}</button>
                 {% include "partials/plan_change_dialog.html" %}
@@ -90,32 +165,48 @@
                 <a href="/minha-assinatura" class="pc-button">Acompanhar assinatura</a>
                 {% else %}
                 {% set lost_modules = modules_by_plan.get(current_plan_id, [])|reject('in', modules)|list %}
+                {% set gained_modules = modules|reject('in', modules_by_plan.get(current_plan_id, []))|list if current_plan_id else [] %}
                 <button type="button" class="{{ cta_class }}" data-dialog-open="request-plan-{{ plan.id }}">Quero o plano {{ plan.name }}</button>
                 <dialog id="request-plan-{{ plan.id }}" class="app-modal pc-request-dialog" aria-labelledby="request-plan-title-{{ plan.id }}">
                     <form method="post" action="/planos-disponiveis/solicitar" data-busy-form>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <input type="hidden" name="plan_id" value="{{ plan.id }}">
                         <input type="hidden" name="modulo" value="{{ module_code or '' }}">
-                        <h3 id="request-plan-title-{{ plan.id }}">Solicitar o plano {{ plan.name }}</h3>
-                        <p>A equipe SiSFarm vai confirmar a data e as condições da mudança.{% if recorded_plan_id %} Seu plano e a cobrança atual seguem em vigor até a alteração.{% endif %}</p>
-                        {% if lost_modules %}
-                        <div class="pc-request-impact">
-                            <h4>Módulos fora do plano escolhido</h4>
-                            <ul>{% for code in lost_modules %}<li>{{ module_labels[code] }}</li>{% endfor %}</ul>
+                        <header class="pc-dialog-head">
+                            <div>
+                                <h3 id="request-plan-title-{{ plan.id }}">Solicitar o plano {{ plan.name }}</h3>
+                                <p>Revise o impacto antes de enviar sua solicitação.</p>
+                            </div>
+                            <button type="button" class="sf-icon-btn" data-dialog-close aria-label="Fechar">✕</button>
+                        </header>
+                        <div class="pc-dialog-body">
+                            <p class="pc-dialog-copy">A equipe SiSFarm vai confirmar a data e as condições da mudança.{% if recorded_plan_id %} Seu plano e a cobrança atual seguem em vigor até a alteração.{% endif %}</p>
+                            {% if gained_modules %}
+                            <div class="pc-request-impact pc-impact-gain">
+                                <h4>Novos módulos liberados (+{{ gained_modules|length }})</h4>
+                                <ul>{% for code in gained_modules %}<li>{{ module_labels[code] }}</li>{% endfor %}</ul>
+                            </div>
+                            {% endif %}
+                            {% if lost_modules %}
+                            <div class="pc-request-impact pc-impact-loss">
+                                <h4>Módulos fora do plano escolhido ({{ lost_modules|length }})</h4>
+                                <ul>{% for code in lost_modules %}<li>{{ module_labels[code] }}</li>{% endfor %}</ul>
+                            </div>
+                            {% endif %}
                         </div>
-                        {% endif %}
-                        <div class="pc-request-actions">
+                        <footer class="pc-request-actions">
                             <button type="button" class="pc-button" data-dialog-close>Voltar</button>
-                            <button type="submit" class="pc-button pc-button-primary">Enviar solicitação</button>
-                        </div>
+                            <button type="submit" class="pc-button pc-button-primary">Confirmar solicitação</button>
+                        </footer>
                     </form>
                 </dialog>
                 {% endif %}
-                <a href="#comparacao-planos" class="pc-modules-link" data-comparison-focus="{{ plan.id }}" aria-controls="comparacao-planos" aria-label="Ver módulos do plano {{ plan.name }}">Ver módulos</a>
+                <a href="#comparacao-planos" class="pc-modules-link" data-comparison-focus="{{ plan.id }}" aria-controls="comparacao-planos" aria-label="Ver módulos do plano {{ plan.name }}">Ver {{ modules|length }} módulos no comparativo ↓</a>
             </div>
         </article>
         {% endfor %}
     </section>
+
     {% include "partials/customer_plan_comparison.html" %}
     {% else %}
     <section class="pc-empty">

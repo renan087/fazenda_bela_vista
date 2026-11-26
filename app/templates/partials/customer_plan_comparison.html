@@ -13,72 +13,72 @@
 
 {% macro mark(included) -%}
     <span class="pc-mark {{ 'pc-mark-included' if included else 'pc-mark-missing' }}" aria-hidden="true">
-        {% if included %}{{ i_check }}{% else %}–{% endif %}
+        {% if included %}{{ i_check }}{% else %}—{% endif %}
     </span>
 {%- endmacro %}
 <section id="comparacao-planos" class="pc-comparison" aria-labelledby="customer-comparison-title" data-plan-comparison>
     <div class="pc-comparison-header">
         <div>
-            <h2 id="customer-comparison-title" tabindex="-1" aria-describedby="customer-comparison-highlight">Comparativo de planos</h2>
+            <h2 id="customer-comparison-title" tabindex="-1" aria-describedby="customer-comparison-highlight">Comparativo completo de recursos</h2>
+            <p class="pc-comparison-sub">Veja exatamente o que muda entre cada plano</p>
             <span id="customer-comparison-highlight" class="pc-sr-only" data-comparison-highlight>{% for plan in plans_catalog if plan.id == highlighted_plan_id %}Plano em destaque: {{ plan.name }}.{% endfor %}</span>
-            <div class="pc-legend">
-                <span>{{ mark(true) }} Incluído</span><span>{{ mark(false) }} Não incluído</span>
-            </div>
         </div>
         {% if plan_count > 1 %}
-        <button type="button" class="pc-button pc-filter" aria-pressed="false" aria-controls="customer-comparison-table" data-comparison-filter hidden>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M7 12h10m-7 5h4"/></svg>
-            Só diferenças
+        <button type="button" class="pc-filter-chip" aria-pressed="false" aria-controls="customer-comparison-table" data-comparison-filter hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10m-7 6h4"/></svg>
+            Mostrar só diferenças
         </button>
         {% endif %}
     </div>
     <p class="pc-comparison-feedback" data-comparison-feedback role="status" hidden>Os planos exibidos incluem os mesmos módulos.</p>
-    <table id="customer-comparison-table" class="pc-table{% if plan_count > 3 %} pc-table-many{% endif %}" style="--pc-columns: {{ plan_count }}" aria-labelledby="customer-comparison-title" role="table">
-        <colgroup><col class="pc-resource-column">{% for plan in plans_catalog %}<col>{% endfor %}</colgroup>
-        <thead role="rowgroup">
-            <tr role="row">
-                <th scope="col" role="columnheader" class="pc-resource-heading">Recursos</th>
-                {% for plan in plans_catalog %}
-                <th id="pc-plan-{{ plan.id }}" class="pc-value{% if plan.id == highlighted_plan_id %} pc-highlighted{% endif %}" scope="col" role="columnheader" data-comparison-plan="{{ plan.id }}">{{ plan.name }}</th>
+    <div class="pc-table-wrap">
+        <table id="customer-comparison-table" class="pc-table{% if plan_count > 3 %} pc-table-many{% endif %}" style="--pc-columns: {{ plan_count }}" aria-labelledby="customer-comparison-title" role="table">
+            <colgroup><col class="pc-resource-column">{% for plan in plans_catalog %}<col>{% endfor %}</colgroup>
+            <thead role="rowgroup">
+                <tr role="row">
+                    <th scope="col" role="columnheader" class="pc-resource-heading">Módulos e limites</th>
+                    {% for plan in plans_catalog %}
+                    <th id="pc-plan-{{ plan.id }}" class="pc-value{% if plan.id == highlighted_plan_id %} pc-highlighted{% endif %}" scope="col" role="columnheader" data-comparison-plan="{{ plan.id }}">{{ plan.name }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody role="rowgroup">
+                <tr class="pc-group-heading" role="row"><th scope="rowgroup" role="rowheader" colspan="{{ plan_count + 1 }}">Limites da organização</th></tr>
+                {% for key, label, unit in [('max_farms', 'Fazendas em operação', ''), ('max_users', 'Usuários ativos', ''), ('max_hectares', 'Área cadastrada', ' ha')] %}
+                <tr class="pc-comparison-row" role="row" data-comparison-row>
+                    <th id="pc-limit-{{ key }}" scope="row" role="rowheader">{{ label }}</th>
+                    {% for plan in plans_catalog %}
+                    {% set value = plan[key] %}
+                    <td class="pc-value{% if plan.id == highlighted_plan_id %} pc-highlighted{% endif %}" headers="pc-limit-{{ key }} pc-plan-{{ plan.id }}" role="cell" data-comparison-plan="{{ plan.id }}">
+                        {% if plan_count > 3 %}<span class="pc-inline-plan" aria-hidden="true">{{ plan.name }}</span>{% endif %}
+                        <strong>{% if value is none %}Sem limite{% else %}{{ value|decimal_br(0 if value == value|int else 2) }}{{ unit }}{% endif %}</strong>
+                    </td>
+                    {% endfor %}
+                </tr>
                 {% endfor %}
-            </tr>
-        </thead>
-        <tbody role="rowgroup">
-            <tr class="pc-group-heading" role="row"><th scope="rowgroup" role="rowheader" colspan="{{ plan_count + 1 }}">Limites de uso</th></tr>
-            {% for key, label, unit in [('max_farms', 'Fazendas em operação', ''), ('max_users', 'Usuários ativos', ''), ('max_hectares', 'Área cadastrada', ' ha')] %}
-            <tr class="pc-comparison-row" role="row" data-comparison-row>
-                <th id="pc-limit-{{ key }}" scope="row" role="rowheader">{{ label }}</th>
-                {% for plan in plans_catalog %}
-                {% set value = plan[key] %}
-                <td class="pc-value{% if plan.id == highlighted_plan_id %} pc-highlighted{% endif %}" headers="pc-limit-{{ key }} pc-plan-{{ plan.id }}" role="cell" data-comparison-plan="{{ plan.id }}">
-                    {% if plan_count > 3 %}<span class="pc-inline-plan" aria-hidden="true">{{ plan.name }}</span>{% endif %}
-                    <strong>{% if value is none %}Sem limite{% else %}{{ value|decimal_br(0 if value == value|int else 2) }}{{ unit }}{% endif %}</strong>
-                </td>
+            </tbody>
+            {% for label, codes in groups %}
+            {% set visible_codes = codes|select('in', module_labels)|list %}
+            {% if visible_codes %}
+            <tbody role="rowgroup" data-comparison-group>
+                <tr class="pc-group-heading" role="row"><th scope="rowgroup" role="rowheader" colspan="{{ plan_count + 1 }}">{{ label }}</th></tr>
+                {% for code in visible_codes %}
+                {% set coverage = namespace(count=0) %}
+                {% for plan in plans_catalog if code in modules_by_plan[plan.id] %}{% set coverage.count = coverage.count + 1 %}{% endfor %}
+                <tr class="pc-comparison-row{% if code == module_code %} pc-row-requested{% endif %}" role="row" data-comparison-row{% if coverage.count in [0, plan_count] %} data-comparison-common{% endif %}>
+                    <th id="pc-module-{{ code }}" scope="row" role="rowheader">{{ module_labels[code] }}</th>
+                    {% for plan in plans_catalog %}
+                    {% set included = code in modules_by_plan[plan.id] %}
+                    <td class="pc-value{% if plan.id == highlighted_plan_id %} pc-highlighted{% endif %}" headers="pc-module-{{ code }} pc-plan-{{ plan.id }}" role="cell" data-comparison-plan="{{ plan.id }}">
+                        {% if plan_count > 3 %}<span class="pc-inline-plan" aria-hidden="true">{{ plan.name }}</span>{% endif %}
+                        {{ mark(included) }}<span class="pc-sr-only">{{ 'Incluído' if included else 'Não incluído' }}</span>
+                    </td>
+                    {% endfor %}
+                </tr>
                 {% endfor %}
-            </tr>
+            </tbody>
+            {% endif %}
             {% endfor %}
-        </tbody>
-        {% for label, codes in groups %}
-        {% set visible_codes = codes|select('in', module_labels)|list %}
-        {% if visible_codes %}
-        <tbody role="rowgroup" data-comparison-group>
-            <tr class="pc-group-heading" role="row"><th scope="rowgroup" role="rowheader" colspan="{{ plan_count + 1 }}">{{ label }}</th></tr>
-            {% for code in visible_codes %}
-            {% set coverage = namespace(count=0) %}
-            {% for plan in plans_catalog if code in modules_by_plan[plan.id] %}{% set coverage.count = coverage.count + 1 %}{% endfor %}
-            <tr class="pc-comparison-row{% if code == module_code %} pc-row-requested{% endif %}" role="row" data-comparison-row{% if coverage.count in [0, plan_count] %} data-comparison-common{% endif %}>
-                <th id="pc-module-{{ code }}" scope="row" role="rowheader">{{ module_labels[code] }}</th>
-                {% for plan in plans_catalog %}
-                {% set included = code in modules_by_plan[plan.id] %}
-                <td class="pc-value{% if plan.id == highlighted_plan_id %} pc-highlighted{% endif %}" headers="pc-module-{{ code }} pc-plan-{{ plan.id }}" role="cell" data-comparison-plan="{{ plan.id }}">
-                    {% if plan_count > 3 %}<span class="pc-inline-plan" aria-hidden="true">{{ plan.name }}</span>{% endif %}
-                    {{ mark(included) }}<span class="pc-sr-only">{{ 'Incluído' if included else 'Não incluído' }}</span>
-                </td>
-                {% endfor %}
-            </tr>
-            {% endfor %}
-        </tbody>
-        {% endif %}
-        {% endfor %}
-    </table>
+        </table>
+    </div>
 </section>
