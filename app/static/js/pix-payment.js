@@ -2,14 +2,48 @@
     const panel = document.querySelector('[data-pix-panel]');
     if (!panel) return;
 
-    const copyBtn = panel.querySelector('[data-pix-copy-btn]');
+    const modal = panel.querySelector('[data-pix-modal]');
+    const openBtns = panel.querySelectorAll('[data-pix-open-modal]');
+    const closeBtns = panel.querySelectorAll('[data-pix-close-modal]');
+    const copyBtns = panel.querySelectorAll('[data-pix-copy-btn]');
     const codeField = panel.querySelector('[data-pix-code]');
     const feedback = panel.querySelector('[data-pix-feedback]');
-    const badge = panel.querySelector('[data-pix-status-badge]');
-    const countdown = panel.querySelector('[data-pix-countdown]');
+    const badges = panel.querySelectorAll('[data-pix-status-badge]');
+    const countdowns = panel.querySelectorAll('[data-pix-countdown]');
     const expiredBox = panel.querySelector('[data-pix-expired-box]');
     const statusUrl = panel.dataset.pixStatusUrl || '';
     const expiresAtRaw = panel.dataset.pixExpiresAt || '';
+
+    const openModal = () => {
+        if (!modal) return;
+        if (typeof modal.showModal === 'function') {
+            if (!modal.open) modal.showModal();
+        } else {
+            modal.setAttribute('open', '');
+        }
+    };
+
+    const closeModal = () => {
+        if (!modal) return;
+        if (typeof modal.close === 'function' && modal.open) {
+            modal.close();
+        } else {
+            modal.removeAttribute('open');
+        }
+    };
+
+    openBtns.forEach((btn) => btn.addEventListener('click', openModal));
+    closeBtns.forEach((btn) => btn.addEventListener('click', closeModal));
+
+    if (modal) {
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) closeModal();
+        });
+        // Abre automaticamente ao chegar da geração do Pix (#pix-pagamento) ou ao acessar com Pix pendente recém-criado.
+        if (modal.dataset.pixAutoOpen === 'true' && window.location.hash === '#pix-pagamento') {
+            openModal();
+        }
+    }
 
     const setFeedback = (text, tone) => {
         if (!feedback) return;
@@ -17,50 +51,54 @@
         feedback.className = `px-live-feedback${tone ? ` is-${tone}` : ''}`;
     };
 
-    if (copyBtn && codeField) {
-        copyBtn.addEventListener('click', async () => {
-            const value = (codeField.value || '').trim();
-            if (!value) return;
-            const original = copyBtn.textContent;
-            let copied = false;
+    const copyPixCode = async (triggerBtn) => {
+        if (!codeField) return;
+        const value = (codeField.value || '').trim();
+        if (!value) return;
+        const labelEl = triggerBtn.querySelector('span') || triggerBtn;
+        const original = labelEl.textContent;
+        let copied = false;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(value);
+                copied = true;
+            }
+        } catch (_err) {
+            copied = false;
+        }
+        if (!copied) {
+            codeField.focus();
+            codeField.select();
             try {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(value);
-                    copied = true;
-                }
+                copied = document.execCommand('copy');
             } catch (_err) {
                 copied = false;
             }
-            if (!copied) {
-                codeField.focus();
-                codeField.select();
-                try {
-                    copied = document.execCommand('copy');
-                } catch (_err) {
-                    copied = false;
-                }
-            }
-            if (copied) {
-                copyBtn.textContent = 'Código Pix copiado!';
-                setFeedback('Código Pix copiado. Cole no aplicativo do seu banco para pagar.', 'ok');
-                setTimeout(() => { copyBtn.textContent = original; }, 2600);
-            } else {
-                setFeedback('Selecione o código acima e copie manualmente.', 'warn');
-            }
-        });
-    }
+        }
+        if (copied) {
+            labelEl.textContent = 'Código copiado!';
+            setFeedback('Código Pix copiado. Cole no app do seu banco.', 'ok');
+            setTimeout(() => { labelEl.textContent = original; }, 2400);
+        } else {
+            setFeedback('Selecione o código acima e copie manualmente.', 'warn');
+        }
+    };
+
+    copyBtns.forEach((btn) => {
+        btn.addEventListener('click', () => copyPixCode(btn));
+    });
 
     const markExpired = () => {
-        if (badge) {
-            badge.className = 'ms-badge ms-badge-muted';
-            badge.textContent = 'Pix expirado';
-        }
-        if (countdown) countdown.textContent = 'Expirado';
+        badges.forEach((el) => {
+            el.className = 'ms-badge ms-badge-muted';
+            el.textContent = 'Pix expirado';
+        });
+        countdowns.forEach((el) => { el.textContent = 'Expirado'; });
         if (expiredBox) expiredBox.hidden = false;
     };
 
     let countdownTimer = null;
-    if (countdown && expiresAtRaw) {
+    if (countdowns.length && expiresAtRaw) {
         const expiresMs = Date.parse(expiresAtRaw);
         if (!Number.isNaN(expiresMs)) {
             const renderClock = () => {
@@ -74,9 +112,10 @@
                 const mins = Math.floor((diff % 3600) / 60);
                 const secs = diff % 60;
                 const pad = (n) => String(n).padStart(2, '0');
-                countdown.textContent = hours > 0
+                const text = hours > 0
                     ? `Expira em ${pad(hours)}h ${pad(mins)}min ${pad(secs)}s`
                     : `Expira em ${pad(mins)}min ${pad(secs)}s`;
+                countdowns.forEach((el) => { el.textContent = text; });
             };
             renderClock();
             countdownTimer = setInterval(renderClock, 1000);
@@ -98,11 +137,11 @@
                 const data = await response.json();
                 if (data.confirmed) {
                     stopped = true;
-                    if (badge) {
-                        badge.className = 'ms-badge ms-badge-ok';
-                        badge.textContent = 'Pagamento confirmado';
-                    }
-                    setFeedback('Pagamento Pix confirmado! Atualizando sua assinatura…', 'ok');
+                    badges.forEach((el) => {
+                        el.className = 'ms-badge ms-badge-ok';
+                        el.textContent = 'Pagamento confirmado';
+                    });
+                    setFeedback('Pagamento confirmado! Atualizando sua assinatura…', 'ok');
                     setTimeout(() => window.location.reload(), 900);
                 } else if (data.expired || data.status === 'EXPIRED' || data.status === 'CANCELLED') {
                     stopped = true;

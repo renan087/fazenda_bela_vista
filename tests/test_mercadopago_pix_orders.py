@@ -734,6 +734,9 @@ def test_pix_web_routes_permissions_rendering_and_org_isolation(database, pix_se
         assert ctx["active_pix_payment"].id == pay.id
         html = _render_template("my_subscription.html", ctx)
         assert "Conclua o pagamento via Pix" in html
+        assert 'id="pix-payment-dialog"' in html
+        assert 'data-pix-auto-open="true"' in html
+        assert "Abrir QR Code Pix" in html
         assert SAMPLE_QR_CODE in html
         assert "Copiar código Pix" in html
         assert f"/minha-assinatura/pix/{pay.id}/status" in html

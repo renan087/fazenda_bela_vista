@@ -1,4 +1,4 @@
-{# Painel de pagamento e renovação Pix (API de Orders Mercado Pago) dentro de Minha assinatura. #}
+{# Painel compacto e modal de pagamento Pix (API de Orders Mercado Pago) em Minha assinatura. #}
 {% if is_pix_subscription %}
 <section id="pix-pagamento" class="ms-card px-panel" data-pix-panel
     {% if active_pix_payment and active_pix_payment.status == 'PENDING' and not active_pix_expired %}
@@ -12,7 +12,7 @@
         <div>
             <span class="ms-eyebrow">Pix · Em verificação</span>
             <h2 class="ms-subtitle" id="px-panel-title">Confirmando geração do Pix</h2>
-            <p class="ms-copy">A solicitação foi enviada ao Mercado Pago e está sendo conferida para evitar cobranças duplicadas.</p>
+            <p class="ms-copy">Aguarde alguns instantes enquanto confirmamos sua cobrança.</p>
         </div>
         <span class="ms-badge ms-badge-warn"><span class="ms-dot" aria-hidden="true"></span>Verificando</span>
     </div>
@@ -26,89 +26,125 @@
     {% elif active_pix_payment and active_pix_payment.status == 'PENDING' and not active_pix_expired %}
     {% set kind_titles = {
         'contratacao': 'Conclua o pagamento via Pix',
-        'renovacao': 'Renovação da assinatura via Pix',
+        'renovacao': 'Renovação via Pix',
         'alteracao_plano': 'Alteração de plano via Pix',
     } %}
-    <div class="px-head">
-        <div>
-            <span class="ms-eyebrow">Pix instantâneo · Mercado Pago{% if sandbox_mp %} · Teste{% endif %}</span>
+    {# Cartão compacto na tela principal (o QR Code e instruções abrem no modal) #}
+    <div class="px-banner-compact">
+        <div class="px-banner-info">
+            <span class="ms-eyebrow">Pix instantâneo{% if sandbox_mp %} · Teste{% endif %}</span>
             <h2 class="ms-subtitle" id="px-panel-title">{{ kind_titles.get(active_pix_payment.charge_kind or 'contratacao', 'Pagamento via Pix') }}</h2>
-            <p class="ms-copy">Pague pelo aplicativo do seu banco usando o QR Code ou o código copia e cola. A liberação acontece automaticamente após a confirmação.</p>
+            <div class="px-banner-meta">
+                <strong class="px-amount-sm ms-tabular">{{ active_pix_payment.amount|money_br }}</strong>
+                <span class="ms-badge ms-badge-warn" data-pix-status-badge><span class="ms-dot" aria-hidden="true"></span>Aguardando pagamento</span>
+                {% if active_pix_expires_local %}
+                <span class="px-countdown ms-tabular" data-pix-countdown aria-live="off"></span>
+                {% endif %}
+            </div>
         </div>
-        <div class="px-head-meta">
-            <strong class="px-amount ms-tabular">{{ active_pix_payment.amount|money_br }}</strong>
-            <span class="ms-badge ms-badge-warn" data-pix-status-badge><span class="ms-dot" aria-hidden="true"></span>Aguardando pagamento</span>
+        <div class="px-banner-actions">
+            <button type="button" class="sf-btn sf-btn-primary" data-pix-open-modal>Abrir QR Code Pix</button>
+            {% if active_pix_payment.pix_qr_code %}
+            <button type="button" class="sf-btn sf-btn-secondary" data-pix-copy-btn>Copiar código Pix</button>
+            {% endif %}
         </div>
     </div>
 
-    <div class="px-grid">
-        <div class="px-qr-col">
-            {% if active_pix_qr_uri %}
-            <div class="px-qr-frame">
-                <img src="{{ active_pix_qr_uri }}" alt="QR Code Pix para pagamento da assinatura SiSFarm" class="px-qr-img" width="216" height="216">
-            </div>
-            {% endif %}
-            {% if active_pix_expires_local %}
-            <div class="px-expiry" data-pix-expiry>
-                <span class="px-expiry-label">Válido até <strong>{{ active_pix_expires_local.strftime('%d/%m/%Y às %H:%M') }}</strong></span>
-                <span class="px-countdown ms-tabular" data-pix-countdown aria-live="off"></span>
-            </div>
-            {% endif %}
-        </div>
+    {# Modal estiloso e limpo com QR Code e instruções em 3 passos simples #}
+    <dialog id="pix-payment-dialog" class="px-dialog" data-pix-modal data-pix-auto-open="true" aria-labelledby="px-modal-title">
+        <div class="px-modal-shell">
+            <header class="px-modal-head">
+                <div class="px-modal-title-group">
+                    <span class="px-pill-brand">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v3M14 20h6"/></svg>
+                        Pix · Mercado Pago{% if sandbox_mp %} · Teste{% endif %}
+                    </span>
+                    <h2 class="px-modal-title" id="px-modal-title">{{ kind_titles.get(active_pix_payment.charge_kind or 'contratacao', 'Pague com Pix') }}</h2>
+                </div>
+                <button type="button" class="sf-icon-btn px-modal-close" data-pix-close-modal aria-label="Fechar janela do Pix">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </header>
 
-        <div class="px-copy-col">
-            <ol class="px-steps">
-                <li><span>1</span>Abra o aplicativo do seu banco e escolha <strong>Pix</strong>.</li>
-                <li><span>2</span>Escaneie o QR Code ou use <strong>Pix Copia e Cola</strong> abaixo.</li>
-                <li><span>3</span>Confirme o valor de <strong>{{ active_pix_payment.amount|money_br }}</strong>. O SiSFarm atualiza assim que o pagamento for confirmado.</li>
-            </ol>
+            <div class="px-modal-body">
+                <div class="px-summary-strip">
+                    <div>
+                        <span class="px-summary-label">Valor a pagar</span>
+                        <strong class="px-amount ms-tabular">{{ active_pix_payment.amount|money_br }}</strong>
+                    </div>
+                    <div class="px-summary-right">
+                        <span class="ms-badge ms-badge-warn" data-pix-status-badge><span class="ms-dot" aria-hidden="true"></span>Aguardando</span>
+                        {% if active_pix_expires_local %}
+                        <span class="px-countdown ms-tabular" data-pix-countdown aria-live="off"></span>
+                        {% endif %}
+                    </div>
+                </div>
 
-            {% if active_pix_payment.pix_qr_code %}
-            <div class="px-code-box">
-                <label for="px-copy-input" class="px-code-label">Código Pix copia e cola</label>
-                <textarea id="px-copy-input" class="px-code-field" readonly rows="3" data-pix-code>{{ active_pix_payment.pix_qr_code }}</textarea>
-                <div class="px-copy-actions">
-                    <button type="button" class="sf-btn sf-btn-primary px-copy-btn" data-pix-copy-btn>Copiar código Pix</button>
+                {% if active_pix_qr_uri %}
+                <div class="px-qr-stage">
+                    <div class="px-qr-frame">
+                        <img src="{{ active_pix_qr_uri }}" alt="QR Code Pix para pagamento da assinatura SiSFarm" class="px-qr-img" width="204" height="204">
+                    </div>
+                    {% if active_pix_expires_local %}
+                    <span class="px-expiry-hint">Válido até {{ active_pix_expires_local.strftime('%d/%m às %H:%M') }}</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <ol class="px-steps-clean" aria-label="Como pagar com Pix">
+                    <li><span>1</span>Abra o aplicativo do seu banco</li>
+                    <li><span>2</span>Escaneie o QR Code ou copie o código</li>
+                    <li><span>3</span>Confirme o pagamento — a liberação é automática</li>
+                </ol>
+
+                {% if active_pix_payment.pix_qr_code %}
+                <div class="px-copy-block">
+                    <label for="px-copy-input" class="sr-only">Código Pix copia e cola</label>
+                    <input id="px-copy-input" type="text" class="px-code-input" readonly value="{{ active_pix_payment.pix_qr_code }}" data-pix-code aria-label="Código Pix copia e cola">
+                    <button type="button" class="sf-btn sf-btn-primary px-copy-btn-full" data-pix-copy-btn>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        <span>Copiar código Pix</span>
+                    </button>
+                    <p class="px-live-feedback" role="status" aria-live="polite" data-pix-feedback></p>
+                </div>
+                {% endif %}
+
+                <div class="px-expired-fallback" data-pix-expired-box hidden>
+                    <p><strong>Este código Pix expirou.</strong> Gere um novo para concluir.</p>
+                    {% if can_change_payment and pix_available %}
+                    <form method="post" action="/minha-assinatura/pix/gerar">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="cycle" value="{{ active_pix_payment.target_cycle or subscription.cycle }}">
+                        <button type="submit" class="sf-btn sf-btn-primary">Gerar novo Pix</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            <footer class="px-modal-foot">
+                <div class="px-modal-foot-main">
                     <form method="post" action="/minha-assinatura/pix/{{ active_pix_payment.id }}/sincronizar" class="px-inline-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit" class="sf-btn sf-btn-secondary">Já paguei, verificar</button>
+                        <button type="submit" class="sf-btn sf-btn-secondary">Já paguei</button>
                     </form>
+                    <button type="button" class="sf-btn sf-btn-secondary" data-pix-close-modal>Fechar</button>
                 </div>
-                <p class="px-live-feedback" role="status" aria-live="polite" data-pix-feedback></p>
-            </div>
-            {% endif %}
-
-            <div class="px-secondary-links">
-                {% if active_pix_payment.invoice_url %}
-                <a href="{{ active_pix_payment.invoice_url }}" target="_blank" rel="noopener noreferrer" class="ms-link">Abrir página Pix no Mercado Pago →</a>
-                {% endif %}
                 {% if can_change_payment %}
                 <form method="post" action="/minha-assinatura/pix/{{ active_pix_payment.id }}/cancelar" onsubmit="return confirm('Cancelar este código Pix pendente?');">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit" class="px-text-danger">Cancelar este código Pix</button>
+                    <button type="submit" class="px-text-danger">Cancelar Pix</button>
                 </form>
                 {% endif %}
-            </div>
+            </footer>
         </div>
-    </div>
-
-    <div class="px-expired-fallback" data-pix-expired-box hidden>
-        <p><strong>Este código Pix expirou.</strong> Gere um novo código para concluir o pagamento.</p>
-        {% if can_change_payment and pix_available %}
-        <form method="post" action="/minha-assinatura/pix/gerar">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="cycle" value="{{ active_pix_payment.target_cycle or subscription.cycle }}">
-            <button type="submit" class="sf-btn sf-btn-primary">Gerar novo Pix</button>
-        </form>
-        {% endif %}
-    </div>
+    </dialog>
 
     {% elif active_pix_expired or (state == 'pending' and not active_pix_payment) %}
     <div class="px-head">
         <div>
             <span class="ms-eyebrow">Pix · Expirado</span>
             <h2 class="ms-subtitle" id="px-panel-title">O código Pix anterior expirou</h2>
-            <p class="ms-copy">Nenhuma cobrança foi realizada. Gere um novo QR Code Pix válido por 24 horas para ativar ou renovar seu plano.</p>
+            <p class="ms-copy">Nenhuma cobrança foi feita. Gere um novo QR Code válido por 24 horas.</p>
         </div>
         <span class="ms-badge ms-badge-muted">Expirado</span>
     </div>
@@ -125,13 +161,13 @@
     {% elif can_renew_pix or state == 'overdue' %}
     <div class="px-head">
         <div>
-            <span class="ms-eyebrow">Renovação manual via Pix</span>
+            <span class="ms-eyebrow">Renovação via Pix</span>
             <h2 class="ms-subtitle" id="px-panel-title">{{ 'Regularize seu plano com Pix' if state == 'overdue' else 'Renove sua assinatura com Pix' }}</h2>
             <p class="ms-copy">
                 {% if state == 'overdue' %}
-                O ciclo anterior já venceu. Gere um novo código Pix para restabelecer o acesso completo imediatamente após o pagamento.
+                O ciclo anterior venceu. Gere um novo Pix para reativar o acesso completo.
                 {% else %}
-                Seu período atual vence em <strong>{{ subscription.next_due_date.strftime('%d/%m/%Y') }}</strong>. Como o Pix não renova automaticamente, você pode gerar o próximo pagamento agora sem perder os dias restantes.
+                Seu período vence em <strong>{{ subscription.next_due_date.strftime('%d/%m/%Y') }}</strong>. Renove agora sem perder os dias restantes.
                 {% endif %}
             </p>
         </div>
@@ -157,5 +193,5 @@
     {% endif %}
     {% endif %}
 </section>
-<script src="/static/js/pix-payment.js?v=20261126pix" defer></script>
+<script src="/static/js/pix-payment.js?v=20261126pix2" defer></script>
 {% endif %}
