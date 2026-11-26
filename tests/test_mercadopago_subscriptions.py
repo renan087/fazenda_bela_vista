@@ -496,6 +496,8 @@ def test_production_cancellation_keeps_paid_period_and_reconciles_later_refunds(
 
     monkeypatch.setattr(entitlements, "billing_environment", lambda: MERCADOPAGO_LIVE)
     monkeypatch.setattr(mp, "today_in_app_timezone", lambda: TODAY)
+    monkeypatch.setattr(routes, "today_in_app_timezone", lambda: TODAY)
+    monkeypatch.setattr(live_settings, "support_email", None, raising=False)
     with database() as db:
         row = prepare(db)
         row.environment = MERCADOPAGO_LIVE
@@ -509,9 +511,15 @@ def test_production_cancellation_keeps_paid_period_and_reconciles_later_refunds(
         mp.reconcile(db, gateway, row)
         db.commit()
         assert entitlements.compute_entitlements(db, row.organization_id, TODAY).billing_state == "ok"
+        confirmation = routes._customer_subscription_context(db, row.organization)
+        assert confirmation["cancellation_access_through"] == date(2026, 12, 23)
+        assert confirmation["cancellation_period_end"] == date(2026, 12, 24)
         mp.change_status(gateway, row, "canceled")
         db.commit()
         assert not row.is_current
+        cancellation = routes._customer_subscription_context(db, row.organization)
+        assert cancellation["paid_last_day"] == confirmation["cancellation_access_through"]
+        assert cancellation["paid_until"] == confirmation["cancellation_period_end"]
         assert organization_access(db, row.organization_id, date(2026, 12, 23), environment=MERCADOPAGO_LIVE).has_access
         assert not organization_access(db, row.organization_id, date(2026, 12, 24), environment=MERCADOPAGO_LIVE).has_access
 

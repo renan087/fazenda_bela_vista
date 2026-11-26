@@ -1,163 +1,127 @@
 {% extends "base.html" %}
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/customer-subscription-nav.css') }}?v=20261125">
+<link rel="stylesheet" href="{{ url_for('static', path='css/customer-plan-catalog.css') }}?v=20261125">
+<script src="{{ url_for('static', path='js/customer-plan-catalog.js') }}?v=20261125" defer></script>
+{% endblock %}
 {% block content %}
-{% set i_check = '<svg class="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>' %}
-{% set i_lock = '<svg class="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>' %}
-<div class="mx-auto max-w-6xl" data-plan-upgrade>
-    <section class="relative overflow-hidden rounded-[2rem] bg-[#0c2416] px-6 pb-40 pt-8 text-white shadow-panel sm:px-10" data-plans-hero>
-        <div class="pointer-events-none absolute inset-0 bg-cover bg-right" aria-hidden="true" style="background-image: url('/static/images/planos-hero.webp');"></div>
-        <div class="pointer-events-none absolute inset-0" aria-hidden="true" style="background: linear-gradient(90deg, #0c2416 0%, rgba(12, 36, 22, 0.92) 32%, rgba(12, 36, 22, 0.35) 62%, rgba(12, 36, 22, 0.1) 100%), linear-gradient(0deg, #0c2416 0%, rgba(12, 36, 22, 0) 45%);"></div>
-        <div class="relative flex flex-wrap items-start justify-between gap-4">
-            <p class="flex items-center gap-2 text-2xl font-semibold"><span class="text-lime-400">{{ plan_icon('leaf', 'h-7 w-7') }}</span>SisFarm</p>
-            <ul class="flex flex-wrap gap-x-4 gap-y-1 rounded-full bg-white/10 px-4 py-2 text-xs text-emerald-50 ring-1 ring-white/15">
-                <li class="flex items-center gap-1.5"><span class="text-lime-400">{{ plan_icon('shield', 'h-4 w-4') }}</span>Plataforma segura</li>
-                <li class="flex items-center gap-1.5"><span class="text-lime-400">✦</span>Dados na nuvem</li>
-                <li class="flex items-center gap-1.5"><span class="text-lime-400">✦</span>Suporte especializado</li>
-            </ul>
-        </div>
-        <div class="relative mt-8 max-w-xl">
-            <p class="text-xs font-semibold uppercase tracking-[0.25em] text-lime-400">Planos e assinaturas</p>
-            {% if module_label %}
-            <h2 class="mt-3 text-3xl font-semibold leading-tight sm:text-4xl"><span class="text-lime-400">{{ module_label }}</span> está em outros planos</h2>
-            <p class="mt-3 text-emerald-50/90">{{ module_pitch }} Seus dados continuam guardados; ao mudar de plano, tudo fica disponível na hora.</p>
-            {% else %}
-            <h2 class="mt-3 text-3xl font-semibold leading-tight sm:text-5xl">Escolha o plano ideal para a <span class="text-lime-400">sua fazenda</span></h2>
-            <p class="mt-3 text-emerald-50/90">Gestão agrícola completa, do planejamento à colheita, com ferramentas práticas e inteligência agrícola.</p>
-            {% endif %}
-        </div>
-    </section>
+{% set customer_subscription_page = 'plans' %}
+{% set modules_by_plan = {} %}
+{% for plan in plans_catalog %}{% set _ = modules_by_plan.update({plan.id: plan_modules_of(plan)}) %}{% endfor %}
+{% set i_check %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>{% endset %}
+<div class="pc-catalog mx-auto max-w-6xl" data-plan-upgrade>
+    <header class="pc-header">
+        {% if module_label %}
+        <h1>{{ module_label }} nos planos SiSFarm</h1>
+        {% if module_pitch %}<p>{{ module_pitch }}</p>{% endif %}
+        {% else %}
+        <h1>Planos disponíveis</h1>
+        <p>Compare os recursos e limites de cada plano.</p>
+        {% endif %}
+    </header>
+    {% include "partials/customer_subscription_nav.html" %}
 
     {% if plans_catalog %}
-    <section class="relative -mt-28 grid items-start gap-5 px-2 sm:px-4 lg:grid-cols-3" data-plan-cards>
+    <section class="pc-cards" aria-label="Planos disponíveis" data-plan-cards>
         {% for plan in plans_catalog %}
-        {% set modules = plan_modules_of(plan) %}
+        {% set modules = modules_by_plan[plan.id] %}
         {% set includes_module = module_code and module_code in modules %}
         {% set is_current = current_plan_id == plan.id %}
         {% set is_recorded = recorded_plan_id == plan.id %}
         {% set is_trial = trial_plan_id == plan.id %}
         {% set limit_issues = (plan_limit_issues|default({})).get(plan.id, []) %}
         {% set featured = not limit_issues and (includes_module or (not module_code and plan.is_featured)) %}
+        {% set premium = not limit_issues and not featured and plan.id == premium_plan_id %}
         {% set prices = plan_prices_of(plan) %}
-        {% set main_cycle = 'MONTHLY' if 'MONTHLY' in prices else ((prices.keys()|list)[0] if prices else none) %}
-        {% set variant = 'featured' if featured else ('premium' if not limit_issues and plan.id == premium_plan_id else 'light') %}
-        {% set t = {
-            'featured': {'card': 'bg-gradient-to-b from-[#173d22] to-[#0c2416] text-white shadow-[0_0_0_2px_rgba(163,230,53,0.7),0_25px_50px_-12px_rgba(22,101,52,0.55)] lg:-mt-4', 'badge': 'bg-lime-400 text-[#0c2416]', 'tile': 'bg-gradient-to-br from-lime-400 to-emerald-600 text-white', 'muted': 'text-emerald-50/85', 'line': 'border-white/15', 'price': 'text-lime-400', 'sub': 'text-emerald-50/70', 'strip': 'divide-white/15 bg-white/10 ring-1 ring-lime-400/40', 'icon': 'text-lime-400', 'check': 'text-lime-400', 'lock': 'text-emerald-50/45', 'cta': 'bg-gradient-to-r from-lime-400 to-lime-500 text-[#0c2416] shadow-lg shadow-lime-500/30 hover:from-lime-300 hover:to-lime-400', 'current': 'bg-white/10 text-emerald-50', 'pill': 'bg-white/15 text-white', 'arrow': True},
-            'premium': {'card': 'bg-gradient-to-b from-[#3d3110] via-[#211c0b] to-[#0f1f12] text-white shadow-[0_0_0_2px_rgba(251,191,36,0.75),0_25px_50px_-12px_rgba(180,130,20,0.5)] lg:-mt-4', 'badge': 'bg-gradient-to-r from-amber-300 to-amber-400 text-[#2a1f05]', 'tile': 'bg-gradient-to-br from-amber-300 to-amber-600 text-[#2a1f05]', 'muted': 'text-amber-50/85', 'line': 'border-amber-200/20', 'price': 'text-amber-300', 'sub': 'text-amber-50/70', 'strip': 'divide-amber-200/20 bg-amber-300/10 ring-1 ring-amber-300/50', 'icon': 'text-amber-300', 'check': 'text-amber-300', 'lock': 'text-amber-50/40', 'cta': 'bg-gradient-to-r from-amber-300 to-amber-500 text-[#2a1f05] shadow-lg shadow-amber-500/30 hover:from-amber-200 hover:to-amber-400', 'current': 'bg-white/10 text-amber-50', 'pill': 'bg-white/15 text-white', 'arrow': True},
-            'light': {'card': 'bg-white text-slate-900 shadow-xl ring-1 ring-slate-200', 'badge': '', 'tile': 'bg-emerald-50 text-[#446a36]', 'muted': 'text-slate-500', 'line': 'border-slate-100', 'price': '', 'sub': 'text-slate-500', 'strip': 'divide-slate-200 bg-slate-50', 'icon': 'text-[#446a36]', 'check': 'text-emerald-600', 'lock': 'text-slate-400', 'cta': 'border-2 border-[#446a36] text-[#446a36] hover:bg-emerald-50', 'current': 'bg-slate-100 text-slate-500', 'pill': 'bg-slate-100 text-slate-600', 'arrow': False},
-        }[variant] %}
-        <article class="relative flex flex-col rounded-[1.75rem] p-6 {{ t.card }}">
-            {% if variant != 'light' %}<span class="absolute -top-3.5 left-1/2 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide shadow {{ t.badge }}">{{ plan_icon('crown' if variant == 'featured' else 'diamond', 'h-3.5 w-3.5') }}{{ ('Inclui ' ~ module_label) if includes_module else ('Mais escolhido' if variant == 'featured' else 'Plano mais completo') }}</span>{% endif %}
-            <div class="flex items-center gap-3">
-                <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl {{ t.tile }}">{{ plan_icon(plan.icon, 'h-7 w-7') }}</span>
-                <div class="min-w-0">
-                    <h3 class="text-xl font-bold leading-tight">{{ plan.name }}</h3>
-                    {% if is_current %}<span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[0.7rem] font-semibold {{ t.pill }}">Plano atual</span>{% endif %}
-                    {% if is_trial %}<span class="mt-1 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[0.7rem] font-semibold text-violet-800">Benefícios do teste grátis</span>{% endif %}
+        {% set main_cycle = 'MONTHLY' if 'MONTHLY' in prices else (prices|first if prices else none) %}
+        {% set feature_codes = ([module_code] if includes_module else []) + (modules|reject('equalto', module_code)|list) %}
+        {% set cta_class = 'pc-button pc-button-primary' if featured or premium else 'pc-button' %}
+        <article class="pc-card{% if is_current %} pc-card-current{% endif %}">
+            <div class="pc-card-top">
+                <span class="pc-plan-icon">{{ plan_icon(plan.icon, 'h-5 w-5') }}</span>
+                {% if is_current or is_trial or featured or premium %}
+                <div class="pc-plan-badges">
+                    {% if is_current %}<span class="pc-chip pc-chip-current">Plano atual</span>{% endif %}
+                    {% if is_trial %}<span class="pc-chip pc-chip-trial">Benefícios do teste grátis</span>{% endif %}
+                    {% if featured %}<span class="pc-chip">{{ ('Inclui ' ~ module_label) if includes_module else 'Mais escolhido' }}</span>{% endif %}
+                    {% if premium %}<span class="pc-chip pc-chip-premium">Plano mais completo</span>{% endif %}
                 </div>
-            </div>
-            {% if plan.description %}<p class="mt-3 text-sm {{ t.muted }}">{{ plan.description }}</p>{% endif %}
-            <div class="mt-5 border-t pt-5 {{ t.line }}">
-                {% if main_cycle %}
-                <p><span class="text-4xl font-bold tracking-tight {{ t.price }}">R$ {{ prices[main_cycle]|decimal_br }}</span><span class="text-base {{ t.sub }}"> /{{ cycle_unit_labels[main_cycle] }}</span></p>
-                {% if prices|length > 1 %}<p class="mt-1 text-xs {{ t.sub }}">{% for code, price in prices.items() if code != main_cycle %}R$ {{ price|decimal_br }}/{{ cycle_unit_labels[code] }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
                 {% endif %}
             </div>
-            <dl class="mt-4 grid grid-cols-3 divide-x rounded-2xl text-center text-xs font-semibold {{ t.strip }}">
-                {% for icon, value in [('tractor', (plan.max_farms ~ (' fazenda' if plan.max_farms == 1 else ' fazendas')) if plan.max_farms else 'Fazendas ilimitadas'), ('shield', (plan.max_users ~ (' usuário' if plan.max_users == 1 else ' usuários')) if plan.max_users else 'Usuários ilimitados'), ('leaf', ('até ' ~ (plan.max_hectares|decimal_br(0)) ~ ' ha') if plan.max_hectares else 'Área ilimitada')] %}
-                <div class="flex flex-col items-center gap-1 px-2 py-3"><span class="{{ t.icon }}">{{ plan_icon(icon, 'h-5 w-5') }}</span><dd>{{ value }}</dd></div>
-                {% endfor %}
-            </dl>
-            <ul class="mt-5 flex-1 space-y-2 text-sm">
-                {% for code, label in module_labels.items() if code in modules %}
-                <li class="flex items-start gap-2.5 {{ 'font-semibold' if code == module_code else '' }}"><span class="{{ t.check }}">{{ i_check|safe }}</span>{{ label }}</li>
-                {% endfor %}
-                {% for code, label in module_labels.items() if code not in modules %}
-                <li class="flex items-start gap-2.5 {{ t.lock }}">{{ i_lock|safe }}{{ label }}</li>
-                {% endfor %}
-            </ul>
-            <div class="mt-6">
-                {% set cta_class = t.cta %}
+            <h2 class="pc-plan-name">{{ plan.name }}</h2>
+            {% if plan.description %}<p class="pc-plan-description">{{ plan.description }}</p>{% endif %}
+            {% if main_cycle %}
+            <div class="pc-plan-pricing">
+                <p><strong>R$ {{ prices[main_cycle]|decimal_br }}</strong><span> / {{ cycle_unit_labels[main_cycle] }}</span></p>
+                {% if prices|length > 1 %}
+                <p class="pc-other-prices">{% for code, price in prices.items() if code != main_cycle %}<span>R$ {{ price|decimal_br }}/{{ cycle_unit_labels[code] }}</span>{% endfor %}</p>
+                {% endif %}
+            </div>
+            {% endif %}
+            <div class="pc-card-inclusions">
+                <ul class="pc-feature-list">
+                    <li>{{ i_check }}<span>{{ (plan.max_farms ~ (' fazenda' if plan.max_farms == 1 else ' fazendas')) if plan.max_farms is not none else 'Fazendas sem limite' }} · {{ (plan.max_users ~ (' usuário' if plan.max_users == 1 else ' usuários')) if plan.max_users is not none else 'Usuários sem limite' }}</span></li>
+                    <li>{{ i_check }}<span>{% if plan.max_hectares is not none %}Até {{ plan.max_hectares|decimal_br(0 if plan.max_hectares == plan.max_hectares|int else 2) }} ha{% else %}Área sem limite{% endif %}</span></li>
+                    {% for code in feature_codes[:3] %}
+                    <li{% if code == module_code %} class="pc-feature-requested"{% endif %}>{{ i_check }}<span>{{ module_labels[code] }}</span></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div class="pc-card-actions">
                 {% if is_recorded %}
-                <p class="rounded-2xl px-4 py-3 text-center text-sm font-semibold {{ t.current }}">{{ 'Já contratado' if is_current else 'Plano registrado' }}</p>
+                <p class="pc-button pc-button-static">{{ 'Já contratado' if is_current else 'Plano registrado' }}</p>
                 {% elif limit_issues %}
-                <details class="plan-unavailable" data-plan-unavailable>
-                    <summary class="plan-unavailable-button">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"/></svg>
-                        <span>Plano indisponível</span>
-                        <svg class="plan-unavailable-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg>
+                <details class="pc-unavailable" data-plan-unavailable>
+                    <summary class="pc-button pc-button-static">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+                        Plano indisponível
                     </summary>
-                    <div class="plan-unavailable-reasons">
+                    <div class="pc-unavailable-reasons">
                         <p>Plano incompatível com seus cadastros</p>
-                        <ul>
-                            {% for issue in limit_issues %}<li>{{ issue }}</li>{% endfor %}
-                        </ul>
+                        <ul>{% for issue in limit_issues %}<li>{{ issue }}</li>{% endfor %}</ul>
                     </div>
                 </details>
                 {% elif can_subscribe and prices %}
-                <a href="/minha-assinatura/contratar?plan_id={{ plan.id }}" class="block w-full rounded-2xl px-4 py-3 text-center text-base font-bold transition {{ cta_class }}">Escolher {{ plan.name }}</a>
+                <a href="/minha-assinatura/contratar?plan_id={{ plan.id }}" class="{{ cta_class }}">Escolher {{ plan.name }}</a>
                 {% elif can_change_plan and prices %}
-                <button type="button" data-dialog-open="change-plan-{{ plan.id }}" class="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-base font-bold transition {{ cta_class }}">Escolher {{ plan.name }}{% if t.arrow %}<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>{% endif %}</button>
+                <button type="button" data-dialog-open="change-plan-{{ plan.id }}" class="{{ cta_class }}">Escolher {{ plan.name }}</button>
                 {% include "partials/plan_change_dialog.html" %}
                 {% elif awaiting_first_payment %}
-                <a href="/minha-assinatura" class="block rounded-2xl px-4 py-3 text-center text-sm font-semibold {{ t.current }}">Acompanhar assinatura</a>
+                <a href="/minha-assinatura" class="pc-button">Acompanhar assinatura</a>
                 {% else %}
-                <form method="post" action="/planos-disponiveis/solicitar" data-busy-form>
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="plan_id" value="{{ plan.id }}"><input type="hidden" name="modulo" value="{{ module_code or '' }}">
-                    <button class="w-full rounded-2xl px-4 py-3 text-base font-bold transition {{ cta_class }}">Quero o plano {{ plan.name }}</button>
-                </form>
+                {% set lost_modules = modules_by_plan.get(current_plan_id, [])|reject('in', modules)|list %}
+                <button type="button" class="{{ cta_class }}" data-dialog-open="request-plan-{{ plan.id }}">Quero o plano {{ plan.name }}</button>
+                <dialog id="request-plan-{{ plan.id }}" class="app-modal pc-request-dialog" aria-labelledby="request-plan-title-{{ plan.id }}">
+                    <form method="post" action="/planos-disponiveis/solicitar" data-busy-form>
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="plan_id" value="{{ plan.id }}">
+                        <input type="hidden" name="modulo" value="{{ module_code or '' }}">
+                        <h3 id="request-plan-title-{{ plan.id }}">Solicitar o plano {{ plan.name }}</h3>
+                        <p>A equipe SiSFarm vai confirmar a data e as condições da mudança.{% if recorded_plan_id %} Seu plano e a cobrança atual seguem em vigor até a alteração.{% endif %}</p>
+                        {% if lost_modules %}
+                        <div class="pc-request-impact">
+                            <h4>Módulos fora do plano escolhido</h4>
+                            <ul>{% for code in lost_modules %}<li>{{ module_labels[code] }}</li>{% endfor %}</ul>
+                        </div>
+                        {% endif %}
+                        <div class="pc-request-actions">
+                            <button type="button" class="pc-button" data-dialog-close>Voltar</button>
+                            <button type="submit" class="pc-button pc-button-primary">Enviar solicitação</button>
+                        </div>
+                    </form>
+                </dialog>
                 {% endif %}
+                <a href="#comparacao-planos" class="pc-modules-link" data-comparison-focus="{{ plan.id }}" aria-controls="comparacao-planos" aria-label="Ver módulos do plano {{ plan.name }}">Ver módulos</a>
             </div>
         </article>
         {% endfor %}
     </section>
+    {% include "partials/customer_plan_comparison.html" %}
     {% else %}
-    <section class="relative -mt-28 rounded-[2rem] bg-white p-8 text-center shadow-panel"><p class="text-slate-600">Fale com a equipe SiSFarm para conhecer os planos disponíveis.</p></section>
-    {% endif %}
-
-    <section class="mt-8 grid gap-4 rounded-[1.75rem] bg-gradient-to-r from-[#0c2416] to-[#173d22] p-5 text-sm text-emerald-50 sm:grid-cols-2 lg:grid-cols-4" data-plan-benefits>
-        {% for icon, text in [('sprout', 'Recomendação agronômica inteligente'), ('sun', 'Acesso no computador ou no celular'), ('shield', 'Seus dados protegidos, com backup automático'), ('star', 'Suporte especializado')] %}
-        <div class="flex items-center gap-3"><span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-lime-400">{{ plan_icon(icon, 'h-5 w-5') }}</span><span>{{ text }}</span></div>
-        {% endfor %}
+    <section class="pc-empty">
+        <p>Fale com a equipe SiSFarm para conhecer os planos disponíveis.</p>
+        {% if support_email %}<a href="mailto:{{ support_email }}">Falar com a equipe</a>{% endif %}
     </section>
+    {% endif %}
 </div>
-<script>
-document.addEventListener('click', (event) => {
-    const opener = event.target.closest('[data-dialog-open]');
-    if (opener) { document.getElementById(opener.dataset.dialogOpen)?.showModal(); return; }
-    if (event.target.closest('[data-dialog-close]') || event.target.tagName === 'DIALOG') (event.target.closest('dialog') || event.target).close();
-});
-document.querySelectorAll('[data-plan-unavailable]').forEach((details) => {
-    details.addEventListener('pointerenter', (event) => {
-        if (event.pointerType === 'mouse') details.open = true;
-    });
-    details.addEventListener('pointerleave', (event) => {
-        if (event.pointerType === 'mouse') details.open = false;
-    });
-    details.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') details.open = false;
-    });
-});
-document.addEventListener('click', (event) => {
-    document.querySelectorAll('[data-plan-unavailable][open]').forEach((details) => {
-        if (!details.contains(event.target)) details.open = false;
-    });
-});
-const brl = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-document.querySelectorAll('[data-plan-change]').forEach((form) => {
-    const sync = () => {
-        const option = form.querySelector('[data-cycle-option]:checked');
-        if (!option) return;
-        const price = Number(option.dataset.price);
-        const label = `${brl(price)} / ${option.dataset.unit}`;
-        form.querySelector('[data-new-price]').textContent = label;
-        form.querySelectorAll('[data-next-price]').forEach((el) => { el.textContent = label; });
-        const diff = price / Number(option.dataset.months) - Number(form.dataset.currentMonthly);
-        const chip = form.querySelector('[data-diff]');
-        chip.textContent = Math.abs(diff) < 0.005 ? 'Mesmo valor mensal' : `${diff > 0 ? '+' : '−'} ${brl(Math.abs(diff))} por mês`;
-        chip.className = `mt-2 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${diff > 0.005 ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-800'}`;
-    };
-    form.addEventListener('change', (event) => { if (event.target.matches('[data-cycle-option]')) sync(); });
-    sync();
-});
-document.querySelectorAll('[data-busy-form]').forEach((form) => form.addEventListener('submit', () => { const b = form.querySelector('button'); if (b) { b.disabled = true; b.textContent = 'Enviando…'; } }));
-</script>
 {% endblock %}

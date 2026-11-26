@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from jinja2 import ChoiceLoader, DictLoader
+from lxml import html as lxml_html
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -254,6 +255,50 @@ def test_upgrade_page_highlights_plans_with_module(db, monkeypatch):
     html = _render('plan_upgrade.html', ctx)
     assert ctx['plans_catalog'][0].id == full.id and ctx['current_plan_id'] == basic.id
     assert 'Gestão financeira' in html and 'Inclui Gestão financeira' in html and 'Quero o plano Gestão Completa' in html and 'Plano atual' in html and 'Escolha o plano ideal' not in html
+    request_dialog = lxml_html.fromstring(html).get_element_by_id(f'request-plan-{full.id}')
+    form = request_dialog.xpath('.//form[@method="post" and @action="/planos-disponiveis/solicitar"]')[0]
+    fields = {element.get('name'): element.get('value') for element in form.xpath('./input[@type="hidden"]')}
+    assert fields == {'csrf_token': 't', 'plan_id': str(full.id), 'modulo': 'page.finance'}
+
+
+def test_plan_comparison_uses_catalog_modules_limits_and_subscription_links(db, monkeypatch):
+    from app.core.permissions_catalog import WRITE_FINANCE
+
+    small = _plan(db, name='Serra')
+    medium = _plan(db, name='Vale', max_hectares='120,75', modules=['page.rainfall', 'page.finance'])
+    regional = _plan(db, name='Regional', max_farms='4', max_hectares='', modules=['page.rainfall', 'page.finance'])
+    cooperative = _plan(db, name='Cooperativa', max_users='', modules=['page.rainfall', 'page.map'])
+    org = _org(db, with_subscription=False)
+    monkeypatch.setattr(routes, '_base_context', lambda *a, **k: k)
+    monkeypatch.setattr(routes, '_repository', lambda _db: None)
+    monkeypatch.setattr(routes.templates, 'TemplateResponse', lambda name, context: (name, context))
+    monkeypatch.setattr(routes, 'permission_codes_for_user', lambda db, user: frozenset({WRITE_FINANCE}))
+    user = SimpleNamespace(id=3, email='gestor@fazenda.com', organization_id=org.id)
+    _, ctx = routes.plan_upgrade_page(SimpleNamespace(), None, db, user, 't')
+    document = lxml_html.fromstring(_render('plan_upgrade.html', ctx))
+    comparison = document.get_element_by_id('comparacao-planos')
+    assert comparison.xpath('.//button[@data-comparison-filter and @aria-pressed="false"]')
+    for plan in (small, medium, regional, cooperative):
+        headings = comparison.xpath('.//thead//th[@data-comparison-plan=$plan_id]', plan_id=str(plan.id))
+        assert [heading.text_content().strip() for heading in headings] == [plan.name]
+        assert document.xpath('.//*[@data-comparison-focus=$plan_id]', plan_id=str(plan.id))
+        assert document.xpath('.//a[@href=$href]', href=f'/minha-assinatura/contratar?plan_id={plan.id}')
+
+    def row(label):
+        return comparison.xpath('.//tr[@data-comparison-row][th[normalize-space(.)=$label]]', label=label)[0]
+
+    def value(label, plan):
+        cell = row(label).xpath('./td[@data-comparison-plan=$plan_id]', plan_id=str(plan.id))[0]
+        return cell.xpath('string(./strong | ./span[not(@aria-hidden)])').strip()
+
+    assert value('Gestão financeira', medium) == 'Incluído'
+    assert value('Gestão financeira', small) == 'Não incluído'
+    assert 'data-comparison-common' not in row('Gestão financeira').attrib
+    assert 'data-comparison-common' in row('Pluviometria').attrib
+    assert value('Fazendas em operação', regional) == '4'
+    assert value('Área cadastrada', medium) == '120,75 ha'
+    assert value('Área cadastrada', regional) == 'Sem limite'
+    assert value('Usuários ativos', cooperative) == 'Sem limite'
 
 
 def test_upgrade_request_is_audited(db, monkeypatch):
@@ -546,7 +591,7 @@ def test_plan_icon_is_saved_and_rendered(db):
     assert 'name="icon"' in html and 'plan_icon_choices' in html
 
 
-def test_most_expensive_plan_gets_premium_theme(db, monkeypatch):
+def test_most_expensive_plan_is_labeled_as_most_complete(db, monkeypatch):
     basic = _plan(db)
     pro = _plan(db, name='Profissional', price_monthly='149,90', is_featured='1')
     full = _plan(db, name='Gestão Completa', price_monthly='249,90')
@@ -558,7 +603,7 @@ def test_most_expensive_plan_gets_premium_theme(db, monkeypatch):
     monkeypatch.setattr(routes.templates, 'TemplateResponse', lambda name, context: (name, context))
     _, ctx = routes.plan_upgrade_page(request=SimpleNamespace(), modulo=None, db=db, user=SimpleNamespace(id=1, email='g@f.com', organization_id=None), csrf_token='t')
     html = _render('plan_upgrade.html', ctx)
-    assert 'Plano mais completo' in html and 'Mais escolhido' in html and 'from-amber-300 to-amber-500' in html
+    assert 'Plano mais completo' in html and 'Mais escolhido' in html
 
 
 def test_production_requires_current_confirmed_charge_and_preserves_read_access(db, monkeypatch):

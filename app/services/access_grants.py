@@ -167,16 +167,18 @@ def cancelled_paid_period(db: Session, organization_id: int, today: date):
     best: tuple[OrganizationSubscription | None, date | None] = (None, None)
     for subscription in subscriptions:
         payment = latest_settled_subscription_payment(db, subscription.id)
-        if not payment or payment.status not in PAID:
-            continue
-        candidates = [day for day in (payment.due_date, payment.paid_date) if day and day <= today]
-        if not candidates:
-            continue
-        start = min(candidates)
-        end = _cycle_end(start, subscription.cycle)
-        if today < end and (best[1] is None or end > best[1]):
+        end = paid_cycle_end(subscription, payment, today)
+        if end and today < end and (best[1] is None or end > best[1]):
             best = (subscription, end)
     return best
+
+
+def paid_cycle_end(subscription: OrganizationSubscription, payment: OrganizationSubscriptionPayment | None, today: date) -> date | None:
+    """Primeiro dia após o período pago que permanece disponível no cancelamento."""
+    if not payment or payment.status not in PAID:
+        return None
+    candidates = [day for day in (payment.due_date, payment.paid_date) if day and day <= today]
+    return _cycle_end(min(candidates), subscription.cycle) if candidates else None
 
 
 def _cycle_end(start: date, cycle: str) -> date:

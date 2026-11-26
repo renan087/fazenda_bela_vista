@@ -10,7 +10,7 @@ import app.models  # noqa: F401
 from app.core.path_access import required_permissions_for_web_path
 from app.core.permissions_catalog import PAGE_FINANCE, WRITE_FINANCE
 from app.db.base import Base
-from app.models import Organization, OrganizationBilling, OrganizationCardMigration, OrganizationSubscription, OrganizationSubscriptionPayment
+from app.models import Farm, Organization, OrganizationBilling, OrganizationCardMigration, OrganizationSubscription, OrganizationSubscriptionPayment, User
 from app.services import subscription_plans as plans
 from app.web import routes
 
@@ -108,6 +108,39 @@ def test_page_lists_plan_limits_and_modules(monkeypatch):
         html = _render(context)
     assert 'Para médias fazendas' in html and '300,00 ha' in html and 'Ilimitados' in html
     assert 'Mapa da fazenda' in html and 'Gestão financeira' in html
+
+
+def test_subscription_usage_only_counts_active_farms_and_users_in_the_organization(monkeypatch):
+    _page_env(monkeypatch)
+    with _db() as db:
+        mine, sub = _org(db, 'minha')
+        other, _ = _org(db, 'outra')
+        plan = plans.create_plan(db, plans.parse_plan_form(
+            name='Profissional', description='', price_monthly='149,90', price_quarterly='', price_semiannual='',
+            price_yearly='', max_farms='3', max_users='10', max_hectares='325,50', modules=['page.map'],
+            trial_days='', display_order='', is_featured=None,
+        ))
+        plans.activate_plan(db, plan)
+        sub.plan_id = plan.id
+        db.add_all([
+            Farm(name='Sede', location='MG', total_area=Decimal('72.43'), organization_id=mine.id),
+            Farm(name='Serra', location='MG', total_area=Decimal('27.07'), organization_id=mine.id),
+            Farm(name='Pausada', location='MG', total_area=Decimal('200'), organization_id=mine.id, operations_paused=True),
+            Farm(name='Outra sede', location='MG', total_area=Decimal('85'), organization_id=other.id),
+            User(name='Responsável', email='fin@minha.test', hashed_password='x', organization_id=mine.id),
+            User(name='Desativado', email='ex@minha.test', hashed_password='x', organization_id=mine.id, is_active=False),
+            User(name='Outro responsável', email='fin@outra.test', hashed_password='x', organization_id=other.id),
+        ])
+        db.commit()
+
+        _, context = routes.my_subscription_page(SimpleNamespace(), db, _user(mine), 't')
+        usage = context['subscription_usage']
+        assert len(usage.farms) == 2 and len(usage.users) == 1
+        assert usage.total_area == Decimal('99.50')
+        assert (usage.max_farms, usage.max_users, usage.max_hectares) == (3, 10, Decimal('325.50'))
+        html = _render(context)
+
+    assert 'data-subscription-usage' in html and '99,50' in html
 
 
 def _action_env(monkeypatch):
@@ -315,4 +348,4 @@ def test_confirmed_current_payment_marks_plan_active_even_with_trial(monkeypatch
         _, context = routes.my_subscription_page(SimpleNamespace(), db, _user(org), 't')
         html = _render(context)
         assert 'Teste grátis ativo até' in html and 'data-status="active"' in html
-        assert '3. Assinatura ativa' in html and 'Concluir pagamento' not in html
+        assert 'Assinatura ativa' in html and 'Concluir pagamento' not in html

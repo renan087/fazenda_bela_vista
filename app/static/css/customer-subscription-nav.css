@@ -1,0 +1,24 @@
+.customer-subscription-nav {
+    display: flex; flex-wrap: wrap; gap: 4px clamp(10px, 2.5vw, 24px);
+    border-bottom: 1px solid #dce4da;
+}
+.customer-subscription-nav a {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 9px 4px 10px;
+    position: relative; color: #56635a; font-size: .875rem; font-weight: 650;
+    text-decoration: none; white-space: nowrap;
+}
+.customer-subscription-nav a:hover, .customer-subscription-nav a[aria-current="page"] { color: #294127; }
+.customer-subscription-nav a[aria-current="page"]::after {
+    content: ""; position: absolute; inset: auto 0 -1px; height: 3px;
+    background: #446a36; border-radius: 4px 4px 0 0;
+}
+.customer-subscription-nav a:focus-visible { outline: 2px solid #446a36; outline-offset: 2px; border-radius: 4px; }
+.customer-subscription-nav svg {
+    width: 17px; height: 17px; flex: none; fill: none;
+    stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+@media (max-width: 360px) {
+    .customer-subscription-nav { gap: 4px 9px; }
+    .customer-subscription-nav a { padding-inline: 2px; font-size: .8125rem; }
+    .customer-subscription-nav svg { width: 15px; height: 15px; }
+}

@@ -211,7 +211,10 @@ from app.services.plan_changes import (
 from app.services.plan_usage import plan_usage, quota_write_entitlements, regularization_status
 from app.services.entitlements import ALWAYS_ALLOWED_PREFIXES, MODULE_DETAILS, MODULE_PITCH, UNRESTRICTED, Entitlements, MODULE_LABELS, compute_entitlements, farm_limit_error, user_limit_error
 from app.middleware.subscription_enforcement import upgrade_url
-from app.services.access_grants import GRANT_REASONS, MAX_GRANT_DAYS, GrantValidationError, active_grant, cancelled_paid_period, create_grant, default_grant_end, extend_grant, grant_status_label, is_expiring_soon, revoke_grant
+from app.services.access_grants import (
+    GRANT_REASONS, MAX_GRANT_DAYS, GrantValidationError, active_grant, cancelled_paid_period, create_grant,
+    default_grant_end, extend_grant, grant_status_label, is_expiring_soon, paid_cycle_end, revoke_grant,
+)
 from app.services.subscription_portfolio import SITUATION_LABELS, build_subscription_portfolio, monthly_amount
 from app.services.subscription_plans import (
     CYCLE_UNIT_LABELS,
@@ -1174,6 +1177,9 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
             "backups",
             "audit_logs",
             "automated_tests",
+            "my_subscription",
+            "plan_upgrade",
+            "subscribe",
         }
         context["context_selection_blocking"] = scope_context["context_selection_required"] and not context["context_lock_exempt"]
         context["context_previous_available"] = bool(scope_context.get("previous_context_available"))
@@ -10896,15 +10902,29 @@ def _customer_subscription_context(db: Session, organization: Organization) -> d
     paid_last_day = paid_until - timedelta(days=1) if paid_until else None
     migration = None if mp_active else db.query(OrganizationCardMigration).filter_by(organization_id=organization.id, is_open=True, environment=asaas_env_name()).first()
     portfolio = build_subscription_portfolio(db, [organization], today)
-    plan = current.plan if current else (previous_paid.plan if previous_paid else (db.get(SubscriptionPlan, migration.plan_id) if migration and migration.plan_id else None))
+    if current:
+        plan = current.pending_plan if effective_plan_id(current, today) != current.plan_id else current.plan
+    elif previous_paid:
+        plan = previous_paid.plan
+    else:
+        plan = db.get(SubscriptionPlan, migration.plan_id) if migration and migration.plan_id else None
+    cancellation_period_end = None
+    if env == MERCADOPAGO_LIVE and current and current.mercadopago_id:
+        latest = next((item for item in charges if item.subscription_id == current.id and item.status in history_statuses), None)
+        end = paid_cycle_end(current, latest, today)
+        if end and end > today:
+            cancellation_period_end = end
     module_labels = dict(PLAN_MODULES)
     return {
         "organization": organization,
         "subscription": current,
+        "paid_subscription": previous_paid,
         "mp_active": mp_active,
         "sandbox_mp": env == MERCADOPAGO_TEST,
         "paid_until": paid_until,
         "paid_last_day": paid_last_day,
+        "cancellation_period_end": cancellation_period_end,
+        "cancellation_access_through": cancellation_period_end - timedelta(days=1) if cancellation_period_end else None,
         "open_charges": open_charges,
         "paid_charges": paid_charges,
         "card_migration": migration,
@@ -10932,11 +10952,15 @@ def my_subscription_page(request: Request, db: Session = Depends(get_db), user: 
             and display["state"] == "active" and entitlements.days_overdue > 0):
         display.update(state="confirming", step=2)
     can_change = WRITE_FINANCE in permission_codes_for_user(db, user)
-    return templates.TemplateResponse("my_subscription.html", _base_context(
+    page_context = _base_context(
         request, user, csrf_token, "my_subscription", title="Minha assinatura", can_change_payment=can_change,
         subscription_read_only=entitlements.read_only,
         _repo=_repository(db), **context,
-    ))
+    )
+    if display or context["paid_until"] or context["active_access_grant"]:
+        usage = page_context.get("plan_regularization") if entitlements.billing_state != "teste" else None
+        page_context["subscription_usage"] = usage if usage is not None else plan_usage(db, organization.id, entitlements)
+    return templates.TemplateResponse("my_subscription.html", page_context)
 
 
 SUBSCRIPTION_TERMS_VERSION = "2026-11-25"

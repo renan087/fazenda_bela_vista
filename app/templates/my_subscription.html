@@ -1,149 +1,402 @@
 {% extends "base.html" %}
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/customer-subscription-nav.css') }}?v=20261125">
+<link rel="stylesheet" href="{{ url_for('static', path='css/customer-subscription.css') }}?v=20261125">
+<script src="{{ url_for('static', path='js/customer-subscription.js') }}?v=20261125" defer></script>
+{% endblock %}
+
+{% macro icon(name) -%}
+{% set paths = {
+    'check': 'm5 12 4 4L19 6',
+    'clock': 'M12 7v5l3 2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+    'calendar': 'M3 9h18M8 3v4m8-4v4M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z',
+    'help': 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 1-1 1.7m0 3.5h.01',
+    'bolt': 'm13 2-9 12h7l-1 8 10-12h-7l1-8Z',
+    'farm': 'M3 21V10l9-6 9 6v11H3m5 0v-7h8v7m-8-7 8 7m0-7-8 7',
+    'users': 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.9M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm4-3.9a4 4 0 0 1 0 7.8',
+    'map': 'm3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2V6Zm6-2v14m6-12v14',
+    'card': 'M3 10h18M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm2 10h3',
+    'settings': 'M12 8v-5m0 18v-5m7-4h2M3 12h2m1.5-5.5 2.7 2.7m5.6 5.6 2.7 2.7m0-11-2.7 2.7m-5.6 5.6-2.7 2.7M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
+    'external': 'M14 3h7v7m0-7-9 9m6 1v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
+    'close': 'm6 6 12 12M18 6 6 18',
+    'file': 'M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9Zm0 0v7h7M8 14h8m-8 3h5'
+} %}
+<svg class="ms-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ paths[name] }}"/></svg>
+{%- endmacro %}
+
 {% block content %}
 {% set payment_labels = {'PIX': 'Pix', 'BOLETO': 'Boleto', 'CREDIT_CARD': 'Cartão de crédito', 'DEBIT_CARD': 'Cartão de débito', 'ACCOUNT_MONEY': 'Saldo Mercado Pago', 'RECEIVED_IN_CASH': 'Pago diretamente', 'UNDEFINED': 'A definir'} %}
 {% set states = {
     'active': ('Assinatura ativa', 'green'),
     'pending': ('Aguardando pagamento', 'amber'),
     'confirming': ('Aguardando confirmação', 'amber'),
-    'overdue': ('Pagamento em atraso', 'amber'),
+    'overdue': ('Pagamento em atraso', 'red'),
     'review': ('Em análise', 'amber'),
     'suspended': ('Assinatura suspensa', 'neutral'),
     'ended': ('Assinatura encerrada', 'neutral'),
 } %}
 {% set state = subscription_display.state if subscription_display else '' %}
+{% set status = states[state] if state else none %}
 {% set trial = active_access_grant if active_access_grant and active_access_grant.reason == 'teste_gratis' else none %}
-{% set clock_icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>{% endset %}
-{% set check_icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>{% endset %}
-{% set card_on_file = saved_card if (subscription and subscription.billing_type == 'CREDIT_CARD') else none %}
-<div class="my-subscription mx-auto" data-my-subscription>
-    <section class="ms-card ms-header">
-        <p class="ms-organization">{{ organization.name }}</p>
-        <h2 class="ms-title">Minha assinatura</h2>
-        <p class="ms-copy">Seu plano SiSFarm, faturas e forma de pagamento.</p>
-        {% if mp_active %}
-        <p class="ms-copy">Mercado Pago{% if sandbox_mp %} · Ambiente de teste{% endif %}</p>
-        {% elif subscription and can_change_payment and support_email %}
-        <a href="mailto:{{ support_email }}" class="mt-2 inline-block text-sm font-semibold text-brand-700 underline">Solicitar cancelamento à equipe SiSFarm</a>
-        {% endif %}
-    </section>
+{% set contracted = subscription or card_migration or paid_subscription %}
+{% set pending_change = subscription and subscription.pending_plan_id and subscription.pending_effective_on %}
+{% set pending_applied = pending_change and subscription.pending_effective_on.isoformat() <= today_iso %}
+{% set plan_name = subscription.pending_plan_name if pending_applied else (contracted.plan_name if contracted else none) %}
+{% set plan_amount = (subscription.pending_amount if pending_applied else subscription.pending_previous_amount) if pending_change else (contracted.amount if contracted else none) %}
+{% set plan_cycle = (subscription.pending_cycle if pending_applied else subscription.pending_previous_cycle) if pending_change else (contracted.cycle if contracted else none) %}
+{% set renews_on = subscription.next_due_date if state == 'active' and subscription else none %}
+{% set first_due = contracted.first_due_date if contracted and state in ['pending', 'confirming'] and not subscription_display.paid else none %}
+{% set access_through = paid_last_day or paid_until %}
+{% set card_on_file = saved_card if subscription and subscription.billing_type == 'CREDIT_CARD' else none %}
+{% set provider = 'Mercado Pago' if mp_active else 'Asaas' %}
+{% set can_pay = subscription_display and subscription_display.payment_url and (not mp_active or can_change_payment) %}
+{% set can_sync = mp_active and subscription and can_change_payment %}
+{% set can_cancel = can_sync and subscription.mercadopago_id %}
+{% set can_manage = can_cancel or (not mp_active and subscription and can_change_payment and support_email) %}
+{% set show_open_charges_link = open_charges and state in ['overdue', 'pending'] %}
 
+{% macro date_value(day) -%}
+<time datetime="{{ day.isoformat() }}">{{ day.strftime('%d/%m/%Y') }}</time>
+{%- endmacro %}
+
+{% macro status_badge(label, tone) -%}
+<span class="ms-badge ms-badge-{{ tone }}">{{ icon('check') if tone == 'green' else '' }}{{ label }}</span>
+{%- endmacro %}
+
+{% macro metric(label, symbol, value, limit, unit='', decimals=0) -%}
+<div class="ms-metric">
+    <span class="ms-icon-tile">{{ icon(symbol) }}</span>
+    <div>
+        <div class="ms-metric-caption">
+            <span>{{ label }}</span>
+            <span><strong>{{ value|decimal_br(decimals) }}{{ unit }}</strong>{% if limit is not none %} de {{ limit|decimal_br(decimals) }}{{ unit }}{% else %} · sem limite{% endif %}</span>
+        </div>
+        {% if limit is not none and limit > 0 %}<progress class="ms-meter{% if value >= limit %} ms-meter-full{% endif %}" value="{{ [value, limit]|min }}" max="{{ limit }}" aria-label="{{ label }}: {{ value|decimal_br(decimals) }}{{ unit }} de {{ limit|decimal_br(decimals) }}{{ unit }}"></progress>{% endif %}
+    </div>
+</div>
+{%- endmacro %}
+
+{% macro method_panel() -%}
+<section class="ms-card">
+    <h2 class="ms-subtitle">Forma de pagamento</h2>
+    <div class="ms-payment-method">
+        <span class="ms-icon-tile">{{ icon('card') }}</span>
+        <div>
+            <strong>{% if subscription %}{{ payment_labels.get(subscription.billing_type, subscription.billing_type) }}{% if card_on_file and card_on_file.card_last4 %} · •••• {{ card_on_file.card_last4 }}{% endif %}{% elif card_migration %}Cartão de crédito{% else %}Nenhuma forma de pagamento ativa{% endif %}</strong>
+            {% if contracted %}<p>{{ provider }}{% if sandbox_mp %} · Ambiente de teste{% endif %}</p>{% endif %}
+        </div>
+    </div>
+    {% if subscription %}
+        {% if mp_active and can_change_payment %}
+        <a href="https://www.mercadopago.com.br/subscriptions" target="_blank" rel="noopener noreferrer" class="ms-link ms-method-action">{{ icon('external') }}Gerenciar no Mercado Pago</a>
+        {% elif not mp_active %}
+        <button type="button" data-dialog-open="payment-method-dialog" class="ms-link ms-method-action">{{ 'Acompanhar troca de cartão' if card_migration else 'Ver forma de pagamento' }}</button>
+        {% endif %}
+    {% endif %}
+</section>
+{%- endmacro %}
+
+{% macro sync_form(primary=false) -%}
+<form method="post" action="/minha-assinatura/mercadopago">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="subscription_id" value="{{ subscription.id }}">
+    <button class="sf-btn {{ 'sf-btn-primary' if primary else 'sf-btn-secondary' }}" type="submit" name="action" value="sincronizar">Atualizar situação</button>
+</form>
+{%- endmacro %}
+
+{% macro payment_history(recent=false) -%}
+{% set entries = paid_charges[:3] if recent else paid_charges %}
+{% set heading_id = 'faturas-recentes-title' if recent else 'historico-pagamentos-title' %}
+<section class="ms-card ms-history" aria-labelledby="{{ heading_id }}"{% if not recent %} data-payment-history{% endif %}>
+    <div class="ms-history-head">
+        <h2 class="ms-subtitle" id="{{ heading_id }}">{{ 'Faturas recentes' if recent else 'Histórico de pagamentos' }}</h2>
+        {% if recent and entries %}<a class="ms-link" href="#pagamentos">Ver todas</a>{% endif %}
+        {% if not recent and entries %}
+        <label class="ms-history-filter" hidden>
+            <span class="sr-only">Filtrar pagamentos por status</span>
+            <select data-payment-filter>
+                <option value="all">Todos os status</option>
+                <option value="paid">Pagos</option>
+                <option value="review">Em revisão</option>
+                <option value="refunded">Estornados</option>
+            </select>
+        </label>
+        {% endif %}
+    </div>
+    {% if entries %}
+    <table class="ms-invoices" aria-labelledby="{{ heading_id }}">
+        <thead><tr><th scope="col">Pagamento</th><th scope="col">Valor</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Fatura</span></th></tr></thead>
+        <tbody>
+        {% for charge in entries %}
+            {% set charge_state = 'refunded' if charge.status == 'REFUNDED' else ('paid' if charge.status in ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'] else 'review') %}
+            <tr{% if not recent %} data-payment-status="{{ charge_state }}"{% endif %}>
+                <th scope="row">
+                    <div class="ms-invoice-date">{{ icon('file') }}{% if charge.paid_date %}{{ date_value(charge.paid_date) }}{% elif charge.due_date %}Venc. {{ date_value(charge.due_date) }}{% else %}Data indisponível{% endif %}</div>
+                    <div class="ms-invoice-method">{{ payment_labels.get(charge.billing_type, charge.billing_type or '—') }}{% if charge.card_last4 %} final {{ charge.card_last4 }}{% endif %}</div>
+                </th>
+                <td>
+                    <strong>{{ charge.amount|money_br if charge.amount is not none else '—' }}</strong>
+                    {% if charge.refunded_amount and charge_state != 'refunded' %}<span class="ms-refund">{{ charge.refunded_amount|money_br }} estornados</span>{% endif %}
+                </td>
+                <td>{{ status_badge('Pago', 'green') if charge_state == 'paid' else (status_badge('Estornado', 'neutral') if charge_state == 'refunded' else status_badge('Em revisão', 'amber')) }}</td>
+                <td>{% if charge.invoice_url %}<a href="{{ charge.invoice_url }}" target="_blank" rel="noopener noreferrer" class="ms-invoice-link" title="Ver fatura"><span class="sr-only">Ver fatura{% if charge.paid_date or charge.due_date %} de {{ (charge.paid_date or charge.due_date).strftime('%d/%m/%Y') }}{% endif %}</span>{{ icon('external') }}</a>{% endif %}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% if not recent %}<p class="ms-history-empty" role="status" data-payment-filter-empty hidden>Nenhum pagamento com esse status.</p>{% endif %}
+    {% else %}
+    <p class="ms-history-empty">Nenhum pagamento registrado ainda.</p>
+    {% endif %}
+</section>
+{%- endmacro %}
+
+<div class="sf-page my-subscription mx-auto" data-my-subscription>
+    <header class="sf-page-header ms-header">
+        <div>
+            <p class="ms-organization">{{ organization.name }}</p>
+            <h1 class="sf-page-title">Minha assinatura</h1>
+            <p class="sf-page-subtitle">Acompanhe seu plano, uso e pagamentos.</p>
+        </div>
+        {% if support_email %}<a class="sf-btn sf-btn-secondary" href="mailto:{{ support_email }}">{{ icon('help') }}Preciso de ajuda</a>{% endif %}
+    </header>
+    {% set customer_subscription_page = 'overview' %}
+    {% include "partials/customer_subscription_nav.html" %}
+
+    {% if sandbox_mp %}<p class="ms-notice">Mercado Pago · Ambiente de teste</p>{% endif %}
     {% if subscription_read_only %}
-    <p role="status" class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Os dados da organização estão disponíveis para consulta. Confira as cobranças abaixo ou fale com a equipe SiSFarm para regularizar o acesso.</p>
+    <p class="ms-notice ms-notice-warning" role="status">Os dados da organização estão disponíveis para consulta. Confira as cobranças ou fale com a equipe SiSFarm para regularizar o acesso.</p>
+    {% elif not can_change_payment %}
+    <p class="ms-notice">Perfil de consulta. Um responsável financeiro da organização pode alterar a assinatura.</p>
     {% endif %}
     {% if active_access_grant %}
-    <section class="ms-trial" data-access-grant-banner>
-        <span class="ms-trial-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-9 12h7l-1 8 10-12h-7l1-8Z"/></svg></span>
-        <div class="ms-trial-copy">
-            <h3>{% if trial %}Teste grátis ativo até {{ trial.ends_on.strftime('%d/%m/%Y') }}{% else %}Seu acesso está liberado pela equipe SiSFarm até {{ active_access_grant.ends_on.strftime('%d/%m/%Y') }}{% endif %}</h3>
-            <p>Em caso de dúvida, fale com a equipe SiSFarm.</p>
-        </div>
-        <span class="ms-badge ms-badge-violet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"/></svg>{{ "Acesso temporário liberado" if trial else "Acesso liberado" }}</span>
+    <section class="ms-notice ms-trial" data-access-grant-banner>
+        <span class="ms-icon-tile">{{ icon('bolt') }}</span>
+        <div><h2>{% if trial %}Teste grátis ativo até {{ trial.ends_on.strftime('%d/%m/%Y') }}{% else %}Seu acesso está liberado pela equipe SiSFarm até {{ active_access_grant.ends_on.strftime('%d/%m/%Y') }}{% endif %}</h2>
+        <p>{{ 'Acesso temporário liberado' if trial else 'Acesso liberado' }}</p></div>
     </section>
     {% endif %}
-
     {% include "partials/plan_regularization.html" %}
 
-    {% if subscription_display %}
-    {% set view = states[state] %}
-    {% set plan_name = subscription.plan_name if subscription else card_migration.plan_name %}
-    <section class="ms-card ms-plan" data-status="{{ state }}">
-        <div class="ms-plan-header">
-            <div><p class="ms-copy">{{ 'Plano contratado' if subscription_display.paid else 'Plano escolhido' }}</p><h3 class="ms-title">{{ plan_name or 'Plano SiSFarm' }}</h3></div>
-            <span class="ms-badge ms-badge-{{ view[1] }}">{{ check_icon if state == 'active' else clock_icon }}{{ view[0] }}</span>
-        </div>
-        <ol class="ms-progress" aria-label="Andamento da assinatura">
-            {% for label in ['Plano escolhido', 'Pagamento pendente', 'Assinatura ativa'] %}
-            {% set completed = loop.index < subscription_display.step or (loop.last and state == 'active') %}
-            {% set current = loop.index == subscription_display.step %}
-            <li class="{{ 'is-complete' if completed else 'is-current' if current else '' }}" {% if current %}aria-current="step"{% endif %}>
-                <span class="ms-step"><span class="ms-step-marker" aria-hidden="true">{{ check_icon if completed else loop.index }}</span><span>{{ loop.index }}. {{ label }}</span></span>
-            </li>
-            {% endfor %}
-        </ol>
-        <p class="ms-copy">
-            {% if state == 'pending' %}Seu plano será ativado após a confirmação do pagamento.{% if not subscription_display.payment_url and not mp_active %} O link de pagamento está em preparação.{% endif %}
-            {% elif state == 'confirming' %}{{ 'O Mercado Pago' if mp_active else 'O Asaas' }} está confirmando o pagamento. Acompanhe a atualização por aqui.
-            {% elif state == 'overdue' %}Há cobrança vencida.{% if situation and situation.overdue_count %} Total em atraso de R$ {{ situation.overdue_amount|decimal_br }}.{% endif %} Consulte as faturas em aberto para regularizar.
-            {% elif state == 'active' %}Sua assinatura está ativa.
-            {% elif state == 'suspended' %}Sua assinatura está suspensa. Fale com a equipe SiSFarm para reativá-la.
-            {% elif state == 'ended' %}Esta assinatura foi encerrada.
-            {% else %}A situação da sua assinatura está sendo conferida. Atualize a página em alguns minutos ou fale com a equipe SiSFarm.{% endif %}
-            {% if trial and state in ['pending', 'confirming'] %} Enquanto isso, você continua usando o SiSFarm pelo teste grátis até {{ trial.ends_on.strftime('%d/%m/%Y') }}.{% endif %}
-        </p>
-        {% if subscription and card_migration and card_migration.status == 'pago' and state != 'confirming' %}
-        <p class="ms-copy"><strong>Troca de cartão aguardando confirmação.</strong> O plano atual continua valendo.</p>
-        {% endif %}
-        {% if subscription and subscription.pending_plan_id %}
-        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-sky-50 p-4 text-sm text-sky-900" data-pending-plan>
-            <p>Mudança para <strong>{{ subscription.pending_plan_name }}</strong> agendada para {{ subscription.pending_effective_on.strftime('%d/%m/%Y') }} (R$ {{ subscription.pending_amount|decimal_br }} / {{ cycle_unit_labels.get(subscription.pending_cycle, subscription.pending_cycle) }}). Até lá, seu plano atual continua valendo.</p>
-            {% if can_change_payment %}<form method="post" action="/minha-assinatura/cancelar-alteracao" onsubmit="return confirm('Cancelar a mudança agendada e continuar no plano atual?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-sky-800 ring-1 ring-sky-200 hover:bg-sky-100">Cancelar mudança</button></form>{% endif %}
-        </div>
-        {% endif %}
-        <div class="ms-actions" data-subscription-actions>
-            <a href="#detalhes-do-plano" class="ms-link" data-plan-details-link>Ver detalhes do plano</a>
-            {% if subscription and not mp_active %}<a href="/planos-disponiveis" class="ms-link">Alterar plano</a>{% endif %}
-            {% if subscription %}
-            <button type="button" data-dialog-open="payment-method-dialog" class="ms-secondary">{{ 'Acompanhar troca de cartão' if card_migration else 'Forma de pagamento' }}</button>
-            {% endif %}
-            {% if subscription_display.payment_url and (not mp_active or can_change_payment) %}
-            <a href="{{ subscription_display.payment_url }}" target="_blank" rel="noopener noreferrer" class="ms-primary">{{ 'Pagar agora' if state == 'overdue' else 'Concluir pagamento' }} <span aria-hidden="true">→</span></a>
-            {% endif %}
-            {% if mp_active and subscription and can_change_payment %}
-            <form method="post" action="/minha-assinatura/mercadopago">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="subscription_id" value="{{ subscription.id }}">
-                <button class="ms-secondary" name="action" value="sincronizar">Atualizar situação</button>
-                {% if subscription.mercadopago_id %}<button class="ms-link" name="action" value="cancelar" onclick="return confirm('Cancelar a renovação da assinatura?');">Cancelar assinatura</button>{% endif %}
-            </form>
-            {% endif %}
-        </div>
-    </section>
-    {% else %}
-    <section class="ms-card">
-        {% if paid_until %}
-        <h3 class="ms-subtitle">Renovação cancelada</h3>
-        <p class="ms-copy">Seu acesso segue disponível até {{ (paid_last_day or paid_until).strftime('%d/%m/%Y') }}. A partir de {{ paid_until.strftime('%d/%m/%Y') }}, você poderá contratar um novo plano.</p>
-        {% else %}
-        <h3 class="ms-subtitle">Sua organização ainda não tem uma assinatura ativa</h3>
-        <p class="ms-copy">Escolha o plano ideal para sua fazenda.</p>
-        {% if can_change_payment %}<a href="/planos-disponiveis" class="ms-primary mt-4">Contratar plano</a>
-        {% elif support_email %}<a href="mailto:{{ support_email }}" class="ms-link">Falar com a equipe</a>{% endif %}
-        {% endif %}
-    </section>
-    {% endif %}
-
-    {# Faturas em aberto #}
-    {% if open_charges %}
-    <section class="ms-card" data-open-charges>
-        <h3 class="text-lg font-semibold text-slate-900">Faturas em aberto</h3>
-        <div class="mt-3 space-y-3">
-            {% for charge in open_charges %}
-                {% set may_pay = not charge.operation_state and not (state in ['confirming', 'review'] and subscription and charge.subscription_id == subscription.id) %}
-            {% set late = charge.status == 'OVERDUE' or (charge.due_date and charge.due_date.isoformat() < today_iso) %}
-            <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border {{ 'border-rose-200' if late else 'border-slate-200' }} p-4">
-                <div>
-                    <p class="text-base font-semibold text-slate-900">R$ {{ charge.amount|decimal_br if charge.amount is not none else '—' }}</p>
-                    <p class="text-sm {{ 'text-rose-700' if late else 'text-slate-500' }}">{{ 'Venceu' if late else 'Vence' }} em {{ charge.due_date.strftime('%d/%m/%Y') if charge.due_date else '—' }} · {{ payment_labels.get(charge.billing_type, charge.billing_type or '—') }}</p>
+    <div class="ms-view" id="visao-geral" data-subscription-overview>
+        <section class="ms-card ms-plan{% if renews_on or first_due or access_through %} ms-plan-with-date{% endif %}"{% if state %} data-status="{{ state }}"{% endif %} aria-labelledby="ms-plan-title">
+            <div class="ms-plan-summary">
+                {% if status or paid_until %}
+                <div class="ms-plan-kicker">
+                    <span>{{ 'Plano escolhido' if state in ['pending', 'confirming'] and not subscription_display.paid else 'Plano contratado' }}</span>
+                    {{ status_badge(*status) if status else status_badge('Renovação cancelada', 'neutral') }}
                 </div>
-                <div class="flex flex-wrap gap-2">
-                    {% if may_pay and charge.invoice_url %}
-                    <a href="{{ charge.invoice_url }}" target="_blank" rel="noopener noreferrer" class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Pagar</a>
-                    <button type="button" data-copy-link="{{ charge.invoice_url }}" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Copiar link</button>
+                {% endif %}
+                <div class="ms-plan-intro">
+                    <h2 id="ms-plan-title">{{ plan_name or ('Plano SiSFarm' if contracted else 'Sem assinatura ativa') }}</h2>
+                    {% if plan_amount is not none %}
+                    <p class="ms-price"><strong>{{ plan_amount|money_br }}</strong>{% if plan_cycle %} / {{ cycle_unit_labels.get(plan_cycle, plan_cycle) }}{% endif %}</p>
                     {% endif %}
-                    {% if may_pay and charge.bank_slip_url %}<a href="{{ charge.bank_slip_url }}" target="_blank" rel="noopener noreferrer" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Boleto (PDF)</a>{% endif %}
-                    {% if not may_pay %}<span class="text-xs text-slate-500">{{ "Aguardando confirmação" if state == "confirming" else "Em análise" }}</span>{% elif not charge.invoice_url and not charge.bank_slip_url %}<span class="text-xs text-slate-500">{{ 'Acompanhe a cobrança no Mercado Pago.' if mp_active else 'Link de pagamento sendo gerado…' }}</span>{% endif %}
+                </div>
+                {% if not contracted %}
+                <p class="ms-copy">Sua organização ainda não tem uma assinatura ativa.</p>
+                {% elif paid_until %}
+                <p class="ms-copy">Uma nova contratação ficará disponível em {{ date_value(paid_until) }}.</p>
+                {% elif state == 'pending' %}
+                <p class="ms-copy">Seu plano será ativado após a confirmação do pagamento.{% if not subscription_display.payment_url and not mp_active %} O link de pagamento está em preparação.{% endif %}</p>
+                {% elif state == 'confirming' %}
+                <p class="ms-copy">{{ provider }} está confirmando o pagamento. Acompanhe a situação por aqui.</p>
+                {% elif state == 'overdue' %}
+                <p class="ms-copy">{% if situation and situation.overdue_count %}Total em atraso de {{ situation.overdue_amount|money_br }}. {% endif %}Consulte as faturas em aberto para regularizar.</p>
+                {% elif state == 'suspended' %}
+                <p class="ms-copy">Fale com a equipe SiSFarm para reativar sua assinatura.</p>
+                {% elif state == 'ended' %}
+                <p class="ms-copy">Consulte o histórico para conferir as cobranças anteriores.</p>
+                {% elif state == 'review' %}
+                <p class="ms-copy">Acompanhe a situação ou fale com a equipe SiSFarm.</p>
+                {% endif %}
+            </div>
+            {% if renews_on or first_due or access_through %}
+            <div class="ms-renewal">
+                <span class="ms-icon-tile">{{ icon('calendar') }}</span>
+                <div>
+                    <span>{{ 'Acesso pelo período pago até' if access_through else ('Primeira cobrança' if first_due else 'Próxima renovação') }}</span>
+                    <strong>{{ date_value(access_through or first_due or renews_on) }}</strong>
+                    {% if renews_on and subscription.billing_type == 'CREDIT_CARD' %}<span>Cobrança automática</span>{% endif %}
                 </div>
             </div>
-            {% endfor %}
+            {% endif %}
+            <div class="ms-plan-actions">
+                {% if can_pay %}
+                <a href="{{ subscription_display.payment_url }}" target="_blank" rel="noopener noreferrer" class="sf-btn sf-btn-primary">{{ 'Pagar agora' if state == 'overdue' else 'Concluir pagamento' }}</a>
+                {% elif state == 'confirming' and can_sync %}
+                {{ sync_form(primary=true) }}
+                {% elif show_open_charges_link %}
+                <a href="#faturas-em-aberto" class="sf-btn sf-btn-primary">Ver faturas em aberto</a>
+                {% endif %}
+                <a href="/planos-disponiveis" class="sf-btn {{ 'sf-btn-secondary' if can_pay or (state == 'confirming' and can_sync) or show_open_charges_link else 'sf-btn-primary' }}">{{ 'Alterar plano' if subscription and not mp_active and can_change_payment else ('Contratar plano' if not contracted and can_change_payment else 'Comparar planos') }}</a>
+                {% if contracted %}<a href="#detalhes-do-plano" class="sf-btn sf-btn-secondary" data-plan-details-link>Detalhes do plano</a>{% endif %}
+            </div>
+        </section>
+
+        {% if pending_change and not pending_applied %}
+        <div class="ms-notice ms-notice-with-action" data-pending-plan>
+            <p>Mudança para <strong>{{ subscription.pending_plan_name }}</strong> agendada para {{ date_value(subscription.pending_effective_on) }}. A próxima cobrança será de {{ subscription.pending_amount|money_br }} / {{ cycle_unit_labels.get(subscription.pending_cycle, subscription.pending_cycle) }}.</p>
+            {% if can_change_payment %}<form method="post" action="/minha-assinatura/cancelar-alteracao" onsubmit="return confirm('Cancelar a mudança agendada e continuar no plano atual?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="sf-btn sf-btn-secondary" type="submit">Cancelar mudança</button></form>{% endif %}
         </div>
-    </section>
+        {% endif %}
+        {% if subscription and card_migration and card_migration.status == 'pago' and state != 'confirming' %}
+        <p class="ms-notice"><strong>Troca de cartão aguardando confirmação.</strong> O plano atual continua valendo.</p>
+        {% endif %}
+
+        <div class="ms-overview-grid{% if not subscription_usage %} ms-overview-grid-single{% endif %}">
+            {% if subscription_usage %}
+            <section class="ms-card" data-subscription-usage>
+                <div class="ms-card-heading">
+                    <div><h2 class="ms-subtitle">Uso do plano</h2><p class="ms-copy">Consumo e limites da organização</p></div>
+                    <button type="button" class="ms-link" data-dialog-open="usage-criteria-dialog">{{ icon('help') }}Ver critérios</button>
+                </div>
+                <div class="ms-metrics">
+                    {{ metric('Fazendas', 'farm', subscription_usage.farms|length, subscription_usage.max_farms) }}
+                    {{ metric('Usuários', 'users', subscription_usage.users|length, subscription_usage.max_users) }}
+                    {{ metric('Área cadastrada', 'map', subscription_usage.total_area, subscription_usage.max_hectares, ' ha', 2) }}
+                </div>
+            </section>
+            {% endif %}
+            {{ method_panel() }}
+        </div>
+
+        {% if open_charges and state not in ['overdue', 'pending'] %}
+        <p class="ms-notice ms-notice-with-action"><span>Há {{ open_charges|length }} {{ 'fatura em aberto' if open_charges|length == 1 else 'faturas em aberto' }}.</span><a class="ms-link" href="#faturas-em-aberto">Ver cobranças</a></p>
+        {% endif %}
+        {{ payment_history(recent=true) }}
+
+        {% if can_manage %}
+        <section class="ms-card ms-manage">
+            <span class="ms-icon-tile">{{ icon('settings') }}</span>
+            <div><h2 class="ms-subtitle">Gerenciamento da assinatura</h2><p class="ms-copy">Consulte as opções de renovação e atendimento.</p></div>
+            <button type="button" class="sf-btn sf-btn-secondary" data-dialog-open="subscription-management-dialog">Gerenciar</button>
+        </section>
+        {% endif %}
+
+        {% if contracted %}
+        <details id="detalhes-do-plano" class="ms-card" data-plan-details>
+            <summary class="cursor-pointer text-base font-semibold text-slate-900">O que está incluído no seu plano</summary>
+            {% if plan %}
+            {% if plan.description %}<p class="mt-1 text-sm text-slate-600">{{ plan.description }}</p>{% endif %}
+            <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                <div class="rounded-2xl bg-slate-50 p-3"><dt class="text-xs text-slate-500">Fazendas</dt><dd class="font-semibold text-slate-900">{{ plan.max_farms if plan.max_farms else 'Ilimitadas' }}</dd></div>
+                <div class="rounded-2xl bg-slate-50 p-3"><dt class="text-xs text-slate-500">Usuários</dt><dd class="font-semibold text-slate-900">{{ plan.max_users if plan.max_users else 'Ilimitados' }}</dd></div>
+                <div class="rounded-2xl bg-slate-50 p-3"><dt class="text-xs text-slate-500">Área</dt><dd class="font-semibold text-slate-900">{{ (plan.max_hectares|decimal_br ~ ' ha') if plan.max_hectares else 'Ilimitada' }}</dd></div>
+            </dl>
+            {% if plan_module_labels %}
+            <ul class="mt-4 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">{% for label in plan_module_labels %}<li class="flex items-center gap-2"><span class="text-emerald-600" aria-hidden="true">✓</span>{{ label }}</li>{% endfor %}</ul>
+            {% endif %}
+            {% else %}
+            <p class="mt-1 text-sm text-slate-600">Plano personalizado, combinado com a equipe SiSFarm.</p>
+            {% endif %}
+        </details>
+        {% endif %}
+    </div>
+
+    <div class="ms-view" id="pagamentos" data-subscription-payments>
+        <div class="ms-payment-grid">
+            <section class="ms-card">
+                <h2 class="ms-subtitle">{{ 'Próxima renovação' if renews_on else ('Primeira cobrança' if first_due else 'Situação da cobrança') }}</h2>
+                {% if renews_on or first_due %}<p class="ms-copy">{{ date_value(renews_on or first_due) }}</p>{% endif %}
+                {% if (renews_on or first_due) and plan_amount is not none %}<p class="ms-price"><strong>{{ (subscription.pending_amount if renews_on and pending_change else plan_amount)|money_br }}</strong></p>{% endif %}
+                {% if status %}<div class="ms-payment-status">{{ status_badge(*status) }}</div>
+                {% else %}<p class="ms-copy">{{ 'A renovação foi cancelada.' if paid_until else 'Nenhuma cobrança recorrente ativa.' }}</p>{% endif %}
+                {% if can_sync or (can_pay and state == 'pending' and not open_charges) %}
+                <div class="ms-payment-status ms-payment-actions">
+                    {% if can_pay and state == 'pending' and not open_charges %}<a href="{{ subscription_display.payment_url }}" target="_blank" rel="noopener noreferrer" class="sf-btn sf-btn-primary">Abrir checkout</a>{% endif %}
+                    {% if can_sync %}{{ sync_form() }}{% endif %}
+                </div>
+                {% endif %}
+            </section>
+            {{ method_panel() }}
+        </div>
+
+        {% if open_charges %}
+        <section class="ms-card" id="faturas-em-aberto" data-open-charges>
+            <h2 class="ms-subtitle">Faturas em aberto</h2>
+            <div class="mt-3 space-y-3">
+                {% for charge in open_charges %}
+                    {% set may_pay = not charge.operation_state and not (state in ['confirming', 'review'] and subscription and charge.subscription_id == subscription.id) %}
+                {% set late = charge.status == 'OVERDUE' or (charge.due_date and charge.due_date.isoformat() < today_iso) %}
+                <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border {{ 'border-rose-200' if late else 'border-slate-200' }} p-4">
+                    <div>
+                        <p class="text-base font-semibold text-slate-900">R$ {{ charge.amount|decimal_br if charge.amount is not none else '—' }}</p>
+                        <p class="text-sm {{ 'text-rose-700' if late else 'text-slate-500' }}">{{ 'Venceu' if late else 'Vence' }} em {{ charge.due_date.strftime('%d/%m/%Y') if charge.due_date else '—' }} · {{ payment_labels.get(charge.billing_type, charge.billing_type or '—') }}</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        {% if may_pay and charge.invoice_url %}
+                        <a href="{{ charge.invoice_url }}" target="_blank" rel="noopener noreferrer" class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Pagar</a>
+                        <button type="button" data-copy-link="{{ charge.invoice_url }}" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Copiar link</button>
+                        {% endif %}
+                        {% if may_pay and charge.bank_slip_url %}<a href="{{ charge.bank_slip_url }}" target="_blank" rel="noopener noreferrer" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Boleto (PDF)</a>{% endif %}
+                        {% if not may_pay %}<span class="text-xs text-slate-500">{{ "Aguardando confirmação" if state == "confirming" else "Em análise" }}</span>{% elif not charge.invoice_url and not charge.bank_slip_url %}<span class="text-xs text-slate-500">{{ 'Acompanhe a cobrança no Mercado Pago.' if mp_active else 'Link de pagamento sendo gerado…' }}</span>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {{ payment_history() }}
+    </div>
+
+    {% if subscription_usage %}
+    <dialog id="usage-criteria-dialog" class="app-modal ms-dialog" aria-labelledby="usage-criteria-title">
+        <div class="ms-dialog-body">
+            <header class="ms-dialog-heading"><h2 class="ms-subtitle" id="usage-criteria-title">Como o uso é calculado</h2><button type="button" data-dialog-close class="sf-icon-btn" aria-label="Fechar">{{ icon('close') }}</button></header>
+            <ul class="ms-dialog-list">
+                <li>{{ icon('farm') }}Fazendas em operação contam para o limite de fazendas.</li>
+                <li>{{ icon('users') }}O limite de usuários considera os usuários ativos da organização.</li>
+                <li>{{ icon('map') }}A área cadastrada soma os hectares das fazendas em operação.</li>
+            </ul>
+        </div>
+    </dialog>
     {% endif %}
 
-    {# Forma de pagamento #}
+    {% if can_manage %}
+    <dialog id="subscription-management-dialog" class="app-modal ms-dialog" aria-labelledby="subscription-management-title">
+        <div class="ms-dialog-body">
+            <header class="ms-dialog-heading"><h2 class="ms-subtitle" id="subscription-management-title">Gerenciar assinatura</h2><button type="button" data-dialog-close class="sf-icon-btn" aria-label="Fechar">{{ icon('close') }}</button></header>
+            <div class="ms-manage-options">
+                <a href="/planos-disponiveis" class="sf-btn sf-btn-secondary">Comparar planos</a>
+                {% if can_cancel %}
+                {% if support_email %}<a href="mailto:{{ support_email }}?subject={{ 'Mudança de ciclo da assinatura SiSFarm'|urlencode }}" class="sf-btn sf-btn-secondary">Solicitar mudança de ciclo</a>{% endif %}
+                <button type="button" class="sf-btn sf-btn-secondary ms-danger-text" data-dialog-open="cancel-renewal-dialog">Cancelar renovação</button>
+                {% elif support_email %}
+                <a href="mailto:{{ support_email }}" class="sf-btn sf-btn-secondary">Solicitar cancelamento à equipe SiSFarm</a>
+                {% endif %}
+            </div>
+        </div>
+    </dialog>
+    {% endif %}
+
+    {% if can_cancel %}
+    <dialog id="cancel-renewal-dialog" class="app-modal ms-dialog" aria-labelledby="cancel-renewal-title">
+        <div class="ms-dialog-body">
+            <header class="ms-dialog-heading"><h2 class="ms-subtitle" id="cancel-renewal-title">Cancelar renovação?</h2><button type="button" data-dialog-close class="sf-icon-btn" aria-label="Fechar">{{ icon('close') }}</button></header>
+            <p class="ms-copy">O cancelamento encerra a recorrência no Mercado Pago.</p>
+            {% if cancellation_period_end %}
+            <dl class="ms-cancel-dates">
+                <div><dt>Acesso pelo período pago até</dt><dd>{{ date_value(cancellation_access_through) }}</dd></div>
+                <div><dt>Nova contratação a partir de</dt><dd>{{ date_value(cancellation_period_end) }}</dd></div>
+            </dl>
+            <p class="ms-copy">Estornos ou contestações podem alterar o período de acesso.</p>
+            {% endif %}
+            <form method="post" action="/minha-assinatura/mercadopago" class="ms-dialog-actions">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="subscription_id" value="{{ subscription.id }}">
+                <button type="button" class="sf-btn sf-btn-secondary" data-dialog-close autofocus>Manter assinatura</button>
+                <button type="submit" class="sf-btn ms-danger" name="action" value="cancelar">Confirmar cancelamento</button>
+            </form>
+        </div>
+    </dialog>
+    {% endif %}
+
     {% if subscription %}
-    <dialog id="payment-method-dialog" class="app-modal w-full max-w-lg rounded-[2rem] p-0 shadow-2xl">
-    <div class="bg-white p-6" data-payment-method>
-        <h3 class="text-lg font-semibold text-slate-900">Forma de pagamento</h3>
+    <dialog id="payment-method-dialog" class="app-modal ms-dialog" aria-labelledby="payment-method-title">
+    <div class="ms-dialog-body" data-payment-method>
+        <h2 id="payment-method-title" class="ms-subtitle">Forma de pagamento</h2>
         {% if mp_active %}
         <p class="mt-2 text-sm text-slate-600">{{ payment_labels.get(subscription.billing_type, subscription.billing_type) }}</p>
         {% if can_change_payment %}<a href="https://www.mercadopago.com.br/subscriptions" target="_blank" rel="noopener noreferrer" class="ms-link">Gerenciar cobrança no Mercado Pago</a>{% endif %}
@@ -189,79 +442,5 @@
     </div>
     </dialog>
     {% endif %}
-
-    {# Historico #}
-    <section class="ms-card" data-payment-history>
-        <h3 class="ms-subtitle">Histórico de pagamentos</h3>
-        {% if paid_charges %}
-        <ul class="mt-3 divide-y divide-slate-100">
-            {% for charge in paid_charges %}
-            <li class="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                <span>
-                    <span class="font-semibold text-slate-900">R$ {{ charge.amount|decimal_br if charge.amount is not none else '—' }}</span>
-                    <span class="text-slate-500">
-                        {% if charge.status == 'REFUNDED' %}· Estornado{% elif charge.status not in ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'] %}· Em revisão{% endif %}
-                        {% if charge.paid_date %}· pago em {{ charge.paid_date.strftime('%d/%m/%Y') }}{% elif charge.due_date %}· vencimento {{ charge.due_date.strftime('%d/%m/%Y') }}{% endif %}
-                        · {{ payment_labels.get(charge.billing_type, charge.billing_type or '—') }}{% if charge.card_last4 %} final {{ charge.card_last4 }}{% endif %}
-                        {% if charge.refunded_amount and charge.status != 'REFUNDED' %}· R$ {{ charge.refunded_amount|decimal_br }} estornados{% endif %}
-                    </span>
-                </span>
-                {% if charge.invoice_url %}<a href="{{ charge.invoice_url }}" target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-emerald-800 hover:underline">Ver fatura</a>{% endif %}
-            </li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <p class="ms-copy mt-2">Nenhum pagamento registrado ainda.</p>
-        {% endif %}
-    </section>
-
-    {# Plano #}
-    {% if subscription_display %}
-    <details id="detalhes-do-plano" class="ms-card" data-plan-details>
-        <summary class="cursor-pointer text-base font-semibold text-slate-900">O que está incluído no seu plano</summary>
-        {% set contracted = subscription or card_migration %}
-        {% if contracted.amount is not none %}
-        <p class="mt-2 text-sm text-slate-600">R$ {{ contracted.amount|decimal_br }} por {{ cycle_unit_labels.get(contracted.cycle, contracted.cycle) }}{% if subscription %} · {{ payment_labels.get(subscription.billing_type, subscription.billing_type) }}{% if subscription.next_due_date %} · Próxima cobrança em {{ subscription.next_due_date.strftime('%d/%m/%Y') }}{% endif %}{% elif card_migration %} · Cartão de crédito{% if card_migration.first_due_date %} · Primeiro vencimento em {{ card_migration.first_due_date.strftime('%d/%m/%Y') }}{% endif %}{% endif %}</p>
-        {% endif %}
-        {% if plan %}
-        {% if plan.description %}<p class="mt-1 text-sm text-slate-600">{{ plan.description }}</p>{% endif %}
-        <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-3">
-            <div class="rounded-2xl bg-slate-50 p-3"><dt class="text-xs text-slate-500">Fazendas</dt><dd class="font-semibold text-slate-900">{{ plan.max_farms if plan.max_farms else 'Ilimitadas' }}</dd></div>
-            <div class="rounded-2xl bg-slate-50 p-3"><dt class="text-xs text-slate-500">Usuários</dt><dd class="font-semibold text-slate-900">{{ plan.max_users if plan.max_users else 'Ilimitados' }}</dd></div>
-            <div class="rounded-2xl bg-slate-50 p-3"><dt class="text-xs text-slate-500">Área</dt><dd class="font-semibold text-slate-900">{{ (plan.max_hectares|decimal_br ~ ' ha') if plan.max_hectares else 'Ilimitada' }}</dd></div>
-        </dl>
-        {% if plan_module_labels %}
-        <ul class="mt-4 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">{% for label in plan_module_labels %}<li class="flex items-center gap-2"><span class="text-emerald-600" aria-hidden="true">✓</span>{{ label }}</li>{% endfor %}</ul>
-        {% endif %}
-        {% else %}
-        <p class="mt-1 text-sm text-slate-600">Plano personalizado, combinado com a equipe SiSFarm.</p>
-        {% endif %}
-    </details>
-    {% endif %}
-
 </div>
-<script>
-(() => {
-    document.addEventListener('click', (event) => {
-        if (event.target.closest('[data-plan-details-link]')) document.querySelector('[data-plan-details]').open = true;
-        const opener = event.target.closest('[data-dialog-open]');
-        if (opener) { document.getElementById(opener.dataset.dialogOpen)?.showModal(); return; }
-        if (event.target.closest('[data-dialog-close]') || event.target.tagName === 'DIALOG') (event.target.closest('dialog') || event.target).close();
-    });
-    document.addEventListener('click', async (event) => {
-        const button = event.target.closest('[data-copy-link]');
-        if (!button) return;
-        const original = button.textContent;
-        try { await navigator.clipboard.writeText(button.dataset.copyLink); button.textContent = 'Link copiado'; }
-        catch (error) { window.prompt('Copie o link:', button.dataset.copyLink); }
-        setTimeout(() => { button.textContent = original; }, 2000);
-    });
-    document.querySelectorAll('[data-busy-form]').forEach((form) => {
-        form.addEventListener('submit', () => {
-            const button = form.querySelector('button');
-            if (button) { button.disabled = true; button.textContent = 'Abrindo…'; }
-        });
-    });
-})();
-</script>
 {% endblock %}

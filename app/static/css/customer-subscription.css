@@ -1,0 +1,217 @@
+/* Minha assinatura */
+.my-subscription {
+    gap: 1rem;
+    max-width: 76rem;
+}
+.my-subscription .ms-header { gap: .75rem 1.25rem; }
+.ms-header .sf-page-title { font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -.045em; }
+.ms-organization { margin-bottom: .375rem; color: var(--sf-muted); font-size: .8125rem; font-weight: 650; }
+.ms-view { display: grid; gap: 1rem; min-width: 0; }
+.my-subscription [hidden] { display: none !important; }
+.ms-view, #detalhes-do-plano, #faturas-em-aberto { scroll-margin-top: 5rem; }
+.ms-card {
+    min-width: 0;
+    padding: clamp(1rem, 2vw, 1.375rem);
+    border: 1px solid var(--sf-line);
+    border-radius: 1rem;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(22, 32, 26, .025);
+}
+.ms-card-heading, .ms-history-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem 1rem;
+}
+.ms-subtitle { font-size: 1.075rem; font-weight: 720; letter-spacing: -.02em; line-height: 1.3; }
+.ms-copy { margin-top: .25rem; color: var(--sf-muted); font-size: .875rem; line-height: 1.5; }
+.ms-icon { width: 1.125rem; height: 1.125rem; flex: none; }
+.ms-icon-tile {
+    display: inline-grid;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex: none;
+    place-items: center;
+    border-radius: .625rem;
+    background: var(--sf-brand-soft);
+    color: var(--sf-brand);
+}
+.ms-link {
+    display: inline-flex;
+    align-items: center;
+    gap: .375rem;
+    color: var(--sf-brand-dark);
+    font-size: .875rem;
+    font-weight: 650;
+    text-align: left;
+}
+.ms-link:hover { text-decoration: underline; text-underline-offset: .2em; }
+button.ms-link { min-height: 2rem; }
+.ms-link:focus-visible, .ms-invoice-link:focus-visible { outline: 2px solid var(--sf-brand); outline-offset: 3px; }
+.ms-notice {
+    padding: .875rem 1rem;
+    border: 1px solid var(--sf-line);
+    border-radius: .75rem;
+    background: var(--sf-soft);
+    color: #3c5341;
+    font-size: .875rem;
+    line-height: 1.45;
+}
+.ms-notice-warning, #regularizacao-plano.ms-card { border-color: #eddbb7; background: #fff8e9; color: #674917; }
+.ms-notice-with-action, .ms-trial { display: flex; align-items: center; gap: .75rem; }
+.ms-notice-with-action { flex-wrap: wrap; justify-content: space-between; }
+.ms-trial { background: #f0f6ed; color: var(--sf-brand-dark); }
+.ms-trial h2 { font-size: .9375rem; font-weight: 700; }
+
+.ms-plan {
+    display: grid;
+    grid-template-areas: "summary" "actions";
+    gap: .875rem 1.5rem;
+}
+.ms-plan-with-date {
+    grid-template-columns: minmax(0, 1fr) minmax(12.5rem, 28%);
+    grid-template-areas: "summary renewal" "actions renewal";
+}
+.ms-plan-summary { grid-area: summary; min-width: 0; }
+.ms-plan-kicker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .375rem .625rem;
+    margin-bottom: .3125rem;
+    color: var(--sf-muted);
+    font-size: .8125rem;
+    font-weight: 650;
+}
+.ms-plan-intro { display: flex; flex-wrap: wrap; align-items: baseline; gap: .1875rem .875rem; }
+.ms-plan-intro h2 {
+    font-size: clamp(1.5rem, 2.5vw, 2rem);
+    font-weight: 755;
+    line-height: 1.13;
+    letter-spacing: -.04em;
+    overflow-wrap: anywhere;
+}
+.ms-price { color: var(--sf-muted); font-size: .875rem; }
+.ms-price strong { color: var(--sf-ink); font-size: 1.1875rem; font-weight: 730; font-variant-numeric: tabular-nums; }
+.ms-plan-actions { grid-area: actions; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; min-width: 0; }
+.my-subscription .sf-btn { justify-content: center; text-align: center; white-space: normal; }
+.ms-renewal {
+    grid-area: renewal;
+    align-self: center;
+    display: flex;
+    align-items: center;
+    gap: .625rem;
+    min-width: 0;
+    padding: .75rem;
+    border: 1px solid #e1e9de;
+    border-radius: .6875rem;
+    background: #f5f8f3;
+}
+.ms-renewal span:not(.ms-icon-tile), .ms-renewal strong { display: block; }
+.ms-renewal span:not(.ms-icon-tile) { color: var(--sf-muted); font-size: .8125rem; line-height: 1.35; }
+.ms-renewal strong { margin: .125rem 0; font-size: .9375rem; font-weight: 720; }
+
+.ms-badge {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    gap: .25rem;
+    padding: .25rem .5625rem;
+    border-radius: 999px;
+    font-size: .8125rem;
+    font-weight: 650;
+    line-height: 1.25;
+}
+.ms-badge .ms-icon { width: .8125rem; height: .8125rem; stroke-width: 2.2; }
+.ms-badge-green { color: #2d5c31; background: #e7f4e5; }
+.ms-badge-amber { color: #774b10; background: #fff0d4; }
+.ms-badge-red { color: #922e35; background: #fbe9e9; }
+.ms-badge-neutral { color: #46534a; background: #e9eeea; }
+
+.ms-overview-grid, .ms-payment-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 1rem; }
+.ms-overview-grid-single { grid-template-columns: 1fr; }
+.ms-metrics { display: grid; gap: .75rem; margin-top: .875rem; }
+.ms-metric { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: .625rem; }
+.ms-metric-caption {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .125rem .5rem;
+    color: var(--sf-muted);
+    font-size: .8125rem;
+}
+.ms-metric-caption > span:first-child, .ms-metric-caption strong { color: var(--sf-ink); font-weight: 650; }
+.ms-meter { appearance: none; display: block; width: 100%; height: .375rem; margin-top: .3125rem; border: 0; border-radius: 999px; background: #e9eee8; }
+.ms-meter::-webkit-progress-bar { border-radius: 999px; background: #e9eee8; }
+.ms-meter::-webkit-progress-value { border-radius: 999px; background: #709760; }
+.ms-meter::-moz-progress-bar { border-radius: 999px; background: #709760; }
+.ms-meter-full::-webkit-progress-value { background: #95672d; }
+.ms-meter-full::-moz-progress-bar { background: #95672d; }
+.ms-payment-method {
+    display: flex;
+    gap: .625rem;
+    align-items: center;
+    margin-top: .75rem;
+    padding: .6875rem;
+    border: 1px solid var(--sf-line);
+    border-radius: .6875rem;
+    background: var(--sf-soft);
+}
+.ms-payment-method strong { font-size: .9375rem; font-weight: 690; }
+.ms-payment-method p { margin-top: .1875rem; color: var(--sf-muted); font-size: .8125rem; }
+.ms-method-action { margin-top: .75rem; }
+.ms-payment-status { margin-top: .625rem; }
+.ms-payment-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+.ms-history { padding: 0; overflow: hidden; }
+.ms-history-head { padding: 1rem clamp(.875rem, 2vw, 1.375rem); }
+.ms-history-filter select { border: 1px solid var(--sf-line-strong); border-radius: .625rem; font-size: .875rem; }
+.ms-invoices { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.ms-invoices th, .ms-invoices td { padding: .5625rem .75rem; border-top: 1px solid var(--sf-line); text-align: left; vertical-align: middle; }
+.ms-invoices thead th { background: var(--sf-soft); color: var(--sf-muted); font-weight: 650; }
+.ms-invoices th:first-child { padding-left: clamp(.875rem, 2vw, 1.375rem); }
+.ms-invoices th:last-child, .ms-invoices td:last-child { padding-right: clamp(.875rem, 2vw, 1.375rem); text-align: right; }
+.ms-invoices tbody th, .ms-invoices strong { font-weight: 650; }
+.ms-invoice-date { display: flex; gap: .375rem; align-items: center; }
+.ms-invoice-date svg { width: 1rem; height: 1rem; color: var(--sf-brand); }
+.ms-invoice-method, .ms-refund { display: block; margin-top: .125rem; color: var(--sf-muted); font-size: .75rem; font-weight: 400; }
+.ms-invoice-link { display: inline-grid; width: 2rem; height: 2rem; place-items: center; border: 1px solid var(--sf-line); border-radius: .5rem; color: var(--sf-brand-dark); }
+.ms-invoice-link:hover { background: var(--sf-soft); }
+.ms-invoice-link svg { width: .875rem; height: .875rem; }
+.ms-history-empty { border-top: 1px solid var(--sf-line); padding: .875rem 1.375rem; color: var(--sf-muted); font-size: .875rem; }
+
+.ms-manage { display: flex; flex-wrap: wrap; align-items: center; gap: .625rem; }
+.ms-manage > div { flex: 1 1 12rem; }
+.ms-dialog { width: min(33rem, calc(100% - 2rem)); max-height: 88dvh; padding: 0; border: 1px solid var(--sf-line); border-radius: 1.25rem; color: var(--sf-ink); box-shadow: 0 22px 70px rgba(15, 33, 23, .28); }
+.ms-dialog-body { padding: clamp(1rem, 3vw, 1.5rem); background: #fff; }
+.ms-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .625rem; }
+.ms-dialog-heading .sf-icon-btn { width: 2.25rem; height: 2.25rem; flex: none; }
+.ms-dialog-list { display: grid; gap: .6875rem; margin-top: .875rem; color: var(--sf-muted); font-size: .875rem; }
+.ms-dialog-list li { display: flex; align-items: flex-start; gap: .625rem; }
+.ms-dialog-list svg { color: var(--sf-brand); }
+.ms-manage-options { display: grid; gap: .5rem; margin-top: 1rem; }
+.ms-manage-options .sf-btn { justify-content: flex-start; }
+.ms-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+.ms-danger-text { color: #932e36; }
+.ms-danger { border: 1px solid #9e3039; background: #9e3039; color: #fff; }
+.ms-danger:hover { border-color: #7f2229; background: #7f2229; color: #fff; }
+.ms-cancel-dates { display: grid; gap: .5rem; margin: .875rem 0; padding: .875rem; border-radius: .75rem; background: var(--sf-soft); font-size: .875rem; }
+.ms-cancel-dates > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem .6rem; }
+.ms-cancel-dates dd { font-weight: 700; }
+
+@media (max-width: 700px) {
+    .ms-plan-with-date { grid-template-columns: 1fr; grid-template-areas: "summary" "renewal" "actions"; }
+    .ms-renewal { padding: .625rem; }
+    .ms-overview-grid, .ms-payment-grid { grid-template-columns: minmax(0, 1fr); }
+    .ms-invoices th, .ms-invoices td { padding: .5rem .3125rem; font-size: .8125rem; }
+    .ms-invoices th:first-child { padding-left: .625rem; }
+    .ms-invoices th:last-child, .ms-invoices td:last-child { padding-right: .625rem; }
+    .ms-invoice-date svg, .ms-invoices .ms-badge svg { display: none; }
+    .ms-invoices .ms-badge { font-size: .75rem; padding: .25rem .375rem; }
+}
+@media (max-width: 639px) {
+    .ms-dialog { width: 100%; max-width: none; margin: auto 0 0; max-height: 92dvh; border-radius: 1.125rem 1.125rem 0 0; }
+    .ms-dialog-body { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+}
