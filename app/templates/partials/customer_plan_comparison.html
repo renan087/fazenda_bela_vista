@@ -1,13 +1,13 @@
 {% set groups = [
-    ('Gestão da propriedade', ['page.productive_unit', 'page.map', 'page.varieties']),
-    ('Operação de campo', ['page.operations', 'page.agenda', 'page.inputs', 'page.mobile']),
-    ('Monitoramento agronômico', ['page.irrigation', 'page.rainfall', 'page.pests', 'page.soil', 'page.agronomic']),
-    ('Gestão e comercialização', ['page.finance', 'page.production', 'page.assets']),
+    ('prop', 'Propriedade', ['page.productive_unit', 'page.map', 'page.varieties']),
+    ('campo', 'Campo', ['page.operations', 'page.agenda', 'page.inputs', 'page.mobile']),
+    ('agro', 'Agronômico', ['page.irrigation', 'page.rainfall', 'page.pests', 'page.soil', 'page.agronomic']),
+    ('gestao', 'Gestão', ['page.finance', 'page.production', 'page.assets']),
 ] %}
 {% set known = namespace(codes=[]) %}
-{% for _, codes in groups %}{% set known.codes = known.codes + codes %}{% endfor %}
+{% for _, _, codes in groups %}{% set known.codes = known.codes + codes %}{% endfor %}
 {% set extra = module_labels|reject('in', known.codes)|list %}
-{% if extra %}{% set groups = groups + [('Outros módulos', extra)] %}{% endif %}
+{% if extra %}{% set groups = groups + [('outros', 'Outros módulos', extra)] %}{% endif %}
 {% set plan_count = plans_catalog|length %}
 {% set highlighted_plan_id = current_plan_id or recorded_plan_id or trial_plan_id %}
 
@@ -18,67 +18,117 @@
 {%- endmacro %}
 <section id="comparacao-planos" class="pc-comparison" aria-labelledby="customer-comparison-title" data-plan-comparison>
     <div class="pc-comparison-header">
-        <div>
-            <h2 id="customer-comparison-title" tabindex="-1" aria-describedby="customer-comparison-highlight">Comparativo completo de recursos</h2>
-            <p class="pc-comparison-sub">Veja exatamente o que muda entre cada plano</p>
-            <span id="customer-comparison-highlight" class="pc-sr-only" data-comparison-highlight>{% for plan in plans_catalog if plan.id == highlighted_plan_id %}Plano em destaque: {{ plan.name }}.{% endfor %}</span>
-        </div>
-        {% if plan_count > 1 %}
-        <button type="button" class="pc-filter-chip" aria-pressed="false" aria-controls="customer-comparison-table" data-comparison-filter hidden>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10m-7 6h4"/></svg>
-            Mostrar só diferenças
+        <h2 id="customer-comparison-title" tabindex="-1" aria-describedby="customer-comparison-highlight">Comparar recursos</h2>
+        <span id="customer-comparison-highlight" class="pc-sr-only" data-comparison-highlight>{% for plan in plans_catalog if plan.id == highlighted_plan_id %}Plano em destaque: {{ plan.name }}.{% endfor %}</span>
+        <button type="button" class="pc-comp-toggle" data-comparison-toggle aria-expanded="true" aria-controls="customer-comparison-body">
+            <span data-comparison-toggle-label>Ocultar</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
         </button>
-        {% endif %}
     </div>
-    <p class="pc-comparison-feedback" data-comparison-feedback role="status" hidden>Os planos exibidos incluem os mesmos módulos.</p>
-    <div class="pc-table-wrap">
-        <table id="customer-comparison-table" class="pc-table{% if plan_count > 3 %} pc-table-many{% endif %}" style="--pc-columns: {{ plan_count }}" aria-labelledby="customer-comparison-title" role="table">
-            <colgroup><col class="pc-resource-column">{% for plan in plans_catalog %}<col>{% endfor %}</colgroup>
-            <thead role="rowgroup">
-                <tr role="row">
-                    <th scope="col" role="columnheader" class="pc-resource-heading">Módulos e limites</th>
-                    {% for plan in plans_catalog %}
-                    <th id="pc-plan-{{ plan.id }}" class="pc-value{% if plan.id == highlighted_plan_id %} pc-highlighted{% endif %}" scope="col" role="columnheader" data-comparison-plan="{{ plan.id }}">{{ plan.name }}</th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody role="rowgroup">
-                <tr class="pc-group-heading" role="row"><th scope="rowgroup" role="rowheader" colspan="{{ plan_count + 1 }}">Limites da organização</th></tr>
-                {% for key, label, unit in [('max_farms', 'Fazendas em operação', ''), ('max_users', 'Usuários ativos', ''), ('max_hectares', 'Área cadastrada', ' ha')] %}
-                <tr class="pc-comparison-row" role="row" data-comparison-row>
-                    <th id="pc-limit-{{ key }}" scope="row" role="rowheader">{{ label }}</th>
-                    {% for plan in plans_catalog %}
-                    {% set value = plan[key] %}
-                    <td class="pc-value{% if plan.id == highlighted_plan_id %} pc-highlighted{% endif %}" headers="pc-limit-{{ key }} pc-plan-{{ plan.id }}" role="cell" data-comparison-plan="{{ plan.id }}">
-                        {% if plan_count > 3 %}<span class="pc-inline-plan" aria-hidden="true">{{ plan.name }}</span>{% endif %}
-                        <strong>{% if value is none %}Sem limite{% else %}{{ value|decimal_br(0 if value == value|int else 2) }}{{ unit }}{% endif %}</strong>
-                    </td>
-                    {% endfor %}
-                </tr>
+
+    <div id="customer-comparison-body" data-comparison-body>
+        <!-- Barra de filtros: desktop (chips + Só diferenças) e mobile (2 controles limpos em 1 linha) -->
+        {% if plan_count > 1 %}
+        <div class="pc-comp-toolbar-desktop">
+            <div class="pc-cat-chips" role="group" aria-label="Filtrar por área">
+                <button type="button" class="pc-filter-chip" aria-pressed="true" data-comp-cat="all">Todos</button>
+                {% for gid, glabel, gcodes in groups %}
+                {% if gcodes|select('in', module_labels)|list %}
+                <button type="button" class="pc-filter-chip" aria-pressed="false" data-comp-cat="{{ gid }}">{{ glabel }}</button>
+                {% endif %}
                 {% endfor %}
-            </tbody>
-            {% for label, codes in groups %}
-            {% set visible_codes = codes|select('in', module_labels)|list %}
-            {% if visible_codes %}
-            <tbody role="rowgroup" data-comparison-group>
-                <tr class="pc-group-heading" role="row"><th scope="rowgroup" role="rowheader" colspan="{{ plan_count + 1 }}">{{ label }}</th></tr>
-                {% for code in visible_codes %}
-                {% set coverage = namespace(count=0) %}
-                {% for plan in plans_catalog if code in modules_by_plan[plan.id] %}{% set coverage.count = coverage.count + 1 %}{% endfor %}
-                <tr class="pc-comparison-row{% if code == module_code %} pc-row-requested{% endif %}" role="row" data-comparison-row{% if coverage.count in [0, plan_count] %} data-comparison-common{% endif %}>
-                    <th id="pc-module-{{ code }}" scope="row" role="rowheader">{{ module_labels[code] }}</th>
-                    {% for plan in plans_catalog %}
-                    {% set included = code in modules_by_plan[plan.id] %}
-                    <td class="pc-value{% if plan.id == highlighted_plan_id %} pc-highlighted{% endif %}" headers="pc-module-{{ code }} pc-plan-{{ plan.id }}" role="cell" data-comparison-plan="{{ plan.id }}">
-                        {% if plan_count > 3 %}<span class="pc-inline-plan" aria-hidden="true">{{ plan.name }}</span>{% endif %}
-                        {{ mark(included) }}<span class="pc-sr-only">{{ 'Incluído' if included else 'Não incluído' }}</span>
-                    </td>
+            </div>
+            <button type="button" class="pc-filter-chip" aria-pressed="false" aria-controls="customer-comparison-table" data-comparison-filter>
+                Só diferenças
+            </button>
+        </div>
+
+        <div class="pc-comp-toolbar-mobile">
+            <div class="pc-mob-select-wrap">
+                <select aria-label="Filtrar categoria de recursos" class="pc-mob-select" data-comp-cat-select>
+                    <option value="all" selected>Todas as áreas</option>
+                    {% for gid, glabel, gcodes in groups %}
+                    {% if gcodes|select('in', module_labels)|list %}
+                    <option value="{{ gid }}">{{ glabel }}</option>
+                    {% endif %}
                     {% endfor %}
-                </tr>
+                </select>
+                <svg class="pc-mob-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+            <button type="button" class="pc-mob-diff-pill" aria-pressed="false" data-comparison-filter-mobile>Só diferenças</button>
+        </div>
+
+        <!-- Seletor 2 a 2 no mobile (para nunca espremer 5 colunas na tela pequena) -->
+        <div class="pc-mob-vs-bar" data-mobile-vs-bar>
+            <div class="pc-mob-vs-card">
+                <select aria-label="Primeiro plano" data-mobile-plan="a">
+                    {% for plan in plans_catalog %}
+                    <option value="{{ plan.id }}"{% if loop.index0 == 0 %} selected{% endif %}>{{ plan.name }}</option>
+                    {% endfor %}
+                </select>
+                <svg class="pc-mob-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+            <span class="pc-mob-vs-badge">VS</span>
+            <div class="pc-mob-vs-card">
+                <select aria-label="Segundo plano" data-mobile-plan="b">
+                    {% for plan in plans_catalog %}
+                    <option value="{{ plan.id }}"{% if loop.index0 == 1 or (plan_count == 1 and loop.index0 == 0) %} selected{% endif %}>{{ plan.name }}</option>
+                    {% endfor %}
+                </select>
+                <svg class="pc-mob-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+        </div>
+        {% endif %}
+
+        <p class="pc-comparison-feedback" data-comparison-feedback role="status" hidden>Os planos exibidos incluem os mesmos módulos.</p>
+
+        <div class="pc-table-wrap">
+            <table id="customer-comparison-table" class="pc-table" style="--pc-columns: {{ plan_count }}" aria-labelledby="customer-comparison-title" role="table">
+                <colgroup><col class="pc-resource-column">{% for plan in plans_catalog %}<col>{% endfor %}</colgroup>
+                <thead role="rowgroup">
+                    <tr role="row">
+                        <th scope="col" role="columnheader" class="pc-resource-heading pc-sticky-col">Recurso</th>
+                        {% for plan in plans_catalog %}
+                        <th id="pc-plan-{{ plan.id }}" class="pc-value{% if plan.id == highlighted_plan_id %} pc-highlighted{% endif %}" scope="col" role="columnheader" data-comparison-plan="{{ plan.id }}">{{ plan.name }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody role="rowgroup" data-comparison-limits>
+                    <tr class="pc-group-heading" role="row"><th scope="rowgroup" role="rowheader" colspan="{{ plan_count + 1 }}" class="pc-sticky-col">Limites da organização</th></tr>
+                    {% for key, label, unit in [('max_farms', 'Fazendas em operação', ''), ('max_users', 'Usuários ativos', ''), ('max_hectares', 'Área cadastrada', ' ha')] %}
+                    <tr class="pc-comparison-row" role="row" data-comparison-row>
+                        <th id="pc-limit-{{ key }}" scope="row" role="rowheader" class="pc-sticky-col">{{ label }}</th>
+                        {% for plan in plans_catalog %}
+                        {% set value = plan[key] %}
+                        <td class="pc-value{% if plan.id == highlighted_plan_id %} pc-highlighted{% endif %}" headers="pc-limit-{{ key }} pc-plan-{{ plan.id }}" role="cell" data-comparison-plan="{{ plan.id }}">
+                            <strong>{% if value is none %}Sem limite{% else %}{{ value|decimal_br(0 if value == value|int else 2) }}{{ unit }}{% endif %}</strong>
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% for gid, label, codes in groups %}
+                {% set visible_codes = codes|select('in', module_labels)|list %}
+                {% if visible_codes %}
+                <tbody role="rowgroup" data-comparison-group data-comp-group-id="{{ gid }}">
+                    <tr class="pc-group-heading" role="row"><th scope="rowgroup" role="rowheader" colspan="{{ plan_count + 1 }}" class="pc-sticky-col">{{ label }}</th></tr>
+                    {% for code in visible_codes %}
+                    {% set coverage = namespace(count=0) %}
+                    {% for plan in plans_catalog if code in modules_by_plan[plan.id] %}{% set coverage.count = coverage.count + 1 %}{% endfor %}
+                    <tr class="pc-comparison-row{% if code == module_code %} pc-row-requested{% endif %}" role="row" data-comparison-row{% if coverage.count in [0, plan_count] %} data-comparison-common{% endif %}>
+                        <th id="pc-module-{{ code }}" scope="row" role="rowheader" class="pc-sticky-col">{{ module_labels[code] }}</th>
+                        {% for plan in plans_catalog %}
+                        {% set included = code in modules_by_plan[plan.id] %}
+                        <td class="pc-value{% if plan.id == highlighted_plan_id %} pc-highlighted{% endif %}" headers="pc-module-{{ code }} pc-plan-{{ plan.id }}" role="cell" data-comparison-plan="{{ plan.id }}">
+                            {{ mark(included) }}<span class="pc-sr-only">{{ 'Incluído' if included else 'Não incluído' }}</span>
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% endif %}
                 {% endfor %}
-            </tbody>
-            {% endif %}
-            {% endfor %}
-        </table>
+            </table>
+        </div>
     </div>
 </section>

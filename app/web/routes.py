@@ -11933,6 +11933,12 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
         ).count()
     org_name = user.organization.name if getattr(user, "organization", None) else None
 
+    limit_issues_map = {plan.id: _plan_limit_issues(db, organization_id, plan) for plan in ordered} if organization_id else {}
+    limit_cards_map = {plan.id: _plan_limit_issue_cards(db, organization_id, plan) for plan in ordered} if organization_id else {}
+    recommended_compatible = next((plan for plan in ordered if not limit_issues_map.get(plan.id) and plan.is_featured), None)
+    if not recommended_compatible:
+        recommended_compatible = next((plan for plan in ordered if not limit_issues_map.get(plan.id)), None)
+
     return templates.TemplateResponse("plan_upgrade.html", _base_context(
         request, user, csrf_token, "plan_upgrade", current_subscription=subscription, current_modules=current_modules,
         can_change_plan=bool(subscription) and can_write_finance,
@@ -11940,7 +11946,9 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
         can_subscribe=can_subscribe,
         trial_plan_id=trial_plan_id, recorded_plan_id=recorded_plan_id,
         current_plan_id=recorded_plan_id if confirmed else None, awaiting_first_payment=bool(recorded and not confirmed),
-        plan_limit_issues={plan.id: _plan_limit_issues(db, organization_id, plan) for plan in ordered} if organization_id else {},
+        plan_limit_issues=limit_issues_map,
+        plan_limit_cards=limit_cards_map,
+        recommended_compatible_plan=recommended_compatible,
         plan_change_info=_plan_change_info(db, subscription, ordered) if subscription else {},
         premium_plan_id=_premium_plan_id(ordered),
         title="Planos disponíveis", module_code=module_code, module_label=MODULE_LABELS.get(module_code),
@@ -12019,6 +12027,19 @@ def _plan_limit_issues(db: Session, organization_id: int, plan: SubscriptionPlan
     if plan.max_users is not None and len(usage.users) > plan.max_users:
         issues.append(f"Você tem {len(usage.users)} usuários ativos. O plano permite {plan.max_users}.")
     return issues
+
+
+def _plan_limit_issue_cards(db: Session, organization_id: int, plan: SubscriptionPlan) -> list[dict]:
+    """Dados estruturados dos limites excedidos para o modal visual harmonioso."""
+    usage = plan_usage(db, organization_id, plan)
+    cards = []
+    if plan.max_farms is not None and len(usage.farms) > plan.max_farms:
+        cards.append({"key": "farms", "label": "Fazendas ativas", "used": str(len(usage.farms)), "max": str(plan.max_farms)})
+    if plan.max_users is not None and len(usage.users) > plan.max_users:
+        cards.append({"key": "users", "label": "Usuários ativos", "used": str(len(usage.users)), "max": str(plan.max_users)})
+    if plan.max_hectares is not None and usage.total_area > plan.max_hectares:
+        cards.append({"key": "area", "label": "Área cadastrada", "used": f"{_format_decimal_br(usage.total_area)} ha", "max": f"{_format_decimal_br(plan.max_hectares)} ha"})
+    return cards
 
 
 @router.post("/planos-disponiveis/mudar")
