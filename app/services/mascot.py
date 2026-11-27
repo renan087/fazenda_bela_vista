@@ -301,6 +301,8 @@ def mascot_svg(state: str = "pronto", head: bool = False) -> str:
         raise ValueError(f"estado desconhecido: {state}")
     view_box = VB_HEAD if head else VB
     width, height = (720, 960) if head else (760, 1450)
+    if state == "comemorando" and not head:  # o pulo sobe 80: folga em cima para a folha não ser cortada
+        view_box, height = "140 -60 760 1540", 1540
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view_box}" width="{width}" height="{height}" role="img" '
         f'aria-label="Pezinho, assistente SiSFarm"><style>{CSS}</style>'
