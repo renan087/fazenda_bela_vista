@@ -8091,6 +8091,8 @@ a.pf-logout:hover { background: #fdecea; color: #b42318; }
 .fm-attention-sub { margin:2px 0 0; font-size:13px; color:#7A4F00; }
 
 .fm-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; }
+.fm-toolbar .sf-search { flex: 1 1 24rem; min-width: 0; }
+.fm-toolbar .sf-search input:focus { outline: none; }
 .fm-list { display:flex; flex-direction:column; gap:12px; }
 .fm-card { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:16px; padding:18px 20px; transition:border-color .15s, box-shadow .15s; }
 .fm-card:hover { border-color:#D6DDD5; box-shadow:0 6px 20px rgba(22,32,26,.05); }
