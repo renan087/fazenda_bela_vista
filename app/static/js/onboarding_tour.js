@@ -491,7 +491,7 @@
             + '<img src="' + esc(IMG.cheer) + '" alt="Pezinho comemorando">'
             + '<span class="obt-kick" style="display:block;margin-top:6px">' + (farmStep ? '1 de 3 concluído' : '2 de 3 concluídos') + '</span>'
             + '<h2 id="obt-mt">' + (farmStep ? 'Fazenda cadastrada!' : 'Safra aberta!') + '</h2>'
-            + '<p>' + (farmStep ? esc(farmName) + ' já está no SiSFarm. Agora vamos abrir a safra que você vai acompanhar.' : esc(seasonName) + ' está pronta em ' + esc(farmName) + '. Falta só o primeiro setor, e ele pode ficar para depois.') + '</p>'
+            + '<p>' + (farmStep ? esc(farmName) + ' já está no SiSFarm.<br>Agora vamos abrir a safra que você vai acompanhar.' : esc(seasonName) + ' está pronta em ' + esc(farmName) + '.<br>Falta só o primeiro setor, e ele pode ficar para depois.') + '</p>'
             + '<div class="obt-bars" aria-hidden="true">' + bars(farmStep ? 1 : 2) + '</div>'
             + '<div class="obt-mrow"><a class="obt-mbtn pri" href="' + CONTINUE + '">' + (farmStep ? 'Abrir a safra' : 'Cadastrar o setor') + '</a>'
             + '<button type="button" class="obt-mbtn ghost" data-obt-m="pause">Pausar aqui</button></div>', 'is-saved');

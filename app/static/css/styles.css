@@ -13323,7 +13323,7 @@ a.obt-seg{cursor:pointer}a.obt-seg:hover{background:#E3ECDF}
 .obt-modal{background:#fff;border-radius:22px;max-width:470px;width:100%;padding:28px 28px 24px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.35);animation:obt-rise .5s cubic-bezier(.2,.8,.2,1);position:relative;overflow:hidden;max-height:calc(100vh - 32px);overflow-y:auto}
 .obt-modal.is-left{text-align:left;max-width:520px}
 .obt-modal>img{display:block;height:150px;width:auto;margin:0 auto;animation:obt-hop 1.2s ease-in-out 2}
-.obt-modal.is-saved{max-width:540px;padding:36px 36px 30px}
+.obt-modal.is-saved{max-width:560px;padding:52px 36px 30px}
 .obt-modal.is-saved>img{height:176px}
 .obt-modal.is-saved h2{font-size:24px;margin:10px 0 8px}
 .obt-modal.is-saved p{font-size:15px;line-height:1.5;max-width:420px;margin:0 auto 22px}
