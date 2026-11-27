@@ -948,6 +948,8 @@ def _sync_schema() -> None:
         "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS onboarding_dismissed BOOLEAN NOT NULL DEFAULT false",
         "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS onboarding_tour VARCHAR(12) NOT NULL DEFAULT ''",
         "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS onboarding_plot_skipped BOOLEAN NOT NULL DEFAULT false",
+        "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS onboarding_last_step VARCHAR(60) NOT NULL DEFAULT ''",
+        "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS onboarding_last_at TIMESTAMP WITH TIME ZONE",
         "ALTER TABLE plots DROP CONSTRAINT IF EXISTS plots_name_key",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_plots_farm_name ON plots (farm_id, name)",
         # Historico de plantios: cada setor existente ganha um plantio ativo com os dados atuais.

@@ -89,12 +89,12 @@ from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
 from app.core.session import clear_expired_session, touch_session_activity
-from app.core.timezone import app_now, format_app_datetime, get_app_timezone, today_in_app_timezone
+from app.core.timezone import app_now, as_app_timezone, format_app_datetime, get_app_timezone, today_in_app_timezone
 from app.models.farm_rain_settings import FarmRainSettings
 from app.models.system_maintenance import SystemMaintenance
 from app.services.audit_log_service import append_audit_event
 from app.services.maintenance import MODES as MAINTENANCE_MODES, MaintenanceError, compute_state as compute_maintenance_state, current_state as current_maintenance_state, save_state as save_maintenance_state
-from app.core.user_context import persist_user_context, sync_user_context_from_preferences
+from app.core.user_context import CONTEXT_NOTICE_KEY, persist_user_context, season_in_progress, sync_user_context_from_preferences
 from app.services.plot_wizard import (
     wizard_color_context,
     PLOT_COLORS,
@@ -1212,7 +1212,13 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
             "plan_upgrade",
             "subscribe",
         }
-        context["context_selection_blocking"] = scope_context["context_selection_required"] and not context["context_lock_exempt"]
+        # Durante os primeiros passos quem conduz é o Pezinho: nenhuma página pede fazenda e safra.
+        if _tour_live(user):
+            context["context_lock_exempt"] = True
+        gate = _context_gate(scope_context) if scope_context["context_selection_required"] and not context["context_lock_exempt"] and not modal_mode else None
+        context["context_selection_blocking"] = bool(gate)
+        context["context_gate"] = gate
+        context["context_notice"] = None if modal_mode else request.session.pop(CONTEXT_NOTICE_KEY, None)
         context["context_previous_available"] = bool(scope_context.get("previous_context_available"))
     context["plan_entitlements"] = _entitlements_for(db_session, user)
     context.setdefault("today_date", today_in_app_timezone())
@@ -1222,7 +1228,10 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
     context["now_utc"] = datetime.now(timezone.utc)
     context["is_super_admin"] = bool(user and is_super_admin_email(user.email))
     if db_session is not None and "onboarding_tour" not in kwargs and not modal_mode:
-        context["onboarding_tour"] = _onboarding_tour_context(db_session, user, csrf_token)
+        greet = not request.session.get(TOUR_GREETED_KEY)
+        context["onboarding_tour"] = _onboarding_tour_context(db_session, user, csrf_token, greet=greet)
+        if greet and context["onboarding_tour"]:
+            request.session[TOUR_GREETED_KEY] = True  # uma vez por acesso
     context.update(kwargs)
     if repo and "pezinho" not in kwargs:
         context["pezinho"] = _pezinho_context(request, db_session, user, context)
@@ -2468,6 +2477,7 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
             "status": season.status,
             "start": season.start_date.strftime("%m/%Y") if season.start_date else "",
             "end": season.end_date.strftime("%m/%Y") if season.end_date else "",
+            "current": season_in_progress(season, today_in_app_timezone()) if season.start_date and season.end_date else False,
         }
         for season in all_seasons
     ]
@@ -4405,6 +4415,89 @@ def revert_global_context(
     return _redirect(redirect_to)
 
 
+MONTHS_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
+
+
+def _br_area(value) -> str:
+    return f"{float(value or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _context_gate(scope: dict) -> dict:
+    """O que perguntar, dentro da página, quando falta fazenda ou safra (sem travar a tela inteira)."""
+    farms = scope.get("context_farms") or []
+    if not farms:
+        return {"kind": "no_farm"}
+    active_farm = scope.get("active_farm")
+    options = scope.get("context_season_options") or []
+    if active_farm and not any(option["farm_id"] == active_farm.id for option in options):
+        start, end = _coffee_season_window(today_in_app_timezone())
+        return {
+            "kind": "no_season",
+            "farm": {"id": active_farm.id, "name": active_farm.name},
+            "suggest": {
+                "name": f"Safra {start.year}/{end.year}",
+                "short": f"{start.year % 100:02d}/{end.year % 100:02d}",
+                "period": f"{MONTHS_PT[start.month - 1].capitalize()} de {start.year} a {MONTHS_PT[end.month - 1]} de {end.year}",
+                "range": f"{start:%m/%Y} a {end:%m/%Y}",
+            },
+            "other_farms": len(farms) > 1,
+        }
+    cards = []
+    for farm in farms:
+        seasons = sorted((o for o in options if o["farm_id"] == farm.id), key=lambda o: (not o.get("current"), o["name"]), reverse=False)
+        running = next((o for o in seasons if o.get("current")), None)
+        cards.append({
+            "id": farm.id,
+            "name": farm.name,
+            "where": farm.location or "",
+            "area": _br_area(farm.total_area),
+            "running": running["name"] if running else "",
+            "seasons": seasons,
+        })
+    return {"kind": "pick", "farms": cards, "selected": active_farm.id if active_farm else None}
+
+
+@router.post("/contexto/safra-sugerida")
+def create_suggested_season(
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: int = Form(...),
+    redirect_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    """Abre a safra sugerida (ano-safra do café) para uma fazenda que ainda não tem nenhuma, já ativa no contexto.
+    Só chega aqui depois de o usuário conferir o resumo e confirmar."""
+    validate_csrf(request, csrf_token)
+    back = redirect_to if redirect_to and redirect_to.startswith("/") and not redirect_to.startswith("//") else "/dashboard"
+    farm = db.query(Farm).filter(Farm.id == farm_id, Farm.organization_id == user.organization_id).first()
+    if not farm:
+        _flash(request, "error", "Fazenda não encontrada. Escolha a fazenda no topo da página.")
+        return _redirect(back)
+    write = write_permission_for_page(PAGE_PRODUCTIVE_UNIT)
+    if write and write not in permission_codes_for_user(db, user):
+        _flash(request, "error", "Seu usuário não pode abrir safras. Peça ao administrador da conta.")
+        return _redirect(back)
+    existing = db.query(CropSeason).filter(CropSeason.farm_id == farm.id).order_by(CropSeason.id.desc()).first()
+    if existing:  # outra pessoa já abriu: só ativa
+        persist_user_context(request, db, user, farm.id, existing.id)
+        return _redirect(back)
+    start, end = _coffee_season_window(today_in_app_timezone())
+    try:
+        season = create_crop_season(_repository(db), {
+            "farm_id": farm.id, "start_date": start.isoformat(), "end_date": end.isoformat(), "culture": "Cafe",
+            "cultivated_area": float(farm.total_area or 0) or 1.0, "area_unit": "ha",
+            "status": status_from_dates(start, end, today_in_app_timezone()),
+        })
+    except Exception:
+        logger.exception("Falha ao abrir a safra sugerida", extra={"farm_id": farm.id})
+        _flash(request, "error", "Não deu para abrir a safra agora. Tente de novo ou use Safras › Nova safra.")
+        return _redirect(back)
+    persist_user_context(request, db, user, farm.id, season.id)
+    _flash(request, "success", f"{season.name} aberta em {farm.name} e já ativa.")
+    return _redirect(back)
+
+
 def _coffee_season_window(today: date) -> tuple[date, date]:
     """Ano-safra do cafe: julho a junho."""
     start_year = today.year if today.month >= 7 else today.year - 1
@@ -4460,6 +4553,8 @@ def _onboarding_steps(db: Session, user: User) -> list[dict] | None:
 
 TOUR_STATES = {"active", "paused", "ended", "done"}
 TOUR_LIVE = {"active", "paused"}
+TOUR_GREETED_KEY = "tour_greeted"
+TOUR_GREET_AFTER = timedelta(minutes=20)
 
 
 def _tour_eligible(organization) -> bool:
@@ -4468,6 +4563,14 @@ def _tour_eligible(organization) -> bool:
         return False
     created = organization.created_at.date() if organization.created_at else None
     return not (created and (today_in_app_timezone() - created).days > ONBOARDING_WINDOW_DAYS)
+
+
+def _tour_live(user) -> bool:
+    try:
+        organization = user.organization if user else None
+        return bool(organization and (organization.onboarding_tour or "") in TOUR_LIVE and _tour_eligible(organization))
+    except Exception:
+        return False
 
 
 def _tour_progress(db: Session, organization_id: int) -> dict:
@@ -4492,7 +4595,43 @@ def _tour_next_url(progress: dict, plot_skipped: bool) -> str:
     return "/dashboard"
 
 
-def _onboarding_tour_context(db: Session, user: User, csrf_token: str) -> dict | None:
+def _tour_left_when(moment: datetime | None) -> str:
+    local = as_app_timezone(moment)
+    if not local:
+        return ""
+    days = (today_in_app_timezone() - local.date()).days
+    if days <= 0:
+        return f"hoje às {local:%H:%M}"
+    if days == 1:
+        return f"ontem às {local:%H:%M}"
+    return f"há {days} dias"
+
+
+def _tour_welcome(organization, progress: dict, first_name: str, plot_skipped: bool) -> dict | None:
+    """Boas-vindas de volta: o Pezinho lembra o passo em que a pessoa parou (sempre a partir do que está salvo)."""
+    farm, season, plot = progress["farm"], progress["season"], progress["plot"]
+    hi = (lambda base: f"{base}, {first_name}!") if first_name else (lambda base: f"{base}!")
+    step = (organization.onboarding_last_step or "").strip()
+    when = _tour_left_when(organization.onboarding_last_at)
+    meta = " · ".join(part for part in [f"Você saiu {when}" if when else "", step.replace(" · ", " › ")] if part)
+    if not farm:
+        where = step.split("·", 1)[1].strip() if step.startswith("Fazenda") and "·" in step else ""
+        detail = "parou no número do CAR" if where.upper() == "CAR" else (f"parou em {where.lower()}" if where else "")
+        sub = (f"Da última vez você começou a cadastrar a fazenda e {detail}. Vamos terminar? Leva uns 2 minutos."
+               if detail else "Vamos continuar com o cadastro da sua fazenda? Leva uns 2 minutos e eu mostro cada clique.")
+        return {"step": "farm", "title": hi("Que bom que você voltou"), "sub": sub, "meta": meta, "act": "Continuar a fazenda", "later": "Mais tarde"}
+    if not season:
+        return {"step": "season", "title": hi("Oi de novo"),
+                "sub": f"{farm.name} já está salva. Falta só abrir a safra para o SiSFarm ficar pronto. Já deixei a safra deste ano sugerida, é só conferir.",
+                "meta": meta, "act": "Abrir a safra", "later": "Mais tarde"}
+    if not plot and not plot_skipped:
+        return {"step": "plot", "title": hi("Bom te ver") + " O SiSFarm já está liberado.",
+                "sub": f"{farm.name} e {season.name or 'a safra'} prontas. Quer cadastrar o primeiro setor agora? É opcional.",
+                "meta": meta, "act": "Cadastrar o setor", "later": "Deixar para depois"}
+    return None
+
+
+def _onboarding_tour_context(db: Session, user: User, csrf_token: str, greet: bool = False) -> dict | None:
     """Dados do tour guiado para o script do Pezinho; None quando não há tour em andamento ou pausado."""
     try:
         organization = user.organization if user else None
@@ -4513,11 +4652,13 @@ def _onboarding_tour_context(db: Session, user: User, csrf_token: str) -> dict |
         "season": {"id": season.id, "name": season.name or "Safra"} if season else None,
         "plot": {"id": plot.id, "name": plot.name, "area": br(plot.area_hectares)} if plot else None,
         "plots_area": br(progress["plots_area"]) if progress["plots_area"] else "",
+        "welcome": _tour_welcome(organization, progress, (user.display_name or user.name or "").split(" ")[0], bool(organization.onboarding_plot_skipped))
+        if greet and (not organization.onboarding_last_at or datetime.now(timezone.utc) - (as_app_timezone(organization.onboarding_last_at)) > TOUR_GREET_AFTER) else None,
     }
 
 
 @router.post("/primeiros-passos/tour")
-def onboarding_tour_action(request: Request, csrf_token: str = Form(...), action: str = Form(...),
+def onboarding_tour_action(request: Request, csrf_token: str = Form(...), action: str = Form(...), step: str = Form(""),
                            db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
     """Começa, pausa, retoma, encerra ou conclui o tour guiado. Só muda o estado; nenhum cadastro é feito aqui."""
     validate_csrf(request, csrf_token)
@@ -4525,6 +4666,15 @@ def onboarding_tour_action(request: Request, csrf_token: str = Form(...), action
     if not organization:
         return _redirect("/dashboard")
     states = {"start": "active", "resume": "active", "later": "paused", "pause": "paused", "end": "ended", "finish": "done"}
+    if action == "mark":  # só registra onde a pessoa está, para as boas-vindas de volta
+        label = re.sub(r"[^\w ·›/,.-]", "", (step or "").strip(), flags=re.UNICODE)[:60]
+        if label:
+            organization.onboarding_last_step = label
+            organization.onboarding_last_at = datetime.now(timezone.utc)
+            db.commit()
+        return JSONResponse({"ok": True})
+    if action in {"start", "resume"}:
+        request.session[TOUR_GREETED_KEY] = True
     if action in states:
         organization.onboarding_tour = states[action]
     elif action == "skip_plot":

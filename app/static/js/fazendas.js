@@ -616,20 +616,61 @@
             return okName && okUf && okCity && okArea;
         };
 
-        /* CAR no passo 1 */
+        /* CAR no passo 1: máscara UF-1234567-32 letras/números, busca sozinha ao completar */
+        const carClean = (v) => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const carMask = (v) => {
+            const c = carClean(v);
+            let uf = '', mun = '', i = 0;
+            while (i < c.length && uf.length < 2) { if (/[A-Z]/.test(c[i])) uf += c[i]; i++; }
+            while (i < c.length && mun.length < 7) { if (/[0-9]/.test(c[i])) mun += c[i]; i++; }
+            const cod = c.slice(i, i + 32);
+            let out = uf;
+            if (uf.length === 2 && mun) out += '-' + mun;
+            if (mun.length === 7 && cod) out += '-' + cod;
+            return out;
+        };
+        const CAR_FULL = 41;
+        const carBox = el.car.closest('.fz-carbox') || el.car.parentElement;
+        const carSignal = (status) => {
+            if (carBox) carBox.dataset.carStatus = status;
+            form.dispatchEvent(new CustomEvent('fz:car', { bubbles: true, detail: { status } }));
+        };
+        let carBusy = false, carLast = '';
+        el.car.addEventListener('keydown', (e) => {
+            if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && el.car.selectionStart === el.car.selectionEnd && carClean(el.car.value).length >= CAR_FULL) e.preventDefault();
+        });
+        el.car.addEventListener('input', () => {
+            const masked = carMask(el.car.value);
+            if (masked !== el.car.value) el.car.value = masked;
+            el.carErr.hidden = true;
+            if (carLast && masked !== carLast && !el.carOk.hidden) { el.carOk.hidden = true; carSignal('edited'); }
+            else if (carLast && masked !== carLast && carBox?.dataset.carStatus === 'edited') carSignal('edited');
+            else if (carLast && masked === carLast && state.car && el.carOk.hidden) { el.carOk.hidden = false; carSignal('restored'); }
+            if (carClean(masked).length === CAR_FULL && !carBusy && masked !== carLast) el.carBtn.click();
+        });
         el.carBtn.addEventListener('click', async () => {
-            const raw = el.car.value.trim();
+            if (carBusy) return;
+            const raw = carMask(el.car.value.trim());
             el.carErr.hidden = true;
             if (!raw) { el.carErr.textContent = 'Digite o número do CAR ou preencha os campos abaixo.'; el.carErr.hidden = false; return; }
+            if (carClean(raw).length !== CAR_FULL) { el.carErr.textContent = 'Número incompleto. O CAR tem a sigla do estado, 7 números do município e 32 letras e números. Ex.: BA-2925006-E805CD5G28DB477C962F527B4F664CAA'; el.carErr.hidden = false; return; }
+            el.car.value = raw;
+            carBusy = true;
             el.carBtn.disabled = true;
-            el.carBtn.textContent = 'Buscando…';
+            el.car.readOnly = true;
+            el.car.setAttribute('aria-busy', 'true');
+            el.carBtn.textContent = 'Consultando…';
+            carSignal('busy');
+            let found = false;
             try {
                 const res = await fetch('/fazendas/consultar-car?car=' + encodeURIComponent(raw));
                 const payload = await res.json();
                 if (!res.ok || !payload.ok) throw new Error(payload.message || 'Não foi possível consultar o CAR agora.');
                 const d = payload.data || {};
                 state.car = d;
-                if (d.car_number) el.car.value = d.car_number;
+                el.car.value = carMask(d.car_number || raw);
+                carLast = el.car.value;
+                if (carBox) carBox.dataset.carLast = carLast;
                 const parts = String(d.location || '').split(',');
                 const city = (parts[0] || '').trim();
                 const uf = (parts[1] || '').trim().toUpperCase();
@@ -642,18 +683,25 @@
                 setFromCar(true);
                 state.perim = d.geometry ? 'car' : 'draw';
                 ['name', 'uf', 'city', 'area'].forEach((k) => showErr(k, false));
+                found = true;
             } catch (err) {
                 el.carErr.textContent = err.message + ' Você pode preencher os dados manualmente.';
                 el.carErr.hidden = false;
             } finally {
+                carBusy = false;
                 el.carBtn.disabled = false;
-                el.carBtn.textContent = 'Buscar dados';
+                el.car.readOnly = false;
+                el.car.removeAttribute('aria-busy');
+                el.carBtn.textContent = found ? 'Buscar de novo' : 'Buscar dados';
+                carSignal(found ? 'found' : 'error');
             }
         });
         $('[data-fz-w-car-clear]', form).addEventListener('click', () => {
             state.car = null;
             el.car.value = '';
+            carLast = '';
             el.carOk.hidden = true;
+            carSignal('');
             setFromCar(false);
             if (state.perim === 'car') state.perim = 'draw';
         });

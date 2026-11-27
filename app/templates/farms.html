@@ -77,5 +77,5 @@
 </main>
 {% if flash %}<div class="fz-toast {{ 'err' if flash.kind != 'success' }}" role="status" data-fz-toast>{{ icon('check' if flash.kind == 'success' else 'alert', 18, 2.4) }}{{ flash.message }}</div>{% endif %}
 <script type="application/json" id="fz-pins-data">{{ farm_pins_json|safe }}</script>
-<script src="{{ url_for('static', path='js/fazendas.js') }}?v=20261127fz1"></script>
+<script src="{{ url_for('static', path='js/fazendas.js') }}?v=20261128fz2"></script>
 {% endblock %}

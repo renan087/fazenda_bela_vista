@@ -1,0 +1,141 @@
+{# Fazenda e safra ativas — pergunta dentro da página, sem travar o menu e o topo (canvas "Fazenda e safra ativas"). #}
+{% set g = context_gate %}
+{% set pz = url_for('static', path='img/pezinho/cabeca-pronto.svg') %}
+{% set who = (user.display_name or user.name or '').split(' ')[0] if user else '' %}
+{% if g.kind == 'no_farm' %}
+<section class="cg-empty" aria-labelledby="cg-title">
+    <span class="cg-pz cg-pz-lg" aria-hidden="true"><img src="{{ pz }}" alt=""></span>
+    <h2 id="cg-title">{% if title %}{{ title }} começa{% else %}Tudo começa{% endif %} depois da fazenda</h2>
+    <p>Ainda não há fazenda cadastrada nesta conta. Em uns 5 minutos eu te ajudo a cadastrar a fazenda e a safra, e tudo aqui já passa a funcionar.</p>
+    <div class="cg-row">
+        <form method="post" action="/primeiros-passos/tour">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="action" value="start">
+            <button class="sf-btn sf-btn-primary cg-btn">Começar primeiros passos</button>
+        </form>
+        <a class="sf-btn cg-btn" href="/fazendas/nova">Cadastrar só a fazenda</a>
+    </div>
+    <small>Recebeu convite de outra equipe? Peça ao administrador para liberar a fazenda para você.</small>
+</section>
+{% elif g.kind == 'no_season' %}
+<section class="cg-card" aria-labelledby="cg-title" data-cg-season>
+    <div class="cg-head">
+        <span class="cg-pz" aria-hidden="true"><img src="{{ pz }}" alt=""></span>
+        <div><h2 id="cg-title">{{ g.farm.name }} ainda não tem safra aberta</h2><p>Os lançamentos ficam dentro de uma safra. Pela data de hoje, sugiro esta:</p></div>
+    </div>
+    <div class="cg-sug"><span class="cg-cal" aria-hidden="true">{{ g.suggest.short }}<small>SAFRA</small></span><div><b>{{ g.suggest.name }}</b><span>{{ g.suggest.period }} · Café</span></div></div>
+    <form method="post" action="/contexto/safra-sugerida" data-cg-season-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="farm_id" value="{{ g.farm.id }}">
+        <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
+        <dl class="cg-conf" data-cg-conf hidden>
+            <div><dt>Fazenda</dt><dd>{{ g.farm.name }}</dd></div>
+            <div><dt>Safra</dt><dd>{{ g.suggest.name }}</dd></div>
+            <div><dt>Período</dt><dd>{{ g.suggest.range }}</dd></div>
+            <div><dt>Depois de confirmar</dt><dd>Fica ativa e esta página abre nela</dd></div>
+        </dl>
+        <div class="cg-foot">
+            <p data-cg-hint>Você pode mudar nome e datas depois.</p>
+            <a class="sf-btn cg-btn" href="/safras/nova" data-cg-adjust>Ajustar antes</a>
+            <button type="button" class="sf-btn cg-btn" data-cg-back hidden>Voltar</button>
+            <button type="button" class="sf-btn sf-btn-primary cg-btn" data-cg-use>Usar esta safra</button>
+            <button type="submit" class="sf-btn sf-btn-primary cg-btn" data-cg-confirm hidden>Confirmar e abrir</button>
+        </div>
+    </form>
+    {% if g.other_farms %}<p class="cg-alt">Queria outra fazenda? <button type="button" class="cg-link" data-cg-open-picker>Trocar a fazenda</button></p>{% endif %}
+</section>
+{% else %}
+<section class="cg-card" aria-labelledby="cg-title" data-cg-pick>
+    <div class="cg-head">
+        <span class="cg-pz" aria-hidden="true"><img src="{{ pz }}" alt=""></span>
+        <div><h2 id="cg-title">Em qual fazenda vamos trabalhar hoje{{ ', ' ~ who if who else '' }}?</h2><p>{% if title %}{{ title }} mostra{% else %}As páginas mostram{% endif %} os dados de uma fazenda e safra por vez. Toque na fazenda.</p></div>
+    </div>
+    <form method="post" action="/contexto" data-cg-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
+        <input type="hidden" name="season_id" value="" data-cg-season-id>
+        <div class="cg-farms" role="radiogroup" aria-label="Fazendas">
+            {% for f in g.farms %}
+            <label class="cg-farm">
+                <input type="radio" name="farm_id" value="{{ f.id }}" data-cg-farm data-seasons='{{ f.seasons|tojson }}' data-name="{{ f.name }}" {% if g.selected == f.id %}checked{% endif %}>
+                <b>{{ f.name }}</b>
+                <span>{% if f.where %}{{ f.where }} · {% endif %}{{ f.area }} ha</span>
+                {% if f.running %}<span class="cg-tag">● {{ f.running }} em andamento</span>{% elif not f.seasons %}<span class="cg-tag is-warn">Sem safra ainda</span>{% endif %}
+            </label>
+            {% endfor %}
+        </div>
+        <div class="cg-seas" data-cg-seas hidden>
+            <div class="cg-seas-l" data-cg-seas-label>Safra</div>
+            <div class="cg-pills" role="radiogroup" aria-label="Safras" data-cg-pills></div>
+            <p class="cg-none" data-cg-none hidden>Esta fazenda ainda não tem safra. Escolha e toque em abrir: eu sugiro a safra deste ano no próximo passo.</p>
+        </div>
+        <div class="cg-foot">
+            <p>Fica salvo para os próximos acessos. Para trocar, é só tocar no nome da fazenda no topo.</p>
+            <button class="sf-btn sf-btn-primary cg-btn" data-cg-apply disabled>Escolha uma fazenda</button>
+        </div>
+    </form>
+</section>
+{% endif %}
+<script>
+(() => {
+    const pick = document.querySelector('[data-cg-pick]');
+    if (pick) {
+        const form = pick.querySelector('[data-cg-form]');
+        const seasonInput = form.querySelector('[data-cg-season-id]');
+        const box = form.querySelector('[data-cg-seas]'), pills = form.querySelector('[data-cg-pills]');
+        const none = form.querySelector('[data-cg-none]'), label = form.querySelector('[data-cg-seas-label]');
+        const apply = form.querySelector('[data-cg-apply]');
+        const setSeason = (id) => {
+            seasonInput.value = id || '';
+            pills.querySelectorAll('button').forEach((b) => { const on = b.dataset.id === String(id); b.classList.toggle('is-on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
+        };
+        const show = (radio) => {
+            let seasons = [];
+            try { seasons = JSON.parse(radio.dataset.seasons || '[]'); } catch (e) { seasons = []; }
+            pills.innerHTML = '';
+            seasons.forEach((s) => {
+                const b = document.createElement('button');
+                b.type = 'button'; b.className = 'cg-pill'; b.dataset.id = s.id; b.setAttribute('role', 'radio');
+                b.textContent = s.name;
+                const small = document.createElement('small');
+                small.textContent = s.current ? 'em andamento' : (s.status === 'encerrada' ? 'encerrada' : s.start + ' a ' + s.end);
+                b.appendChild(small);
+                b.addEventListener('click', () => setSeason(s.id));
+                pills.appendChild(b);
+            });
+            const pref = seasons.find((s) => s.current) || (seasons.length === 1 ? seasons[0] : null);
+            setSeason(pref ? pref.id : '');
+            label.textContent = seasons.length > 1 ? 'Qual safra? ' + (pref ? 'A em andamento já está marcada.' : 'Toque na safra.') : 'Safra';
+            none.hidden = seasons.length > 0;
+            box.hidden = false;
+            apply.disabled = false;
+            apply.textContent = 'Abrir ' + radio.dataset.name;
+        };
+        form.querySelectorAll('[data-cg-farm]').forEach((r) => r.addEventListener('change', () => show(r)));
+        const pre = form.querySelector('[data-cg-farm]:checked');
+        if (pre) show(pre);
+        form.addEventListener('submit', (e) => {
+            const farm = form.querySelector('[data-cg-farm]:checked');
+            if (!farm) { e.preventDefault(); return; }
+            let seasons = [];
+            try { seasons = JSON.parse(farm.dataset.seasons || '[]'); } catch (err) { seasons = []; }
+            if (seasons.length && !seasonInput.value) { e.preventDefault(); label.textContent = 'Toque na safra para continuar.'; label.classList.add('is-warn'); return; }
+            window.showPageLoader?.('Abrindo', 'Carregando os dados da fazenda e safra.');
+        });
+    }
+    const sea = document.querySelector('[data-cg-season]');
+    if (sea) {
+        const q = (s) => sea.querySelector(s);
+        const toggle = (confirming) => {
+            q('[data-cg-conf]').hidden = !confirming;
+            q('[data-cg-use]').hidden = confirming; q('[data-cg-adjust]').hidden = confirming;
+            q('[data-cg-confirm]').hidden = !confirming; q('[data-cg-back]').hidden = !confirming;
+            q('[data-cg-hint]').textContent = confirming ? 'Confira e confirme. Nada é criado antes disso.' : 'Você pode mudar nome e datas depois.';
+            (confirming ? q('[data-cg-confirm]') : q('[data-cg-use]')).focus();
+        };
+        q('[data-cg-use]').addEventListener('click', () => toggle(true));
+        q('[data-cg-back]').addEventListener('click', () => toggle(false));
+        q('[data-cg-season-form]').addEventListener('submit', () => { q('[data-cg-confirm]').disabled = true; window.showPageLoader?.('Abrindo a safra', 'Deixando tudo pronto.'); });
+    }
+})();
+</script>

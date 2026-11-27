@@ -34,7 +34,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261127ob1">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261128cg1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -153,9 +153,9 @@
             <header class="hd" data-hd>
                 <div class="hd-row">
                     <a href="/dashboard" class="hd-logo md:hidden" aria-label="SiSFarm — ir para o Início"><img src="{{ url_for('static', path='images/logo-icon.png') }}" alt="" width="40" height="36"></a>
-                    <button type="button" class="hd-ctx hd-ctx-mobile md:hidden{% if active_farm and active_season %} as-active-mobile-context{% endif %}" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
+                    <button type="button" class="hd-ctx hd-ctx-mobile md:hidden{% if active_farm and active_season %} as-active-mobile-context{% endif %}{% if context_gate and context_gate.kind != 'no_farm' %} is-ask{% endif %}" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
                     <span class="hd-farm{% if not (active_farm and active_season) %} is-empty{% endif %}" aria-hidden="true">{{ farm_initials }}</span>
-                    <span class="hd-ctx-text"><b>{% if active_farm %}{{ active_farm.name }}{% else %}Selecionar fazenda{% endif %}</b><span>{% if active_season %}Safra {{ active_season.name }}{% elif active_farm %}Selecione a safra{% else %}e safra{% endif %}</span></span>
+                    <span class="hd-ctx-text"><b>{% if active_farm %}{{ active_farm.name }}{% elif context_gate and context_gate.kind == 'pick' %}Escolha a fazenda{% elif not context_farms %}Nenhuma fazenda{% else %}Selecionar fazenda{% endif %}</b><span>{% if active_season %}Safra {{ active_season.name }}{% elif context_gate and context_gate.kind == 'no_season' %}Sem safra aberta{% elif active_farm %}Selecione a safra{% elif context_gate and context_gate.kind == 'pick' %}{{ context_gate.farms|length }} fazendas nesta conta{% elif not context_farms %}Cadastre a primeira{% else %}e safra{% endif %}</span></span>
                     <span class="hd-weather-mini" data-hd-weather-mini></span>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                 </button>
@@ -169,9 +169,9 @@
                     </button>
                     <div class="hd-right">
                         <a class="hd-weather" href="/clima-agua" data-hd-weather hidden title="Previsão e balanço hídrico da fazenda"></a>
-                        <button type="button" class="hd-ctx hidden md:flex" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
+                        <button type="button" class="hd-ctx hidden md:flex{% if context_gate and context_gate.kind != 'no_farm' %} is-ask{% endif %}" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
                             <span class="hd-farm{% if not (active_farm and active_season) %} is-empty{% endif %}" aria-hidden="true">{{ farm_initials }}</span>
-                            <span class="hd-ctx-text"><b>{% if active_farm %}{{ active_farm.name }}{% else %}Selecionar fazenda{% endif %}</b><span>{% if active_season %}Safra {{ active_season.name }}{% elif active_farm %}Selecione a safra{% else %}e safra{% endif %}</span></span>
+                            <span class="hd-ctx-text"><b>{% if active_farm %}{{ active_farm.name }}{% elif context_gate and context_gate.kind == 'pick' %}Escolha a fazenda{% elif not context_farms %}Nenhuma fazenda{% else %}Selecionar fazenda{% endif %}</b><span>{% if active_season %}Safra {{ active_season.name }}{% elif context_gate and context_gate.kind == 'no_season' %}Sem safra aberta{% elif active_farm %}Selecione a safra{% elif context_gate and context_gate.kind == 'pick' %}{{ context_gate.farms|length }} fazendas nesta conta{% elif not context_farms %}Cadastre a primeira{% else %}e safra{% endif %}</span></span>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                         </button>
                         <details class="hd-new hidden md:block" data-sf-dropdown>
@@ -612,7 +612,9 @@
                 {% if return_to %}
                 <a class="nx-back" href="{{ return_to.path }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>{{ return_to.label }}</a>
                 {% endif %}
+                {% if context_gate %}{% include "partials/context_gate.html" %}<div class="cg-ghost{{ ' is-hidden' if context_gate.kind == 'no_farm' }}" inert aria-hidden="true">{% endif %}
                 {% block content %}{% endblock %}
+                {% if context_gate %}</div>{% endif %}
             </div>
             <footer class="border-t border-slate-200 bg-white/90">
                 <div class="mx-auto max-w-7xl px-6 py-4 text-center text-xs text-slate-500 sm:text-sm">
@@ -861,59 +863,6 @@
         render();
     })();
     </script>
-    {% if context_selection_blocking %}
-    <div class="fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-[2px]"></div>
-    <div class="fixed inset-0 z-[80] flex items-center justify-center px-4 py-8">
-        <div class="w-full max-w-2xl rounded-[2rem] border border-slate-200 bg-white p-8 shadow-2xl">
-            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Contexto obrigatorio</p>
-            <h3 class="mt-3 text-2xl font-semibold text-slate-900">Selecione a fazenda e a safra ativas</h3>
-            <p class="mt-3 text-sm leading-6 text-slate-600">
-                {% if not context_farms %}
-                Para liberar a plataforma, primeiro cadastre uma fazenda e depois a safra correspondente.
-                <a href="/primeiros-passos" class="mt-4 flex w-fit rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Configurar em 1 minuto</a>
-                {% elif active_farm_id and not context_seasons %}
-                Sua fazenda ja esta disponivel. Agora cadastre uma safra para liberar o restante da interface.
-                {% else %}
-                Vamos manter essa escolha salva para os proximos acessos e aplicar o mesmo contexto automaticamente no login.
-                {% endif %}
-            </p>
-            <form method="post" action="/contexto" class="mt-8 grid gap-4" data-global-context-form data-context-modal-form data-season-options='{{ context_season_options|tojson|safe }}'>
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
-                <div class="grid gap-4 md:grid-cols-2">
-                    <label class="block">
-                        <span class="mb-2 block text-sm font-medium text-slate-700">Fazenda ativa</span>
-                        <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 text-slate-700" {% if context_farms %}required{% endif %}>
-                            <option value="">Selecione uma fazenda</option>
-                            {% for farm_option in context_farms|default([]) %}
-                            <option value="{{ farm_option.id }}" {% if active_farm_id == farm_option.id %}selected{% endif %}>{{ farm_option.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <label class="block">
-                        <span class="mb-2 block text-sm font-medium text-slate-700">Safra ativa</span>
-                        <select name="season_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 text-slate-700" data-context-season-select {% if active_farm_id and context_seasons %}required{% endif %}>
-                            <option value="">{% if active_farm_id %}Selecione uma safra{% else %}Selecione uma fazenda primeiro{% endif %}</option>
-                            {% for season_option in context_seasons|default([]) %}
-                            <option value="{{ season_option.id }}" {% if active_season_id == season_option.id %}selected{% endif %}>
-                                {{ season_option.name }}{% if season_option.farm %} • {{ season_option.farm.name }}{% endif %}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                </div>
-                <div class="flex flex-wrap gap-3 pt-2">
-                    <button class="rounded-2xl px-5 py-3 font-semibold text-white {% if context_farms and active_farm_id and context_seasons %}bg-brand-500 hover:bg-brand-700{% else %}cursor-not-allowed bg-slate-300{% endif %}" data-context-apply-button {% if not context_farms or not active_farm_id or not context_seasons %}disabled{% endif %}>Aplicar contexto</button>
-                    {% if context_previous_available %}
-                    <button type="submit" formaction="/contexto/reverter" formmethod="post" class="rounded-2xl bg-white px-5 py-3 font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Cancelar</button>
-                    {% endif %}
-                    <a href="/fazendas#cadastro-fazenda" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200">Criar fazenda</a>
-                    <a href="/safras#cadastro-safra" class="rounded-2xl border border-slate-200 bg-white px-5 py-3 font-semibold text-slate-700 hover:bg-slate-50">Criar safra</a>
-                </div>
-            </form>
-        </div>
-    </div>
-    {% endif %}
     {% else %}
         <div class="flex min-h-screen flex-col">
             <div class="flex-1">
@@ -1742,6 +1691,31 @@ dialog, dialog [data-modal-scroll], dialog .overflow-y-auto { overscroll-behavio
 </script>
 {% if user and not modal_mode %}<script src="{{ url_for('static', path='js/sidebar.js') }}?v=20261120sf3" defer></script>{% endif %}
 {% if pezinho %}{% include "partials/pezinho.html" %}{% endif %}
+{% if context_notice %}
+<div class="cg-toast" role="status" data-cg-toast>
+    <span class="cg-toast-ok" aria-hidden="true">✓</span>
+    <span>{% if context_notice.kind == 'remembered' %}Continuando em {{ context_notice.farm }} · {{ context_notice.season }}, como no seu último acesso.{% elif context_notice.kind == 'single' %}Abri {{ context_notice.farm }} · {{ context_notice.season }}, a única cadastrada.{% elif context_notice.kind == 'newer' %}A safra anterior terminou. Abri {{ context_notice.season }} de {{ context_notice.farm }}.{% else %}Abri {{ context_notice.farm }} · {{ context_notice.season }}, a safra em andamento.{% endif %}</span>
+    <button type="button" data-cg-open-picker>Trocar</button>
+    <button type="button" class="cg-toast-x" data-cg-toast-close aria-label="Fechar aviso">✕</button>
+</div>
+{% endif %}
+<script>
+(() => {
+    /* Botões fora do topo que abrem a troca de fazenda e safra. */
+    document.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-cg-open-picker]');
+        if (!b) return;
+        const trigger = Array.from(document.querySelectorAll('.hd-ctx[data-context-picker-open]')).find((el) => el.offsetParent);
+        trigger?.click();
+    });
+    const t = document.querySelector('[data-cg-toast]');
+    if (!t) return;
+    const close = () => { t.classList.add('is-out'); setTimeout(() => t.remove(), 250); };
+    t.querySelector('[data-cg-toast-close]').addEventListener('click', close);
+    t.querySelector('[data-cg-open-picker]').addEventListener('click', close);
+    setTimeout(close, 7000);
+})();
+</script>
 {% if onboarding_tour %}{% include "partials/onboarding_tour.html" %}{% endif %}
 </body>
 </html>

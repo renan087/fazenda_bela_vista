@@ -21,7 +21,7 @@
                 <div class="fz-carbox">
                     <h2 class="fz-h2">Tem o número do CAR?</h2>
                     <p class="fz-desc">Com ele preenchemos município, área e perímetro para você. Se não tiver agora, preencha abaixo.</p>
-                    <div class="fz-inline"><label class="fz-sr" for="w-car">Número do CAR</label><input id="w-car" class="fz-in" name="car_registration_number" placeholder="Ex.: MG-3119302-A1B2.C3D4…" style="font-family:ui-monospace,Menlo,monospace; font-size:14px" data-fz-w-car autocomplete="off"><button type="button" class="fz-btn" data-fz-w-car-btn>Buscar dados</button></div>
+                    <div class="fz-inline"><label class="fz-sr" for="w-car">Número do CAR</label><input id="w-car" class="fz-in" name="car_registration_number" placeholder="Ex.: BA-2925006-E805CD5G28DB477C962F527B4F664CAA" autocapitalize="characters" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace; font-size:14px" data-fz-w-car autocomplete="off"><button type="button" class="fz-btn" data-fz-w-car-btn>Buscar dados</button></div>
                     <p class="fz-help err" data-fz-w-car-err hidden style="margin:8px 0 0"></p>
                     <div class="fz-box ok" style="margin-top:12px" data-fz-w-car-ok hidden>{{ icon('check', 18, 2.2) }}<div style="flex:1"><b>Imóvel encontrado no CAR</b><span data-fz-w-car-sum></span></div><button type="button" class="fz-link" data-fz-w-car-clear>Limpar</button></div>
                 </div>
@@ -108,5 +108,5 @@
 {% if flash %}<div class="fz-toast {{ 'err' if flash.kind != 'success' }}" role="status" data-fz-toast>{{ icon('check' if flash.kind == 'success' else 'alert', 18, 2.4) }}{{ flash.message }}</div>{% endif %}
 <script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
 <script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261127fz1"></script>
-<script src="{{ url_for('static', path='js/fazendas.js') }}?v=20261127fz1"></script>
+<script src="{{ url_for('static', path='js/fazendas.js') }}?v=20261128fz2"></script>
 {% endblock %}

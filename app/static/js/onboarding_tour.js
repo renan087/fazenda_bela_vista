@@ -29,10 +29,11 @@
     const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
     const CONTINUE = '/primeiros-passos/continuar';
 
-    const post = async (action) => {
+    const post = async (action, extra) => {
         const body = new FormData();
         body.append('csrf_token', D.csrf);
         body.append('action', action);
+        Object.entries(extra || {}).forEach(([k, v]) => body.append(k, v));
         try {
             const r = await fetch('/primeiros-passos/tour', { method: 'POST', body, headers: { 'x-sf-fetch': '1' }, credentials: 'same-origin' });
             return r.ok ? await r.json() : null;
@@ -44,7 +45,7 @@
     layer.className = 'obt';
     layer.innerHTML = '<div class="obt-hole" hidden></div>'
         + '<div class="obt-coach" hidden role="status" aria-live="polite"><span class="obt-arrow" aria-hidden="true"><svg viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 28V5"/><path d="M6 13l9-9 9 9"/></svg></span>'
-        + '<div class="obt-card"><span class="obt-face"><img src="' + esc(IMG.head) + '" alt=""></span><div class="obt-ct"><span class="obt-lbl"></span><b class="obt-tt"></b><span class="obt-sb"></span><div class="obt-acts"></div></div></div></div>'
+        + '<div class="obt-card"><span class="obt-face"><img src="' + esc(IMG.head) + '" alt=""></span><div class="obt-ct"><span class="obt-lbl"></span><b class="obt-tt"></b><span class="obt-sb"></span><span class="obt-meta" hidden></span><div class="obt-acts"></div></div></div></div>'
         + '<div class="obt-dock" role="region" aria-label="Progresso dos primeiros passos" hidden></div>'
         + '<button type="button" class="obt-chip" hidden></button>'
         + '<div class="obt-modals"></div>';
@@ -64,6 +65,16 @@
     let state = D.state;                 // active | paused
     let focusKey = null, fv = '', fvFor = null;
     let carDismissed = false, dirty = false, asking = false, modalOpen = false;
+    let carState = '', carFoundUntil = 0;
+    // O formulário da fazenda avisa o andamento da consulta do CAR: o Pezinho espera os dados antes de seguir.
+    document.addEventListener('fz:car', (e) => {
+        const st = e.detail?.status || '';
+        carState = st === 'restored' ? '' : st;
+        if (st === 'busy' || st === 'edited') { focusKey = 'car'; carDismissed = false; }
+        if (st === 'found') { carFoundUntil = Date.now() + 3200; setTimeout(schedule, 3300); }
+        if (st === 'restored' || st === '') focusKey = null;
+        lastSig = '__'; schedule();
+    });
     const pageKey = 'sf-ob-ok:' + path;
     const confirmed = new Set((() => { try { return JSON.parse(get(pageKey) || '[]'); } catch (e) { return []; } })());
     const confirm = (k) => { if (!confirmed.has(k)) { confirmed.add(k); set(pageKey, JSON.stringify([...confirmed])); } };
@@ -203,7 +214,24 @@
         return afterAll();
     };
 
+    /* Boas-vindas de volta: o Pezinho lembra onde a pessoa parou (texto montado no servidor a partir do que está salvo). */
+    let welcomeOpen = !!D.welcome && !reviewing;
+    const TOUR_PAGES = { farm: ['/fazendas', '/fazendas/nova'], season: ['/safras/nova'], plot: ['/setores'] };
+    const welcomePlan = () => {
+        const W = D.welcome;
+        const go = async () => {
+            welcomeOpen = false;
+            if (state !== 'active') { state = 'active'; await post('resume'); refresh(); }
+            if ((TOUR_PAGES[W.step] || []).includes(path)) { refresh(); return; }
+            location.href = CONTINUE;
+        };
+        const later = () => { welcomeOpen = false; refresh(); };
+        return { key: 'welcome', free: true, wave: true, label: 'Primeiros passos · ' + doneCount + ' de 3', title: W.title, sub: W.sub, meta: W.meta,
+            acts: [{ label: W.act, fn: go }, { label: W.later, kind: 'skip', fn: later }] };
+    };
+
     const plan = () => {
+        if (welcomeOpen && !modalOpen) return welcomePlan();
         if (state !== 'active' || modalOpen) return null;
         const fields = fieldsNow();
         if (genericNow && !visible(genericNow.el)) genericNow = null;
@@ -227,9 +255,22 @@
             if (step === '1') {
                 const carOk = visible($('[data-fz-w-car-ok]'));
                 if (carOk) ['name', 'uf', 'city', 'area'].forEach(confirm);
+                const box = $('.fz-carbox'), CL = 'Fazenda · CAR';
+                if (carState === 'busy') return { key: 'car-busy', el: box, label: CL, title: 'Consultando o CAR…', sub: 'Estou buscando nome, município, área e perímetro no cadastro do CAR. Leva alguns segundos.' };
+                if (carState === 'found' && Date.now() < carFoundUntil) {
+                    const nm = ($('#w-nome') || {}).value || '', sum = ($('[data-fz-w-car-sum]') || {}).textContent || '';
+                    return { key: 'car-found', el: box, label: CL, title: 'Achei o imóvel' + (nm ? ': ' + nm : ''), sub: (sum ? sum + '. ' : '') + 'Confira os dados abaixo e clique em Continuar.',
+                        acts: [{ label: 'Conferir', fn: () => { carFoundUntil = 0; focusKey = null; document.activeElement?.blur?.(); schedule(); } }] };
+                }
+                if (carState === 'edited' && !carOk && !carDismissed) {
+                    const last = box?.dataset.carLast || '';
+                    return { key: 'car-edited', el: box, label: CL, title: 'Você alterou o número do CAR', sub: 'Complete o número para eu consultar de novo. Os dados abaixo ainda são da consulta anterior.',
+                        acts: [last ? { label: 'Voltar ao número anterior', fn: () => { const inp = $('#w-car'); if (inp) { inp.value = last; inp.dispatchEvent(new Event('input', { bubbles: true })); } } }
+                            : { label: 'Manter os dados atuais', fn: () => { carDismissed = true; carState = ''; focusKey = null; document.activeElement?.blur?.(); schedule(); } }] };
+                }
                 if (focusKey === 'car' && !carOk && !carDismissed) {
-                    return { key: 'car', el: $('.fz-carbox'), label: 'Fazenda · CAR', title: 'Cole aqui o número do CAR',
-                        sub: 'Ele está no recibo de inscrição do CAR. Depois clique em Buscar dados: preenchemos nome, município, área e perímetro para você.',
+                    return { key: 'car', el: box, label: CL, title: 'Cole aqui o número do CAR',
+                        sub: 'Ele está no recibo de inscrição do CAR. Pode colar do jeito que estiver: eu arrumo o formato. Ao completar, já busco os dados.',
                         acts: [{ label: 'Não tenho agora', fn: () => { carDismissed = true; focusKey = null; document.activeElement?.blur?.(); schedule(); } }] };
                 }
                 return fieldPlan(fields, 'Fazenda · Identificação', () => ({ key: 'fnext1', el: next, label: 'Fazenda · Identificação', title: 'Tudo certo por aqui', sub: 'Clique em Continuar para marcar o perímetro.' }));
@@ -302,6 +343,10 @@
         $('.obt-lbl', coach).textContent = p.warn ? 'Atenção' : p.label;
         $('.obt-tt', coach).textContent = p.title;
         $('.obt-sb', coach).textContent = p.sub || '';
+        const meta = $('.obt-meta', coach);
+        meta.textContent = p.meta || '';
+        meta.hidden = !p.meta;
+        coach.classList.toggle('is-wave', !!p.wave);
         const acts = $('.obt-acts', coach);
         acts.innerHTML = '';
         (p.acts || []).forEach((a) => {
@@ -380,7 +425,7 @@
     };
 
     const renderChip = () => {
-        chip.hidden = !(state === 'paused' && !modalOpen);
+        chip.hidden = !(state === 'paused' && !modalOpen && !welcomeOpen);
         chip.innerHTML = '<span class="obt-dface" aria-hidden="true"><img src="' + esc(IMG.head) + '" alt=""></span><span>Continuar primeiros passos <small>· ' + doneCount + ' de 3</small></span>';
     };
 
@@ -476,6 +521,15 @@
         current = plan();
         renderCoach(current);
         position();
+        markStep(current);
+    };
+    // Guarda no servidor o passo em que a pessoa está (para as boas-vindas quando ela voltar).
+    let marked = '', markTimer = 0;
+    const markStep = (p) => {
+        if (!p || p.free || reviewing || !p.label || p.label === marked) return;
+        clearTimeout(markTimer);
+        const label = p.label;
+        markTimer = setTimeout(() => { marked = label; post('mark', { step: label }); }, 1500);
     };
     const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
     const refresh = () => { renderDock(); renderChip(); lastSig = '__'; schedule(); };
