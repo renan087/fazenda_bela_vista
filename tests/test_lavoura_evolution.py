@@ -398,3 +398,33 @@ def test_pests_photo_reinspection_and_map_sanidade(env):
     env.db.refresh(inc)
     assert inc.status == "controlada"
     assert inc.resolved_date == date.today()
+
+
+def test_phytosanitary_unified_tabs_and_sidebar_without_operacoes(env):
+    _seed_stock_and_drip_plot(env)
+    r = env.routes
+
+    pests_html = r.pests_page(env.request("/pragas"), db=env.db, user=env.user, csrf_token="x").body.decode()
+    assert "Pragas e pulverizações" in pests_html
+    assert "/pragas/pulverizacoes" in pests_html
+    assert "/pragas/tratos" in pests_html
+
+    sprays_html = r.agricultural_operations_page(
+        env.request("/pragas/pulverizacoes"), db=env.db, user=env.user, csrf_token="x"
+    ).body.decode()
+    assert "Nova pulverização" in sprays_html
+    assert "Pulverização fitossanitária" in sprays_html
+    assert "Calagem / Gessagem" not in sprays_html
+
+    tratos_html = r.agricultural_operations_page(
+        env.request("/pragas/tratos"), db=env.db, user=env.user, csrf_token="x"
+    ).body.decode()
+    assert "Novo trato cultural" in tratos_html
+    assert "Poda" in tratos_html
+    assert "Roçagem" in tratos_html
+    assert "Calagem / Gessagem" not in tratos_html
+
+    sidebar_src = open("app/templates/partials/sidebar.html", encoding="utf-8").read()
+    assert "Operações e pulverizações" not in sidebar_src
+    assert "Pragas e pulverizações" in sidebar_src
+

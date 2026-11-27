@@ -12,7 +12,7 @@
         <div class="pd-head-actions">
             {% if can_write_page %}
             <a class="sf-btn sf-btn-secondary" href="/pragas?novo=1">Registrar praga</a>
-            <a class="sf-btn sf-btn-secondary" href="/operacoes?novo=1">Nova operação</a>
+            <a class="sf-btn sf-btn-secondary" href="/pragas/pulverizacoes?novo=1">Pulverizar</a>
             <a class="sf-btn sf-btn-primary" href="/fertilizacao/nova">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                 Nova adubação
@@ -27,9 +27,9 @@
             <span class="lv-qa-ic is-green" aria-hidden="true">🌱</span>
             <span><strong>Adubação</strong><small>Aplicar com baixa FIFO</small></span>
         </a>
-        <a class="lv-qa" href="/operacoes?novo=1">
+        <a class="lv-qa" href="/pragas/pulverizacoes?novo=1">
             <span class="lv-qa-ic is-green" aria-hidden="true">🚜</span>
-            <span><strong>Operação / Pulverização</strong><small>Tratos, defensivos e máquinas</small></span>
+            <span><strong>Pulverização</strong><small>Defensivos, calda e carência</small></span>
         </a>
         <a class="lv-qa" href="/pragas?novo=1">
             <span class="lv-qa-ic is-warn" aria-hidden="true">🪲</span>
@@ -159,7 +159,8 @@
                             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
                         </summary>
                         <div class="sf-menu-panel">
-                            <a href="/operacoes?novo=1&plot_id={{ r.plot_id }}" class="sf-menu-link">Registrar operação</a>
+                            <a href="/pragas/pulverizacoes?novo=1&plot_id={{ r.plot_id }}" class="sf-menu-link">Registrar pulverização</a>
+                            <a href="/pragas/tratos?novo=1&plot_id={{ r.plot_id }}" class="sf-menu-link">Registrar trato cultural</a>
                             <a href="/irrigacao?novo=1&plot_id={{ r.plot_id }}" class="sf-menu-link">Registrar irrigação</a>
                             <a href="/pragas?novo=1&plot_id={{ r.plot_id }}" class="sf-menu-link">Apontar praga/doença</a>
                             <a href="/analise-solo?plot_id={{ r.plot_id }}" class="sf-menu-link">Análises de solo</a>

@@ -1,0 +1,14 @@
+{# Abas integradas do módulo Pragas e pulverizações. active: 'pests' | 'pulverizacoes' | 'tratos' #}
+{% macro phytosanitary_tabs(active, pests_count=None, sprays_count=None, treatments_count=None) %}
+<nav class="pd-tabs ft-tabs" aria-label="Navegação de Pragas e pulverizações">
+    <a href="{{ module_href('/pragas') }}" {% if active == 'pests' %}aria-current="page"{% endif %}>
+        Monitoramento{% if pests_count is not none %} <span class="ft-tab-count">{{ pests_count }}</span>{% endif %}
+    </a>
+    <a href="{{ module_href('/pragas/pulverizacoes') }}" {% if active == 'pulverizacoes' %}aria-current="page"{% endif %}>
+        Pulverizações{% if sprays_count is not none %} <span class="ft-tab-count">{{ sprays_count }}</span>{% endif %}
+    </a>
+    <a href="{{ module_href('/pragas/tratos') }}" {% if active == 'tratos' %}aria-current="page"{% endif %}>
+        Tratos culturais{% if treatments_count is not none %} <span class="ft-tab-count">{{ treatments_count }}</span>{% endif %}
+    </a>
+</nav>
+{% endmacro %}

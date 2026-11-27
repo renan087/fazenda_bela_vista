@@ -17,10 +17,9 @@
     ]},
     {'id': 'lavoura', 'label': 'Lavoura', 'short': 'Lavoura', 'icon': 'leaf', 'items': [
         {'id': 'lavoura_visao', 'label': 'Visão geral', 'raw': '/lavoura', 'page': 'lavoura_overview', 'show': mv.get('operations')},
-        {'id': 'operacoes', 'label': 'Operações e pulverizações', 'raw': '/operacoes', 'page': 'agricultural_operations', 'show': mv.get('operations')},
         {'id': 'adubacao', 'label': 'Adubação', 'raw': '/fertilizacao', 'page': 'fertilization', 'show': mv.get('operations')},
         {'id': 'solo', 'label': 'Análise de solo', 'raw': '/analise-solo', 'page': 'soil_analyses', 'show': mv.get('nav_soil')},
-        {'id': 'pragas', 'label': 'Pragas e doenças', 'raw': '/pragas', 'page': 'pests', 'show': mv.get('nav_pests')},
+        {'id': 'pragas', 'label': 'Pragas e pulverizações', 'raw': '/pragas', 'page': 'pests', 'show': mv.get('nav_pests') or mv.get('operations')},
     ]},
     {'id': 'clima_agua', 'label': 'Clima e Água', 'short': 'Clima', 'icon': 'rain', 'items': [
         {'id': 'clima_balanco', 'label': 'Balanço e previsão', 'raw': '/clima-agua', 'page': 'climate_water', 'show': mv.get('nav_rainfall') or mv.get('nav_irrigation')},
@@ -65,7 +64,7 @@
     {'label': 'Chuva', 'hint': 'Quantos milímetros choveu', 'href': '/pluviometria?novo=1', 'icon': 'rain', 'tone': 'blue'},
     {'label': 'Irrigação', 'hint': 'Lâmina e tempo por talhão', 'href': module_href('/irrigacao?novo=1'), 'icon': 'rain', 'tone': 'blue'},
     {'label': 'Adubação', 'hint': 'Aplicação com baixa FIFO', 'href': module_href('/fertilizacao/nova'), 'icon': 'leaf', 'tone': 'green'},
-    {'label': 'Operação / Pulverização', 'hint': 'Tratos e defensivos no campo', 'href': module_href('/operacoes?novo=1'), 'icon': 'leaf', 'tone': 'green'},
+    {'label': 'Pulverização', 'hint': 'Defensivos, calda e carência', 'href': module_href('/pragas/pulverizacoes?novo=1'), 'icon': 'leaf', 'tone': 'green'},
     {'label': 'Praga ou doença', 'hint': 'Registrar ocorrência com foto', 'href': module_href('/pragas?novo=1'), 'icon': 'box', 'tone': 'amber'},
     {'label': 'Colheita do dia', 'hint': 'Entra num lote de produção', 'href': module_href('/producao/colheitas/nova'), 'icon': 'bean', 'tone': 'green'},
     {'label': 'Compra de insumo', 'hint': 'Entrada no estoque', 'href': module_href('/insumos/comprados/nova'), 'icon': 'cart', 'tone': 'green'},

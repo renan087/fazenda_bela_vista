@@ -1,24 +1,35 @@
 {% extends "base.html" %}
+{% from "partials/phytosanitary_nav.html" import phytosanitary_tabs %}
 {% block content %}
 {% set ctx = op_ctx %}
 {% set k = ctx.kpi %}
+{% set is_tratos = (op_section == 'tratos') %}
+{% set base_path = op_base_path or '/pragas/pulverizacoes' %}
 {% set edit_finance = edit_operation.finance_transaction if edit_operation and edit_operation.finance_transaction else none %}
 {% set has_paid_installments = edit_finance and (edit_finance.installments|selectattr('status', 'equalto', 'pago')|list|length > 0) %}
 <div class="sf-page pd-page ft-page" data-operations-page data-can-write="{{ '1' if can_write_page else '0' }}">
     <header class="pd-head">
         <div>
-            <h1 class="sf-page-title">Operações e pulverizações</h1>
-            <p class="sf-page-subtitle">Registre pulverizações com baixa FIFO de defensivos, tratos culturais, máquinas usadas, carência pré-colheita e despesas por talhão.</p>
+            <h1 class="sf-page-title">Pragas e pulverizações</h1>
+            <p class="sf-page-subtitle">
+                {% if is_tratos %}
+                Registre podas (esqueletamento, decote, recepa), roçagens, arruações e preparo do solo vinculados aos talhões e máquinas.
+                {% else %}
+                Registre pulverizações fitossanitárias e herbicidas com baixa FIFO de defensivos, volume de calda, horímetro e carência pré-colheita.
+                {% endif %}
+            </p>
         </div>
         <div class="pd-head-actions">
             {% if can_write_page %}
             <button type="button" class="sf-btn sf-btn-primary" data-operation-open {% if not active_farm_id or not active_season_id %}disabled{% endif %}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                Nova operação
+                {{ 'Novo trato cultural' if is_tratos else 'Nova pulverização' }}
             </button>
             {% endif %}
         </div>
     </header>
+
+    {{ phytosanitary_tabs(op_section or 'pulverizacoes', phyto_pests_count, phyto_sprays_count, phyto_treatments_count) }}
 
     <section class="ft-kpis" aria-label="Indicadores de operações">
         <article class="pd-card ft-kpi">
@@ -83,7 +94,7 @@
             <div class="lv-filter-actions">
                 <button type="submit" class="sf-btn sf-btn-secondary sf-btn-sm">Filtrar</button>
                 {% if selected_plot_id or selected_operation_type or selected_start_date or selected_end_date %}
-                <a href="/operacoes" class="sf-btn sf-btn-ghost sf-btn-sm">Limpar</a>
+                <a href="{{ base_path }}" class="sf-btn sf-btn-ghost sf-btn-sm">Limpar</a>
                 {% endif %}
             </div>
         </form>
@@ -171,7 +182,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="6"><div class="pd-empty"><strong>Nenhuma operação registrada nesta safra.</strong><span>Registre pulverizações, roçagens, podas, calagens ou serviços terceirizados.</span></div></td></tr>
+                    <tr><td colspan="6"><div class="pd-empty"><strong>{{ 'Nenhum trato cultural registrado nesta safra.' if is_tratos else 'Nenhuma pulverização registrada nesta safra.' }}</strong><span>{{ 'Registre podas, roçagens, arruações ou preparo de solo por talhão.' if is_tratos else 'Registre pulverizações fitossanitárias e herbicidas com baixa de defensivos e controle de carência.' }}</span></div></td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -215,7 +226,7 @@
         </div>
         <div class="ft-dialog-foot">
             <button type="button" class="sf-btn sf-btn-secondary" data-operation-view-close>Fechar</button>
-            {% if can_write_page %}<a href="/operacoes?edit_id={{ item.id }}" class="sf-btn sf-btn-primary">Editar</a>{% endif %}
+            {% if can_write_page %}<a href="{{ base_path }}?edit_id={{ item.id }}" class="sf-btn sf-btn-primary">Editar</a>{% endif %}
         </div>
     </div>
 </dialog>
@@ -225,11 +236,12 @@
 <dialog id="operation-modal" class="ft-dialog is-lg">
     <form method="post" action="{% if edit_operation %}/operacoes/{{ edit_operation.id }}/editar{% else %}/operacoes{% endif %}" class="ft-dialog-shell" data-operation-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="next_url" value="{{ base_path }}">
         <div class="ft-dialog-head">
             <div>
-                <p class="pd-eyebrow is-brand">Lavoura · Execução no campo</p>
-                <h2>{% if edit_operation %}Editar operação{% else %}Registrar operação ou pulverização{% endif %}</h2>
-                <p class="ft-dialog-sub">Selecione um ou mais talhões, baixe defensivos/insumos do estoque e vincule máquina ou despesa financeira.</p>
+                <p class="pd-eyebrow is-brand">{{ 'Pragas e pulverizações · Tratos culturais' if is_tratos else 'Pragas e pulverizações · Defensivos' }}</p>
+                <h2>{% if edit_operation %}Editar registro{% else %}{{ 'Registrar trato cultural' if is_tratos else 'Registrar pulverização' }}{% endif %}</h2>
+                <p class="ft-dialog-sub">{{ 'Selecione um ou mais talhões e vincule máquina, tipo de poda ou despesa de serviço.' if is_tratos else 'Selecione um ou mais talhões, baixe defensivos do estoque, informe calda e carência pré-colheita.' }}</p>
             </div>
             <button type="button" class="ft-x" data-operation-close aria-label="Fechar">✕</button>
         </div>

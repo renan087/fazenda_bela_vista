@@ -1,15 +1,17 @@
 {% extends "base.html" %}
+{% from "partials/phytosanitary_nav.html" import phytosanitary_tabs %}
 {% block content %}
 {% set ctx = pest_ctx %}
 {% set k = ctx.kpi %}
 <div class="sf-page pd-page ft-page pest-page" data-pests-page data-can-write="{{ '1' if can_write_page else '0' }}">
     <header class="pd-head">
         <div>
-            <h1 class="sf-page-title">Pragas e doenças</h1>
-            <p class="sf-page-subtitle">Monitore focos fitossanitários com fotos e severidade, dispare pulverizações corretivas e acompanhe a reinspeção até o controle.</p>
+            <h1 class="sf-page-title">Pragas e pulverizações</h1>
+            <p class="sf-page-subtitle">Monitore focos fitossanitários com fotos e severidade, dispare pulverizações com controle de carência e acompanhe a reinspeção até o controle.</p>
         </div>
         <div class="pd-head-actions">
             {% if can_write_page %}
+            <a class="sf-btn sf-btn-secondary" href="/pragas/pulverizacoes?novo=1">Nova pulverização</a>
             <button type="button" class="sf-btn sf-btn-primary" data-pest-launch-open>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                 Registrar ocorrência
@@ -17,6 +19,8 @@
             {% endif %}
         </div>
     </header>
+
+    {{ phytosanitary_tabs('pests', phyto_pests_count, phyto_sprays_count, phyto_treatments_count) }}
 
     {% if ctx.climate_alert %}
     <div class="pd-alert is-warn" role="status">
@@ -108,7 +112,7 @@
                 {% if can_write_page %}
                 <div class="lv-pest-actions">
                     {% if m.status_code != 'controlada' %}
-                    <a class="sf-btn sf-btn-primary sf-btn-sm" href="/operacoes?novo=1&amp;plot_id={{ item.plot_id }}&amp;pest_id={{ item.id }}&amp;op_type=pulverizacao">Pulverizar / Tratar →</a>
+                    <a class="sf-btn sf-btn-primary sf-btn-sm" href="/pragas/pulverizacoes?novo=1&amp;plot_id={{ item.plot_id }}&amp;pest_id={{ item.id }}&amp;op_type=pulverizacao">Pulverizar / Tratar →</a>
                     <button type="button" class="sf-btn sf-btn-secondary sf-btn-sm"
                         data-pest-status-open
                         data-pest-id="{{ item.id }}"

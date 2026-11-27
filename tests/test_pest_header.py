@@ -6,4 +6,4 @@ def test_pest_header_uses_official_page_shell():
     template = (root / "app/templates/pests.html").read_text()
     assert "sf-page pd-page ft-page pest-page" in template
     assert "data-pests-page" in template
-    assert "Pragas e doenças" in template
+    assert "Pragas e pulverizações" in template

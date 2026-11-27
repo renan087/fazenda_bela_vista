@@ -938,14 +938,23 @@ FINANCE_TRANSACTION_OPERATIONAL_EXPENSE_CATEGORIES = frozenset(
         "Serviços Terceirizados", "Transportes Internos",
     }
 )
-AGRICULTURAL_OPERATION_TYPES = (
+SPRAY_OPERATION_TYPES = (
     ("pulverizacao", "Pulverização fitossanitária", "Outros Defensivos"),
     ("manejo_mato", "Controle de mato / Herbicida", "Herbicida"),
-    ("rocagem", "Roçagem", "Serviços Terceirizados"),
+)
+CULTURAL_TREATMENT_TYPES = (
     ("poda", "Poda", "Serviços Terceirizados"),
-    ("calagem_gessagem", "Calagem / Gessagem", "Corretivos de Solo"),
-    ("preparo_solo", "Preparo do solo", "Preparo do Solo"),
+    ("rocagem", "Roçagem", "Serviços Terceirizados"),
     ("arruacao", "Arruação / Esquiamento", "Serviços Terceirizados"),
+    ("preparo_solo", "Preparo do solo", "Preparo do Solo"),
+)
+SPRAY_OPERATION_LABELS = {label for _, label, _ in SPRAY_OPERATION_TYPES} | {"Pulverização", "Pulverizacao", "Manejo de mato", "Herbicida"}
+CULTURAL_TREATMENT_LABELS = {label for _, label, _ in CULTURAL_TREATMENT_TYPES}
+
+AGRICULTURAL_OPERATION_TYPES = (
+    *SPRAY_OPERATION_TYPES,
+    *CULTURAL_TREATMENT_TYPES,
+    ("calagem_gessagem", "Calagem / Gessagem", "Corretivos de Solo"),
     ("colheita", "Apoio à colheita (serviço)", "Serviços Terceirizados"),
     ("servico_terceirizado", "Serviço terceirizado", "Serviços Terceirizados"),
     ("outro", "Outra operação", "Outros Itens"),
@@ -18895,6 +18904,21 @@ def _sync_operation_side_effects(
                     repo.db.add(prof)
 
 
+def _is_spray_operation(op: AgriculturalOperation) -> bool:
+    label = (getattr(op, "operation_type", None) or "").strip()
+    low = _normalize_search_value(label)
+    return label in SPRAY_OPERATION_LABELS or "pulveriz" in low or "herbicid" in low or "mato" in low
+
+
+def _safe_op_redirect(next_url: str | None, *, fallback: str = "/pragas/pulverizacoes") -> str:
+    candidate = (next_url or "").strip()
+    if candidate in {"/pragas/pulverizacoes", "/pragas/tratos", "/operacoes"}:
+        return candidate
+    return fallback
+
+
+@router.get("/pragas/pulverizacoes")
+@router.get("/pragas/tratos")
 @router.get("/operacoes")
 def agricultural_operations_page(
     request: Request,
@@ -18907,6 +18931,7 @@ def agricultural_operations_page(
     plot_id: int | None = None,
     pest_id: int | None = None,
     op_type: str | None = None,
+    aba: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -18915,8 +18940,25 @@ def agricultural_operations_page(
     scope = _global_scope_context(request, repo, user)
     active_farm = scope.get("active_farm")
     all_plots = repo.list_plots(farm_ids=[active_farm.id]) if active_farm else []
-    operations = repo.list_agricultural_operations({plot.id for plot in all_plots}) if all_plots else []
+    all_operations = repo.list_agricultural_operations({plot.id for plot in all_plots}) if all_plots else []
     plots = _season_launch_plots(all_plots, scope)
+
+    req_path = getattr(getattr(request, "url", None), "path", "/pragas/pulverizacoes") or "/pragas/pulverizacoes"
+    if req_path == "/pragas/tratos" or (aba or "").strip().lower() == "tratos":
+        op_section = "tratos"
+        op_base_path = "/pragas/tratos"
+        section_types = list(CULTURAL_TREATMENT_TYPES)
+        page_title = "Tratos culturais"
+    else:
+        op_section = "pulverizacoes"
+        op_base_path = "/pragas/pulverizacoes"
+        section_types = list(SPRAY_OPERATION_TYPES)
+        page_title = "Pulverizações e defensivos"
+
+    sprays_all = [item for item in all_operations if _is_spray_operation(item)]
+    treatments_all = [item for item in all_operations if not _is_spray_operation(item)]
+    operations = sprays_all if op_section == "pulverizacoes" else treatments_all
+
     selected_plot_id = _int_or_none(plot_id_filter)
     selected_operation_type = _clean_text(operation_type_filter)
     try:
@@ -18938,6 +18980,10 @@ def agricultural_operations_page(
         edit_operation = None
     if edit_operation and edit_operation.plot and edit_operation.plot not in plots:
         plots = [*plots, edit_operation.plot]
+    if edit_operation and not any(label == edit_operation.operation_type for _, label, _ in section_types):
+        matched_legacy = next((t for t in AGRICULTURAL_OPERATION_TYPES if t[1] == edit_operation.operation_type), None)
+        if matched_legacy:
+            section_types.append(matched_legacy)
     farm_id = active_farm.id if active_farm else None
     stock_context = _build_stock_context(repo, farm_id=farm_id, item_type="insumo_agricola")
     op_inputs_catalog = stock_context["consumption_catalog_inputs"]
@@ -18951,17 +18997,21 @@ def agricultural_operations_page(
     op_ctx = build_operations_page_context(operations=operations, stock_outputs=stock_outputs, today=today_val)
     equipment_assets = repo.list_equipment_assets(farm_id=farm_id) if farm_id else []
     plot_ids = {p.id for p in all_plots}
-    open_pests = [
-        p for p in repo.list_pest_incidents()
-        if p.plot_id in plot_ids and (getattr(p, "status", None) or "ativa") != "controlada"
-    ] if plot_ids else []
+    all_pests_in_scope = [p for p in repo.list_pest_incidents() if p.plot_id in plot_ids] if plot_ids else []
+    open_pests = [p for p in all_pests_in_scope if (getattr(p, "status", None) or "ativa") != "controlada"]
     preselect_pest = next((p for p in open_pests if pest_id and p.id == pest_id), None)
+    default_op_type = op_type or ("pulverizacao" if (op_section == "pulverizacoes" or preselect_pest) else "poda")
     return templates.TemplateResponse(
         "agricultural_operations.html",
         _base_context(
-            request, user, csrf_token, "agricultural_operations", _repo=repo,
-            title="Operações e Pulverizações", plots=plots, operations=operations, edit_operation=edit_operation,
-            operation_types=AGRICULTURAL_OPERATION_TYPES,
+            request, user, csrf_token, "pests", _repo=repo,
+            title=page_title, plots=plots, operations=operations, edit_operation=edit_operation,
+            operation_types=section_types,
+            op_section=op_section,
+            op_base_path=op_base_path,
+            phyto_pests_count=len(open_pests),
+            phyto_sprays_count=len(sprays_all),
+            phyto_treatments_count=len(treatments_all),
             finance_accounts=repo.list_finance_accounts(farm_id=farm_id) if farm_id else [],
             finance_account_default=next((item for item in repo.list_finance_accounts(farm_id=farm_id) if item.is_default), None) if farm_id else None,
             finance_credit_cards=repo.list_finance_credit_cards(farm_id=farm_id) if farm_id else [],
@@ -18981,7 +19031,7 @@ def agricultural_operations_page(
             open_new_modal=bool(novo),
             preselect_plot_id=plot_id if novo else (preselect_pest.plot_id if preselect_pest else None),
             preselect_pest=preselect_pest,
-            preselect_op_type=op_type or ("pulverizacao" if preselect_pest else None),
+            preselect_op_type=default_op_type,
         ),
     )
 
@@ -19157,12 +19207,14 @@ async def create_agricultural_operation_action(
     except ValueError as exc:
         repo.db.rollback()
         _flash(request, "error", str(exc))
-        return _redirect("/operacoes")
+        fallback_url = "/pragas/pulverizacoes" if operation_type in {"pulverizacao", "manejo_mato"} else "/pragas/tratos"
+        return _redirect(_safe_op_redirect(str(form.get("next_url") or ""), fallback=fallback_url))
     if created_ops > 1:
-        _flash(request, "success", f"{created_ops} operações registradas (rateadas por área entre os talhões).")
+        _flash(request, "success", f"{created_ops} registros salvos (rateados por área entre os talhões).")
     else:
-        _flash(request, "success", "Operação registrada com sucesso.")
-    return _redirect("/operacoes")
+        _flash(request, "success", "Registro salvo com sucesso.")
+    fallback_url = "/pragas/pulverizacoes" if operation_type in {"pulverizacao", "manejo_mato"} else "/pragas/tratos"
+    return _redirect(_safe_op_redirect(str(form.get("next_url") or ""), fallback=fallback_url))
 
 
 @router.post("/operacoes/{operation_id}/concluir")
@@ -19179,14 +19231,14 @@ def conclude_agricultural_operation_action(
     operation = repo.get_agricultural_operation(operation_id)
     if not operation or not _plot_matches_scope(operation.plot, scope):
         _flash(request, "error", "Operação não encontrada no contexto ativo.")
-        return _redirect("/operacoes")
+        return _redirect("/pragas/pulverizacoes")
     operation.status = "realizada"
     repo.db.add(operation)
     op_key = next((k for k, lbl, _ in AGRICULTURAL_OPERATION_TYPES if lbl == operation.operation_type), "outro")
     _sync_operation_side_effects(repo, farm_id=scope.get("active_farm_id"), operation=operation, op_key=op_key)
     repo.db.commit()
-    _flash(request, "success", "Operação marcada como realizada.")
-    return _redirect("/operacoes")
+    _flash(request, "success", "Registro marcado como realizado.")
+    return _redirect("/pragas/pulverizacoes" if _is_spray_operation(operation) else "/pragas/tratos")
 
 
 @router.post("/operacoes/{operation_id}/excluir")
@@ -19208,10 +19260,11 @@ def delete_agricultural_operation_action(
                 return _redirect("/operacoes")
             repo.db.delete(transaction)
             repo.db.flush()
+    target_url = "/pragas/pulverizacoes" if _is_spray_operation(operation) else "/pragas/tratos"
     _restore_operation_stock_outputs(repo, operation.id)
     repo.delete(operation)
-    _flash(request, "success", "Operação excluída e eventuais insumos devolvidos ao estoque.")
-    return _redirect("/operacoes")
+    _flash(request, "success", "Registro excluído e eventuais insumos devolvidos ao estoque.")
+    return _redirect(target_url)
 
 
 @router.post("/operacoes/{operation_id}/cancelar-pagamento")
@@ -25945,6 +25998,9 @@ def pests_page(
     )
     today_val = today_in_app_timezone()
     pest_ctx = build_pests_page_context(incidents=incidents, farm=scope.get("active_farm"), today=today_val)
+    all_ops = repo.list_agricultural_operations(plot_ids) if plot_ids else []
+    phyto_sprays_count = sum(1 for item in all_ops if _is_spray_operation(item))
+    phyto_treatments_count = len(all_ops) - phyto_sprays_count
     incidents_pagination = _paginate_collection(request, incidents, "incidents_page")
     return templates.TemplateResponse(
         "pests.html",
@@ -25954,13 +26010,16 @@ def pests_page(
             csrf_token,
             "pests",
             _repo=repo,
-            title="Pragas e Doenças",
+            title="Pragas e Pulverizações",
             plots=plots,
             launch_plots=launch_plots,
             incidents=incidents_pagination["items"],
             incidents_pagination=incidents_pagination,
             edit_incident=edit_incident,
             pest_ctx=pest_ctx,
+            phyto_pests_count=pest_ctx["kpi"]["active"],
+            phyto_sprays_count=phyto_sprays_count,
+            phyto_treatments_count=phyto_treatments_count,
             today_iso=today_val.isoformat(),
             open_new_modal=bool(novo),
             preselect_plot_id=plot_id if novo else None,
