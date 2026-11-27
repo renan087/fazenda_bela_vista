@@ -98,3 +98,73 @@ def test_plot_names_repeat_across_farms_but_not_in_the_same_farm(env):
     db.add_all([Plot(name='Talhão 1', farm_id=a.id, area_hectares=5, plant_count=1), Plot(name='Talhão 1', farm_id=b.id, area_hectares=5, plant_count=1)])
     db.commit()
     assert routes._plot_name_taken(db, a.id, ' talhão 1 ') and not routes._plot_name_taken(db, a.id, 'Talhão 2')
+
+
+def _req_fetch():
+    return Request({'type': 'http', 'method': 'POST', 'path': '/primeiros-passos/tour', 'headers': [(b'x-sf-fetch', b'1')], 'query_string': b'', 'session': {}})
+
+
+def test_tour_state_actions_and_context(env):
+    db, user = env
+    assert routes._onboarding_tour_context(db, user, 't') is None  # nunca iniciado: só a tela de boas-vindas
+    resp = routes.onboarding_tour_action(_request(), csrf_token='t', action='start', db=db, user=user)
+    assert resp.headers['location'] == '/primeiros-passos/continuar' and user.organization.onboarding_tour == 'active'
+    ctx = routes._onboarding_tour_context(db, user, 'tok')
+    assert ctx['state'] == 'active' and ctx['farm'] is None and ctx['csrf'] == 'tok' and ctx['first_name'] == 'Ana'
+    assert routes.onboarding_tour_continue(_request(), db=db, user=user).headers['location'] == '/fazendas'
+    paused = routes.onboarding_tour_action(_req_fetch(), csrf_token='t', action='pause', db=db, user=user)
+    assert paused.status_code == 200 and user.organization.onboarding_tour == 'paused'
+    assert routes._onboarding_tour_context(db, user, 't')['state'] == 'paused'
+    routes.onboarding_tour_action(_request(), csrf_token='t', action='end', db=db, user=user)
+    assert routes._onboarding_tour_context(db, user, 't') is None
+
+
+def test_tour_follows_real_records_and_skip(env, monkeypatch):
+    db, user = env
+    calls = []
+    monkeypatch.setattr(routes, 'persist_user_context', lambda request, db, user, farm_id, season_id: calls.append((farm_id, season_id)))
+    routes.onboarding_tour_action(_request(), csrf_token='t', action='start', db=db, user=user)
+    farm = Farm(name='Fazenda Sol', location='Três Pontas, MG', total_area=120.5, organization_id=user.organization_id)
+    db.add(farm)
+    db.commit()
+    assert routes.onboarding_tour_continue(_request(), db=db, user=user).headers['location'] == '/safras/nova'
+    assert calls[-1] == (farm.id, None)  # a safra nasce na fazenda certa
+    ctx = routes._onboarding_tour_context(db, user, 't')
+    assert ctx['farm'] == {'id': farm.id, 'name': 'Fazenda Sol', 'area': '120,50', 'location': 'Três Pontas, MG'} and ctx['season'] is None
+    season = CropSeason(farm_id=farm.id, name='Safra 2026/2027', start_date=date(2026, 7, 1), end_date=date(2027, 6, 30), culture='Cafe', cultivated_area=10)
+    db.add(season)
+    db.commit()
+    assert routes.onboarding_tour_continue(_request(), db=db, user=user).headers['location'] == '/setores'
+    routes.onboarding_tour_action(_request(), csrf_token='t', action='skip_plot', db=db, user=user)
+    assert routes.onboarding_tour_continue(_request(), db=db, user=user).headers['location'] == '/dashboard'
+    assert routes._onboarding_tour_context(db, user, 't')['plot_skipped'] is True
+    back = routes.onboarding_tour_action(_request(), csrf_token='t', action='unskip_plot', db=db, user=user)
+    assert back.headers['location'] == '/setores' and not user.organization.onboarding_plot_skipped
+    db.add(Plot(name='Talhão da Represa', farm_id=farm.id, area_hectares=18.4, plant_count=100))
+    db.commit()
+    ctx = routes._onboarding_tour_context(db, user, 't')
+    assert ctx['plot']['name'] == 'Talhão da Represa' and ctx['plots_area'] == '18,40'
+    routes.onboarding_tour_action(_request(), csrf_token='t', action='finish', db=db, user=user)
+    assert user.organization.onboarding_tour == 'done' and routes._onboarding_tour_context(db, user, 't') is None
+
+
+def test_welcome_page_stays_while_tour_is_live(env):
+    db, user = env
+    farm = Farm(name='F', location='MG', total_area=10, organization_id=user.organization_id)
+    db.add(farm)
+    db.flush()
+    db.add(CropSeason(farm_id=farm.id, name='S', start_date=date(2026, 7, 1), end_date=date(2027, 6, 30), culture='Cafe', cultivated_area=10))
+    db.commit()
+    assert routes.onboarding_page(_request(), db=db, user=user, csrf_token='t').headers['location'] == '/dashboard'
+    user.organization.onboarding_tour = 'paused'
+    db.commit()
+    page = routes.onboarding_page(_request(), db=db, user=user, csrf_token='t')
+    assert page.name == 'onboarding.html' and page.ctx['tour_progress']['farm'].id == farm.id and page.ctx['tour_state'] == 'paused'
+
+
+def test_tour_hidden_for_old_or_dismissed_accounts(env):
+    db, user = env
+    user.organization.onboarding_tour = 'active'
+    user.organization.onboarding_dismissed = True
+    db.commit()
+    assert routes._onboarding_tour_context(db, user, 't') is None

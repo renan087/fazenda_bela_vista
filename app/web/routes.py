@@ -1221,6 +1221,8 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
     context["maintenance_state"] = current_maintenance_state(lambda: contextlib.nullcontext(db_session)) if db_session is not None else None
     context["now_utc"] = datetime.now(timezone.utc)
     context["is_super_admin"] = bool(user and is_super_admin_email(user.email))
+    if db_session is not None and "onboarding_tour" not in kwargs and not modal_mode:
+        context["onboarding_tour"] = _onboarding_tour_context(db_session, user, csrf_token)
     context.update(kwargs)
     if repo and "pezinho" not in kwargs:
         context["pezinho"] = _pezinho_context(request, db_session, user, context)
@@ -4422,6 +4424,9 @@ def _render_onboarding(request, db, user, csrf_token, *, form=None, error=None):
         request, user, csrf_token, "onboarding", title="Primeiros passos", _repo=_repository(db),
         form=defaults, error=error, first_name=(user.display_name or user.name or "").split(" ")[0],
         existing_farm=_first_org_farm(db, user),
+        tour_progress=_tour_progress(db, user.organization_id) if user.organization_id else None,
+        tour_state=(user.organization.onboarding_tour or "") if user.organization else "",
+        onboarding_tour=None,
     ), status_code=400 if error else 200)
 
 
@@ -4451,6 +4456,102 @@ def _onboarding_steps(db: Session, user: User) -> list[dict] | None:
         {"title": "Convidar sua equipe", "hint": "Gerente, agrônomo e operadores.", "done": team > 1, "href": "/usuarios"},
     ]
     return None if all(step["done"] for step in steps) else steps
+
+
+TOUR_STATES = {"active", "paused", "ended", "done"}
+TOUR_LIVE = {"active", "paused"}
+
+
+def _tour_eligible(organization) -> bool:
+    """Contas novas (janela do checklist) que não dispensaram os primeiros passos."""
+    if not organization or organization.onboarding_dismissed or organization.slug == "sisfarm":
+        return False
+    created = organization.created_at.date() if organization.created_at else None
+    return not (created and (today_in_app_timezone() - created).days > ONBOARDING_WINDOW_DAYS)
+
+
+def _tour_progress(db: Session, organization_id: int) -> dict:
+    """Situação real dos cadastros essenciais: fazenda, safra e setor (sempre do banco, nunca do navegador)."""
+    farm = db.query(Farm).filter(Farm.organization_id == organization_id).order_by(Farm.id).first()
+    season = plot = None
+    plots_area = 0.0
+    if farm:
+        season = db.query(CropSeason).filter(CropSeason.farm_id == farm.id).order_by(CropSeason.id.desc()).first()
+        plot = db.query(Plot).filter(Plot.farm_id == farm.id).order_by(Plot.id.desc()).first()
+        plots_area = float(db.query(func.coalesce(func.sum(Plot.area_hectares), 0)).filter(Plot.farm_id == farm.id).scalar() or 0)
+    return {"farm": farm, "season": season, "plot": plot, "plots_area": round(plots_area, 2)}
+
+
+def _tour_next_url(progress: dict, plot_skipped: bool) -> str:
+    if not progress["farm"]:
+        return "/fazendas"
+    if not progress["season"]:
+        return "/safras/nova"
+    if not progress["plot"] and not plot_skipped:
+        return "/setores"
+    return "/dashboard"
+
+
+def _onboarding_tour_context(db: Session, user: User, csrf_token: str) -> dict | None:
+    """Dados do tour guiado para o script do Pezinho; None quando não há tour em andamento ou pausado."""
+    try:
+        organization = user.organization if user else None
+        if not organization or (organization.onboarding_tour or "") not in TOUR_LIVE or not _tour_eligible(organization):
+            return None
+        progress = _tour_progress(db, organization.id)
+    except Exception:
+        logging.getLogger(__name__).exception("Falha ao montar o tour de primeiros passos")
+        return None
+    farm, season, plot = progress["farm"], progress["season"], progress["plot"]
+    br = lambda value: f"{float(value or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return {
+        "state": organization.onboarding_tour,
+        "first_name": (user.display_name or user.name or "").split(" ")[0],
+        "csrf": csrf_token,
+        "plot_skipped": bool(organization.onboarding_plot_skipped),
+        "farm": {"id": farm.id, "name": farm.name, "area": br(farm.total_area), "location": farm.location or ""} if farm else None,
+        "season": {"id": season.id, "name": season.name or "Safra"} if season else None,
+        "plot": {"id": plot.id, "name": plot.name, "area": br(plot.area_hectares)} if plot else None,
+        "plots_area": br(progress["plots_area"]) if progress["plots_area"] else "",
+    }
+
+
+@router.post("/primeiros-passos/tour")
+def onboarding_tour_action(request: Request, csrf_token: str = Form(...), action: str = Form(...),
+                           db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Começa, pausa, retoma, encerra ou conclui o tour guiado. Só muda o estado; nenhum cadastro é feito aqui."""
+    validate_csrf(request, csrf_token)
+    organization = user.organization
+    if not organization:
+        return _redirect("/dashboard")
+    states = {"start": "active", "resume": "active", "later": "paused", "pause": "paused", "end": "ended", "finish": "done"}
+    if action in states:
+        organization.onboarding_tour = states[action]
+    elif action == "skip_plot":
+        organization.onboarding_plot_skipped = True
+    elif action == "unskip_plot":
+        organization.onboarding_plot_skipped = False
+        organization.onboarding_tour = "active"
+    db.commit()
+    next_url = {"start": "/primeiros-passos/continuar", "resume": "/primeiros-passos/continuar", "unskip_plot": "/setores"}.get(action, "/dashboard")
+    if request.headers.get("x-sf-fetch"):
+        return JSONResponse({"ok": True, "state": organization.onboarding_tour, "next": next_url})
+    return _redirect(next_url)
+
+
+@router.get("/primeiros-passos/continuar")
+def onboarding_tour_continue(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Leva ao próximo cadastro que falta, já com a fazenda certa selecionada (evita safra em outra fazenda)."""
+    organization = user.organization
+    if not organization:
+        return _redirect("/dashboard")
+    progress = _tour_progress(db, organization.id)
+    farm, season = progress["farm"], progress["season"]
+    if farm and not season and user.active_farm_id != farm.id:
+        persist_user_context(request, db, user, farm.id, None)
+    elif farm and season and (user.active_farm_id != farm.id or not user.active_season_id):
+        persist_user_context(request, db, user, farm.id, season.id)
+    return _redirect(_tour_next_url(progress, bool(organization.onboarding_plot_skipped)))
 
 
 @router.post("/primeiros-passos/dispensar")
@@ -4577,7 +4678,8 @@ def onboarding_page(
     welcome_task = None
     if request.query_params.get("cadastro") == "concluido":
         welcome_task = _build_welcome_email_task_if_needed(db, user)
-    if not user.organization_id or _onboarding_done(db, user):
+    tour = (user.organization.onboarding_tour or "") if user.organization else ""
+    if not user.organization_id or (_onboarding_done(db, user) and tour not in TOUR_LIVE):
         response = _redirect("/dashboard")
     else:
         response = _render_onboarding(request, db, user, csrf_token)
@@ -10229,6 +10331,10 @@ def update_farm_identity_action(
         area = None
     if not area or area <= 0:
         _flash(request, "error", "Informe a área total em hectares, maior que zero.")
+        return _redirect(back)
+    plots_area = float(db.query(func.coalesce(func.sum(Plot.area_hectares), 0)).filter(Plot.farm_id == farm.id).scalar() or 0)
+    if plots_area and area + 0.005 < plots_area:
+        _flash(request, "error", f"Os setores desta fazenda somam {plots_area:.2f} ha".replace(".", ",") + ". A área total não pode ficar menor que isso.")
         return _redirect(back)
     entitlements = quota_write_entitlements(db, farm.organization_id, today_in_app_timezone())
     limit_error = None if farm.operations_paused else farm_limit_error(

@@ -14,6 +14,9 @@ class Organization(Base):
     slug: Mapped[str] = mapped_column(String(180), unique=True, index=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     onboarding_dismissed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default=text("false"))
+    # Tour guiado dos primeiros passos: "" (nunca iniciado), active, paused, ended ou done.
+    onboarding_tour: Mapped[str] = mapped_column(String(12), default="", nullable=False, server_default="")
+    onboarding_plot_skipped: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default=text("false"))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     primary_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

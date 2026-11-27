@@ -180,3 +180,21 @@ def test_list_shows_pending_and_score_and_clima_has_rain_alerts(env):
     assert "Com pendências" in html and "Sem mapa" in html and "fz-pins-data" in html
     assert "% completo" not in html  # percentual aparece só como barra + número na linha
     assert f'href="/fazendas/{farm.id}"' in html
+
+
+def test_identity_area_cannot_be_smaller_than_plots(env, monkeypatch):
+    from app.models.plot import Plot
+    _open_writes(env, monkeypatch)
+    farm = env.db.query(Farm).one()
+    env.db.query(Plot).filter(Plot.farm_id == farm.id).delete()
+    env.db.add(Plot(name="Setor Grande", farm_id=farm.id, area_hectares=50, plant_count=10))
+    env.db.commit()
+    before = float(farm.total_area)
+    req = env.request(f"/fazendas/{farm.id}/identificacao")
+    resp = env.routes.update_farm_identity_action(
+        farm.id, req, csrf_token="x", name=farm.name, location_uf="MG", location_city="Patrocínio", total_area="10,00",
+        db=env.db, user=env.user,
+    )
+    env.db.refresh(farm)
+    assert resp.headers["location"] == f"/fazendas/{farm.id}?painel=identificacao" and float(farm.total_area) == before
+    assert "50,00 ha" in req.session["flash"]["message"]
