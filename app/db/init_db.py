@@ -1647,6 +1647,17 @@ def _sync_schema() -> None:
         connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS cpf_masked VARCHAR(24)"))
         connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS cpf_encrypted TEXT"))
         connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS appearance JSON"))
+        connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS whatsapp_message_id VARCHAR(128)"))
+        connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS whatsapp_status VARCHAR(24)"))
+        connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS whatsapp_sent_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS whatsapp_delivered_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS whatsapp_read_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS whatsapp_failed_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS whatsapp_error VARCHAR(255)"))
+        connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS first_accessed_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE signing_external_signers ADD COLUMN IF NOT EXISTS access_count INTEGER NOT NULL DEFAULT 0"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_signing_external_signers_whatsapp_message_id ON signing_external_signers (whatsapp_message_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_runs_deleted_from_storage_at ON backup_runs(deleted_from_storage_at)"))
         connection.execute(
             text(

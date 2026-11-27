@@ -519,6 +519,19 @@
             <div>
               <strong>{{ ext.name }} <small>({{ ext.role_label }})</small></strong>
               <small>{{ 'WhatsApp' if ext.channel == 'whatsapp' else 'E-mail' }} · {{ ext.phone or ext.email }}</small>
+              {% if ext.whatsapp_status or ext.first_accessed_at %}
+              <small class="ds-ext-tracking-meta">
+                {% if ext.whatsapp_status == 'read' %}WhatsApp: lido ({{ ext.whatsapp_read_at|datetime_sp }})
+                {% elif ext.whatsapp_status == 'delivered' %}WhatsApp: entregue ({{ ext.whatsapp_delivered_at|datetime_sp }})
+                {% elif ext.whatsapp_status == 'sent' %}WhatsApp: enviado ({{ ext.whatsapp_sent_at|datetime_sp }})
+                {% elif ext.whatsapp_status == 'failed' %}WhatsApp: falha no envio{% if ext.whatsapp_error %} · {{ ext.whatsapp_error }}{% endif %}
+                {% endif %}
+                {% if ext.first_accessed_at %}
+                  {% if ext.whatsapp_status %} · {% endif %}
+                  1º acesso: {{ ext.first_accessed_at|datetime_sp }}{% if ext.last_accessed_at and ext.access_count > 1 %} · Último: {{ ext.last_accessed_at|datetime_sp }} ({{ ext.access_count }}x){% endif %}
+                {% endif %}
+              </small>
+              {% endif %}
             </div>
             <div class="ds-person-row-right">
               {% if ext.status == 'signed' %}

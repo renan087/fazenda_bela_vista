@@ -1119,6 +1119,13 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
         else (signer.email or "")
     )
     preset_appearance = signer.appearance if isinstance(signer.appearance, dict) else {"visible": False}
+    electronic.record_real_external_access(
+        db,
+        signer,
+        method=request.method,
+        user_agent=request.headers.get("user-agent"),
+        headers=dict(request.headers),
+    )
     db.commit()
     return templates.TemplateResponse(
         request,

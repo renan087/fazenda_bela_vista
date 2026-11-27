@@ -882,6 +882,7 @@ def _dispatch_external_invite(
     sender: User,
     signer: SigningExternalSigner,
     sign_url: str,
+    raw_token: str = "",
 ) -> tuple[bool, str | None, str]:
     doc_title = doc.title or doc.filename
     sender_name = sender.display_name or sender.name
@@ -899,26 +900,50 @@ def _dispatch_external_invite(
         wa_to = normalize_br_whatsapp(signer.phone)
         template_name = (getattr(settings, "whatsapp_signing_invite_template", None) or "").strip()
         template_lang = (getattr(settings, "whatsapp_template_language", None) or "pt_BR").strip()
+        token_param = (raw_token or sign_url.rsplit("/assinar/", 1)[-1]).strip()
+        now = datetime.now(timezone.utc)
         if not whatsapp_is_configured():
             err = "Envio automático por WhatsApp não está configurado no servidor. Clique em 'Enviar pelo meu WhatsApp' ou copie o link."
         elif template_name:
             try:
-                WhatsAppClient().send_template(
+                resp = WhatsAppClient().send_template(
                     wa_to,
                     template_name,
                     language=template_lang,
-                    body_params=[signer.name, sender_name, farm.name, doc_title, sign_url],
+                    body_params=[signer.name, sender_name, doc_title],
+                    button_url_param=token_param,
+                    button_index="0",
                 )
+                wamid = (((resp or {}).get("messages") or [{}])[0] or {}).get("id")
+                signer.whatsapp_message_id = str(wamid)[:128] if wamid else None
+                signer.whatsapp_status = "sent"
+                signer.whatsapp_sent_at = now
+                signer.whatsapp_error = None
+                db.commit()
                 sent = True
             except WhatsAppError as exc:
-                logger.warning("Falha ao enviar template WhatsApp externo (doc=%s): %s", doc.id, exc)
+                logger.warning("Falha ao enviar template WhatsApp externo (doc=%s, signer=%s): %s", doc.id, signer.id, exc)
+                signer.whatsapp_status = "failed"
+                signer.whatsapp_failed_at = now
+                signer.whatsapp_error = str(exc)[:255]
+                db.commit()
                 err = f"Não foi possível enviar o WhatsApp automático para {signer.name} ({exc}). Use 'Enviar pelo meu WhatsApp' ou copie o link."
         elif has_active_whatsapp_window(db, wa_to):
             try:
-                WhatsAppClient().send_text(wa_to, invite_text)
+                resp = WhatsAppClient().send_text(wa_to, invite_text)
+                wamid = (((resp or {}).get("messages") or [{}])[0] or {}).get("id")
+                signer.whatsapp_message_id = str(wamid)[:128] if wamid else None
+                signer.whatsapp_status = "sent"
+                signer.whatsapp_sent_at = now
+                signer.whatsapp_error = None
+                db.commit()
                 sent = True
             except WhatsAppError as exc:
-                logger.warning("Falha ao enviar link externo via WhatsApp (doc=%s): %s", doc.id, exc)
+                logger.warning("Falha ao enviar link externo via WhatsApp (doc=%s, signer=%s): %s", doc.id, signer.id, exc)
+                signer.whatsapp_status = "failed"
+                signer.whatsapp_failed_at = now
+                signer.whatsapp_error = str(exc)[:255]
+                db.commit()
                 err = f"Não foi possível enviar o WhatsApp para {signer.name} ({exc}). Use 'Enviar pelo meu WhatsApp' ou copie o link."
         else:
             logger.info(
@@ -1011,6 +1036,20 @@ def create_external_signer(
         raise ValueError("Informe um e-mail válido para o signatário externo.")
     clean_role = (role_label or "Signatário").strip()[:64] or "Signatário"
 
+    # Prevenção de envios duplicados para o mesmo destinatário pendente neste documento
+    existing_pending = db.scalars(
+        select(SigningExternalSigner).filter_by(document_id=doc.id, status="pending")
+    ).all()
+    if chan == "whatsapp":
+        wa_target = normalize_br_whatsapp(clean_phone)
+        for ex in existing_pending:
+            if ex.channel == "whatsapp" and normalize_br_whatsapp(ex.phone) == wa_target:
+                raise ValueError(f"{ex.name} já recebeu um convite pendente para este documento. Use 'Reenviar / Link' se precisar reenviar.")
+    else:
+        for ex in existing_pending:
+            if ex.channel == "email" and (ex.email or "").strip().lower() == clean_email:
+                raise ValueError(f"{ex.name} já recebeu um convite pendente para este documento. Use 'Reenviar / Link' se precisar reenviar.")
+
     cpf_masked: str | None = None
     cpf_encrypted: str | None = None
     if cpf_raw is not None and str(cpf_raw).strip():
@@ -1043,7 +1082,7 @@ def create_external_signer(
 
     sign_url = f"{base_url.rstrip('/')}/assinar/{raw_token}"
     sent, err, whatsapp_share_url = _dispatch_external_invite(
-        db, doc=doc, farm=farm, sender=sender, signer=signer, sign_url=sign_url,
+        db, doc=doc, farm=farm, sender=sender, signer=signer, sign_url=sign_url, raw_token=raw_token,
     )
     return signer, sign_url, sent, err, whatsapp_share_url
 
@@ -1059,17 +1098,133 @@ def resend_external_signer(
 ) -> tuple[str, bool, str | None, str]:
     if signer.status == "signed":
         raise ValueError("Este signatário já assinou o documento.")
-    raw_token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
+    if (
+        signer.channel == "whatsapp"
+        and signer.whatsapp_status in {"sent", "delivered", "read"}
+        and signer.whatsapp_sent_at is not None
+        and (now - utc(signer.whatsapp_sent_at)).total_seconds() < 30
+    ):
+        raise ValueError("Convite enviado há poucos segundos. Aguarde alguns instantes antes de reenviar.")
+    raw_token = secrets.token_urlsafe(32)
     signer.access_token_hash = hash_persistent_token(raw_token)
     signer.token_expires_at = now + timedelta(days=EXTERNAL_TOKEN_DAYS)
     signer.status = "pending"
+    signer.whatsapp_message_id = None
+    signer.whatsapp_status = None
+    signer.whatsapp_error = None
     db.commit()
     sign_url = f"{base_url.rstrip('/')}/assinar/{raw_token}"
     sent, err, whatsapp_share_url = _dispatch_external_invite(
-        db, doc=doc, farm=farm, sender=sender, signer=signer, sign_url=sign_url,
+        db, doc=doc, farm=farm, sender=sender, signer=signer, sign_url=sign_url, raw_token=raw_token,
     )
     return sign_url, sent, err, whatsapp_share_url
+
+
+_WA_STATUS_RANK = {"sent": 1, "delivered": 2, "read": 3}
+
+
+def record_whatsapp_status_updates(db, updates) -> int:
+    """Atualiza status de envio, entrega, leitura e falha recebidos do webhook da Meta."""
+    if not updates:
+        return 0
+    changed = 0
+    now = datetime.now(timezone.utc)
+    for upd in updates:
+        wamid = (getattr(upd, "wamid", None) or "").strip()
+        state = (getattr(upd, "status", None) or "").strip().lower()
+        if not wamid or state not in {"sent", "delivered", "read", "failed"}:
+            continue
+        signer = db.scalar(select(SigningExternalSigner).filter_by(whatsapp_message_id=wamid))
+        if signer is None:
+            continue
+        ts_int = int(getattr(upd, "timestamp", 0) or 0)
+        ts = datetime.fromtimestamp(ts_int, tz=timezone.utc) if ts_int > 0 else now
+        if state == "failed":
+            signer.whatsapp_status = "failed"
+            signer.whatsapp_failed_at = signer.whatsapp_failed_at or ts
+            signer.whatsapp_error = (getattr(upd, "error_message", None) or "Falha na entrega pelo WhatsApp.")[:255]
+        else:
+            if state == "sent":
+                signer.whatsapp_sent_at = signer.whatsapp_sent_at or ts
+            elif state == "delivered":
+                signer.whatsapp_sent_at = signer.whatsapp_sent_at or ts
+                signer.whatsapp_delivered_at = signer.whatsapp_delivered_at or ts
+            elif state == "read":
+                signer.whatsapp_sent_at = signer.whatsapp_sent_at or ts
+                signer.whatsapp_delivered_at = signer.whatsapp_delivered_at or ts
+                signer.whatsapp_read_at = signer.whatsapp_read_at or ts
+            cur_rank = _WA_STATUS_RANK.get(signer.whatsapp_status or "", 0)
+            if _WA_STATUS_RANK[state] >= cur_rank:
+                signer.whatsapp_status = state
+                signer.whatsapp_error = None
+        changed += 1
+    if changed:
+        db.commit()
+    return changed
+
+
+_BOT_UA_MARKERS = (
+    "whatsapp",
+    "facebookexternalhit",
+    "facebot",
+    "meta-external",
+    "telegrambot",
+    "slackbot",
+    "discordbot",
+    "twitterbot",
+    "linkedinbot",
+    "skypeuripreview",
+    "googlebot",
+    "bingbot",
+    "bingpreview",
+    "applebot",
+    "yandexbot",
+    "duckduckbot",
+    "baiduspider",
+    "crawler",
+    "spider",
+    "slurp",
+    "linkpreview",
+    "embedly",
+    "vkshare",
+    "curl/",
+    "wget",
+    "python-requests",
+    "aiohttp",
+    "headlesschrome",
+    "phantomjs",
+)
+
+
+def is_likely_bot_access(*, method: str = "GET", user_agent: str | None = "", headers: dict | None = None) -> bool:
+    """Identifica crawlers, bots de preview (WhatsApp/Meta/Slack) e prefetches para não gerar falsos acessos."""
+    if (method or "GET").upper() != "GET":
+        return True
+    ua = (user_agent or "").strip().lower()
+    if not ua:
+        return True
+    if any(marker in ua for marker in _BOT_UA_MARKERS):
+        return True
+    if headers:
+        lowered = {str(k).lower(): str(v).lower() for k, v in headers.items()}
+        for h_name in ("purpose", "sec-purpose", "x-purpose", "x-moz"):
+            if any(tok in lowered.get(h_name, "") for tok in ("prefetch", "preview", "prerender")):
+                return True
+    return False
+
+
+def record_real_external_access(db, signer: SigningExternalSigner, *, method: str = "GET", user_agent: str | None = "", headers: dict | None = None) -> bool:
+    """Registra primeiro e último acesso real ao documento, ignorando bots e pré-visualizações."""
+    if is_likely_bot_access(method=method, user_agent=user_agent, headers=headers):
+        return False
+    now = datetime.now(timezone.utc)
+    if signer.first_accessed_at is None:
+        signer.first_accessed_at = now
+    signer.last_accessed_at = now
+    signer.access_count = int(signer.access_count or 0) + 1
+    db.commit()
+    return True
 
 
 def get_external_signer_by_token(db, raw_token: str) -> tuple[SigningExternalSigner, SigningDocument, Farm] | None:

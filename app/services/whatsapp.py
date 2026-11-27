@@ -62,6 +62,58 @@ class InboundMessage:
     raw: dict
 
 
+@dataclass
+class StatusUpdate:
+    wamid: str
+    status: str
+    recipient_id: str
+    timestamp: int
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+def extract_statuses(payload: dict) -> list[StatusUpdate]:
+    """Extrai eventos de status (sent, delivered, read, failed) enviados pelo webhook da Meta."""
+    phone_number_id = (get_settings().whatsapp_phone_number_id or "").strip()
+    found: list[StatusUpdate] = []
+    if not isinstance(payload, dict) or payload.get("object") != "whatsapp_business_account":
+        return found
+    for entry in payload.get("entry") or []:
+        for change in (entry or {}).get("changes") or []:
+            if (change or {}).get("field") != "messages":
+                continue
+            value = change.get("value") or {}
+            metadata = value.get("metadata") or {}
+            if phone_number_id and str(metadata.get("phone_number_id") or "") != phone_number_id:
+                continue
+            for st in value.get("statuses") or []:
+                wamid = str(st.get("id") or "").strip()[:128]
+                state = str(st.get("status") or "").strip().lower()[:24]
+                if not wamid or state not in {"sent", "delivered", "read", "failed"}:
+                    continue
+                recipient_id = re.sub(r"\D", "", str(st.get("recipient_id") or ""))[:32]
+                try:
+                    timestamp = int(st.get("timestamp") or 0)
+                except (TypeError, ValueError):
+                    timestamp = 0
+                err_code = None
+                err_msg = None
+                errors = st.get("errors") or []
+                if errors and isinstance(errors[0], dict):
+                    first_err = errors[0]
+                    if first_err.get("code") is not None:
+                        err_code = str(first_err.get("code"))[:32]
+                    reason = " ".join(str(first_err.get("title") or first_err.get("message") or "").split())[:100]
+                    detail = " ".join(str((first_err.get("error_data") or {}).get("details") or "").split())[:140]
+                    combined = f"{reason}{' - ' + detail if detail else ''}".strip()
+                    if err_code and combined:
+                        err_msg = f"[{err_code}] {combined}"[:250]
+                    elif combined or err_code:
+                        err_msg = (combined or f"Erro {err_code}")[:250]
+                found.append(StatusUpdate(wamid, state, recipient_id, timestamp, err_code, err_msg))
+    return found
+
+
 def extract_messages(payload: dict) -> list[InboundMessage]:
     """Mensagens de usuarios para o nosso numero (status de entrega e outros numeros sao ignorados)."""
     phone_number_id = (get_settings().whatsapp_phone_number_id or "").strip()
@@ -193,17 +245,29 @@ class WhatsAppClient:
         *,
         language: str = "pt_BR",
         body_params: list[str] | None = None,
+        button_url_param: str | None = None,
+        button_index: str | int = "0",
     ) -> dict:
         """Envia mensagem de template aprovado na Meta (funciona fora da janela de 24h)."""
         template: dict = {
             "name": (template_name or "").strip(),
             "language": {"code": (language or "pt_BR").strip()},
         }
+        components: list[dict] = []
         if body_params:
-            template["components"] = [{
+            components.append({
                 "type": "body",
                 "parameters": [{"type": "text", "text": str(p)[:1024]} for p in body_params],
-            }]
+            })
+        if button_url_param is not None and str(button_url_param).strip():
+            components.append({
+                "type": "button",
+                "sub_type": "url",
+                "index": str(button_index),
+                "parameters": [{"type": "text", "text": str(button_url_param).strip()[:1024]}],
+            })
+        if components:
+            template["components"] = components
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",

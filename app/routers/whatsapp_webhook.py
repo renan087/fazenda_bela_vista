@@ -17,7 +17,8 @@ from fastapi.responses import PlainTextResponse
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.services import whatsapp_bot
-from app.services.whatsapp import WhatsAppClient, extract_messages, summarize, valid_signature, verify_subscription
+from app.services.document_signing import electronic as electronic_signing
+from app.services.whatsapp import WhatsAppClient, extract_messages, extract_statuses, summarize, valid_signature, verify_subscription
 
 # Filho do logger do uvicorn: aparece no log do Render tambem em nivel INFO.
 logger = logging.getLogger("uvicorn.error.whatsapp")
@@ -40,6 +41,11 @@ def whatsapp_verify(request: Request):
 def _store(messages) -> list[int]:
     with SESSION_FACTORY() as db:
         return whatsapp_bot.store_inbound(db, messages)
+
+
+def _record_statuses(statuses) -> int:
+    with SESSION_FACTORY() as db:
+        return electronic_signing.record_whatsapp_status_updates(db, statuses)
 
 
 def process_queue(ids: list[int]) -> None:
@@ -66,7 +72,10 @@ async def whatsapp_receive(request: Request, background_tasks: BackgroundTasks):
     except ValueError:
         raise HTTPException(status_code=400, detail="JSON inválido") from None
     messages = extract_messages(payload)
+    statuses = extract_statuses(payload)
     ids = await run_in_threadpool(_store, messages) if messages else []
+    if statuses:
+        await run_in_threadpool(_record_statuses, statuses)
     logger.info("Webhook WhatsApp recebido: %s aceitas=%s novas=%s", summarize(payload), len(messages), len(ids))
     if ids:
         background_tasks.add_task(process_queue, ids)

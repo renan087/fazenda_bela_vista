@@ -852,6 +852,11 @@ def test_external_signer_and_mixed_icp_electronic_document(authority, web_db, mo
     monkeypatch.setattr(workflow, "send_plain_email", lambda *args: emails.append(args))
     monkeypatch.setattr(electronic, "send_plain_email", lambda *args: emails.append(args))
     monkeypatch.setattr(electronic, "whatsapp_is_configured", lambda: True)
+    monkeypatch.setattr(electronic, "get_settings", lambda: SimpleNamespace(
+        whatsapp_signing_invite_template="",
+        whatsapp_signing_otp_template="",
+        whatsapp_template_language="pt_BR",
+    ))
 
     class _FakeWA:
         def send_text(self, to, body, **kwargs):
@@ -1067,9 +1072,9 @@ def test_external_signer_email_and_whatsapp_template_dispatch(web_db, monkeypatc
     monkeypatch.setattr(electronic, "whatsapp_is_configured", lambda: True)
 
     class _FakeTemplateWA:
-        def send_template(self, to, template_name, *, language="pt_BR", body_params=None):
-            wa_templates.append((to, template_name, language, body_params))
-            return {"ok": True}
+        def send_template(self, to, template_name, *, language="pt_BR", body_params=None, button_url_param=None, button_index="0"):
+            wa_templates.append((to, template_name, language, body_params, button_url_param, str(button_index)))
+            return {"messages": [{"id": "wamid.template.001"}]}
 
     monkeypatch.setattr(electronic, "WhatsAppClient", _FakeTemplateWA)
 
@@ -1118,6 +1123,12 @@ def test_external_signer_email_and_whatsapp_template_dispatch(web_db, monkeypatc
     assert len(wa_templates) == 1
     assert wa_templates[0][0] == "5535992223344"
     assert wa_templates[0][1] == "sisfarm_convite_assinatura"
+    assert wa_templates[0][2] == "pt_BR"
+    assert wa_templates[0][3] == ["Pedro Fornecedor", "Pessoa 1", "termo_externo"]
+    token_only = ext_wa.json()["sign_url"].rsplit("/assinar/", 1)[1]
+    assert wa_templates[0][4] == token_only
+    assert not wa_templates[0][4].startswith("http")
+    assert wa_templates[0][5] == "0"
 
 
 
@@ -1331,3 +1342,181 @@ def test_public_validate_direct_pdf_upload_and_styled_receipt_pdf(web_db, monkey
     assert receipt_by_payload.headers["content-type"].startswith("application/pdf")
     assert receipt_by_payload.content.startswith(b"%PDF-")
     assert signing_options(read_pdf(receipt_by_payload.content))["pages"] == 1
+
+
+
+def test_whatsapp_invite_webhook_statuses_bot_filtering_and_duplicate_prevention(web_db, monkeypatch):
+    import hashlib
+    import hmac
+    import json
+    from app.models.signed_document import SigningExternalSigner
+    from app.routers import whatsapp_webhook
+    from app.services import whatsapp as wa_svc
+    from app.services.document_signing import electronic
+
+    sessions, _ = web_db
+    sent_payloads = []
+
+    class _FakeHttp:
+        def post(self, url, json=None, headers=None):
+            sent_payloads.append((url, json))
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {"messaging_product": "whatsapp", "messages": [{"id": "wamid.meta.invite.123"}]},
+            )
+
+    monkeypatch.setattr(electronic, "whatsapp_is_configured", lambda: True)
+    monkeypatch.setattr(
+        electronic,
+        "WhatsAppClient",
+        lambda: wa_svc.WhatsAppClient.__new__(wa_svc.WhatsAppClient) if False else _build_real_wa_client(_FakeHttp()),
+    )
+
+    def _build_real_wa_client(http):
+        c = wa_svc.WhatsAppClient(http=http)
+        c.token = "tok-test"
+        c.phone_number_id = "100200300"
+        return c
+
+    web = _make_signing_app(sessions)
+    web.include_router(whatsapp_webhook.router)
+    monkeypatch.setattr(whatsapp_webhook, "SESSION_FACTORY", sessions)
+    monkeypatch.setattr(
+        whatsapp_webhook,
+        "get_settings",
+        lambda: SimpleNamespace(whatsapp_app_secret="sec-webhook-123", whatsapp_phone_number_id="100200300"),
+    )
+    monkeypatch.setattr(
+        wa_svc,
+        "get_settings",
+        lambda: SimpleNamespace(
+            whatsapp_access_token="tok-test",
+            whatsapp_phone_number_id="100200300",
+            whatsapp_graph_version="v23.0",
+            whatsapp_app_secret="sec-webhook-123",
+        ),
+    )
+
+    client = LocalTestClient(web)
+    headers = {"X-CSRF-Token": client.get("/test-login", params={"user_id": 1, "farm_id": 1}).json()["csrf"]}
+
+    created = client.post("/assinatura-digital/documentos", content=_original(), headers={
+        **headers,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "contrato_wa.pdf",
+        "X-Document-Title": "Contrato%20Safra%202026",
+        "X-Document-Owner-Signs": "0",
+        "X-Document-Signing-Policy": "electronic",
+    })
+    assert created.status_code == 201, created.text
+    endpoint = created.json()["url"]
+
+    # 1) Create external signer with default approved template (outside 24h window!)
+    ext = client.post(endpoint + "/externos", headers=headers, json={
+        "name": "Marcos Comprador",
+        "cpf": "111.444.777-35",
+        "role_label": "Comprador",
+        "channel": "whatsapp",
+        "phone": "(35) 99876-5432",
+    })
+    assert ext.status_code == 201, ext.text
+    ext_data = ext.json()
+    assert ext_data["notification_sent"] is True
+    assert ext_data["whatsapp_share_url"].startswith("https://wa.me/5535998765432")
+    signer_id = ext_data["signer_id"]
+    token = ext_data["sign_url"].rsplit("/assinar/", 1)[1]
+
+    # Verify exact Meta Cloud API payload (3 body variables + URL button index 0 with token only)
+    assert len(sent_payloads) == 1
+    _, body = sent_payloads[0]
+    assert body["type"] == "template"
+    assert body["template"]["name"] == "sisfarm_convite_assinatura"
+    assert body["template"]["language"]["code"] == "pt_BR"
+    comps = body["template"]["components"]
+    assert comps[0] == {
+        "type": "body",
+        "parameters": [
+            {"type": "text", "text": "Marcos Comprador"},
+            {"type": "text", "text": "Pessoa 1"},
+            {"type": "text", "text": "Contrato Safra 2026"},
+        ],
+    }
+    assert comps[1] == {
+        "type": "button",
+        "sub_type": "url",
+        "index": "0",
+        "parameters": [{"type": "text", "text": token}],
+    }
+
+    # 2) Duplicate prevention: creating the same pending recipient again is blocked; immediate resend within 30s is blocked
+    dup = client.post(endpoint + "/externos", headers=headers, json={
+        "name": "Marcos Comprador",
+        "cpf": "111.444.777-35",
+        "role_label": "Comprador",
+        "channel": "whatsapp",
+        "phone": "35998765432",
+    })
+    assert dup.status_code == 422
+    assert "já recebeu um convite" in dup.text
+
+    fast_resend = client.post(f"{endpoint}/externos/{signer_id}/reenviar", headers=headers)
+    assert fast_resend.status_code == 422
+    assert "poucos segundos" in fast_resend.text
+
+    # 3) Webhook records sent -> delivered -> read (and ignores out-of-order sent after read)
+    def _post_wh(payload_dict):
+        raw = json.dumps(payload_dict).encode("utf-8")
+        sig = "sha256=" + hmac.new(b"sec-webhook-123", raw, hashlib.sha256).hexdigest()
+        return client.post("/api/webhooks/whatsapp", content=raw, headers={"X-Hub-Signature-256": sig, "Content-Type": "application/json"})
+
+    wh_res = _post_wh({
+        "object": "whatsapp_business_account",
+        "entry": [{
+            "changes": [{
+                "field": "messages",
+                "value": {
+                    "metadata": {"phone_number_id": "100200300"},
+                    "statuses": [
+                        {"id": "wamid.meta.invite.123", "status": "delivered", "timestamp": "1732700000", "recipient_id": "5535998765432"},
+                        {"id": "wamid.meta.invite.123", "status": "read", "timestamp": "1732700120", "recipient_id": "5535998765432"},
+                        {"id": "wamid.meta.invite.123", "status": "sent", "timestamp": "1732699900", "recipient_id": "5535998765432"},
+                    ],
+                },
+            }],
+        }],
+    })
+    assert wh_res.status_code == 200
+
+    with sessions() as db:
+        row = db.get(SigningExternalSigner, signer_id)
+        assert row.whatsapp_status == "read"
+        assert row.whatsapp_sent_at is not None
+        assert row.whatsapp_delivered_at is not None
+        assert row.whatsapp_read_at is not None
+
+    # 4) Bot accesses (WhatsApp previewer, Facebook crawler, prefetch) MUST NOT count as document access
+    pub = LocalTestClient(web)
+    for ua, extra in [
+        ("WhatsApp/2.23.20.0 A", {}),
+        ("facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)", {}),
+        ("Mozilla/5.0", {"Sec-Purpose": "prefetch"}),
+        ("", {}),
+    ]:
+        r = pub.get(f"/assinar/{token}", headers={"User-Agent": ua, **extra})
+        assert r.status_code == 200
+
+    with sessions() as db:
+        row = db.get(SigningExternalSigner, signer_id)
+        assert row.first_accessed_at is None
+        assert row.last_accessed_at is None
+        assert row.access_count == 0
+
+    # 5) Real browser accesses DO record first_accessed_at, last_accessed_at and access_count
+    real_ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15"
+    assert pub.get(f"/assinar/{token}", headers={"User-Agent": real_ua}).status_code == 200
+    assert pub.get(f"/assinar/{token}", headers={"User-Agent": real_ua}).status_code == 200
+    with sessions() as db:
+        row = db.get(SigningExternalSigner, signer_id)
+        assert row.first_accessed_at is not None
+        assert row.last_accessed_at is not None
+        assert row.access_count == 2
