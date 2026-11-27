@@ -1,0 +1,23 @@
+{% from "partials/digital_signing_ui.html" import icon %}
+<div class="nx-more fm-action-menu" data-fm-action-menu
+     data-farm-id="{{ farm.id }}" data-farm-name="{{ farm.name }}" data-farm-plots="{{ plots_count }}"
+     data-redirect-to="{{ farm_action_redirect }}">
+    <button type="button" class="sf-icon-btn fm-more-btn" data-fm-menu-trigger
+            aria-label="Mais ações para {{ farm.name }}" aria-haspopup="menu" aria-expanded="false"
+            aria-controls="fm-action-menu-{{ farm.id }}">{{ icon('dots', 18) }}</button>
+    <div class="nx-menu" id="fm-action-menu-{{ farm.id }}" role="menu" aria-label="Ações de {{ farm.name }}" hidden>
+        {% if farm.operations_paused %}
+        <button type="button" class="nx-mi" role="menuitem" tabindex="-1" data-fm-confirm="resume">
+            {{ icon('play', 15) }}<span>Reativar operações</span>
+        </button>
+        {% else %}
+        <button type="button" class="nx-mi" role="menuitem" tabindex="-1" data-fm-confirm="pause">
+            {{ icon('pause', 15) }}<span>Pausar operações</span>
+        </button>
+        {% endif %}
+        <div class="nx-sep" role="separator"></div>
+        <button type="button" class="nx-mi is-danger" role="menuitem" tabindex="-1" data-fm-confirm="delete">
+            {{ icon('trash', 15) }}<span>Excluir fazenda</span>
+        </button>
+    </div>
+</div>

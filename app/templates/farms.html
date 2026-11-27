@@ -150,16 +150,9 @@
                     <a href="/fazendas/{{ farm.id }}/editar" class="sf-icon-btn" aria-label="Editar {{ farm.name }}" title="Editar">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
                     </a>
-                    <button type="button" class="sf-icon-btn"
-                            aria-label="Mais ações para {{ farm.name }}"
-                            title="Pausar ou excluir"
-                            data-fm-danger-open
-                            data-farm-id="{{ farm.id }}"
-                            data-farm-name="{{ farm.name }}"
-                            data-farm-paused="{{ '1' if farm.operations_paused else '0' }}"
-                            data-farm-plots="{{ m.plots_count }}">
-                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
-                    </button>
+                    {% with plots_count=m.plots_count, farm_action_redirect='/fazendas' %}
+                    {% include "partials/farm_action_menu.html" %}
+                    {% endwith %}
                     {% endif %}
                 </div>
             </article>
@@ -271,45 +264,7 @@
 </dialog>
 {% endif %}
 
-{# Modal: Ações sensíveis (Pausar / Excluir) #}
-{% if can_write_page %}
-<dialog class="fm-dialog is-sm" data-fm-danger-modal aria-labelledby="fm-danger-title">
-    <div class="fm-sheet">
-        <div class="fm-sheet-head">
-            <div>
-                <p class="pd-eyebrow" style="color:#B42318;">Ações sensíveis</p>
-                <h3 id="fm-danger-title" data-fm-danger-title>Gerenciar fazenda</h3>
-            </div>
-            <button type="button" class="sf-icon-btn" aria-label="Fechar" data-fm-dialog-close>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-            </button>
-        </div>
-        <div class="fm-sheet-body">
-            <div style="border:1px solid #F0D9A6; background:#FFFBF2; border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:10px;">
-                <strong data-fm-pause-heading style="font-size:14px;">Pausar operações</strong>
-                <p style="margin:0; font-size:13px; color:#7A4F00;">Mantém todo o histórico de setores, safras e financeiro intacto, mas impede novos lançamentos nesta propriedade.</p>
-                <form method="post" data-fm-pause-form style="margin:0;">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="hidden" name="action" value="pause" data-fm-pause-action>
-                    <button type="submit" class="sf-btn sf-btn-secondary" data-fm-pause-btn>Pausar operações</button>
-                </form>
-            </div>
-            <div role="alert" style="border:1px solid #F5C2BE; background:#FDECEA; border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:10px;">
-                <strong style="font-size:14px; color:#B42318;">Excluir fazenda permanentemente</strong>
-                <p data-fm-delete-note style="margin:0; font-size:13px; color:#7A271A;">Esta ação não pode ser desfeita.</p>
-                <form method="post" data-fm-delete-form style="margin:0;">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit" class="sf-btn cl-btn-danger">Confirmar exclusão</button>
-                </form>
-            </div>
-        </div>
-        <div class="fm-sheet-foot">
-            <span></span>
-            <button type="button" class="sf-btn sf-btn-secondary" data-fm-dialog-close>Cancelar</button>
-        </div>
-    </div>
-</dialog>
-{% endif %}
+{% if can_write_page %}{% include "partials/farm_action_dialog.html" %}{% endif %}
 
 {# Modal elegante de confirmação de área ao salvar edição rápida no mapa #}
 <dialog class="fm-dialog is-sm" data-fm-map-area-modal aria-labelledby="fm-map-area-modal-title">
@@ -350,5 +305,5 @@
 <script type="application/json" id="fm-boundary-geometries-data">{{ farm_boundary_geometries_json|safe }}</script>
 <script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
 <script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261121pzw3"></script>
-<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm7"></script>
+<script src="{{ url_for('static', path='js/farms.js') }}?v=20261126fmactions"></script>
 {% endblock %}

@@ -97,37 +97,148 @@
     document.querySelectorAll('[data-fm-plan-open]').forEach((b) => b.addEventListener('click', () => openDialog(planModal)));
     planModal?.querySelectorAll('[data-fm-dialog-close]').forEach((b) => b.addEventListener('click', () => closeDialog(planModal)));
 
-    const dangerModal = document.querySelector('[data-fm-danger-modal]');
-    if (dangerModal) {
-        const titleEl = dangerModal.querySelector('[data-fm-danger-title]');
-        const pauseForm = dangerModal.querySelector('[data-fm-pause-form]');
-        const pauseActionInput = dangerModal.querySelector('[data-fm-pause-action]');
-        const pauseHeading = dangerModal.querySelector('[data-fm-pause-heading]');
-        const pauseBtn = dangerModal.querySelector('[data-fm-pause-btn]');
-        const deleteForm = dangerModal.querySelector('[data-fm-delete-form]');
-        const deleteNote = dangerModal.querySelector('[data-fm-delete-note]');
+    const actionDialog = document.querySelector('[data-fm-action-dialog]');
+    if (actionDialog) {
+        const form = actionDialog.querySelector('[data-fm-action-form]');
+        const title = actionDialog.querySelector('[data-fm-action-title]');
+        const farmName = actionDialog.querySelector('[data-fm-action-farm]');
+        const description = actionDialog.querySelector('[data-fm-action-description]');
+        const confirm = actionDialog.querySelector('[data-fm-action-submit]');
+        const cancel = actionDialog.querySelector('[data-fm-action-cancel]');
+        const redirect = actionDialog.querySelector('[data-fm-action-redirect]');
+        const actionValue = actionDialog.querySelector('[data-fm-action-value]');
+        const icons = actionDialog.querySelectorAll('[data-fm-action-icon]');
+        const actions = {
+            pause: {
+                title: 'Pausar operações?',
+                description: 'O histórico de setores, safras e financeiro fica disponível para consulta. Novos lançamentos ficam bloqueados até a reativação.',
+                label: 'Pausar operações',
+            },
+            resume: {
+                title: 'Reativar operações?',
+                description: 'A fazenda voltará a aceitar novos lançamentos se houver espaço no plano atual.',
+                label: 'Reativar operações',
+            },
+            delete: {
+                title: 'Excluir fazenda?',
+                description: 'A fazenda será excluída permanentemente. Esta ação não pode ser desfeita.',
+                label: 'Excluir fazenda',
+            },
+        };
+        let openMenu = null;
 
-        document.querySelectorAll('[data-fm-danger-open]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const id = btn.dataset.farmId;
-                const name = btn.dataset.farmName || 'Fazenda';
-                const paused = btn.dataset.farmPaused === '1';
-                const plotsCount = Number(btn.dataset.farmPlots || 0);
-                if (titleEl) titleEl.textContent = name;
-                if (pauseForm) pauseForm.action = `/fazendas/${id}/regularizacao`;
-                if (pauseActionInput) pauseActionInput.value = paused ? 'resume' : 'pause';
-                if (pauseHeading) pauseHeading.textContent = paused ? 'Reativar operações' : 'Pausar operações';
-                if (pauseBtn) pauseBtn.textContent = paused ? 'Reativar operações agora' : 'Pausar operações';
-                if (deleteForm) deleteForm.action = `/fazendas/${id}/excluir`;
-                if (deleteNote) {
-                    deleteNote.textContent = plotsCount > 0
-                        ? `Esta fazenda possui ${plotsCount} setor(es) vinculado(s). Remova ou desvincule os setores antes de excluir.`
-                        : `Excluir "${name}" permanentemente? Esta ação não pode ser desfeita.`;
+        const closeMenu = () => {
+            if (!openMenu) return;
+            const { trigger, panel } = openMenu;
+            openMenu = null;
+            trigger.setAttribute('aria-expanded', 'false');
+            panel.hidden = true;
+        };
+
+        const showConfirmation = (action, farm) => {
+            const settings = actions[action];
+            const deleting = action === 'delete';
+            const linkedPlots = Number(farm.farmPlots);
+            const blocked = deleting && linkedPlots > 0;
+
+            title.textContent = settings.title;
+            farmName.textContent = farm.farmName;
+            description.textContent = blocked
+                ? (linkedPlots === 1
+                    ? 'Esta fazenda tem 1 setor vinculado. Remova ou desvincule esse setor antes de excluir a fazenda.'
+                    : `Esta fazenda tem ${linkedPlots} setores vinculados. Remova ou desvincule esses setores antes de excluir a fazenda.`)
+                : settings.description;
+            redirect.value = farm.redirectTo;
+            redirect.disabled = deleting;
+            actionValue.value = action;
+            actionValue.disabled = deleting;
+            form.action = `/fazendas/${farm.farmId}/${deleting ? 'excluir' : 'regularizacao'}`;
+            actionDialog.dataset.fmAction = action;
+            icons.forEach((icon) => { icon.hidden = icon.dataset.fmActionIcon !== action; });
+            confirm.textContent = settings.label;
+            confirm.className = `sf-btn ${deleting ? 'sf-btn-danger' : 'sf-btn-primary'}`;
+            confirm.hidden = blocked;
+            confirm.disabled = blocked;
+            cancel.textContent = blocked ? 'Entendi' : 'Cancelar';
+            openDialog(actionDialog);
+            cancel.focus();
+        };
+
+        document.querySelectorAll('[data-fm-action-menu]').forEach((wrapper) => {
+            const trigger = wrapper.querySelector('[data-fm-menu-trigger]');
+            const panel = wrapper.querySelector('.nx-menu');
+            const items = [...panel.querySelectorAll('[data-fm-confirm]')];
+
+            const showMenu = (item) => {
+                closeMenu();
+                openMenu = { trigger, panel };
+                trigger.setAttribute('aria-expanded', 'true');
+                panel.hidden = false;
+                panel.style.removeProperty('--fm-menu-shift');
+                const triggerRect = trigger.getBoundingClientRect();
+                const spaceBelow = window.innerHeight - triggerRect.bottom;
+                panel.classList.toggle('is-up', spaceBelow < panel.offsetHeight + 14 && triggerRect.top > spaceBelow);
+                const left = panel.getBoundingClientRect().left;
+                if (left < 8) panel.style.setProperty('--fm-menu-shift', `${8 - left}px`);
+                item.focus();
+            };
+
+            trigger.addEventListener('click', () => {
+                if (openMenu?.trigger === trigger) closeMenu();
+                else showMenu(items[0]);
+            });
+
+            items.forEach((item) => item.addEventListener('click', () => {
+                closeMenu();
+                trigger.focus();
+                showConfirmation(item.dataset.fmConfirm, wrapper.dataset);
+            }));
+
+            wrapper.addEventListener('focusout', (event) => {
+                if (openMenu?.trigger === trigger && !wrapper.contains(event.relatedTarget)) closeMenu();
+            });
+
+            wrapper.addEventListener('keydown', (event) => {
+                if (openMenu?.trigger !== trigger) {
+                    if (event.target !== trigger || !['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+                    event.preventDefault();
+                    showMenu(event.key === 'ArrowDown' ? items[0] : items.at(-1));
+                    return;
                 }
-                openDialog(dangerModal);
+
+                const index = items.indexOf(document.activeElement);
+                switch (event.key) {
+                    case 'Escape':
+                        event.preventDefault();
+                        closeMenu();
+                        trigger.focus();
+                        break;
+                    case 'ArrowDown':
+                        event.preventDefault();
+                        items[(index + 1) % items.length].focus();
+                        break;
+                    case 'ArrowUp':
+                        event.preventDefault();
+                        items[(index <= 0 ? items.length : index) - 1].focus();
+                        break;
+                    case 'Home':
+                    case 'End':
+                        event.preventDefault();
+                        (event.key === 'Home' ? items[0] : items.at(-1)).focus();
+                        break;
+                }
             });
         });
-        dangerModal.querySelectorAll('[data-fm-dialog-close]').forEach((b) => b.addEventListener('click', () => closeDialog(dangerModal)));
+
+        document.addEventListener('click', (event) => {
+            if (openMenu && !event.target.closest('[data-fm-action-menu]')) closeMenu();
+        });
+        actionDialog.querySelectorAll('[data-fm-dialog-close]').forEach((button) => {
+            button.addEventListener('click', () => closeDialog(actionDialog));
+        });
+        form.addEventListener('submit', (event) => {
+            if (confirm.disabled) event.preventDefault();
+        });
     }
 
     /* Modal de Mapa Ampliado + Editor de Polígono com descarte seguro ao cancelar */

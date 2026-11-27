@@ -1,0 +1,24 @@
+{% from "partials/digital_signing_ui.html" import icon %}
+<dialog class="fm-dialog fm-action-dialog" data-fm-action-dialog
+        aria-labelledby="fm-action-title" aria-describedby="fm-action-description">
+    <form class="fm-action-form" method="post" data-fm-action-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="redirect_to" data-fm-action-redirect>
+        <input type="hidden" name="action" data-fm-action-value>
+        <div class="fm-action-content">
+            <div class="fm-action-top">
+                <span class="fm-action-icon" data-fm-action-icon="pause">{{ icon('pause', 24) }}</span>
+                <span class="fm-action-icon" data-fm-action-icon="resume" hidden>{{ icon('play', 24) }}</span>
+                <span class="fm-action-icon" data-fm-action-icon="delete" hidden>{{ icon('trash', 24) }}</span>
+                <button type="button" class="sf-icon-btn" aria-label="Fechar" data-fm-dialog-close>{{ icon('close', 18) }}</button>
+            </div>
+            <h2 id="fm-action-title" data-fm-action-title></h2>
+            <p class="fm-action-farm" data-fm-action-farm></p>
+            <p class="fm-action-description" id="fm-action-description" data-fm-action-description></p>
+        </div>
+        <div class="fm-action-footer">
+            <button type="button" class="sf-btn sf-btn-secondary" data-fm-dialog-close data-fm-action-cancel autofocus>Cancelar</button>
+            <button type="submit" class="sf-btn" data-fm-action-submit></button>
+        </div>
+    </form>
+</dialog>
