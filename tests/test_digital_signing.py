@@ -1215,3 +1215,119 @@ def test_external_signer_preset_cpf_locked_channel_and_stamp_position(web_db, mo
     })
     assert done.status_code == 200, done.text
     assert done.json()["sealed"] is True
+
+
+
+def test_public_validate_direct_pdf_upload_and_styled_receipt_pdf(web_db, monkeypatch):
+    from fastapi import Request
+    from app.core.csrf import ensure_csrf_token
+    from app.core.deps import get_current_user_web
+    from app.db.session import get_db
+    from app.models import User
+    from app.services.document_signing import electronic
+    from app.services.document_signing.pdf import read_pdf, signing_options
+
+    sessions, _ = web_db
+    emails = []
+    monkeypatch.setattr(workflow, "send_plain_email", lambda *args: emails.append(args))
+    monkeypatch.setattr(electronic, "send_plain_email", lambda *args: emails.append(args))
+
+    web = _make_signing_app(sessions)
+
+    def db_dep():
+        with sessions() as db:
+            yield db
+
+    def user_dep(request: Request):
+        with sessions() as db:
+            return db.get(User, request.session["user_id"])
+
+    @web.get("/test-login")
+    def login(request: Request, user_id: int, farm_id: int = 1):
+        request.session.clear()
+        request.session["user_id"] = user_id
+        request.session["active_farm_id"] = farm_id
+        return {"csrf": ensure_csrf_token(request)}
+
+    web.dependency_overrides[get_db] = db_dep
+    web.dependency_overrides[get_current_user_web] = user_dep
+
+    owner = LocalTestClient(web)
+    headers = {"X-CSRF-Token": owner.get("/test-login", params={"user_id": 1, "farm_id": 1}).json()["csrf"]}
+
+    # Cria e assina eletronicamente um documento do SiSFarm
+    pdf_bytes = _original()
+    created = owner.post("/assinatura-digital/documentos", content=pdf_bytes, headers={
+        **headers,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "contrato_cafe_lote42.pdf",
+        "X-Document-Title": "Contrato%20de%20Venda%20-%20Lote%20042",
+        "X-Document-Signing-Policy": "electronic",
+    })
+    assert created.status_code == 201, created.text
+    endpoint = created.json()["url"]
+
+    issued = owner.post(endpoint + "/eletronica/autorizar", headers=headers, json={
+        "signer_name": "João Produtor",
+        "cpf": "529.982.247-25",
+        "channel": "email",
+        "appearance": {"visible": True, "page": 0, "box": [45, 70, 260, 140], "style": "full"},
+        "consent": True,
+    })
+    assert issued.status_code == 201, issued.text
+    otp = re.search(r"Código de autorização: (\d{8})", emails[-1][2]).group(1)
+    confirmed = owner.post(endpoint + "/eletronica/assinar", headers=headers, json={
+        "consent": True,
+        "challenge_id": issued.json()["challenge_id"],
+        "code": otp,
+    })
+    assert confirmed.status_code == 200, confirmed.text
+    ver_code = confirmed.json()["verification_code"]
+    sealed_pdf = owner.get(f"{endpoint}/revisoes/{confirmed.json()['revision']}/pdf").content
+
+    # 1. Acesso público à home /validar (sem login) e upload direto do PDF selado
+    anon = LocalTestClient(web)
+    home = anon.get("/validar")
+    assert home.status_code == 200
+    assert "data-sv-upload-drop" in home.text
+    pub_csrf = re.search(r'data-csrf="([^"]+)"', home.text).group(1)
+
+    upload_ok = anon.post("/validar/arquivo", content=sealed_pdf, headers={
+        "X-CSRF-Token": pub_csrf,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "contrato_cafe_lote42.pdf",
+    })
+    assert upload_ok.status_code == 200, upload_ok.text
+    ok_data = upload_ok.json()
+    assert ok_data["tone"] == "valid"
+    assert ok_data["code"] == ver_code
+    assert ok_data["headline"] == "Documento autêntico"
+    assert ok_data["receipt_url"] == f"/validar/{ver_code}/comprovante.pdf"
+    assert len(ok_data["signers"]) == 1
+
+    # 2. Upload direto de um PDF comum sem assinatura
+    upload_unsigned = anon.post("/validar/arquivo", content=pdf_bytes, headers={
+        "X-CSRF-Token": pub_csrf,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "rascunho_sem_assinatura.pdf",
+    })
+    assert upload_unsigned.status_code == 200, upload_unsigned.text
+    uns_data = upload_unsigned.json()
+    assert uns_data["tone"] == "unsigned"
+    assert uns_data["signers"] == []
+
+    # 3. Download do Comprovante PDF estilizado via código (/validar/{code}/comprovante.pdf)
+    receipt_by_code = anon.get(f"/validar/{ver_code}/comprovante.pdf")
+    assert receipt_by_code.status_code == 200
+    assert receipt_by_code.headers["content-type"].startswith("application/pdf")
+    assert receipt_by_code.content.startswith(b"%PDF-")
+    assert signing_options(read_pdf(receipt_by_code.content))["pages"] == 1
+
+    # 4. Download do Comprovante PDF estilizado via POST (/validar/comprovante.pdf)
+    receipt_by_payload = anon.post("/validar/comprovante.pdf", headers={
+        "X-CSRF-Token": pub_csrf,
+    }, json=uns_data)
+    assert receipt_by_payload.status_code == 200
+    assert receipt_by_payload.headers["content-type"].startswith("application/pdf")
+    assert receipt_by_payload.content.startswith(b"%PDF-")
+    assert signing_options(read_pdf(receipt_by_payload.content))["pages"] == 1

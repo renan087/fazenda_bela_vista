@@ -38,6 +38,7 @@ from app.services.audit_log_service import client_ip
 from app.services.document_signing import electronic, workflow
 from app.services.document_signing.pdf import MAX_PDF_BYTES, MAX_UPLOAD_BYTES, read_pdf, signing_options, validate_pdf
 from app.services.document_signing.policy import signing_mode
+from app.services.document_signing.receipt_pdf import build_validation_receipt_pdf
 from app.services.email_service import send_plain_email
 from app.services.nfe_permissions import has_fiscal_permission
 from app.services.whatsapp import WhatsAppClient, WhatsAppError, is_configured as whatsapp_is_configured
@@ -1256,6 +1257,216 @@ async def external_confirm_signature(token: str, request: Request, db: Session =
 # ---------------------------------------------------------------------------
 
 
+def _format_sp_dt(dt_val) -> str:
+    if not dt_val:
+        return ""
+    if isinstance(dt_val, str):
+        try:
+            dt_val = datetime.fromisoformat(dt_val.replace("Z", "+00:00"))
+        except ValueError:
+            return dt_val
+    if dt_val.tzinfo is None:
+        dt_val = dt_val.replace(tzinfo=timezone.utc)
+    return dt_val.astimezone(electronic.SP_TZ).strftime("%d/%m/%Y às %H:%M")
+
+
+def _seal_transparency_note(seal_mode: str | None) -> str:
+    if seal_mode == "institutional_ecnpj":
+        return (
+            "Ao concluir as assinaturas eletrônicas, o SiSFarm aplica o Selo Criptográfico "
+            "Institucional (e-CNPJ A1 Institucional SiSFarm) exclusivamente para lacrar o arquivo "
+            "e garantir que nenhuma página ou conteúdo seja alterado depois da assinatura. "
+            "Este selo institucional não substitui nem equivale à assinatura qualificada ICP-Brasil "
+            "individual dos signatários eletrônicos."
+        )
+    return (
+        "Ao concluir as assinaturas eletrônicas, o SiSFarm anexa o Manifesto de Assinaturas e "
+        "aplica um Selo Criptográfico de Integridade para garantir que o arquivo não seja modificado "
+        "após a assinatura. Este selo protege a integridade do documento e não equivale à assinatura "
+        "qualificada ICP-Brasil individual dos signatários eletrônicos."
+    )
+
+
+def _receipt_payload_from_snapshot(snapshot: dict, *, via_pdf: bool = False, filename: str = "") -> dict:
+    completed = bool(snapshot.get("completed"))
+    pending = int(snapshot.get("pending_count") or 0)
+    evidences = snapshot.get("evidences") or []
+    tone = "valid" if completed else "partial"
+    signers = []
+    for ev in evidences:
+        is_icp = ev.modality == "qualified_icp_brasil"
+        if is_icp:
+            tech_line = (
+                f"Certificado {ev.cert_issuer or 'ICP-Brasil A1'} · "
+                f"Lei 14.063/2020 art. 4º III · MP 2.200-2/2001 art. 10 §1º · "
+                f"Evidência {ev.evidence_code}"
+            )
+        else:
+            channel = "WhatsApp" if "whatsapp" in (ev.auth_channel or "") else "E-mail"
+            tech_line = (
+                f"Autenticação por {channel} ({ev.auth_destination_masked or 'confirmado'}) · "
+                f"IP {ev.ip_masked or 'LGPD'} · {ev.device_summary or 'Navegador web'} · "
+                f"Lei 14.063/2020 art. 4º II · Evidência {ev.evidence_code}"
+            )
+        signers.append({
+            "name": ev.signer_name,
+            "cpf": ev.cpf_masked or "Conforme certificado",
+            "signed_at": _format_sp_dt(ev.signed_at),
+            "type": "Qualificada ICP-Brasil" if is_icp else "Eletrônica SiSFarm (Avançada)",
+            "type_tone": "brand" if is_icp else "info",
+            "status": "valid",
+            "evidence": ev.evidence_code or "",
+            "tech": tech_line,
+        })
+
+    if completed:
+        headline = "Documento autêntico"
+        summary = (
+            "Todas as assinaturas foram confirmadas e o arquivo enviado não sofreu nenhuma alteração."
+            if via_pdf
+            else "Este código corresponde a um documento concluído e registrado oficialmente no SiSFarm."
+        )
+        guidance = ""
+    else:
+        headline = "Assinatura em andamento"
+        summary = (
+            f"O arquivo está íntegro e possui {len(evidences)} assinatura(s) confirmada(s), "
+            f"mas ainda aguarda {pending} participante(s) para ser concluído."
+        )
+        guidance = "Aguarde a conclusão de todos os participantes antes de considerar este documento finalizado."
+
+    seal_mode = snapshot.get("seal_mode")
+    seal_label = (
+        "e-CNPJ A1 Institucional SiSFarm"
+        if seal_mode == "institutional_ecnpj"
+        else "Selo Criptográfico Interno SiSFarm"
+        if seal_mode == "internal_hmac"
+        else "Em andamento"
+    )
+    now_sp = datetime.now(electronic.SP_TZ)
+    code = snapshot["code"]
+    return {
+        "tone": tone,
+        "source": "pdf" if via_pdf else "code",
+        "headline": headline,
+        "summary": summary,
+        "guidance": guidance,
+        "title": snapshot["title"],
+        "origin": snapshot["farm"].name if snapshot.get("farm") else "SiSFarm",
+        "code": code,
+        "date": _format_sp_dt(snapshot.get("sealed_at")) if completed else f"{len(evidences)} assinatura(s) · {pending} pendente(s)",
+        "integrity": "Íntegro (sem alterações)" if via_pdf else ("Registro confirmado" if completed else "Em andamento"),
+        "integrity_bad": False,
+        "file_name": filename,
+        "sha256": snapshot.get("sealed_sha256") or snapshot.get("original_sha256") or "",
+        "policy": f"{seal_label} · Registro oficial SiSFarm",
+        "seal_note": _seal_transparency_note(seal_mode),
+        "checked_at": now_sp.strftime("%d/%m/%Y às %H:%M"),
+        "protocol": f"VAL-{now_sp.strftime('%Y%m%d-%H%M')}",
+        "receipt_url": f"/validar/{code}/comprovante.pdf",
+        "signers": signers,
+    }
+
+
+def _public_result_from_pdf_report(report: dict, *, uploaded_sha: str, filename: str) -> dict:
+    state = report.get("state") or "unsigned"
+    raw_sigs = report.get("signatures") or []
+    now_sp = datetime.now(electronic.SP_TZ)
+    checked_at = _format_sp_dt(report.get("checked_at")) or now_sp.strftime("%d/%m/%Y às %H:%M")
+
+    if state == "valid":
+        tone = "valid"
+        headline = "Documento autêntico"
+        summary = "Todas as assinaturas digitais foram confirmadas e o arquivo não sofreu nenhuma alteração."
+        guidance = ""
+        integrity = "Íntegro (sem alterações)"
+        integrity_bad = False
+    elif state == "invalid":
+        tone = "invalid"
+        headline = "Documento inválido"
+        summary = "Este arquivo foi alterado depois de assinado ou possui uma assinatura inválida."
+        guidance = "Não aceite esta cópia. Solicite ao remetente o arquivo PDF original sem modificações."
+        integrity = "Alteração detectada"
+        integrity_bad = True
+    elif state == "indeterminate":
+        tone = "indeterminate"
+        headline = "Não foi possível confirmar a validade"
+        summary = report.get("message") or (
+            "O arquivo parece intacto, mas não conseguimos consultar a autoridade certificadora de uma assinatura agora."
+        )
+        guidance = (
+            "Isso não significa necessariamente fraude. Tente validar novamente em alguns minutos ou "
+            "confirme a origem diretamente com quem emitiu o documento."
+        )
+        integrity = "Conteúdo preservado" if all(s.get("integrity") for s in raw_sigs) and raw_sigs else "Não confirmada"
+        integrity_bad = False
+    else:
+        tone = "unsigned"
+        headline = "Sem assinatura digital"
+        summary = "Este arquivo PDF não possui nenhuma assinatura digital incorporada."
+        guidance = (
+            "Documentos impressos e escaneados ou salvos via 'Imprimir > Salvar como PDF' perdem a assinatura digital. "
+            "Peça sempre o arquivo PDF original."
+        )
+        integrity = "Sem proteção digital"
+        integrity_bad = False
+
+    signers = []
+    latest_dt = ""
+    for idx, sig in enumerate(raw_sigs):
+        s_state = sig.get("state") or "indeterminate"
+        s_date = _format_sp_dt(sig.get("signed_at"))
+        if s_date:
+            latest_dt = s_date
+        if s_state == "valid":
+            type_label, type_tone = "Qualificada ICP-Brasil", "brand"
+        elif s_state == "invalid":
+            type_label, type_tone = "Invalidada", "err"
+        else:
+            type_label, type_tone = "Não confirmada", "warn"
+
+        parts = []
+        if sig.get("issuer"):
+            parts.append(f"Emissor: {sig['issuer']}")
+        if sig.get("valid_until"):
+            parts.append(f"Certificado válido até {_format_sp_dt(sig['valid_until']).split(' ')[0]}")
+        if sig.get("message"):
+            parts.append(sig["message"])
+        signers.append({
+            "name": sig.get("holder") or f"Signatário {idx + 1}",
+            "cpf": "Conforme certificado",
+            "signed_at": s_date or "Data não informada no certificado",
+            "type": type_label,
+            "type_tone": type_tone,
+            "status": s_state,
+            "evidence": sig.get("field") or f"Assinatura {idx + 1}",
+            "tech": " · ".join(parts) or "Assinatura digital embarcada no PDF.",
+        })
+
+    display_title = filename[:-4] if filename.lower().endswith(".pdf") else (filename or "Documento PDF analisado")
+    return {
+        "tone": tone,
+        "source": "pdf",
+        "headline": headline,
+        "summary": summary,
+        "guidance": guidance,
+        "title": display_title,
+        "origin": "Documento PDF externo",
+        "code": "",
+        "date": latest_dt or "—",
+        "integrity": integrity,
+        "integrity_bad": integrity_bad,
+        "file_name": filename,
+        "sha256": uploaded_sha,
+        "policy": "Verificação criptográfica PDF (PAdES / ICP-Brasil)",
+        "seal_note": "Análise criptográfica direta das assinaturas incorporadas no arquivo PDF enviado, sem armazenamento do documento.",
+        "checked_at": checked_at,
+        "protocol": f"VAL-{now_sp.strftime('%Y%m%d-%H%M')}",
+        "receipt_url": "",
+        "signers": signers,
+    }
+
+
 @router.get("/validar")
 def public_validation_home(request: Request, codigo: str = ""):
     normalized = electronic.normalize_verification_code(codigo)
@@ -1270,8 +1481,66 @@ def public_validation_home(request: Request, codigo: str = ""):
             "query_code": codigo.strip().upper(),
             "not_found": bool(codigo.strip()),
             "snapshot": None,
+            "receipt_payload": None,
         },
         headers=PRIVATE,
+    )
+
+
+@router.post("/validar/arquivo")
+async def public_validation_upload_pdf(request: Request, db: Session = Depends(get_db)):
+    ip = client_ip(request)
+    if login_throttle.blocked_for("pub_val_pdf", ip):
+        return _json({"detail": "Muitas consultas seguidas. Aguarde alguns instantes e tente novamente."}, 429)
+    try:
+        pdf_bytes = await _body(request, MAX_UPLOAD_BYTES, "application/pdf")
+    except HTTPException as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+
+    raw_name = unquote(request.headers.get("X-Document-Name") or "documento.pdf").strip()
+    filename = re.sub(r"[\r\n\x00/\\]+", " ", raw_name)[:160] or "documento.pdf"
+    uploaded_sha = sha256(pdf_bytes).hexdigest()
+
+    # 1. Procura primeiro se este PDF é um documento assinado/selado oficial do SiSFarm (por hash exato)
+    doc = db.scalar(select(SigningDocument).filter_by(sealed_sha256=uploaded_sha))
+    if doc is None:
+        rev = db.scalar(
+            select(SigningRevision)
+            .where(SigningRevision.sha256 == uploaded_sha, SigningRevision.number > 1)
+            .order_by(SigningRevision.number.desc())
+        )
+        if rev is not None:
+            candidate = db.get(SigningDocument, rev.document_id)
+            if candidate is not None and candidate.current_revision == rev.number:
+                doc = candidate
+    if doc is not None and doc.verification_code:
+        snapshot = electronic.public_validation_snapshot(db, doc.verification_code)
+        if snapshot is not None:
+            return _json(_receipt_payload_from_snapshot(snapshot, via_pdf=True, filename=filename))
+
+    # 2. Caso seja um PDF externo (ou alterado), executa a validação criptográfica completa
+    try:
+        report = await run_in_threadpool(_limited, validate_pdf, pdf_bytes)
+    except (ValueError, workflow.WorkflowError) as exc:
+        return _error(exc)
+    return _json(_public_result_from_pdf_report(report, uploaded_sha=uploaded_sha, filename=filename))
+
+
+@router.post("/validar/comprovante.pdf")
+async def public_validation_receipt_from_payload(request: Request):
+    try:
+        payload = await _payload(request, limit=32768)
+    except HTTPException as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    pdf_bytes = build_validation_receipt_pdf(payload)
+    safe_proto = re.sub(r"[^A-Za-z0-9_-]", "", str(payload.get("code") or payload.get("protocol") or "SiSFarm"))[:32] or "SiSFarm"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="Comprovante_Validacao_{safe_proto}.pdf"',
+            **PRIVATE,
+        },
     )
 
 
@@ -1288,10 +1557,12 @@ def public_validation_detail(code: str, request: Request, db: Session = Depends(
                 "query_code": code.strip().upper(),
                 "not_found": True,
                 "snapshot": None,
+                "receipt_payload": None,
             },
             status_code=404,
             headers=PRIVATE,
         )
+    receipt_payload = _receipt_payload_from_snapshot(snapshot, via_pdf=False)
     return templates.TemplateResponse(
         request,
         "digital_signing_validate.html",
@@ -1301,9 +1572,27 @@ def public_validation_detail(code: str, request: Request, db: Session = Depends(
             "query_code": snapshot["code"],
             "not_found": False,
             "snapshot": snapshot,
+            "receipt_payload": receipt_payload,
             "sp_tz": electronic.SP_TZ,
         },
         headers=PRIVATE,
+    )
+
+
+@router.get("/validar/{code}/comprovante.pdf")
+def public_validation_receipt_by_code(code: str, db: Session = Depends(get_db)):
+    snapshot = electronic.public_validation_snapshot(db, code)
+    if snapshot is None:
+        raise HTTPException(404, "Código de verificação não encontrado.")
+    payload = _receipt_payload_from_snapshot(snapshot, via_pdf=False)
+    pdf_bytes = build_validation_receipt_pdf(payload)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="Comprovante_Validacao_{snapshot["code"]}.pdf"',
+            **PRIVATE,
+        },
     )
 
 

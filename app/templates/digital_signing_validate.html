@@ -10,239 +10,350 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/styles.css?v=20261123ex8">
-  <link rel="stylesheet" href="/static/css/digital_signing.css?v=9">
+  <link rel="stylesheet" href="/static/css/digital_signing.css?v=10">
 </head>
-<body class="ds-pub-body">
-  <header class="ds-pub-topbar">
-    <div class="ds-pub-topbar-inner">
-      <a class="ds-pub-brand" href="/validar" aria-label="SiSFarm Validação Pública">
-        <span class="ds-pub-logo">{{ icon('shield', 18) }}</span>
+<body class="sv-body">
+  <header class="sv-topbar">
+    <div class="sv-topbar-inner">
+      <a class="sv-brand" href="/validar" aria-label="SiSFarm Validação Pública">
+        <span class="sv-brand-logo">{{ icon('shield', 18) }}</span>
         <span>
           <strong>SiSFarm</strong>
-          <small>Consulta pública de autenticidade</small>
+          <small>Validar documento</small>
         </span>
       </a>
-      <a class="sf-btn sf-btn-secondary ds-btn-sm" href="/login">Entrar no SiSFarm</a>
+      <a class="sf-btn sf-btn-secondary sv-btn-sm" href="/login">Entrar no SiSFarm</a>
     </div>
   </header>
 
-  <main class="ds-pub-shell ds-page" data-ds-validate-root data-csrf="{{ csrf_token }}" {% if snapshot %}data-code="{{ snapshot.code }}"{% endif %}>
-    <!-- Barra de Consulta por Código com máscara automática de hífen (-) -->
-    <section class="pd-card ds-panel-pad ds-val-search-card">
-      <div class="ds-val-search-head">
-        <div>
-          <span class="ds-eyebrow">Conferência pública gratuita</span>
-          <h1 class="sf-page-title">Validar documento assinado no SiSFarm</h1>
-          <p class="sf-page-subtitle">Digite o código impresso no selo ou no Manifesto do documento — os traços são preenchidos automaticamente.</p>
-        </div>
-      </div>
-
-      <form class="ds-val-code-form" method="get" action="/validar" data-ds-val-code-form>
-        <label class="ds-val-code-input-wrap">
-          <span class="sr-only">Código de verificação do documento</span>
-          {{ icon('qr', 20) }}
-          <input type="text"
-                 name="codigo"
-                 value="{{ query_code }}"
-                 maxlength="17"
-                 autocomplete="off"
-                 autocapitalize="characters"
-                 spellcheck="false"
-                 placeholder="SF-XXXX-XXXX-XXXX"
-                 data-ds-code-mask
-                 required>
-        </label>
-        <button type="submit" class="sf-btn sf-btn-primary">
-          {{ icon('search', 16) }} Consultar documento
-        </button>
-      </form>
-      <p class="ds-hint">Você só precisa digitar as letras e números do código (ex.: <strong>SF7K2P9M4X8Q3N</strong> → <code>SF-7K2P-9M4X-8Q3N</code>).</p>
-    </section>
-
+  <main class="sv-shell" data-ds-validate-root data-csrf="{{ csrf_token }}" {% if snapshot %}data-code="{{ snapshot.code }}"{% endif %}>
     {% if not_found %}
-    <section class="pd-card ds-panel-pad ds-pub-empty" role="alert">
-      <div class="ds-pub-empty-ic is-err">{{ icon('alert', 28) }}</div>
-      <h2>Código não encontrado</h2>
-      <p>Não encontramos nenhum documento registrado com o código <strong>{{ query_code }}</strong>.</p>
-      <p class="ds-hint">Confira se todas as letras e números foram digitados corretamente ou aponte a câmera do celular para o QR Code do documento.</p>
-    </section>
-    {% elif snapshot %}
-    <!-- HERO DE AUTENTICIDADE -->
-    <section class="pd-card ds-panel-pad ds-val-hero {% if snapshot.completed %}is-ok{% else %}is-warn{% endif %}">
-      <div class="ds-val-hero-top">
-        <div class="ds-val-hero-ic">
-          {% if snapshot.completed %}{{ icon('check', 26) }}{% else %}{{ icon('clock', 26) }}{% endif %}
-        </div>
-        <div class="ds-val-hero-txt">
-          <span class="ds-pill {% if snapshot.completed %}ds-pill--done{% else %}ds-pill--warn{% endif %}">
-            {{ 'Documento autêntico e concluído' if snapshot.completed else 'Documento em processo de assinatura' }}
-          </span>
-          <h2>{{ snapshot.title }}</h2>
-          <p>
-            {% if snapshot.farm %}Originado em <strong>{{ snapshot.farm.name }}</strong> · {% endif %}
-            Código <code>{{ snapshot.code }}</code>
-            {% if snapshot.sealed_at %} · Concluído em <strong>{{ snapshot.sealed_at|datetime_sp }}</strong>{% endif %}
-          </p>
-        </div>
+    <!-- ESTADO: CÓDIGO NÃO ENCONTRADO -->
+    <div class="sv-stack">
+      <div class="sv-action-bar">
+        <a class="sf-btn sf-btn-secondary sv-btn-sm" href="/validar">{{ icon('back', 15) }} Voltar</a>
       </div>
 
-      <dl class="ds-val-stats">
-        <div>
-          <dt>Assinaturas registradas</dt>
-          <dd class="ds-tabular">{{ snapshot.evidences|length }}</dd>
-        </div>
-        <div>
-          <dt>Pendentes</dt>
-          <dd class="ds-tabular">{{ snapshot.pending_count }}</dd>
-        </div>
-        <div>
-          <dt>Proteção do arquivo</dt>
-          <dd>
-            {% if snapshot.seal_mode == 'institutional_ecnpj' %}
-              e-CNPJ A1 Institucional SiSFarm
-            {% elif snapshot.seal_mode == 'internal_hmac' %}
-              Selo Criptográfico Interno SiSFarm
-            {% else %}
-              Em andamento
-            {% endif %}
-          </dd>
-        </div>
-      </dl>
-    </section>
-
-    <div class="ds-val-grid">
-      <!-- COLUNA ESQUERDA: ASSINATURAS E EVIDÊNCIAS (LGPD) -->
-      <div class="ds-val-main">
-        <section class="pd-card ds-panel-pad">
-          <header class="ds-card-heading">
-            <span class="ds-tile">{{ icon('award', 18) }}</span>
-            <div>
-              <h2>Assinaturas e evidências ({{ snapshot.evidences|length }})</h2>
-              <p>Os dados pessoais são exibidos de forma parcialmente mascarada para proteger a privacidade dos signatários (LGPD).</p>
+      <section class="sv-card sv-card-pad" role="alert">
+        <div class="sv-hero-row">
+          <div class="sv-verdict-ic is-err">{{ icon('alert', 24) }}</div>
+          <div class="sv-hero-copy">
+            <h1 class="sv-title">Código não encontrado</h1>
+            <p class="sv-summary">Não encontramos nenhum documento registrado com o código <strong>{{ query_code }}</strong>.</p>
+            <p class="sv-tip-box">
+              <strong>Como resolver:</strong> confira se todas as letras e números foram digitados corretamente, aponte a câmera do celular para o QR Code do documento ou envie o arquivo PDF diretamente na tela inicial.
+            </p>
+            <div class="sv-err-actions">
+              <a class="sf-btn sf-btn-primary" href="/validar">Tentar novamente</a>
             </div>
-          </header>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    {% elif snapshot %}
+    <!-- ESTADO: RESULTADO POR CÓDIGO (SSR LIMPO, COLUNA ÚNICA 1080px) -->
+    {% set tone = 'valid' if snapshot.completed else 'partial' %}
+    <div class="sv-stack">
+      <div class="sv-action-bar">
+        <a class="sf-btn sf-btn-secondary sv-btn-sm" href="/validar">{{ icon('back', 15) }} Validar outro</a>
+        <button type="button" class="sf-btn sf-btn-primary sv-btn-sm" data-sv-open-receipt>
+          {{ icon('download', 15) }} Comprovante PDF
+        </button>
+      </div>
+
+      <!-- CARTÃO ÚNICO DE AUTENTICIDADE -->
+      <article class="sv-card" aria-label="Resultado da validação">
+        <header class="sv-hero sv-hero--{{ tone }} sv-card-pad">
+          <div class="sv-hero-row">
+            <div class="sv-verdict-ic {{ 'is-ok' if snapshot.completed else 'is-warn' }}">
+              {% if snapshot.completed %}{{ icon('check', 24) }}{% else %}{{ icon('clock', 24) }}{% endif %}
+            </div>
+            <div class="sv-hero-copy">
+              <h1 class="sv-title">{{ 'Documento autêntico' if snapshot.completed else 'Assinatura em andamento' }}</h1>
+              <p class="sv-summary">
+                {% if snapshot.completed %}
+                  Este código corresponde a um documento concluído e registrado oficialmente no SiSFarm.
+                {% else %}
+                  O arquivo está íntegro e possui {{ snapshot.evidences|length }} assinatura(s) confirmada(s), mas ainda aguarda {{ snapshot.pending_count }} participante(s) para ser concluído.
+                {% endif %}
+              </p>
+              {% if not snapshot.completed %}
+              <p class="sv-guidance">Aguarde a conclusão de todos os participantes antes de considerar este documento finalizado.</p>
+              {% endif %}
+            </div>
+          </div>
+        </header>
+
+        <!-- IDENTIFICAÇÃO ESSENCIAL DO DOCUMENTO -->
+        <section class="sv-section sv-card-pad" aria-label="Dados do documento">
+          <div class="sv-doc-head">
+            <div>
+              <span class="sv-eyebrow">Documento</span>
+              <h2 class="sv-doc-title">{{ snapshot.title }}</h2>
+            </div>
+            <div class="sv-code-pill">
+              <code>{{ snapshot.code }}</code>
+              <button type="button" class="sv-copy-btn" data-ds-copy-text="{{ snapshot.code }}">
+                {{ icon('copy', 13) }} Copiar
+              </button>
+            </div>
+          </div>
+
+          <dl class="sv-meta-grid">
+            <div>
+              <dt>Origem</dt>
+              <dd>{{ snapshot.farm.name if snapshot.farm else 'SiSFarm' }}</dd>
+            </div>
+            <div>
+              <dt>Data</dt>
+              <dd class="ds-tabular">
+                {% if snapshot.sealed_at %}
+                  {{ snapshot.sealed_at|datetime_sp }}
+                {% else %}
+                  {{ snapshot.evidences|length }} assinatura(s) · {{ snapshot.pending_count }} pendente(s)
+                {% endif %}
+              </dd>
+            </div>
+            <div>
+              <dt>Integridade</dt>
+              <dd class="{{ 'is-ok-txt' if snapshot.completed else '' }}">
+                {{ 'Registro confirmado' if snapshot.completed else 'Em andamento' }}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <!-- QUEM ASSINOU -->
+        <section class="sv-card-pad" aria-label="Signatários">
+          <div class="sv-signers-head">
+            <span class="sv-eyebrow">Quem assinou {% if snapshot.evidences %}({{ snapshot.evidences|length }}){% endif %}</span>
+            {% if snapshot.evidences %}<span class="sv-lgpd-note">CPF protegido pela LGPD</span>{% endif %}
+          </div>
 
           {% if snapshot.evidences %}
-          <div class="ds-ev-list">
+          <ul class="sv-signer-list">
             {% for ev in snapshot.evidences %}
             {% set is_icp = ev.modality == 'qualified_icp_brasil' %}
-            <article class="ds-ev-item">
-              <div class="ds-ev-head">
+            <li class="sv-signer-row">
+              <span class="sv-signer-dot is-ok" aria-hidden="true">✓</span>
+              <div class="sv-signer-body">
                 <div>
                   <strong>{{ ev.signer_name }}</strong>
-                  {% if ev.role_label %}<small> · {{ ev.role_label }}</small>{% endif %}
+                  <p class="ds-tabular">CPF {{ ev.cpf_masked or 'Conforme certificado' }} · Assinado em {{ ev.signed_at|datetime_sp }}</p>
                 </div>
                 {% if is_icp %}
-                <span class="ds-pill ds-pill--done">Qualificada ICP-Brasil</span>
+                <span class="sv-pill sv-pill--brand">Qualificada ICP-Brasil</span>
                 {% else %}
-                <span class="ds-pill ds-pill--info">Eletrônica SiSFarm (Avançada)</span>
+                <span class="sv-pill sv-pill--info">Eletrônica SiSFarm (Avançada)</span>
                 {% endif %}
               </div>
-              <div class="ds-ev-meta">
-                <span>CPF (LGPD): <strong>{{ ev.cpf_masked or 'Conforme certificado' }}</strong></span>
-                <span>Data/hora: <strong>{{ ev.signed_at|datetime_sp }}</strong></span>
-                {% if is_icp %}
-                <span>Certificado: <strong>{{ ev.cert_issuer or 'ICP-Brasil A1' }}</strong></span>
-                <span>Enquadramento: <strong>Lei 14.063/2020 art. 4º III · MP 2.200-2/2001 art. 10 §1º</strong></span>
-                {% else %}
-                <span>Autenticação: <strong>Código único por {{ 'WhatsApp' if 'whatsapp' in (ev.auth_channel or '') else 'E-mail' }} ({{ ev.auth_destination_masked }})</strong></span>
-                <span>IP (LGPD): <strong>{{ ev.ip_masked }}</strong></span>
-                <span>Dispositivo: <strong>{{ ev.device_summary }}</strong></span>
-                <span>Enquadramento: <strong>Lei 14.063/2020 art. 4º II · MP 2.200-2/2001 art. 10 §2º</strong></span>
-                {% endif %}
-                <span>Registro de evidência: <code>{{ ev.evidence_code }}</code></span>
-              </div>
-            </article>
+            </li>
             {% endfor %}
-          </div>
+          </ul>
           {% else %}
-          <p class="ds-hint">Este documento ainda não possui assinaturas concluídas.</p>
+          <p class="sv-muted-txt">Este documento ainda não possui assinaturas concluídas.</p>
           {% endif %}
         </section>
+      </article>
 
-        <!-- Transparência jurídica sobre o Selo Criptográfico -->
-        <section class="pd-card ds-panel-pad ds-val-legal">
-          <header class="ds-card-heading">
-            <span class="ds-tile">{{ icon('shield', 18) }}</span>
-            <div>
-              <h2>Transparência sobre o selo de integridade</h2>
-              <p>Distinção clara entre assinatura do signatário e selo criptográfico do documento.</p>
-            </div>
-          </header>
-          <p class="ds-val-legal-txt">
-            {% if snapshot.seal_mode == 'institutional_ecnpj' %}
-            Ao concluir as assinaturas eletrônicas, o SiSFarm aplica o <strong>Selo Criptográfico Institucional (e-CNPJ A1 do SiSFarm)</strong> exclusivamente para lacrar o arquivo e garantir que nenhuma página ou conteúdo seja alterado depois da assinatura. <strong>Este selo institucional não substitui nem equivale à assinatura qualificada ICP-Brasil individual dos signatários eletrônicos.</strong>
-            {% else %}
-            Ao concluir as assinaturas eletrônicas, o SiSFarm anexa o Manifesto de Assinaturas e aplica um <strong>Selo Criptográfico de Integridade</strong> para garantir que o arquivo não seja modificado após a assinatura. <strong>Este selo protege a integridade do documento e não equivale à assinatura qualificada ICP-Brasil individual dos signatários eletrônicos.</strong>
-            {% endif %}
-          </p>
-          <details class="ds-tech-details">
-            <summary>Ver informações técnicas de registro</summary>
-            <dl class="ds-tech-dl">
-              <div><dt>Código de verificação</dt><dd><code>{{ snapshot.code }}</code></dd></div>
-              {% if snapshot.original_sha256 %}
-              <div><dt>Impressão digital do PDF original (SHA-256)</dt><dd><code>{{ snapshot.original_sha256 }}</code></dd></div>
-              {% endif %}
-              {% if snapshot.sealed_sha256 %}
-              <div><dt>Impressão digital da versão atual/selada (SHA-256)</dt><dd><code>{{ snapshot.sealed_sha256 }}</code></dd></div>
-              {% endif %}
-            </dl>
-          </details>
-        </section>
-      </div>
-
-      <!-- COLUNA DIREITA: CONFERIR ARQUIVO PDF (LINGUAGEM SIMPLES!) -->
-      <aside class="ds-val-side">
-        <section class="pd-card ds-panel-pad">
-          <header class="ds-card-heading">
-            <span class="ds-tile ds-tile--blue">{{ icon('file', 18) }}</span>
-            <div>
-              <h2>Conferir se o PDF não foi alterado</h2>
-              <p>Envie o arquivo PDF que você recebeu para confirmar se ele é idêntico à versão assinada. O arquivo não fica salvo.</p>
-            </div>
-          </header>
-
-          <div class="ds-drop ds-drop--compact" data-ds-pub-check-drop>
-            <span class="ds-drop-icon">{{ icon('upload', 20) }}</span>
-            <strong data-ds-drop-title>Arraste o PDF aqui para conferir</strong>
-            <p data-ds-drop-sub>Verificação imediata, sem enviar dados a terceiros.</p>
-            <label class="sf-btn sf-btn-primary ds-pick" for="ds-pub-pdf-input">
-              Escolher arquivo PDF
+      <!-- CONFERÊNCIA DO PDF (OPCIONAL NO FLUXO POR CÓDIGO) -->
+      <section class="sv-card sv-card-pad" aria-label="Conferir se o PDF não foi alterado" data-ds-pub-check-drop>
+        <div class="sv-cross-row">
+          <div>
+            <h2 class="sv-cross-title">Conferir se o seu PDF não foi alterado</h2>
+            <p class="sv-cross-sub">Opcional: escolha o arquivo recebido para confirmar que ele é idêntico à versão assinada. O arquivo não fica salvo.</p>
+          </div>
+          <div class="sv-cross-actions">
+            <label class="sf-btn sf-btn-primary sv-btn-sm sv-cross-pick" for="ds-pub-pdf-input">
+              {{ icon('file', 15) }}
+              <span>Escolher PDF para comparar</span>
               <input id="ds-pub-pdf-input" type="file" accept="application/pdf,.pdf" data-ds-pub-pdf-input>
             </label>
           </div>
+        </div>
+        <p class="ds-feedback" data-ds-pub-check-status role="status" aria-live="polite" hidden></p>
+        <div class="sv-cross-verdict" data-ds-pub-verdict hidden tabindex="-1"></div>
+      </section>
 
-          <p class="ds-feedback" data-ds-pub-check-status role="status" aria-live="polite" hidden></p>
+      <!-- ÚNICO BLOCO EXPANSÍVEL: DETALHES TÉCNICOS E BASE LEGAL -->
+      <details class="sv-tech">
+        <summary>
+          <span>Detalhes técnicos e base legal</span>
+          <svg class="sv-chevron" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </summary>
+        <div class="sv-tech-body">
+          <dl class="sv-tech-list">
+            <div>
+              <dt>Código de verificação</dt>
+              <dd><code>{{ snapshot.code }}</code></dd>
+            </div>
+            <div>
+              <dt>Proteção do arquivo</dt>
+              <dd>
+                {% if snapshot.seal_mode == 'institutional_ecnpj' %}
+                  e-CNPJ A1 Institucional SiSFarm
+                {% elif snapshot.seal_mode == 'internal_hmac' %}
+                  Selo Criptográfico Interno SiSFarm
+                {% else %}
+                  Em andamento
+                {% endif %}
+              </dd>
+            </div>
+            {% if snapshot.original_sha256 %}
+            <div>
+              <dt>SHA-256 do PDF original</dt>
+              <dd class="sv-hash-dd">
+                <code>{{ snapshot.original_sha256 }}</code>
+                <button type="button" class="sv-copy-inline" data-ds-copy-text="{{ snapshot.original_sha256 }}">Copiar</button>
+              </dd>
+            </div>
+            {% endif %}
+            {% if snapshot.sealed_sha256 %}
+            <div>
+              <dt>SHA-256 da versão selada</dt>
+              <dd class="sv-hash-dd">
+                <code>{{ snapshot.sealed_sha256 }}</code>
+                <button type="button" class="sv-copy-inline" data-ds-copy-text="{{ snapshot.sealed_sha256 }}">Copiar</button>
+              </dd>
+            </div>
+            {% endif %}
+          </dl>
 
-          <div class="ds-pub-verdict" data-ds-pub-verdict hidden tabindex="-1"></div>
-        </section>
-      </aside>
+          {% if snapshot.evidences %}
+          <div class="sv-tech-sep">
+            <strong class="sv-tech-subhead">Registros individuais dos signatários</strong>
+            <div class="sv-tech-ev-list">
+              {% for ev in snapshot.evidences %}
+              {% set is_icp = ev.modality == 'qualified_icp_brasil' %}
+              <div class="sv-tech-ev-item">
+                <strong>{{ ev.signer_name }}:</strong>
+                {% if is_icp %}
+                  Certificado {{ ev.cert_issuer or 'ICP-Brasil A1' }} · Lei 14.063/2020 art. 4º III · MP 2.200-2/2001 art. 10 §1º · Evidência <code>{{ ev.evidence_code }}</code>
+                {% else %}
+                  Código único por {{ 'WhatsApp' if 'whatsapp' in (ev.auth_channel or '') else 'E-mail' }} ({{ ev.auth_destination_masked }}) · IP {{ ev.ip_masked }} · {{ ev.device_summary }} · Lei 14.063/2020 art. 4º II · MP 2.200-2/2001 art. 10 §2º · Evidência <code>{{ ev.evidence_code }}</code>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          <div class="sv-tech-sep">
+            <strong class="sv-tech-subhead">Selo de integridade e base legal</strong>
+            <p>
+              {% if snapshot.seal_mode == 'institutional_ecnpj' %}
+                Ao concluir as assinaturas eletrônicas, o SiSFarm aplica o <strong>Selo Criptográfico Institucional (e-CNPJ A1 do SiSFarm)</strong> exclusivamente para lacrar o arquivo e garantir que nenhuma página ou conteúdo seja alterado depois da assinatura. <strong>Este selo institucional não substitui nem equivale à assinatura qualificada ICP-Brasil individual dos signatários eletrônicos.</strong>
+              {% else %}
+                Ao concluir as assinaturas eletrônicas, o SiSFarm anexa o Manifesto de Assinaturas e aplica um <strong>Selo Criptográfico de Integridade</strong> para garantir que o arquivo não seja modificado após a assinatura. <strong>Este selo protege a integridade do documento e não equivale à assinatura qualificada ICP-Brasil individual dos signatários eletrônicos.</strong>
+              {% endif %}
+            </p>
+            <p>Validação em conformidade com a Lei 14.063/2020, MP 2.200-2/2001 e LGPD (Lei 13.709/2018).</p>
+          </div>
+        </div>
+      </details>
     </div>
+
+    {% if receipt_payload %}
+    <script type="application/json" data-sv-initial-payload>{{ receipt_payload|tojson }}</script>
+    {% endif %}
+
     {% else %}
-    <!-- Cards explicativos na home limpa de /validar -->
-    <section class="ds-val-how-grid" aria-label="Como funciona a validação">
-      <article class="pd-card ds-panel-pad">
-        <span class="ds-tile">{{ icon('qr', 18) }}</span>
-        <h2>1. Leia o QR Code ou digite o código</h2>
-        <p>Todo documento assinado pelo SiSFarm recebe um código único (como <code>SF-7K2P-9M4X-8Q3N</code>) no selo visual e no Manifesto.</p>
-      </article>
-      <article class="pd-card ds-panel-pad">
-        <span class="ds-tile ds-tile--blue">{{ icon('file', 18) }}</span>
-        <h2>2. Confira se o PDF é original</h2>
-        <p>Envie o arquivo PDF recebido para confirmar na hora se nenhuma página, valor ou dado foi alterado depois da assinatura.</p>
-      </article>
-      <article class="pd-card ds-panel-pad">
-        <span class="ds-tile">{{ icon('shield', 18) }}</span>
-        <h2>3. Veja quem assinou com segurança</h2>
-        <p>Consulte a lista de signatários, data, hora e modalidade (Eletrônica SiSFarm ou ICP-Brasil), com privacidade protegida pela LGPD.</p>
-      </article>
+    <!-- ESTADO: TELA INICIAL UNIFICADA (UPLOAD PDF + CONSULTA POR CÓDIGO) -->
+    <div class="sv-home" data-sv-home-view>
+      <div class="sv-home-head">
+        <h1 class="sv-home-title">Validar documento</h1>
+        <p class="sv-home-sub">Envie o PDF recebido para confirmar na hora quem assinou e se o arquivo é original.</p>
+      </div>
+
+      <section class="sv-card sv-card-pad sv-home-card" aria-label="Enviar PDF ou consultar por código">
+        <div class="sv-inline-error" data-sv-upload-error role="alert" hidden></div>
+
+        <div class="sv-dropzone" data-sv-upload-drop role="button" tabindex="0" aria-label="Escolher arquivo PDF para validação">
+          <div class="sv-drop-ic sv-drop-desktop-only">{{ icon('upload', 24) }}</div>
+          <h2 class="sv-drop-title sv-drop-desktop-only" data-ds-drop-title>Arraste e solte o PDF aqui</h2>
+          <p class="sv-drop-sub sv-drop-desktop-only" data-ds-drop-sub>ou clique abaixo para escolher o arquivo no seu dispositivo</p>
+
+          <label class="sf-btn sf-btn-primary sv-drop-pick" for="sv-upload-pdf-input">
+            {{ icon('file', 16) }}
+            <span>Escolher arquivo PDF</span>
+            <input id="sv-upload-pdf-input" type="file" accept="application/pdf,.pdf" data-sv-upload-input>
+          </label>
+
+          <p class="sv-drop-hint">PDF até 12 MB · O arquivo não fica salvo</p>
+        </div>
+
+        <div class="sv-divider"><span>ou consulte pelo código do selo</span></div>
+
+        <form class="sv-code-form" method="get" action="/validar" data-ds-val-code-form>
+          <div class="sv-code-row">
+            <label class="sv-code-input-wrap">
+              <span class="sr-only">Código de verificação do documento</span>
+              {{ icon('qr', 18) }}
+              <input type="text"
+                     name="codigo"
+                     value="{{ query_code }}"
+                     maxlength="17"
+                     autocomplete="off"
+                     autocapitalize="characters"
+                     spellcheck="false"
+                     placeholder="SF-XXXX-XXXX-XXXX"
+                     data-ds-code-mask
+                     required>
+            </label>
+            <button type="submit" class="sf-btn sf-btn-secondary sv-code-submit">Consultar</button>
+          </div>
+          <p class="sv-code-hint">Digite apenas letras e números do código impresso no selo — os traços são preenchidos automaticamente.</p>
+        </form>
+      </section>
+
+      <div class="sv-trust-strip" aria-label="Garantias da consulta">
+        <span><i aria-hidden="true">✓</i> SiSFarm e ICP-Brasil</span>
+        <span><i aria-hidden="true">✓</i> Privado e gratuito</span>
+        <span><i aria-hidden="true">✓</i> Sem necessidade de login</span>
+      </div>
+    </div>
+
+    <!-- ESTADO DINÂMICO: CONFERÊNCIA EM ANDAMENTO -->
+    <section class="sv-card sv-checking-card" data-sv-checking hidden role="status" aria-live="polite">
+      <div class="sv-spinner" aria-hidden="true"></div>
+      <h2>Conferindo autenticidade…</h2>
+      <p>Verificando assinaturas e integridade do documento.</p>
     </section>
+
+    <!-- ESTADO DINÂMICO: RESULTADO DO UPLOAD DE PDF -->
+    <div class="sv-stack" data-sv-upload-result hidden tabindex="-1"></div>
     {% endif %}
   </main>
 
-  <footer class="ds-pub-footer">
-    <p>SiSFarm · Validação Pública de Documentos · MP 2.200-2/2001 · Lei 14.063/2020 · LGPD (Lei 13.709/2018)</p>
+  <!-- MODAL DE PRÉVIA E DOWNLOAD DO COMPROVANTE PDF ESTILIZADO -->
+  <dialog class="sv-dialog" data-sv-receipt-dialog aria-labelledby="sv-receipt-title">
+    <div class="sv-dialog-shell">
+      <header class="sv-dialog-head">
+        <div>
+          <h2 id="sv-receipt-title">Comprovante de Validação (PDF)</h2>
+          <p>Prévia estilizada com selo de autenticidade pronta para download.</p>
+        </div>
+        <button type="button" class="sv-dialog-close" data-sv-receipt-close aria-label="Fechar prévia">✕</button>
+      </header>
+      <div class="sv-dialog-body" data-sv-receipt-preview></div>
+      <footer class="sv-dialog-foot">
+        <span class="sv-dialog-foot-note">Formato PDF A4 pronto para arquivamento ou envio.</span>
+        <div class="sv-dialog-foot-actions">
+          <button type="button" class="sf-btn sf-btn-secondary sv-btn-sm" data-sv-receipt-print>Imprimir</button>
+          <button type="button" class="sf-btn sf-btn-primary sv-btn-sm" data-sv-receipt-download>
+            {{ icon('download', 15) }} Baixar arquivo PDF
+          </button>
+        </div>
+      </footer>
+    </div>
+  </dialog>
+
+  <div class="sv-print-mount" data-sv-print-mount hidden></div>
+
+  <footer class="sv-footer">
+    <p>SiSFarm · Consulta pública de autenticidade · Seus arquivos não são armazenados</p>
   </footer>
-  <script type="module" src="/static/js/digital_signing.js?v=14"></script>
+  <script type="module" src="/static/js/digital_signing.js?v=15"></script>
 </body>
 </html>

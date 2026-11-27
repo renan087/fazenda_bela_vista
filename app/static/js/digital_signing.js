@@ -3332,10 +3332,289 @@ function initExternalSigning(root) {
   loadPdf();
 }
 
+function renderSealSvg(tone) {
+  const map = {
+    valid: { ring: "#294127", fill: "#E6F4E2", accent: "#446A36", word: "AUTÊNTICO", sym: "check" },
+    partial: { ring: "#7A4F00", fill: "#FFF6E5", accent: "#C98200", word: "PARCIAL", sym: "alert" },
+    invalid: { ring: "#912018", fill: "#FDECEA", accent: "#B42318", word: "INVÁLIDO", sym: "x" },
+    indeterminate: { ring: "#7A4F00", fill: "#FFF6E5", accent: "#C98200", word: "PENDENTE", sym: "alert" },
+    unsigned: { ring: "#5B6660", fill: "#F3F5F2", accent: "#7A857E", word: "SEM ASSINATURA", sym: "minus" },
+  }[tone] || { ring: "#294127", fill: "#E6F4E2", accent: "#446A36", word: "AUTÊNTICO", sym: "check" };
+
+  const iconPath = map.sym === "check"
+    ? `<path d="M49 61 L57 69 L72 52" fill="none" stroke="${map.ring}" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>`
+    : map.sym === "x"
+    ? `<path d="M52 52 L68 68 M68 52 L52 68" fill="none" stroke="${map.ring}" stroke-width="4.2" stroke-linecap="round"/>`
+    : map.sym === "alert"
+    ? `<path d="M60 50 V62 M60 68 V69" fill="none" stroke="${map.ring}" stroke-width="4.2" stroke-linecap="round"/>`
+    : `<path d="M51 60 H69" fill="none" stroke="${map.ring}" stroke-width="4.2" stroke-linecap="round"/>`;
+
+  return `
+    <svg width="108" height="108" viewBox="0 0 120 120" aria-hidden="true" style="flex-shrink:0">
+      <circle cx="60" cy="60" r="56" fill="${map.fill}" stroke="${map.ring}" stroke-width="2.2"/>
+      <circle cx="60" cy="60" r="50" fill="none" stroke="${map.accent}" stroke-width="1" stroke-dasharray="3 2.5"/>
+      <circle cx="60" cy="60" r="38" fill="#FFFFFF" stroke="${map.ring}" stroke-width="1.3"/>
+      <text x="60" y="34" text-anchor="middle" font-size="7.2" font-weight="800" fill="${map.ring}" letter-spacing="1.4">SISFARM</text>
+      ${iconPath}
+      <rect x="20" y="81" width="80" height="17" rx="8.5" fill="${map.ring}"/>
+      <text x="60" y="92.5" text-anchor="middle" font-size="${map.word.length > 10 ? "6.6" : "8"}" font-weight="800" fill="#FFFFFF" letter-spacing="0.8">${dsEsc(map.word)}</text>
+    </svg>
+  `;
+}
+
+function buildReceiptPreviewHtml(payload) {
+  const tone = payload.tone || "valid";
+  const signers = payload.signers || [];
+  const verifyUrl = payload.code ? `app.sisfarm.com.br/validar/${payload.code}` : "app.sisfarm.com.br/validar";
+  const rowsHtml = signers.length
+    ? signers.map((s) => `
+        <tr>
+          <td><strong>${dsEsc(s.name)}</strong></td>
+          <td class="ds-tabular">${dsEsc(s.cpf || "Conforme certificado")}</td>
+          <td class="ds-tabular">${dsEsc(s.signed_at || "Pendente")}</td>
+          <td><span class="sv-pill sv-pill--${dsEsc(s.type_tone || "brand")}">${dsEsc(s.type)}</span></td>
+        </tr>
+      `).join("")
+    : `<tr><td colspan="4">Nenhuma assinatura digital encontrada neste arquivo.</td></tr>`;
+
+  return `
+    <div class="sv-a4">
+      <div class="sv-a4-top">
+        <div class="sv-a4-brand">
+          <div>
+            <small>SiSFarm · Validação Pública</small>
+            <strong>Comprovante Oficial de Autenticidade</strong>
+          </div>
+        </div>
+        <div class="sv-a4-proto ds-tabular">
+          <div>Protocolo: <strong>${dsEsc(payload.protocol || "SiSFarm")}</strong></div>
+          <div>Emitido em ${dsEsc(payload.checked_at || "")}</div>
+        </div>
+      </div>
+      <div class="sv-a4-body">
+        <div class="sv-a4-verdict sv-a4-verdict--${dsEsc(tone)}">
+          <div>
+            <h3>${dsEsc(payload.headline)}</h3>
+            <p>${dsEsc(payload.summary)}</p>
+          </div>
+          ${renderSealSvg(tone)}
+        </div>
+        <div>
+          <h4 class="sv-a4-sec-title">1. Identificação do documento</h4>
+          <div class="sv-a4-box">
+            <div class="sv-a4-doc-top">
+              <small>Título do documento</small>
+              <strong>${dsEsc(payload.title)}</strong>
+            </div>
+            <div class="sv-a4-cols">
+              <div><small>Origem</small><strong>${dsEsc(payload.origin || "SiSFarm")}</strong></div>
+              <div><small>Código de verificação</small><strong>${dsEsc(payload.code || "Documento externo")}</strong></div>
+              <div><small>Integridade</small><strong>${dsEsc(payload.integrity || "Confirmada")}</strong></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h4 class="sv-a4-sec-title">2. Signatários registrados (${signers.length})</h4>
+          <div class="sv-a4-box">
+            <table class="sv-a4-table">
+              <thead><tr><th>Signatário</th><th>CPF (LGPD)</th><th>Data e hora</th><th>Modalidade</th></tr></thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="sv-a4-foot">
+          <div><strong>Conferência online:</strong> <code>${dsEsc(verifyUrl)}</code></div>
+          ${payload.sha256 ? `<div><strong>SHA-256:</strong> <code>${dsEsc(payload.sha256)}</code></div>` : ""}
+          ${payload.seal_note ? `<div>${dsEsc(payload.seal_note)}</div>` : ""}
+          <div>Conformidade: Lei 14.063/2020 · MP 2.200-2/2001 · LGPD (Lei 13.709/2018)</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderDynamicUploadResult(container, payload) {
+  const tone = payload.tone || "valid";
+  const icTone = tone === "valid" ? "is-ok" : tone === "invalid" ? "is-err" : tone === "unsigned" ? "is-neutral" : "is-warn";
+  const icSvg = tone === "valid"
+    ? '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4.5 4.5L19 7"/></svg>'
+    : tone === "invalid"
+    ? '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>'
+    : '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18.4A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-2.6L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>';
+
+  const signers = payload.signers || [];
+  const signersHtml = signers.length
+    ? `<ul class="sv-signer-list">${signers.map((s) => {
+        const dotCls = s.status === "valid" ? "is-ok" : s.status === "invalid" ? "is-err" : "is-warn";
+        const dotTxt = s.status === "valid" ? "✓" : s.status === "invalid" ? "✕" : "!";
+        return `
+          <li class="sv-signer-row">
+            <span class="sv-signer-dot ${dotCls}" aria-hidden="true">${dotTxt}</span>
+            <div class="sv-signer-body">
+              <div>
+                <strong>${dsEsc(s.name)}</strong>
+                <p class="ds-tabular">CPF ${dsEsc(s.cpf || "Conforme certificado")} · ${dsEsc(s.signed_at || "Pendente")}</p>
+              </div>
+              <span class="sv-pill sv-pill--${dsEsc(s.type_tone || "brand")}">${dsEsc(s.type)}</span>
+            </div>
+          </li>
+        `;
+      }).join("")}</ul>`
+    : `<p class="sv-muted-txt">Nenhuma assinatura digital encontrada neste arquivo.</p>`;
+
+  const techEvHtml = signers.length
+    ? `<div class="sv-tech-sep"><strong class="sv-tech-subhead">Registros individuais dos signatários</strong><div class="sv-tech-ev-list">${signers.map((s) => `<div class="sv-tech-ev-item"><strong>${dsEsc(s.name)}:</strong> ${dsEsc(s.tech || "")}</div>`).join("")}</div></div>`
+    : "";
+
+  container.innerHTML = `
+    <div class="sv-action-bar">
+      <button type="button" class="sf-btn sf-btn-secondary sv-btn-sm" data-sv-reset-home>← Validar outro</button>
+      <div class="sv-action-right">
+        <button type="button" class="sf-btn sf-btn-primary sv-btn-sm" data-sv-open-receipt>Comprovante PDF</button>
+      </div>
+    </div>
+
+    <article class="sv-card" aria-label="Resultado da validação">
+      <header class="sv-hero sv-hero--${dsEsc(tone)} sv-card-pad">
+        <div class="sv-hero-row">
+          <div class="sv-verdict-ic ${icTone}">${icSvg}</div>
+          <div class="sv-hero-copy">
+            <h1 class="sv-title">${dsEsc(payload.headline)}</h1>
+            <p class="sv-summary">${dsEsc(payload.summary)}</p>
+            ${payload.guidance ? `<p class="sv-guidance">${dsEsc(payload.guidance)}</p>` : ""}
+          </div>
+        </div>
+      </header>
+
+      <section class="sv-section sv-card-pad" aria-label="Dados do documento">
+        <div class="sv-doc-head">
+          <div>
+            <span class="sv-eyebrow">Documento</span>
+            <h2 class="sv-doc-title">${dsEsc(payload.title)}</h2>
+          </div>
+          ${payload.code ? `
+            <div class="sv-code-pill">
+              <code>${dsEsc(payload.code)}</code>
+              <button type="button" class="sv-copy-btn" data-ds-copy-text="${dsEsc(payload.code)}">Copiar</button>
+            </div>
+          ` : ""}
+        </div>
+        <dl class="sv-meta-grid">
+          <div><dt>Origem</dt><dd>${dsEsc(payload.origin || "Documento PDF")}</dd></div>
+          <div><dt>Data</dt><dd class="ds-tabular">${dsEsc(payload.date || "—")}</dd></div>
+          <div><dt>Integridade</dt><dd class="${payload.integrity_bad ? "is-err-txt" : tone === "valid" ? "is-ok-txt" : ""}">${dsEsc(payload.integrity || "Verificada")}</dd></div>
+        </dl>
+      </section>
+
+      <section class="sv-card-pad" aria-label="Signatários">
+        <div class="sv-signers-head">
+          <span class="sv-eyebrow">Quem assinou ${signers.length ? `(${signers.length})` : ""}</span>
+          ${signers.length ? `<span class="sv-lgpd-note">CPF protegido pela LGPD</span>` : ""}
+        </div>
+        ${signersHtml}
+      </section>
+    </article>
+
+    <details class="sv-tech">
+      <summary>
+        <span>Detalhes técnicos e base legal</span>
+        <svg class="sv-chevron" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </summary>
+      <div class="sv-tech-body">
+        <dl class="sv-tech-list">
+          ${payload.file_name ? `<div><dt>Arquivo analisado</dt><dd>${dsEsc(payload.file_name)}</dd></div>` : ""}
+          <div><dt>Verificado em</dt><dd class="ds-tabular">${dsEsc(payload.checked_at || "")}</dd></div>
+          <div><dt>Verificação técnica</dt><dd>${dsEsc(payload.policy || "")}</dd></div>
+          ${payload.sha256 ? `
+            <div>
+              <dt>SHA-256</dt>
+              <dd class="sv-hash-dd">
+                <code>${dsEsc(payload.sha256)}</code>
+                <button type="button" class="sv-copy-inline" data-ds-copy-text="${dsEsc(payload.sha256)}">Copiar</button>
+              </dd>
+            </div>
+          ` : ""}
+        </dl>
+        ${techEvHtml}
+        <div class="sv-tech-sep">
+          <strong class="sv-tech-subhead">Selo de integridade e base legal</strong>
+          <p>${dsEsc(payload.seal_note || "")}</p>
+          <p>Validação em conformidade com a Lei 14.063/2020, MP 2.200-2/2001 e LGPD (Lei 13.709/2018).</p>
+        </div>
+      </div>
+    </details>
+  `;
+}
+
 function initPublicValidate(root) {
   const code = root.dataset.code;
   const codeForm = root.querySelector("[data-ds-val-code-form]");
   const codeInput = root.querySelector("[data-ds-code-mask]");
+  const receiptDialog = document.querySelector("[data-sv-receipt-dialog]");
+  const receiptPreview = receiptDialog?.querySelector("[data-sv-receipt-preview]");
+  const printMount = document.querySelector("[data-sv-print-mount]");
+  let activePayload = null;
+
+  const initialPayloadEl = root.querySelector("[data-sv-initial-payload]");
+  if (initialPayloadEl) {
+    try { activePayload = JSON.parse(initialPayloadEl.textContent || ""); } catch {}
+  }
+
+  const openReceipt = () => {
+    if (!activePayload || !receiptDialog || !receiptPreview) return;
+    const html = buildReceiptPreviewHtml(activePayload);
+    receiptPreview.innerHTML = html;
+    if (printMount) printMount.innerHTML = html;
+    receiptDialog.showModal();
+  };
+
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-sv-open-receipt]")) openReceipt();
+  });
+
+  receiptDialog?.querySelector("[data-sv-receipt-close]")?.addEventListener("click", () => receiptDialog.close());
+  receiptDialog?.addEventListener("click", (ev) => { if (ev.target === receiptDialog) receiptDialog.close(); });
+  receiptDialog?.querySelector("[data-sv-receipt-print]")?.addEventListener("click", () => {
+    if (printMount) printMount.hidden = false;
+    window.print();
+    if (printMount) printMount.hidden = true;
+  });
+
+  receiptDialog?.querySelector("[data-sv-receipt-download]")?.addEventListener("click", async () => {
+    if (!activePayload) return;
+    if (activePayload.receipt_url) {
+      location.assign(activePayload.receipt_url);
+      return;
+    }
+    const btn = receiptDialog.querySelector("[data-sv-receipt-download]");
+    if (btn) btn.disabled = true;
+    try {
+      const resp = await fetch("/validar/comprovante.pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": root.dataset.csrf,
+        },
+        body: JSON.stringify(activePayload),
+        cache: "no-store",
+      });
+      if (!resp.ok) throw new Error("Não foi possível gerar o comprovante PDF.");
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Comprovante_Validacao_${(activePayload.protocol || "SiSFarm").replace(/[^A-Za-z0-9_-]/g, "")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (err) {
+      window.alert(err.message || "Não foi possível baixar o comprovante.");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
   codeForm?.addEventListener("submit", (event) => {
     const formattedCode = maskVerificationCode(codeInput?.value || "");
     if (codeInput) codeInput.value = formattedCode;
@@ -3345,39 +3624,100 @@ function initPublicValidate(root) {
     }
   });
 
+  // Upload direto de PDF na página inicial /validar
+  const homeView = root.querySelector("[data-sv-home-view]");
+  const uploadDrop = root.querySelector("[data-sv-upload-drop]");
+  const uploadInput = root.querySelector("[data-sv-upload-input]");
+  const uploadError = root.querySelector("[data-sv-upload-error]");
+  const checkingCard = root.querySelector("[data-sv-checking]");
+  const uploadResult = root.querySelector("[data-sv-upload-result]");
+
+  if (uploadDrop && uploadInput) {
+    let busy = false;
+    const showUploadError = (title, detail) => {
+      if (!uploadError) return;
+      uploadError.innerHTML = `<strong>${dsEsc(title)}</strong><span>${dsEsc(detail)}</span>`;
+      uploadError.hidden = false;
+    };
+
+    const runDirectUpload = async (file) => {
+      if (!file || busy) return;
+      if (uploadError) uploadError.hidden = true;
+      if (!file.name.toLowerCase().endsWith(".pdf")) {
+        showUploadError("Este arquivo não é um PDF", "Somente arquivos .pdf carregam assinaturas digitais verificáveis.");
+        return;
+      }
+      if (file.size > 12 * 1024 * 1024) {
+        showUploadError("Arquivo acima de 12 MB", "Escolha um arquivo PDF de até 12 MB para validar.");
+        return;
+      }
+      busy = true;
+      if (homeView) homeView.hidden = true;
+      if (uploadResult) uploadResult.hidden = true;
+      if (checkingCard) checkingCard.hidden = false;
+      try {
+        const data = await request(root, "/validar/arquivo", { pdf: file, name: file.name });
+        activePayload = data;
+        if (checkingCard) checkingCard.hidden = true;
+        if (uploadResult) {
+          renderDynamicUploadResult(uploadResult, data);
+          uploadResult.hidden = false;
+          uploadResult.focus();
+          uploadResult.querySelector("[data-sv-reset-home]")?.addEventListener("click", () => {
+            uploadResult.hidden = true;
+            if (homeView) homeView.hidden = false;
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          });
+        }
+      } catch (err) {
+        if (checkingCard) checkingCard.hidden = true;
+        if (homeView) homeView.hidden = false;
+        showUploadError("Não foi possível validar este PDF", err.message || "Tente novamente com o arquivo PDF original.");
+      } finally {
+        uploadInput.value = "";
+        busy = false;
+      }
+    };
+
+    uploadDrop.addEventListener("click", (ev) => {
+      if (ev.target.closest("label") || ev.target === uploadInput) return;
+      uploadInput.click();
+    });
+    uploadDrop.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); uploadInput.click(); }
+    });
+    uploadInput.addEventListener("change", () => runDirectUpload(uploadInput.files?.[0]));
+    bindAnimatedDropzone(uploadDrop, {
+      dragTitle: "Solte o PDF aqui",
+      dragSub: "A validação de autenticidade iniciará automaticamente",
+      onFile: runDirectUpload,
+    });
+  }
+
+  // Conferência cruzada de PDF na página /validar/{code}
   if (!code) return;
   const dropEl = root.querySelector("[data-ds-pub-check-drop]");
   const input = root.querySelector("[data-ds-pub-pdf-input]");
   const statusEl = root.querySelector("[data-ds-pub-check-status]");
   const verdictEl = root.querySelector("[data-ds-pub-verdict]");
-  let busy = false;
+  let busyCheck = false;
 
   const checkPdf = async (file) => {
-    if (!file || busy) return;
+    if (!file || busyCheck) return;
     if (!file.name.toLowerCase().endsWith(".pdf") || file.size > 12 * 1024 * 1024) {
       feedback(statusEl, "Selecione um arquivo PDF de até 12 MB.", true);
       return;
     }
-    busy = true;
+    busyCheck = true;
     feedback(statusEl, "Conferindo se o arquivo é idêntico ao documento assinado…");
     try {
-      const data = await request(root, `/validar/${encodeURIComponent(code)}/conferir`, {pdf: file});
+      const data = await request(root, `/validar/${encodeURIComponent(code)}/conferir`, { pdf: file });
       feedback(statusEl);
       if (verdictEl) {
-        verdictEl.className = `ds-pub-verdict ${data.matches ? "is-ok" : "is-err"}`;
-        const details = element("details", "", "ds-tech-details");
-        details.append(element("summary", "Ver detalhes técnicos de conferência"));
-        const dl = element("dl", "", "ds-tech-dl");
-        const r1 = element("div");
-        r1.append(element("dt", "Arquivo enviado (SHA-256)"), element("dd", data.uploaded_sha256 || ""));
-        const r2 = element("div");
-        r2.append(element("dt", "Documento registrado no SiSFarm (SHA-256)"), element("dd", data.expected_sha256 || ""));
-        dl.append(r1, r2);
-        details.append(dl);
+        verdictEl.className = `sv-cross-verdict ${data.matches ? "is-ok" : "is-err"}`;
         verdictEl.replaceChildren(
           element("strong", data.headline || (data.matches ? "Documento original confirmado" : "Este arquivo não é o mesmo que foi assinado")),
           element("p", data.message || ""),
-          details,
         );
         verdictEl.hidden = false;
         verdictEl.focus();
@@ -3386,13 +3726,13 @@ function initPublicValidate(root) {
       feedback(statusEl, error.message, true);
     } finally {
       if (input) input.value = "";
-      busy = false;
+      busyCheck = false;
     }
   };
 
   input?.addEventListener("change", () => checkPdf(input.files?.[0]));
   bindAnimatedDropzone(dropEl, {
-    dragTitle: "Solte o PDF aqui para conferir",
+    dragTitle: "Solte o PDF aqui para comparar",
     dragSub: "A comparação com o documento original começa na hora",
     onFile: checkPdf,
   });
