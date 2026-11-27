@@ -460,6 +460,31 @@
         let currentPolyArea = 0;
         let areaChoiceSignature = null;
         let pendingAreaAction = null;
+        let mapWasOpened = Boolean(initialGeom);
+        let mapNeedsAutoReload = false;
+        let lastCarValue = (carInput?.value || '').trim().toUpperCase();
+
+        const resetWizardMapMarkings = ({ markAutoReload = true } = {}) => {
+            if (formEditor) {
+                try { formEditor.destroy(); } catch (e) { /* ignore */ }
+                formEditor = null;
+            }
+            currentGeom = null;
+            currentVertexCount = 0;
+            currentPolyArea = 0;
+            areaChoiceSignature = null;
+            if (geoInput) geoInput.value = '';
+            if (geoFileInput) geoFileInput.value = '';
+            if (geoStatusEl) geoStatusEl.hidden = true;
+            if (wizVerticesEl) wizVerticesEl.textContent = '0';
+            if (wizPolyAreaEl) wizPolyAreaEl.textContent = '0,00 ha';
+            if (mapWrap) mapWrap.hidden = true;
+            if (mapPrompt) mapPrompt.hidden = false;
+            if (markAutoReload && mapWasOpened) {
+                mapNeedsAutoReload = true;
+            }
+            if (typeof syncSummary === 'function') syncSummary();
+        };
 
         /* =====================================================================
            SELETORES EM CASCATA COM BUSCA: ESTADO (UF) -> MUNICÍPIO
@@ -712,20 +737,12 @@
 
         const syncLocationHidden = () => {
             if (!locInput) return;
-            const prevLoc = locInput.value;
             if (selectedCity && selectedUf) {
                 locInput.value = `${selectedCity}, ${selectedUf}`;
             } else if (selectedCity) {
                 locInput.value = selectedCity;
             } else {
                 locInput.value = '';
-            }
-            // Se trocou o município antes de desenhar pontos, limpa o mapa antigo para re-centralizar no novo município
-            if (locInput.value !== prevLoc && formEditor && currentVertexCount === 0 && !currentGeom) {
-                try { formEditor.destroy(); } catch (e) { /* ignore */ }
-                formEditor = null;
-                if (mapWrap) mapWrap.hidden = true;
-                if (mapPrompt) mapPrompt.hidden = false;
             }
             if (step1Err && !step1Err.hidden && selectedUf && selectedCity) {
                 step1Err.hidden = true;
@@ -755,8 +772,13 @@
                 : `${total} municípios em ${selectedUf}`),
             renderSelected: (item) => `${PIN_SVG}<span>${escHtml(item.label)}</span>`,
             onSelect: (item) => {
-                selectedCity = item ? item.value : '';
+                const nextCity = item ? item.value : '';
+                const changed = nextCity !== selectedCity;
+                selectedCity = nextCity;
                 syncLocationHidden();
+                if (changed) {
+                    resetWizardMapMarkings({ markAutoReload: true });
+                }
             },
         });
 
@@ -821,6 +843,7 @@
                 selectedUf = nextUf;
                 if (changed) {
                     selectedCity = '';
+                    resetWizardMapMarkings({ markAutoReload: true });
                     loadCitiesForState(selectedUf, { preselectCity: '', autoOpen: true });
                 }
             },
@@ -1030,6 +1053,9 @@
 
             if (wizStep === 2 && currentGeom && !formEditor) {
                 mountWizardMap(currentGeom);
+            } else if (wizStep === 2 && !formEditor && mapNeedsAutoReload) {
+                mapNeedsAutoReload = false;
+                loadMapForCurrentLocation();
             } else if (wizStep === 2 && formEditor) {
                 formEditor.invalidate();
             }
@@ -1081,7 +1107,9 @@
             renderStep();
         });
 
-        loadMapBtn?.addEventListener('click', async () => {
+        const loadMapForCurrentLocation = async () => {
+            mapWasOpened = true;
+            mapNeedsAutoReload = false;
             let center = null;
             const lat = parseFloat(String(latInput?.value || '').replace(',', '.'));
             const lng = parseFloat(String(lngInput?.value || '').replace(',', '.'));
@@ -1089,7 +1117,7 @@
             if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
                 center = { lat, lng };
             } else if (queryLoc.length >= 2) {
-                loadMapBtn.disabled = true;
+                if (loadMapBtn) loadMapBtn.disabled = true;
                 try {
                     const res = await fetch(`/fazendas/geocodificar?q=${encodeURIComponent(queryLoc)}`);
                     const data = await res.json();
@@ -1097,10 +1125,12 @@
                         center = { lat: data.lat, lng: data.lng };
                     }
                 } catch (e) { /* fallback centro padrão */ }
-                loadMapBtn.disabled = false;
+                if (loadMapBtn) loadMapBtn.disabled = false;
             }
-            mountWizardMap(currentGeom, center);
-        });
+            await mountWizardMap(currentGeom, center);
+        };
+
+        loadMapBtn?.addEventListener('click', loadMapForCurrentLocation);
 
         resetMapBtn?.addEventListener('click', () => {
             if (formEditor?.resetToInitial) formEditor.resetToInitial();
@@ -1224,6 +1254,14 @@
             });
         }
 
+        carInput?.addEventListener('input', () => {
+            const cur = (carInput.value || '').trim().toUpperCase();
+            if (cur !== lastCarValue) {
+                lastCarValue = cur;
+                resetWizardMapMarkings({ markAutoReload: true });
+            }
+        });
+
         carLookupBtn?.addEventListener('click', async () => {
             const raw = (carInput?.value || '').trim();
             if (!raw) {
@@ -1246,17 +1284,23 @@
                     }
                 } else {
                     const d = payload.data || {};
-                    if (d.car_number && carInput) carInput.value = d.car_number;
-                    if (d.location && locInput && !locInput.value.trim()) {
+                    if (d.car_number && carInput) {
+                        carInput.value = d.car_number;
+                        lastCarValue = String(d.car_number).trim().toUpperCase();
+                    }
+                    // Limpa qualquer marcação anterior do mapa antes de aplicar o novo CAR
+                    resetWizardMapMarkings({ markAutoReload: true });
+                    if (d.location && locInput) {
                         locInput.value = d.location;
                         await applyLocationFromText(d.location);
                     }
-                    if (d.area_hectares && areaInput && !areaInput.value.trim()) areaInput.value = d.area_hectares;
+                    if (d.area_hectares && areaInput) areaInput.value = d.area_hectares;
                     if (d.geometry) {
                         currentGeom = d.geometry;
                         if (geoInput) geoInput.value = JSON.stringify(d.geometry);
                         currentVertexCount = window.extractFarmBoundaryPoints?.(d.geometry)?.length || 0;
-                        if (formEditor) mountWizardMap(d.geometry);
+                        mapWasOpened = true;
+                        mapNeedsAutoReload = false;
                     }
                     if (carFeedback) {
                         carFeedback.textContent = d.message || 'CAR consultado com sucesso! Dados preenchidos.';
