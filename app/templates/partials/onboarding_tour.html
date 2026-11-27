@@ -1,0 +1,5 @@
+{# Tour de primeiros passos (Pezinho). url_for devolve URL, não texto: converter antes do tojson. #}
+{% set tour_img = {"head": url_for('static', path='img/pezinho/cabeca-pronto.svg')|string, "cheer": url_for('static', path='img/pezinho/comemorando.svg')|string} %}
+<script type="application/json" id="sf-tour-data">{{ onboarding_tour|tojson }}</script>
+<script>window.__SF_TOUR_IMG = {{ tour_img|tojson }};</script>
+<script src="{{ url_for('static', path='js/onboarding_tour.js') }}?v=20261127ob2" defer></script>

@@ -168,3 +168,11 @@ def test_tour_hidden_for_old_or_dismissed_accounts(env):
     user.organization.onboarding_dismissed = True
     db.commit()
     assert routes._onboarding_tour_context(db, user, 't') is None
+
+
+def test_tour_partial_renders_with_real_url_for():
+    """url_for do Starlette devolve URL (não str); o tojson quebrava a página inteira (erro 500)."""
+    from starlette.datastructures import URL
+    html = routes.templates.env.get_template('partials/onboarding_tour.html').render(
+        onboarding_tour={'state': 'active', 'farm': None}, url_for=lambda name, path: URL(f'/{name}/{path}'))
+    assert '"head": "/static/img/pezinho/cabeca-pronto.svg"' in html and 'id="sf-tour-data"' in html

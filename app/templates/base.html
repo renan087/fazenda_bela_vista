@@ -1742,8 +1742,6 @@ dialog, dialog [data-modal-scroll], dialog .overflow-y-auto { overscroll-behavio
 </script>
 {% if user and not modal_mode %}<script src="{{ url_for('static', path='js/sidebar.js') }}?v=20261120sf3" defer></script>{% endif %}
 {% if pezinho %}{% include "partials/pezinho.html" %}{% endif %}
-{% if onboarding_tour %}<script type="application/json" id="sf-tour-data">{{ onboarding_tour|tojson }}</script>
-<script>window.__SF_TOUR_IMG = {{ {"head": url_for('static', path='img/pezinho/cabeca-pronto.svg'), "cheer": url_for('static', path='img/pezinho/comemorando.svg')}|tojson }};</script>
-<script src="{{ url_for('static', path='js/onboarding_tour.js') }}?v=20261127ob1" defer></script>{% endif %}
+{% if onboarding_tour %}{% include "partials/onboarding_tour.html" %}{% endif %}
 </body>
 </html>
