@@ -13235,3 +13235,14 @@ textarea.fz-in{height:auto;min-height:84px;padding:10px 12px;resize:vertical;lin
 .fz-maphint{white-space:normal;width:calc(100% - 24px);text-align:center}
 }
 @media (prefers-reduced-motion:reduce){.fz-page *,.fz-layer *,.fz-drawer,.fz-toast{animation:none!important;transition:none!important}}
+/* Fazendas: vence o reset do plugin forms do Tailwind (input[type=...]) nos campos fz- */
+.fz-page .fz-in,.fz-layer .fz-in{height:44px;border:1px solid #D5DCD3;border-radius:10px;padding:0 12px;background-color:#fff;font-size:15px;line-height:1.4;color:#16201A;box-shadow:none;width:100%}
+.fz-page .fz-search .fz-in{padding-left:38px;font-size:14px}
+.fz-page .fz-in::placeholder,.fz-layer .fz-in::placeholder{color:#7A857E;opacity:1}
+.fz-page textarea.fz-in,.fz-layer textarea.fz-in{height:auto;padding:10px 12px}
+.fz-page select.fz-in,.fz-layer select.fz-in{padding-right:36px}
+.fz-page .fz-in:focus,.fz-layer .fz-in:focus{outline:none;border-color:#446A36;box-shadow:0 0 0 3px #DDE9D6;--tw-ring-shadow:0 0 #0000}
+.fz-page .fz-search .fz-in::-webkit-search-cancel-button{cursor:pointer}
+.fz-layer .fz-chk input[type=checkbox]{width:22px;height:22px;border-radius:7px;border:1.5px solid #C9D2C6;background-color:#fff;background-image:none;color:transparent;box-shadow:none}
+.fz-layer .fz-chk input[type=checkbox]:checked{background-color:#446A36;border-color:#446A36}
+.fz-layer .fz-chk input[type=checkbox]:focus{--tw-ring-shadow:0 0 #0000;box-shadow:0 0 0 3px #DDE9D6}
