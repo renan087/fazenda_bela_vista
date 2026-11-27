@@ -1,309 +1,81 @@
 {% extends "base.html" %}
+{% from "partials/fz_icons.html" import icon %}
+{% set fz_toast_flash = true %}
 {% block content %}
-<div class="sf-page pd-page fm-page" data-fm-list-page>
-    <header class="pd-head">
+{% set total_area = farm_totals.total_area %}
+{% set ns = namespace(pend=0, nomap=0) %}
+{% for f in farms %}{% if farm_checks[f.id].count %}{% set ns.pend = ns.pend + 1 %}{% endif %}{% if not f.boundary_geojson %}{% set ns.nomap = ns.nomap + 1 %}{% endif %}{% endfor %}
+<main class="fz-page" data-fm-list-page data-fz-list>
+    <div class="fz-head">
         <div>
-            <h1 class="sf-page-title">Fazendas</h1>
-            <p class="sf-page-subtitle">Propriedades da organização, perímetros no mapa e ligação com setores e safras.</p>
+            <h1 class="fz-h1">Fazendas</h1>
+            <p class="fz-sub">{{ farms|length }} propriedade{{ 's' if farms|length != 1 }} · {{ total_area|decimal_br(2) }} ha · {{ farms|length - ns.nomap }} com mapa · {{ ns.pend }} com pendências</p>
         </div>
-        <div class="pd-head-actions">
-            {% if plan_summary.max_farms or plan_summary.max_hectares %}
-            <button type="button" class="sf-btn sf-btn-secondary" data-fm-plan-open>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
-                Limites do plano
-            </button>
-            {% endif %}
-            {% if can_write_page %}
-            <a class="sf-btn sf-btn-primary" href="/fazendas/nova">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                Nova fazenda
-            </a>
-            {% endif %}
-        </div>
-    </header>
+        {% if can_write_page %}<a class="fz-btn pri" href="/fazendas/nova">{{ icon('plus', 18, 2.2) }}Nova fazenda</a>{% endif %}
+    </div>
 
-    <section class="fm-kpis" aria-label="Resumo das fazendas">
-        <article class="pd-card fm-kpi">
-            <p class="pd-eyebrow">Fazendas</p>
-            <strong>{{ farm_totals.count }}{% if plan_summary.max_farms %} <small>de {{ plan_summary.max_farms }}</small>{% endif %}</strong>
-            {% if plan_summary.farms_pct is not none %}
-            <span class="fm-meter" aria-hidden="true"><i class="{{ 'is-over' if plan_summary.used_farms > plan_summary.max_farms else '' }}" style="width: {{ plan_summary.farms_pct }}%"></i></span>
-            {% endif %}
-            <span class="fm-kpi-sub">{{ farm_totals.plots_total }} setor{{ 'es' if farm_totals.plots_total != 1 }} vinculado{{ 's' if farm_totals.plots_total != 1 }}</span>
-        </article>
-        <article class="pd-card fm-kpi">
-            <p class="pd-eyebrow">Área total</p>
-            <strong>{{ farm_totals.total_area|decimal_br(1) }} <small>ha</small></strong>
-            <span class="fm-kpi-sub">{{ farm_totals.planted_area|decimal_br(1) }} ha em setores ({{ farm_totals.planted_pct }}%)</span>
-        </article>
-        <article class="pd-card fm-kpi">
-            <p class="pd-eyebrow">Georreferenciadas</p>
-            <strong>{{ farm_totals.geo_count }} <small>de {{ farm_totals.count }}</small></strong>
-            <span class="fm-kpi-sub {{ 'is-warn' if farm_totals.missing_geo > 0 else 'is-ok' }}">
-                {% if farm_totals.missing_geo > 0 %}{{ farm_totals.missing_geo }} aguardando desenho no mapa{% else %}Todas com perímetro salvo{% endif %}
-            </span>
-        </article>
-        <article class="pd-card fm-kpi">
-            <p class="pd-eyebrow">Contexto em uso</p>
-            <strong style="font-size:18px; line-height:1.3;">{{ active_farm.name if active_farm else '—' }}</strong>
-            <span class="fm-kpi-sub">Selecione outra fazenda abaixo ou no topo</span>
-        </article>
-    </section>
-
-    {% if farm_totals.pending_farms %}
-    <section class="fm-attention" aria-label="Pendências nas fazendas">
-        <div class="fm-attention-main">
-            <span class="fm-attention-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18.4A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-2.6L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
-            </span>
-            <div>
-                <p class="fm-attention-title">{{ farm_totals.pending_farms|length }} {{ 'fazenda precisa' if farm_totals.pending_farms|length == 1 else 'fazendas precisam' }} de atenção</p>
-                <p class="fm-attention-sub">
-                    {% for item in farm_totals.pending_farms[:3] %}{{ item.name }} ({{ item.reason }}){% if not loop.last %} · {% endif %}{% endfor %}{% if farm_totals.pending_farms|length > 3 %}…{% endif %}
-                </p>
-            </div>
+    {% if farms %}
+    <div class="fz-toolbar">
+        <label class="fz-search"><span class="fz-sr">Buscar fazenda</span>{{ icon('search') }}<input class="fz-in" type="search" placeholder="Buscar por nome ou município" data-fz-search autocomplete="off"></label>
+        <button type="button" class="fz-chip on" aria-pressed="true" data-fz-filter="todas">Todas <span class="c">{{ farms|length }}</span></button>
+        <button type="button" class="fz-chip" aria-pressed="false" data-fz-filter="pend">Com pendências <span class="c">{{ ns.pend }}</span></button>
+        <button type="button" class="fz-chip" aria-pressed="false" data-fz-filter="semmapa">Sem mapa <span class="c">{{ ns.nomap }}</span></button>
+        <div class="fz-seg" role="group" aria-label="Modo de visualização">
+            <button type="button" class="on" aria-pressed="true" data-fz-view="lista">{{ icon('list', 16) }}Lista</button>
+            <button type="button" aria-pressed="false" data-fz-view="mapa">{{ icon('map', 16) }}Mapa</button>
         </div>
-        <button type="button" class="sf-btn sf-btn-secondary" style="min-height:2.25rem;" data-fm-jump-attention>Ver pendências</button>
-    </section>
+    </div>
+
+    <div class="fz-list" data-fz-panel="lista">
+        <div class="fz-lhead" aria-hidden="true"><span></span><span>Fazenda</span><span>Área</span><span>Setores</span><span>Safra atual</span><span>Cadastro</span><span>Pendências</span><span></span></div>
+        {% for farm in farms %}
+        {% set m = farm_metrics[farm.id] %}
+        {% set chk = farm_checks[farm.id] %}
+        {% set thumb = ('/fazendas/' ~ farm.id ~ '/preview-thumb.jpg?v=' ~ farm_preview_fingerprint.get(farm.id, '')) if farm.boundary_geojson and farm_preview_ready.get(farm.id) else '' %}
+        <a class="fz-lrow" href="/fazendas/{{ farm.id }}" aria-label="Abrir ficha de {{ farm.name }}" data-fm-row
+           data-fz-row data-name="{{ farm.name|lower }} {{ (farm.location or '')|lower }}" data-pend="{{ 1 if chk.count else 0 }}" data-map="{{ 1 if farm.boundary_geojson else 0 }}">
+            {% if thumb %}
+            <span class="fz-thumb"><img src="{{ thumb }}" alt="" loading="lazy" decoding="async"></span>
+            {% elif farm.boundary_geojson %}
+            <span class="fz-thumb" data-fz-thumb="{{ farm.id }}"></span>
+            {% else %}
+            <span class="fz-thumb empty">{{ icon('map', 20) }}</span>
+            {% endif %}
+            <span style="min-width:0">
+                <span class="fz-ln1">{{ farm.name }}{% if active_farm_id == farm.id %}<span class="fz-pill ok">Em uso</span>{% endif %}{% if farm.operations_paused %}<span class="fz-pill mute">Pausada</span>{% endif %}</span>
+                <span class="fz-ln2">{{ farm.location }}</span>
+                <span class="fz-mline">{{ (farm.total_area or 0)|decimal_br(2) }} ha · {{ chk.label }}</span>
+            </span>
+            <span class="fz-cv opt">{{ (farm.total_area or 0)|decimal_br(2) }} ha</span>
+            <span class="fz-cv opt">{{ m.plots_count or '—' }}</span>
+            <span class="opt" style="font-size:13px">{{ m.active_season_name or 'Sem safra' }}</span>
+            <span class="fz-score opt"><span class="fz-bar"><i style="width: {{ chk.score }}%"></i></span><b>{{ chk.score }}%</b></span>
+            <span class="tab"><span class="fz-pill {{ 'warn' if chk.count else 'ok' }}">{{ chk.label }}</span></span>
+            {{ icon('chev') }}
+        </a>
+        {% endfor %}
+        <div class="fz-empty" data-fz-empty hidden>
+            <h3>Nenhuma fazenda neste filtro</h3>
+            <p>Limpe a busca ou escolha outro filtro para ver as demais propriedades.</p>
+            <button type="button" class="fz-btn" data-fz-clear>Ver todas as fazendas</button>
+        </div>
+    </div>
+
+    <div class="fz-region" data-fz-panel="mapa" hidden>
+        <div class="fz-mapcanvas" id="fz-region-map" role="img" aria-label="Mapa com as fazendas da organização"></div>
+        <div class="fz-rlegend"><span><span class="fz-dot" style="background:#9BCB6B"></span>Com perímetro no mapa</span><span><span class="fz-dot" style="background:#D18A00"></span>Sem perímetro (posição pelo município)</span></div>
+    </div>
+    {% else %}
+    <div class="fz-list">
+        <div class="fz-empty">
+            <h3>Nenhuma fazenda cadastrada ainda</h3>
+            <p>Cadastre a primeira propriedade para criar setores, safras e acompanhar a produção.</p>
+            {% if can_write_page %}<a class="fz-btn pri" href="/fazendas/nova">Cadastrar primeira fazenda</a>{% endif %}
+        </div>
+    </div>
     {% endif %}
-
-    <section class="pd-card fm-toolbar" aria-label="Filtros e busca">
-        <div class="sl-chips" role="group" aria-label="Filtrar fazendas">
-            <button type="button" class="sl-chip" data-fm-filter="todas" aria-pressed="true">Todas <span>{{ farm_totals.count }}</span></button>
-            <button type="button" class="sl-chip" data-fm-filter="mapa" aria-pressed="false">Com mapa <span>{{ farm_totals.geo_count }}</span></button>
-            <button type="button" class="sl-chip" data-fm-filter="sem_mapa" aria-pressed="false">Sem mapa <span>{{ farm_totals.missing_geo }}</span></button>
-            <button type="button" class="sl-chip" data-fm-filter="atencao" aria-pressed="false">Atenção <span>{{ farm_totals.pending_farms|length }}</span></button>
-        </div>
-        <label class="sf-search">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-            <span class="sr-only">Buscar fazendas</span>
-            <input type="search" placeholder="Buscar fazenda, município ou CAR..." data-fm-search>
-        </label>
-    </section>
-
-    <section aria-label="Lista de fazendas">
-        {% if farms %}
-        <div class="fm-list" data-fm-list>
-            {% for farm in farms %}
-            {% set m = farm_metrics[farm.id] %}
-            {% set is_current = (active_farm_id == farm.id) %}
-            {% set thumb_src = '/fazendas/' ~ farm.id ~ '/preview-thumb.jpg?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
-            {% set full_src = '/fazendas/' ~ farm.id ~ '/preview.png?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
-            <article class="pd-card fm-card{% if is_current %} is-active{% endif %}"
-                     data-fm-row
-                     data-fm-geo="{{ '1' if farm.boundary_geojson else '0' }}"
-                     data-fm-attention="{{ '1' if m.needs_attention else '0' }}"
-                     data-fm-search-text="{{ farm.name }} {{ farm.location }} {{ farm.car_registration_number or '' }} {{ farm.notes or '' }}">
-                <div class="fm-card-left">
-                    {% if farm.boundary_geojson and farm_preview_ready.get(farm.id) %}
-                    <button type="button" class="fm-thumb"
-                            data-fm-map-open
-                            data-farm-id="{{ farm.id }}"
-                            data-farm-name="{{ farm.name }}"
-                            data-farm-area="{{ (farm.total_area or 0)|float }}"
-                            data-map-src="{{ full_src }}"
-                            aria-label="Ampliar mapa de {{ farm.name }}">
-                        <img src="{{ thumb_src }}" alt="" loading="lazy" decoding="async">
-                        <span class="fm-thumb-tag">Ampliar</span>
-                    </button>
-                    {% elif farm.boundary_geojson %}
-                    <a href="/fazendas/{{ farm.id }}" class="fm-thumb-empty" style="border-color:#BFD6B6; background:#EEF3EB; color:#294127;">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10Z"/><circle cx="12" cy="11" r="2"/></svg>
-                        <span>Mapa salvo</span>
-                    </a>
-                    {% else %}
-                    <a href="{{ '/fazendas/' ~ farm.id ~ '/editar?passo=2' if can_write_page else '/fazendas/' ~ farm.id }}" class="fm-thumb-empty">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10Z"/><circle cx="12" cy="11" r="2"/></svg>
-                        <span>Desenhar mapa</span>
-                    </a>
-                    {% endif %}
-
-                    <div class="fm-card-body">
-                        <div class="fm-card-top">
-                            <a href="/fazendas/{{ farm.id }}" class="fm-card-name">{{ farm.name }}</a>
-                            {% if is_current %}<span class="pd-chip is-ok">Em uso</span>{% endif %}
-                            {% if farm.operations_paused %}<span class="pd-chip is-warn">Operações pausadas</span>
-                            {% elif plan_regularization and farm.id in plan_regularization.excess_farms %}<span class="pd-chip is-warn">{{ 'Excede o plano contratado' if plan_entitlements.billing_state == 'teste' else 'Regularização necessária' }}</span>{% endif %}
-                            {% if farm.car_registration_number %}<span class="pd-chip is-done">CAR ok</span>{% endif %}
-                        </div>
-                        <p class="fm-card-sub">{{ farm.location }}{% if farm.notes %} · {{ farm.notes|truncate(90) }}{% endif %}</p>
-                        <dl class="fm-metrics">
-                            <div><dt>Área total</dt><dd>{{ (farm.total_area or 0)|decimal_br(1) }} ha</dd></div>
-                            <div><dt>Em setores</dt><dd>{{ m.planted_area|decimal_br(1) }} ha ({{ m.occupation_pct }}%)</dd></div>
-                            <div><dt>Setores</dt><dd>{{ m.plots_count }} {{ 'setor' if m.plots_count == 1 else 'setores' }}</dd></div>
-                            <div><dt>Safra atual</dt><dd>{{ m.active_season_name or 'Sem safra' }}</dd></div>
-                        </dl>
-                    </div>
-                </div>
-
-                <div class="fm-card-actions">
-                    {% if not is_current and not farm.operations_paused %}
-                    <form method="post" action="/contexto">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <input type="hidden" name="farm_id" value="{{ farm.id }}">
-                        <input type="hidden" name="redirect_to" value="/fazendas">
-                        <button type="submit" class="sf-btn sf-btn-secondary">Usar</button>
-                    </form>
-                    {% endif %}
-                    <a href="/fazendas/{{ farm.id }}" class="sf-btn sf-btn-primary">Abrir ficha →</a>
-                    {% if can_write_page %}
-                    <a href="/fazendas/{{ farm.id }}/editar" class="sf-icon-btn" aria-label="Editar {{ farm.name }}" title="Editar">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                    </a>
-                    {% with plots_count=m.plots_count, farm_action_redirect='/fazendas' %}
-                    {% include "partials/farm_action_menu.html" %}
-                    {% endwith %}
-                    {% endif %}
-                </div>
-            </article>
-            {% endfor %}
-        </div>
-        <div class="pd-card pd-empty" data-fm-empty-search hidden>
-            <strong>Nenhuma fazenda encontrada neste filtro.</strong>
-            <span>Limpe a busca ou troque o filtro selecionado.</span>
-            <button type="button" class="sf-btn sf-btn-secondary" data-fm-reset-filters>Ver todas as fazendas</button>
-        </div>
-        {% else %}
-        <div class="pd-card pd-empty">
-            <strong>Nenhuma fazenda cadastrada ainda.</strong>
-            <span>Cadastre a primeira propriedade para criar setores, safras e acompanhar a produção.</span>
-            {% if can_write_page %}<a class="sf-btn sf-btn-primary" href="/fazendas/nova">Cadastrar primeira fazenda</a>{% endif %}
-        </div>
-        {% endif %}
-    </section>
-</div>
-
-{# Modal: Mapa Ampliado + Editor de Polígono #}
-<dialog class="fm-dialog" data-fm-map-modal aria-labelledby="fm-map-modal-title">
-    <div class="fm-sheet">
-        <div class="fm-sheet-head">
-            <div>
-                <p class="pd-eyebrow">Georreferenciamento</p>
-                <h3 id="fm-map-modal-title" data-fm-map-title>Mapa da fazenda</h3>
-            </div>
-            <button type="button" class="sf-icon-btn" aria-label="Fechar mapa" data-fm-dialog-close>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-            </button>
-        </div>
-        <div class="fm-sheet-body">
-            <div data-fm-map-view>
-                <div style="border-radius:14px; overflow:hidden; border:1px solid #E3E8E2; background:#F6F8F5;">
-                    <img data-fm-map-img src="" alt="Mapa da fazenda" style="display:block; width:100%; max-height:58vh; object-fit:contain;">
-                </div>
-            </div>
-            <div class="fm-map-edit-pane" data-fm-map-edit hidden>
-                <div class="fm-map-bar" style="border:1px solid #E3E8E2; border-radius:12px;">
-                    <span data-fm-map-guide style="font-weight:600;">Arraste os cantos para ajustar o perímetro.</span>
-                    <span style="white-space:nowrap;">Vértices: <strong data-fm-map-vertices>0</strong> · Área est.: <strong data-fm-map-area>0,00 ha</strong></span>
-                </div>
-                <div id="fm-modal-boundary-map" class="fm-map-canvas" style="border:1px solid #E3E8E2; border-radius:14px;"></div>
-                <div style="display:flex; flex-wrap:wrap; gap:8px;">
-                    <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-undo>Desfazer</button>
-                    <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-remove>Remover ponto</button>
-                </div>
-            </div>
-        </div>
-        <div class="fm-sheet-foot">
-            <a class="sf-btn sf-btn-secondary" data-fm-map-kml href="#">Baixar KML</a>
-            <div style="display:flex; flex-wrap:wrap; gap:8px;">
-                {% if can_write_page %}
-                <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-start-edit>Editar pontos</button>
-                <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-cancel-edit hidden>Cancelar alterações</button>
-                <form method="post" data-fm-map-form hidden style="margin:0;">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="hidden" name="boundary_geojson" value="" data-fm-map-input>
-                    <input type="hidden" name="apply_polygon_area" value="0" data-fm-map-apply-area>
-                    <button type="submit" class="sf-btn sf-btn-primary">Salvar geometria</button>
-                </form>
-                {% endif %}
-                <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-close-view data-fm-dialog-close>Fechar</button>
-            </div>
-        </div>
-    </div>
-</dialog>
-
-{# Modal: Limites do Plano #}
-{% if plan_summary.max_farms or plan_summary.max_hectares %}
-<dialog class="fm-dialog is-sm" data-fm-plan-modal aria-labelledby="fm-plan-modal-title">
-    <div class="fm-sheet">
-        <div class="fm-sheet-head">
-            <div>
-                <p class="pd-eyebrow">Assinatura e capacidade</p>
-                <h3 id="fm-plan-modal-title">{{ plan_summary.plan_name }}</h3>
-            </div>
-            <button type="button" class="sf-icon-btn" aria-label="Fechar" data-fm-dialog-close>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-            </button>
-        </div>
-        <div class="fm-sheet-body">
-            {% if plan_summary.max_farms %}
-            <div>
-                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:6px;">
-                    <span>Fazendas ativas</span>
-                    <span>{{ plan_summary.used_farms }} de {{ plan_summary.max_farms }}</span>
-                </div>
-                <span class="fm-meter"><i class="{{ 'is-over' if plan_summary.used_farms > plan_summary.max_farms else '' }}" style="width:{{ plan_summary.farms_pct }}%"></i></span>
-            </div>
-            {% endif %}
-            {% if plan_summary.max_hectares %}
-            <div>
-                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:6px;">
-                    <span>Área somada das propriedades</span>
-                    <span>{{ plan_summary.used_area|decimal_br(1) }} de {{ plan_summary.max_hectares|decimal_br(0) }} ha</span>
-                </div>
-                <span class="fm-meter"><i class="{{ 'is-over' if plan_summary.used_area > plan_summary.max_hectares else '' }}" style="width:{{ plan_summary.area_pct }}%"></i></span>
-            </div>
-            {% endif %}
-            <p class="pd-note">Se precisar cadastrar acima do limite, você pode pausar operações de uma fazenda inativa sem apagar nenhum histórico ou ajustar seu plano em Minha assinatura.</p>
-        </div>
-        <div class="fm-sheet-foot">
-            <a class="sf-btn sf-btn-secondary" href="/minha-assinatura">Ver assinatura</a>
-            <button type="button" class="sf-btn sf-btn-primary" data-fm-dialog-close>Entendi</button>
-        </div>
-    </div>
-</dialog>
-{% endif %}
-
-{% if can_write_page %}{% include "partials/farm_action_dialog.html" %}{% endif %}
-
-{# Modal elegante de confirmação de área ao salvar edição rápida no mapa #}
-<dialog class="fm-dialog is-sm" data-fm-map-area-modal aria-labelledby="fm-map-area-modal-title">
-    <div class="fm-sheet">
-        <div class="fm-sheet-head">
-            <div>
-                <p class="pd-eyebrow">Conferência de área</p>
-                <h3 id="fm-map-area-modal-title">Qual área você quer usar nesta fazenda?</h3>
-            </div>
-            <button type="button" class="sf-icon-btn" aria-label="Fechar" data-fm-map-area-close>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-            </button>
-        </div>
-        <div class="fm-sheet-body">
-            <p class="fm-area-modal-lead">A área medida no mapa ficou diferente da área cadastrada. Escolha qual valor prefere manter — o desenho do mapa continua salvo nas duas opções.</p>
-            <div class="fm-area-choice-grid">
-                <button type="button" class="fm-area-option" data-fm-map-area-choice="keep">
-                    <span class="fm-area-option-tag">Área cadastrada</span>
-                    <strong class="fm-area-option-val" data-fm-map-declared>—</strong>
-                    <small>Manter a área atual da fazenda</small>
-                    <span class="sf-btn sf-btn-secondary fm-area-option-cta">Manter esta área</span>
-                </button>
-                <button type="button" class="fm-area-option is-map" data-fm-map-area-choice="map">
-                    <span class="fm-area-option-tag">Calculada no mapa</span>
-                    <strong class="fm-area-option-val" data-fm-map-calculated>—</strong>
-                    <small>Atualizar com a medida do desenho</small>
-                    <span class="sf-btn sf-btn-primary fm-area-option-cta">Usar área do mapa</span>
-                </button>
-            </div>
-        </div>
-        <div class="fm-sheet-foot">
-            <span style="font-size:12px; color:var(--pd-muted);">O perímetro desenhado não será alterado.</span>
-            <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-area-close>Voltar e ajustar mapa</button>
-        </div>
-    </div>
-</dialog>
-
-<script type="application/json" id="fm-boundary-geometries-data">{{ farm_boundary_geometries_json|safe }}</script>
-<script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
-<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261121pzw3"></script>
-<script src="{{ url_for('static', path='js/farms.js') }}?v=20261126fmactions"></script>
+</main>
+{% if flash %}<div class="fz-toast {{ 'err' if flash.kind != 'success' }}" role="status" data-fz-toast>{{ icon('check' if flash.kind == 'success' else 'alert', 18, 2.4) }}{{ flash.message }}</div>{% endif %}
+<script type="application/json" id="fz-pins-data">{{ farm_pins_json|safe }}</script>
+<script src="{{ url_for('static', path='js/fazendas.js') }}?v=20261127fz1"></script>
 {% endblock %}

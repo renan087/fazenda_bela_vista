@@ -73,12 +73,13 @@ def test_new_farm_wizard_renders_approved_copy_and_steps(env):
     html = resp.body.decode("utf-8")
     assert resp.status_code == 200
     assert "data-fm-wizard" in html
-    assert "Número do CAR (opcional)" in html
-    assert "agiliza o cadastro" not in html
-    assert "Informações adicionais" in html
-    assert "Dados cadastrais e registrais" in html
-    assert "ITR / NIRF / CIB" in html
-    assert "data-fm-map-prompt" in html
+    assert "Tem o número do CAR?" in html
+    for step in ("Identificação", "Perímetro", "Conferir"):
+        assert step in html
+    for option in ("car", "draw", "file", "later"):
+        assert f'data-fz-popt="{option}"' in html
+    assert "Salvar fazenda" in html
+    assert "Nada é gravado até você clicar em Salvar fazenda." in html
 
 
 def test_farm_detail_all_tabs_and_visual_fixes(env):
@@ -87,7 +88,7 @@ def test_farm_detail_all_tabs_and_visual_fixes(env):
     farm.boundary_geojson = SAMPLE_GEOJSON
     env.db.commit()
 
-    for tab in ("visao", "setores", "safras", "documentos", "chuva"):
+    for tab in ("resumo", "territorio", "documentos", "agronomia", "visao", "setores", "safras"):
         resp = env.routes.farm_detail_page(
             farm.id,
             env.request(f"/fazendas/{farm.id}?aba={tab}"),
@@ -100,26 +101,28 @@ def test_farm_detail_all_tabs_and_visual_fixes(env):
         assert resp.status_code == 200
         html = resp.body.decode("utf-8")
         assert farm.name in html
-        if tab == "visao":
-            assert "fm-summary-rows" in html
-            assert "fm-car-pill" in html
-            assert "fm-map-edit-pane" in html
+        for label in ("Resumo", "Território", "Documentos e CAR", "Agronomia"):
+            assert f">{label}" in html
+        assert "Cadastro Ambiental Rural (CAR)" in html
+        assert "Para completar o cadastro" in html or "Tudo em dia" in html
+        expected = {"visao": "resumo", "setores": "resumo", "safras": "resumo"}.get(tab, tab)
+        assert f'data-active-tab="{expected}"' in html
 
-    # Quando já existe mapa desenhado, o prompt "Carregar mapa da região" deve ser removido e o mapa expandido
-    edit_resp = env.routes.edit_farm_page(
-        farm.id,
-        env.request(f"/fazendas/{farm.id}/editar"),
-        BackgroundTasks(),
-        passo=2,
-        db=env.db,
-        user=env.user,
-        csrf_token="x",
+    # A antiga aba de chuva agora vive em Clima e Água
+    rain = env.routes.farm_detail_page(
+        farm.id, env.request(f"/fazendas/{farm.id}?aba=chuva"), BackgroundTasks(), aba="chuva",
+        db=env.db, user=env.user, csrf_token="x",
     )
-    assert edit_resp.status_code == 200
-    edit_html = edit_resp.body.decode("utf-8")
-    assert "data-fm-map-prompt" not in edit_html
-    assert "Carregar mapa da região" not in edit_html
-    assert "fm-map-canvas is-expanded" in edit_html
+    assert rain.status_code == 303 and rain.headers["location"] == "/clima-agua"
+
+    # O endereço de edição antigo abre o painel certo da ficha
+    for passo, target in ((1, "?painel=identificacao"), (2, "?aba=territorio&painel=perimetro"), (3, "?aba=documentos&painel=registros")):
+        edit_resp = env.routes.edit_farm_page(
+            farm.id, env.request(f"/fazendas/{farm.id}/editar"), BackgroundTasks(), passo=passo,
+            db=env.db, user=env.user, csrf_token="x",
+        )
+        assert edit_resp.status_code == 303
+        assert edit_resp.headers["location"] == f"/fazendas/{farm.id}{target}"
 
 
 def test_deferred_attachment_skips_binary_on_list_and_serves_download(env):
@@ -301,7 +304,7 @@ def test_farm_detail_rain_settings_save(env, monkeypatch):
         user=env.user,
     )
     assert resp.status_code == 303
-    assert resp.headers["location"] == f"/fazendas/{farm.id}?aba=chuva"
+    assert resp.headers["location"] == "/clima-agua"
     row = env.db.query(FarmRainSettings).filter_by(farm_id=farm.id).one()
     assert float(row.heavy_rain_mm) == 42.5
     assert float(row.rainy_day_mm) == 2.0
@@ -328,39 +331,19 @@ def test_kml_file_parsing_and_collapsed_attachments_on_edit(env):
     # Rejeita XML com DOCTYPE (proteção XXE)
     assert extract_geojson_file(b"<!DOCTYPE foo><kml><coordinates>0,0 1,0 1,1</coordinates></kml>") is None
 
-    # No passo 3 em modo edição, Anexos da propriedade deve começar sempre recolhido mesmo havendo anexos
+    # Painel de perímetro da ficha aceita importar arquivo e pergunta qual área usar
     farm = env.db.query(Farm).one()
-    env.db.add(FarmAttachment(farm_id=farm.id, filename="doc.pdf", content_type="application/pdf", file_data=b"%PDF"))
+    farm.boundary_geojson = SAMPLE_GEOJSON
     env.db.commit()
-    resp = env.routes.edit_farm_page(
-        farm.id,
-        env.request(f"/fazendas/{farm.id}/editar?passo=3"),
-        BackgroundTasks(),
-        passo=3,
-        db=env.db,
-        user=env.user,
-        csrf_token="x",
+    resp = env.routes.farm_detail_page(
+        farm.id, env.request(f"/fazendas/{farm.id}?aba=territorio"), BackgroundTasks(), aba="territorio",
+        db=env.db, user=env.user, csrf_token="x",
     )
     html = resp.body.decode("utf-8")
-    assert "data-fm-geo-dropzone" in html
-    assert ".kml" in html
-    assert "Procurar arquivo" in html
-    # Garante que o bloco de anexos não tem atributo open, usa dropzone no padrão SiSFarm (sem cinza slate) e modal de área sem mencionar "5%"
-    idx = html.index("Anexos da propriedade")
-    snippet = html[max(0, idx - 400):idx]
-    assert '<details class="fm-opt-card" open>' not in snippet
-    att_section = html[idx:idx + 3500]
-    assert "data-attachments-dropzone" in att_section
-    assert 'data-attachment-style="sisfarm"' in att_section
-    assert 'class="fm-geo-dropzone"' in att_section
-    assert "Procurar arquivos" in att_section
-    assert "border-slate-300" not in att_section
-    assert "bg-slate-50" not in att_section
-    assert "data-fm-area-modal" in html
-    assert "Qual área você quer usar nesta fazenda?" in html
+    assert "data-fz-perim-file" in html and ".kml" in html
+    assert "Qual área usar na fazenda?" in html
+    assert 'data-fz-ac="1"' in html and 'data-fz-ac="0"' in html
     assert "tolerância de 5%" not in html
-    assert 'data-fm-area-choice="keep"' in html
-    assert 'data-fm-area-choice="map"' in html
 
 
 def test_area_divergence_5_percent_rule_and_geometry_save_preserves_choice(env):
@@ -454,31 +437,24 @@ def test_farm_cascading_state_municipality_selector_and_api(env):
     payload_bad = json.loads(api_bad.body.decode("utf-8"))
     assert payload_bad["ok"] is False and payload_bad["municipalities"] == []
 
-    # Formulário /fazendas/nova renderiza seletores em cascata com busca
+    # Cadastro /fazendas/nova traz estado com busca de município
     new_html = env.routes.new_farm_page(
         env.request("/fazendas/nova"), db=env.db, user=env.user, csrf_token="x"
     ).body.decode("utf-8")
-    assert 'data-fm-combo="state"' in new_html
-    assert 'data-fm-combo="city"' in new_html
-    assert "data-fm-combo-search" in new_html
-    assert 'id="fm-location-data"' in new_html
+    assert "data-fz-uf" in new_html and "data-fz-city-input" in new_html
     assert "Minas Gerais" in new_html
 
-    # Formulário /fazendas/{id}/editar pré-seleciona UF e município existentes
+    # Painel de identificação da ficha pré-seleciona UF e município existentes
     farm = env.db.query(Farm).one()
     farm.location = "Vitória da Conquista, BA"
     env.db.commit()
-    edit_html = env.routes.edit_farm_page(
-        farm.id,
-        env.request(f"/fazendas/{farm.id}/editar"),
-        BackgroundTasks(),
-        passo=1,
-        db=env.db,
-        user=env.user,
-        csrf_token="x",
+    detail_html = env.routes.farm_detail_page(
+        farm.id, env.request(f"/fazendas/{farm.id}?painel=identificacao"), BackgroundTasks(),
+        painel="identificacao", db=env.db, user=env.user, csrf_token="x",
     ).body.decode("utf-8")
-    assert '"initial_uf": "BA"' in edit_html
-    assert '"initial_city": "Vit\\u00f3ria da Conquista"' in edit_html or '"initial_city": "Vitória da Conquista"' in edit_html
+    assert '<option value="BA" selected>' in detail_html
+    assert 'value="Vitória da Conquista"' in detail_html
+    assert 'data-open-panel="identificacao"' in detail_html
 
     # Geocodificação resolve instantaneamente pela base local IBGE para qualquer município selecionado
     geo_vc = json.loads(env.routes.geocode_farm_location(q="Vitória da Conquista, BA", user=env.user).body.decode("utf-8"))

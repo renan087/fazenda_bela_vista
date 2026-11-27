@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import DateTime, ForeignKey, LargeBinary, String, func
+from sqlalchemy import Date, DateTime, ForeignKey, LargeBinary, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -14,6 +14,10 @@ class FarmAttachment(Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(120), nullable=False)
     file_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, deferred=True)
+    # Tipo do documento (CCIR, ITR, Matrícula, Recibo do CAR, Licença ambiental...), referência e validade.
+    doc_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     farm = relationship("Farm", back_populates="attachments")

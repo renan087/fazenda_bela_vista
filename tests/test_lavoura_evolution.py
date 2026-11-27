@@ -198,8 +198,9 @@ def test_agronomic_profile_relocated_to_farm_and_mobile_redirect(env):
         csrf_token="x",
     ).body.decode()
     assert "Dados agronômicos" in farm_html
-    assert "farm-agronomic-form" in farm_html
-    assert "Preencher sugestões automáticas" in farm_html
+    assert "Manejo do solo" in farm_html
+    assert f'action="/fazendas/{farm_id}/agronomia/ambiente"' in farm_html
+    assert "Vem de Setores e Safras" in farm_html
 
 
 def test_climate_water_module_and_lavoura_overview_and_rainfall_without_season(env):

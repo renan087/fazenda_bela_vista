@@ -34,7 +34,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261126fmloc1">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261127fz1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -130,7 +130,7 @@
     {% if user and modal_mode %}
     <main class="min-h-screen bg-slate-100">
         <div class="mx-auto max-w-5xl px-4 py-4 md:px-6 md:py-6">
-            {% if flash %}
+            {% if flash and not fz_toast_flash %}
             <div class="mb-6 rounded-2xl px-4 py-3 text-sm font-medium {% if flash.kind == 'success' %}border border-emerald-200 bg-emerald-50 text-emerald-700{% else %}border border-rose-200 bg-rose-50 text-rose-700{% endif %}">
                 {{ flash.message }}
             </div>

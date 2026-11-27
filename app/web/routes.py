@@ -341,6 +341,7 @@ from app.services.forms import (
     estimate_geojson_centroid,
     extract_geojson_file,
     normalize_geojson,
+    evaluate_area_divergence,
     update_agronomic_profile,
     update_crop_season,
     update_coffee_commercialization,
@@ -9817,6 +9818,45 @@ def _farm_plan_summary(db: Session, user: User, farms: list[Farm]) -> dict:
     }
 
 
+def _farm_list_checks(db: Session, farms: list[Farm], farm_metrics: dict, boundaries: dict) -> tuple[dict, list[dict]]:
+    """Pendências de cada fazenda da lista (sem carregar arquivos) e marcadores do mapa geral."""
+    from app.services.farm_profile import br_number, build_farm_checks
+    from app.services.ibge_municipalities import resolve_municipality_coords
+
+    today = today_in_app_timezone()
+    ids = [f.id for f in farms]
+    atts: dict[int, list] = defaultdict(list)
+    profiles: dict[int, AgronomicProfile] = {}
+    if ids:
+        for att in (
+            db.query(FarmAttachment)
+            .options(load_only(FarmAttachment.id, FarmAttachment.farm_id, FarmAttachment.doc_type, FarmAttachment.reference, FarmAttachment.valid_until))
+            .filter(FarmAttachment.farm_id.in_(ids))
+            .all()
+        ):
+            atts[att.farm_id].append(att)
+        profiles = {p.farm_id: p for p in db.query(AgronomicProfile).filter(AgronomicProfile.farm_id.in_(ids)).all()}
+    checks = {}
+    pins = []
+    for farm in farms:
+        chk = build_farm_checks(
+            farm, plots_count=farm_metrics[farm.id]["plots_count"], attachments=atts.get(farm.id, []),
+            profile=profiles.get(farm.id), today=today,
+        )
+        checks[farm.id] = chk
+        coords = None if farm.boundary_geojson else resolve_municipality_coords(farm.location or "")
+        pins.append({
+            "id": farm.id,
+            "name": farm.name,
+            "sub": f"{br_number(farm.total_area)} ha · {chk.label}",
+            "href": f"/fazendas/{farm.id}",
+            "geometry": boundaries.get(str(farm.id)) or boundaries.get(farm.id),
+            "lat": coords[0] if coords else None,
+            "lng": coords[1] if coords else None,
+        })
+    return checks, pins
+
+
 @router.get("/fazendas")
 def farms_page(
     request: Request,
@@ -9840,6 +9880,7 @@ def farms_page(
     farm_metrics, farm_totals = _farm_overview_metrics(db, farms)
     plan_summary = _farm_plan_summary(db, user, farms)
     google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
+    farm_checks, farm_pins = _farm_list_checks(db, farms, farm_metrics, farm_boundary_by_id)
     return templates.TemplateResponse(
         "farms.html",
         _base_context(
@@ -9855,6 +9896,8 @@ def farms_page(
             farm_preview_fingerprint=farm_preview_fingerprint,
             farm_boundary_geometries_json=json.dumps(farm_boundary_by_id),
             google_maps_web_key=google_maps_web_key,
+            farm_checks=farm_checks,
+            farm_pins_json=json.dumps(farm_pins),
             _repo=repo,
         ),
     )
@@ -9930,12 +9973,172 @@ def farm_preview_thumb_image(
     return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
+_FARM_TAB_ALIASES = {
+    "resumo": "resumo", "visao": "resumo", "setores": "resumo", "safras": "resumo",
+    "territorio": "territorio", "documentos": "documentos",
+    "agronomia": "agronomia", "agronomico": "agronomia",
+}
+_FARM_PANELS = {
+    "identificacao", "car", "registros", "anexo", "ambiente", "manejo", "historico",
+    "pendencias", "perimetro", "excluir",
+}
+
+
+def _farm_sheet_context(db: Session, repo: FarmRepository, farm: Farm, background_tasks: BackgroundTasks) -> dict:
+    """Monta todos os dados da ficha (as 4 abas trocam no navegador, sem recarregar)."""
+    from app.models.nfe_draft import NfeIssuerProfile
+    from app.services.agronomic_profile_suggestions import _append_plot_suggestions
+    from app.services import farm_profile as fp
+
+    today = today_in_app_timezone()
+    farm_preview_ready, farm_preview_fingerprint, farm_boundary_by_id = _farm_preview_bundle(db, [farm], background_tasks)
+    farm_metrics, _ = _farm_overview_metrics(db, [farm])
+    metrics = farm_metrics[farm.id]
+    plots = (
+        db.query(Plot)
+        .options(joinedload(Plot.variety))
+        .filter(Plot.farm_id == farm.id)
+        .order_by(Plot.name.asc())
+        .all()
+    )
+    plot_shapes = []
+    for p in plots:
+        if p.boundary_geojson:
+            try:
+                plot_shapes.append({"name": p.name, "geometry": json.loads(p.boundary_geojson)})
+            except json.JSONDecodeError:
+                pass
+    attachments = (
+        db.query(FarmAttachment)
+        .options(load_only(
+            FarmAttachment.id, FarmAttachment.farm_id, FarmAttachment.filename, FarmAttachment.content_type,
+            FarmAttachment.doc_type, FarmAttachment.reference, FarmAttachment.valid_until, FarmAttachment.created_at,
+        ))
+        .filter(FarmAttachment.farm_id == farm.id)
+        .order_by(FarmAttachment.id.desc())
+        .all()
+    )
+    profile = repo.get_agronomic_profile_by_farm(farm.id)
+    seasons = db.query(CropSeason).filter(CropSeason.farm_id == farm.id).all()
+    seasons.sort(key=lambda s: (s.status != "ativa", -(s.start_date.toordinal() if s.start_date else 0), -s.id))
+    active_season = next((s for s in seasons if s.status == "ativa"), None)
+
+    sug: dict[str, dict[str, str]] = {}
+    _append_plot_suggestions(sug, plots)
+    plot_ids = {p.id for p in plots}
+    top_ferts: list[str] = []
+    top_pests: list[str] = []
+    if plot_ids:
+        for f in repo.list_fertilizations():
+            if f.plot_id in plot_ids and f.product and f.product not in top_ferts:
+                top_ferts.append(f.product)
+            if len(top_ferts) >= 4:
+                break
+        for p in repo.list_pest_incidents():
+            if p.plot_id in plot_ids and p.name and p.name not in top_pests:
+                top_pests.append(p.name)
+            if len(top_pests) >= 4:
+                break
+    derived = {k: v.get("value", "") for k, v in sug.items()}
+    derived["top_fertilizers"] = ", ".join(top_ferts)
+    derived["top_pests"] = ", ".join(top_pests)
+    last_soil = db.query(func.max(SoilAnalysis.analysis_date)).filter(SoilAnalysis.farm_id == farm.id).scalar()
+
+    area_check = evaluate_area_divergence(float(farm.total_area or 0), farm.boundary_geojson) if farm.boundary_geojson else {}
+    checks = fp.build_farm_checks(
+        farm, plots_count=len(plots), attachments=attachments, profile=profile, today=today, area_check=area_check or None,
+    )
+    sections = fp.agronomy_sections(
+        farm, profile=profile, plots=plots, active_season=active_season, derived=derived,
+        last_soil_analysis=last_soil, today=today,
+    )
+
+    latest = {}
+    for att in attachments:
+        if att.doc_type and att.doc_type not in latest:
+            latest[att.doc_type] = att.id
+    files = []
+    for att in attachments:
+        status, css = fp.attachment_status(att, today)
+        if att.doc_type and latest.get(att.doc_type) != att.id:
+            status, css = "Versão anterior", "mute"
+        files.append({
+            "id": att.id, "name": att.filename, "type": att.doc_type or "Outro",
+            "reference": fp.attachment_reference(att), "status": status, "css": css,
+            "ref_raw": att.reference or "", "valid_until": att.valid_until.isoformat() if att.valid_until else "",
+        })
+    by_id = {a.id: a for a in attachments}
+    registry = []
+    for label, doc_type, value in (
+        ("CCIR", "CCIR", farm.ccir_number),
+        ("ITR / NIRF / CIB", "ITR", farm.itr_registration_number),
+        ("Matrícula", "Matrícula", farm.property_registration_number),
+        ("Cartório de registro", None, farm.registry_office),
+    ):
+        att = by_id.get(latest.get(doc_type)) if doc_type else None
+        need = ""
+        if doc_type and value and att is None:
+            need = "Falta o arquivo"
+        elif doc_type == "ITR" and att is not None and fp.attachment_status(att, today)[1] == "warn":
+            need = f"Falta o ITR {today.year}"
+        registry.append({"label": label, "doc_type": doc_type, "value": value or "", "file": att, "need": need})
+
+    ie = (
+        db.query(NfeIssuerProfile.state_registration)
+        .filter(NfeIssuerProfile.farm_id == farm.id)
+        .scalar()
+    )
+    month_rain_mm = _farm_month_rainfall_mm(db, farm.id, today)
+    polygon_area = area_check.get("polygon_area") if area_check else None
+    return {
+        "metrics": metrics,
+        "plots": plots,
+        "plot_rows": [
+            {
+                "name": p.name,
+                "sub": " · ".join(x for x in [
+                    p.variety.name if p.variety else "Variedade não informada",
+                    "sequeiro" if (p.irrigation_type or "none") == "none" else (p.irrigation_type or "").replace("_", " "),
+                ] if x),
+                "area": fp.br_number(p.area_hectares),
+                "bar": round(float(p.area_hectares or 0) / max(float(max((q.area_hectares or 0) for q in plots) or 1), 0.01) * 100),
+                "pct": f"{round(float(p.area_hectares or 0) / float(farm.total_area or 1) * 100)}%",
+            }
+            for p in plots
+        ],
+        "plot_shapes_json": json.dumps(plot_shapes),
+        "active_season": active_season,
+        "checks": checks,
+        "usage": fp.area_usage(farm, float(metrics["planted_area"] or 0)),
+        "sections": sections,
+        "files": files,
+        "registry": registry,
+        "state_registration": ie or "",
+        "month_rain_mm": month_rain_mm,
+        "area_check": area_check,
+        "polygon_area": polygon_area,
+        "doc_types": fp.DOC_TYPES,
+        "terrain_options": fp.TERRAIN_OPTIONS,
+        "sun_options": fp.SUN_OPTIONS,
+        "soil_options": fp.SOIL_OPTIONS,
+        "pest_options": fp.PEST_OPTIONS,
+        "pests_selected": [x.strip() for x in ((profile.common_pests if profile else "") or derived["top_pests"]).split(",") if x.strip()],
+        "profile": profile,
+        "fp": fp,
+        "today": today,
+        "farm_preview_ready": farm_preview_ready,
+        "farm_preview_fingerprint": farm_preview_fingerprint,
+        "farm_boundary_geometries_json": json.dumps(farm_boundary_by_id),
+    }
+
+
 @router.get("/fazendas/{farm_id:int}")
 def farm_detail_page(
     farm_id: int,
     request: Request,
     background_tasks: BackgroundTasks,
-    aba: str = "visao",
+    aba: str = "resumo",
+    painel: str = "",
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -9945,96 +10148,13 @@ def farm_detail_page(
     if not farm or (user.organization_id and farm.organization_id != user.organization_id):
         _flash(request, "error", "Fazenda não encontrada.")
         return _redirect("/fazendas")
-    active_tab = aba if aba in {"visao", "setores", "safras", "documentos", "chuva", "agronomico"} else "visao"
-    farm_preview_ready, farm_preview_fingerprint, farm_boundary_by_id = _farm_preview_bundle(db, [farm], background_tasks)
-    farm_metrics, _ = _farm_overview_metrics(db, [farm])
-    metrics = farm_metrics[farm.id]
+    if aba == "chuva":
+        return _redirect("/clima-agua")
+    from app.services.ibge_municipalities import list_brazil_states, list_municipalities_by_uf, parse_location_uf_city
 
-    plots: list[Plot] = []
-    plot_geometries: list[object] = []
-    if active_tab in {"visao", "setores"}:
-        plot_query = db.query(Plot).filter(Plot.farm_id == farm.id)
-        if active_tab == "setores":
-            plot_query = plot_query.options(
-                joinedload(Plot.variety),
-                load_only(Plot.id, Plot.farm_id, Plot.name, Plot.area_hectares, Plot.plant_count, Plot.variety_id),
-            )
-        else:
-            plot_query = plot_query.options(load_only(Plot.id, Plot.farm_id, Plot.name, Plot.boundary_geojson))
-        plots = plot_query.order_by(Plot.name.asc()).all()
-        if active_tab == "visao":
-            for p in plots:
-                if getattr(p, "boundary_geojson", None):
-                    try:
-                        plot_geometries.append(json.loads(p.boundary_geojson))
-                    except json.JSONDecodeError:
-                        pass
-
-    seasons: list[CropSeason] = []
-    if active_tab == "safras":
-        seasons = (
-            db.query(CropSeason)
-            .options(
-                joinedload(CropSeason.variety),
-                load_only(
-                    CropSeason.id,
-                    CropSeason.farm_id,
-                    CropSeason.name,
-                    CropSeason.status,
-                    CropSeason.start_date,
-                    CropSeason.end_date,
-                    CropSeason.variety_id,
-                ),
-            )
-            .filter(CropSeason.farm_id == farm.id)
-            .all()
-        )
-        seasons.sort(key=lambda s: (s.status != "ativa", -(s.start_date.toordinal() if s.start_date else 0), -s.id))
-
-    rain_settings = _farm_rain_settings(db, farm.id) if active_tab == "chuva" else dict(RAIN_SETTINGS_DEFAULTS)
-    month_rain_mm = _farm_month_rainfall_mm(db, farm.id, today_in_app_timezone()) if active_tab == "visao" else 0.0
-    agronomic_profile = None
-    agronomic_completion = 0
-    agronomic_derived: dict = {}
-    if active_tab == "agronomico":
-        agronomic_profile = repo.get_agronomic_profile_by_farm(farm.id)
-        agronomic_completion, _ = _agronomic_profile_completion(agronomic_profile)
-        farm_plots = repo.list_plots(farm_ids=[farm.id])
-        farm_plot_ids = {p.id for p in farm_plots}
-        sug_base: dict[str, dict[str, str]] = {}
-        from app.services.agronomic_profile_suggestions import _append_plot_suggestions
-        _append_plot_suggestions(sug_base, farm_plots)
-        top_ferts: list[str] = []
-        if farm_plot_ids:
-            fert_names = [f.product for f in repo.list_fertilizations() if f.plot_id in farm_plot_ids and f.product]
-            seen_f: list[str] = []
-            for fn in fert_names:
-                if fn not in seen_f:
-                    seen_f.append(fn)
-                if len(seen_f) >= 4:
-                    break
-            top_ferts = seen_f
-        top_pests: list[str] = []
-        if farm_plot_ids:
-            pest_names = [p.name for p in repo.list_pest_incidents() if p.plot_id in farm_plot_ids and p.name]
-            seen_p: list[str] = []
-            for pn in pest_names:
-                if pn not in seen_p:
-                    seen_p.append(pn)
-                if len(seen_p) >= 4:
-                    break
-            top_pests = seen_p
-        agronomic_derived = {
-            "culture": sug_base.get("culture", {}).get("value", ""),
-            "cultivar": sug_base.get("cultivar", {}).get("value", ""),
-            "production_system": sug_base.get("production_system", {}).get("value", ""),
-            "irrigation_system": sug_base.get("irrigation_system", {}).get("value", ""),
-            "plant_spacing": sug_base.get("plant_spacing", {}).get("value", ""),
-            "drip_spacing": sug_base.get("drip_spacing", {}).get("value", ""),
-            "crop_stage": sug_base.get("crop_stage", {}).get("value", ""),
-            "top_fertilizers": ", ".join(top_ferts),
-            "top_pests": ", ".join(top_pests),
-        }
+    active_tab = _FARM_TAB_ALIASES.get(aba, "resumo")
+    sheet = _farm_sheet_context(db, repo, farm, background_tasks)
+    uf, city = parse_location_uf_city(farm.location)
     google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
     return templates.TemplateResponse(
         "farm_detail.html",
@@ -10044,23 +10164,328 @@ def farm_detail_page(
             csrf_token,
             "farms",
             farm=farm,
-            metrics=metrics,
-            plots=plots,
-            seasons=seasons,
             active_tab=active_tab,
-            rain_settings=rain_settings,
-            month_rain_mm=month_rain_mm,
-            agronomic_profile=agronomic_profile,
-            agronomic_completion=agronomic_completion,
-            agronomic_derived=agronomic_derived,
-            farm_preview_ready=farm_preview_ready,
-            farm_preview_fingerprint=farm_preview_fingerprint,
-            farm_boundary_geometries_json=json.dumps(farm_boundary_by_id),
-            plot_geometries_json=json.dumps(plot_geometries),
+            open_panel=painel if painel in _FARM_PANELS else "",
+            location_uf=uf,
+            location_city=city,
+            brazil_states=list_brazil_states(),
+            municipalities=list_municipalities_by_uf(uf),
             google_maps_web_key=google_maps_web_key,
             _repo=repo,
+            **sheet,
         ),
     )
+
+
+def _farm_for_write(request: Request, db: Session, user: User, farm_id: int):
+    """Fazenda da organização do usuário com permissão de escrita, ou a resposta de erro."""
+    denied = _require_permission(request, user, db, write_permission_for_page(PAGE_PRODUCTIVE_UNIT))
+    if denied:
+        return None, denied
+    farm = _repository(db).get_farm(farm_id)
+    if not farm or (user.organization_id and farm.organization_id != user.organization_id):
+        _flash(request, "error", "Fazenda não encontrada.")
+        return None, _redirect("/fazendas")
+    return farm, None
+
+
+def _farm_tab_url(farm_id: int, tab: str) -> str:
+    return f"/fazendas/{farm_id}" if tab == "resumo" else f"/fazendas/{farm_id}?aba={tab}"
+
+
+@router.post("/fazendas/{farm_id:int}/identificacao")
+def update_farm_identity_action(
+    farm_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    name: str = Form(...),
+    location_uf: str = Form(""),
+    location_city: str = Form(""),
+    total_area: str = Form(...),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    farm, error = _farm_for_write(request, db, user, farm_id)
+    if error:
+        return error
+    back = f"/fazendas/{farm.id}?painel=identificacao"
+    name = (name or "").strip()
+    if not name:
+        _flash(request, "error", "Informe o nome da fazenda.")
+        return _redirect(back)
+    if _farm_name_taken(db, farm.organization_id, name, exclude_id=farm.id):
+        _flash(request, "error", f"Já existe uma fazenda chamada {name}. Use outro nome.")
+        return _redirect(back)
+    uf = (location_uf or "").strip().upper()
+    city = (location_city or "").strip()
+    if not uf or not city:
+        _flash(request, "error", "Escolha o estado e o município.")
+        return _redirect(back)
+    try:
+        area = _parse_br_decimal(total_area)
+    except Exception:
+        area = None
+    if not area or area <= 0:
+        _flash(request, "error", "Informe a área total em hectares, maior que zero.")
+        return _redirect(back)
+    entitlements = quota_write_entitlements(db, farm.organization_id, today_in_app_timezone())
+    limit_error = None if farm.operations_paused else farm_limit_error(
+        db, entitlements, adding_farm=False, area_delta=Decimal(str(area)) - Decimal(farm.total_area or 0),
+    )
+    if limit_error:
+        _flash(request, "error", limit_error)
+        return _redirect(back)
+    _repository(db).update(farm, {"name": name, "location": f"{city}, {uf}", "total_area": round(area, 2), "notes": (notes or "").strip() or None})
+    _flash(request, "success", "Identificação atualizada.")
+    return _redirect(f"/fazendas/{farm.id}")
+
+
+@router.post("/fazendas/{farm_id:int}/registros")
+def update_farm_registry_action(
+    farm_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    ccir_number: str | None = Form(None),
+    itr_registration_number: str | None = Form(None),
+    property_registration_number: str | None = Form(None),
+    registry_office: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    farm, error = _farm_for_write(request, db, user, farm_id)
+    if error:
+        return error
+    _repository(db).update(farm, {
+        "ccir_number": (ccir_number or "").strip() or None,
+        "itr_registration_number": (itr_registration_number or "").strip() or None,
+        "property_registration_number": (property_registration_number or "").strip() or None,
+        "registry_office": (registry_office or "").strip() or None,
+    })
+    _flash(request, "success", "Registros salvos.")
+    return _redirect(_farm_tab_url(farm.id, "documentos"))
+
+
+@router.post("/fazendas/{farm_id:int}/car")
+def update_farm_car_action(
+    farm_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    csrf_token: str = Form(...),
+    car_registration_number: str = Form(""),
+    replace_perimeter: str | None = Form(None),
+    car_legal_reserve_ha: str | None = Form(None),
+    car_app_ha: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    """Aplica o CAR conferido no painel: consulta de novo a base pública e grava só ao confirmar."""
+    validate_csrf(request, csrf_token)
+    farm, error = _farm_for_write(request, db, user, farm_id)
+    if error:
+        return error
+    back = f"/fazendas/{farm.id}?aba=documentos&painel=car"
+    raw = (car_registration_number or "").strip()
+    if not raw:
+        _flash(request, "error", "Informe o número do CAR.")
+        return _redirect(back)
+    try:
+        car_number = normalize_car_number(raw)
+        data = lookup_public_car(car_number)
+    except CarPublicLookupError as exc:
+        _flash(request, "error", f"{exc} Confira o número e tente de novo.")
+        return _redirect(back)
+    payload: dict[str, object] = {
+        "car_registration_number": data.get("car_number") or car_number,
+        "car_status": data.get("status"),
+        "car_condition": data.get("condition"),
+        "car_declared_area": data.get("total_area"),
+        "car_legal_reserve_ha": _float_or_none(car_legal_reserve_ha),
+        "car_app_ha": _float_or_none(car_app_ha),
+        "car_checked_at": today_in_app_timezone(),
+    }
+    geometry = None
+    if replace_perimeter and data.get("geometry"):
+        geometry = normalize_geojson(json.dumps(data["geometry"]))
+        if geometry:
+            payload["boundary_geojson"] = geometry
+    _repository(db).update(farm, payload)
+    _flash(request, "success", "Dados do CAR aplicados.")
+    response = _redirect(_farm_tab_url(farm.id, "documentos"))
+    if geometry:
+        response.background = BackgroundTask(schedule_farm_preview_generation, farm.id, geometry)
+    return response
+
+
+@router.post("/fazendas/{farm_id:int}/area")
+def confirm_farm_area_action(
+    farm_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    choice: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    """Resolve a diferença entre a área do mapa e a cadastrada: usar a do mapa ou manter a atual."""
+    validate_csrf(request, csrf_token)
+    farm, error = _farm_for_write(request, db, user, farm_id)
+    if error:
+        return error
+    back = _farm_tab_url(farm.id, "territorio")
+    poly = calculate_geojson_area_hectares(farm.boundary_geojson) if farm.boundary_geojson else None
+    if not poly:
+        _flash(request, "error", "Esta fazenda ainda não tem perímetro no mapa.")
+        return _redirect(back)
+    poly = round(float(poly), 2)
+    if choice == "map":
+        entitlements = quota_write_entitlements(db, farm.organization_id, today_in_app_timezone())
+        limit_error = None if farm.operations_paused else farm_limit_error(
+            db, entitlements, adding_farm=False, area_delta=Decimal(str(poly)) - Decimal(farm.total_area or 0),
+        )
+        if limit_error:
+            _flash(request, "error", limit_error)
+            return _redirect(back)
+        _repository(db).update(farm, {"total_area": poly, "area_ack_ha": None})
+        _flash(request, "success", f"Área atualizada para {poly:,.2f} ha.".replace(",", "X").replace(".", ",").replace("X", "."))
+    else:
+        _repository(db).update(farm, {"area_ack_ha": poly})
+        _flash(request, "success", f"Área mantida em {float(farm.total_area or 0):,.2f} ha.".replace(",", "X").replace(".", ",").replace("X", "."))
+    return _redirect(back)
+
+
+@router.post("/fazendas/{farm_id:int}/anexos")
+async def upload_farm_document_action(
+    farm_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    doc_type: str = Form("Outro"),
+    reference: str | None = Form(None),
+    valid_until: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    from app.services.farm_profile import DOC_TYPES
+
+    validate_csrf(request, csrf_token)
+    farm, error = _farm_for_write(request, db, user, farm_id)
+    if error:
+        return error
+    back = f"/fazendas/{farm.id}?aba=documentos&painel=anexo"
+    try:
+        payloads = _read_attachments(await _request_attachments(request, "file"))
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(back)
+    if not payloads:
+        _flash(request, "error", "Escolha o arquivo do documento para anexar.")
+        return _redirect(back)
+    kind = doc_type if doc_type in DOC_TYPES else "Outro"
+    for filename, content_type, data in payloads[:1]:
+        db.add(FarmAttachment(
+            farm_id=farm.id, filename=filename, content_type=content_type, file_data=data,
+            doc_type=kind, reference=(reference or "").strip()[:120] or None, valid_until=_date_or_none(valid_until),
+        ))
+    db.commit()
+    _flash(request, "success", "Documento anexado.")
+    return _redirect(_farm_tab_url(farm.id, "documentos"))
+
+
+@router.post("/fazendas/{farm_id:int}/anexos/{attachment_id:int}/editar")
+def edit_farm_document_action(
+    farm_id: int,
+    attachment_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    doc_type: str = Form("Outro"),
+    reference: str | None = Form(None),
+    valid_until: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    from app.services.farm_profile import DOC_TYPES
+
+    validate_csrf(request, csrf_token)
+    farm, error = _farm_for_write(request, db, user, farm_id)
+    if error:
+        return error
+    att = db.query(FarmAttachment).options(load_only(FarmAttachment.id, FarmAttachment.farm_id)).filter_by(id=attachment_id, farm_id=farm.id).first()
+    if not att:
+        _flash(request, "error", "Arquivo não encontrado.")
+        return _redirect(_farm_tab_url(farm.id, "documentos"))
+    att.doc_type = doc_type if doc_type in DOC_TYPES else "Outro"
+    att.reference = (reference or "").strip()[:120] or None
+    att.valid_until = _date_or_none(valid_until)
+    db.commit()
+    _flash(request, "success", "Informações do arquivo salvas.")
+    return _redirect(_farm_tab_url(farm.id, "documentos"))
+
+
+@router.post("/fazendas/{farm_id:int}/agronomia/{secao}")
+def save_farm_agronomy_section_action(
+    farm_id: int,
+    secao: str,
+    request: Request,
+    csrf_token: str = Form(...),
+    altitude_meters: str | None = Form(None),
+    terrain_slope: str | None = Form(None),
+    sun_exposure: str | None = Form(None),
+    soil_type: str | None = Form(None),
+    climate: str | None = Form(None),
+    last_liming_date: str | None = Form(None),
+    last_gypsum_date: str | None = Form(None),
+    last_organic_matter_date: str | None = Form(None),
+    target_productivity_sacks_per_ha: str | None = Form(None),
+    common_pests: list[str] = Form([]),
+    pruning_history: str | None = Form(None),
+    current_limitations: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    farm, error = _farm_for_write(request, db, user, farm_id)
+    if error:
+        return error
+
+    def month(value: str | None):
+        text = (value or "").strip()
+        return _date_or_none(f"{text}-01") if re.fullmatch(r"\d{4}-\d{2}", text) else _date_or_none(text)
+
+    if secao == "ambiente":
+        values = {
+            "altitude_meters": _int_or_none((altitude_meters or "").replace(".", "").strip() or None),
+            "terrain_slope": (terrain_slope or "").strip() or None,
+            "sun_exposure": (sun_exposure or "").strip() or None,
+            "soil_type": (soil_type or "").strip() or None,
+            "climate": (climate or "").strip() or None,
+        }
+        message = "Ambiente salvo."
+    elif secao == "manejo":
+        values = {
+            "last_liming_date": month(last_liming_date),
+            "last_gypsum_date": month(last_gypsum_date),
+            "last_organic_matter_date": month(last_organic_matter_date),
+            "target_productivity_sacks_per_ha": _float_or_none(target_productivity_sacks_per_ha),
+        }
+        message = "Manejo do solo salvo."
+    elif secao == "historico":
+        values = {
+            "common_pests": ", ".join(p.strip() for p in common_pests if p and p.strip()) or None,
+            "pruning_history": (pruning_history or "").strip() or None,
+            "current_limitations": (current_limitations or "").strip() or None,
+        }
+        message = "Histórico e observações salvos."
+    else:
+        raise HTTPException(status_code=404, detail="Seção não encontrada.")
+    repo = _repository(db)
+    profile = repo.get_agronomic_profile_by_farm(farm.id)
+    if profile:
+        repo.update(profile, values)
+    else:
+        repo.create(AgronomicProfile(farm_id=farm.id, culture="Café arábica", region=farm.location or "", **values))
+    _flash(request, "success", message)
+    return _redirect(_farm_tab_url(farm.id, "agronomia"))
 
 
 @router.post("/fazendas/{farm_id:int}/agronomico")
@@ -10132,7 +10557,7 @@ def save_farm_agronomic_profile_action(
     else:
         create_agronomic_profile(repo, payload)
         _flash(request, "success", f"Dados agronômicos de {farm.name} salvos.")
-    return _redirect(f"/fazendas/{farm.id}?aba=agronomico")
+    return _redirect(f"/fazendas/{farm.id}?aba=agronomia")
 
 
 @router.get("/fazendas/{farm_id:int}/editar")
@@ -10145,50 +10570,17 @@ def edit_farm_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
-    repo = _repository(db)
-    farm = repo.get_farm(farm_id)
+    """Edição agora acontece em painéis da ficha; o endereço antigo leva ao painel certo."""
+    del background_tasks, csrf_token
+    farm = _repository(db).get_farm(farm_id)
     if not farm or (user.organization_id and farm.organization_id != user.organization_id):
         _flash(request, "error", "Fazenda não encontrada.")
         return _redirect("/fazendas")
-    farms = repo.list_farms(organization_id=user.organization_id)
-    plan_summary = _farm_plan_summary(db, user, farms)
-    farm_preview_ready, farm_preview_fingerprint, _ = _farm_preview_bundle(db, [farm], background_tasks)
-    edit_farm_geometry_json = "null"
-    if farm.boundary_geojson:
-        try:
-            edit_farm_geometry_json = json.dumps(json.loads(farm.boundary_geojson))
-        except json.JSONDecodeError:
-            edit_farm_geometry_json = "null"
-    from app.services.ibge_municipalities import (
-        list_brazil_states,
-        list_municipalities_by_uf,
-        parse_location_uf_city,
-    )
-
-    google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
-    initial_step = passo if passo in {1, 2, 3} else 1
-    initial_uf, initial_city = parse_location_uf_city(farm.location)
-    return templates.TemplateResponse(
-        "farm_form.html",
-        _base_context(
-            request,
-            user,
-            csrf_token,
-            "farms",
-            edit_farm=farm,
-            edit_farm_geometry_json=edit_farm_geometry_json,
-            farm_preview_ready=farm_preview_ready,
-            farm_preview_fingerprint=farm_preview_fingerprint,
-            plan_summary=plan_summary,
-            google_maps_web_key=google_maps_web_key,
-            initial_step=initial_step,
-            brazil_states=list_brazil_states(),
-            initial_location_uf=initial_uf,
-            initial_location_city=initial_city,
-            initial_municipalities=list_municipalities_by_uf(initial_uf),
-            _repo=repo,
-        ),
-    )
+    if passo == 2:
+        return _redirect(f"/fazendas/{farm.id}?aba=territorio&painel=perimetro")
+    if passo == 3:
+        return _redirect(f"/fazendas/{farm.id}?aba=documentos&painel=registros")
+    return _redirect(f"/fazendas/{farm.id}?painel=identificacao")
 
 
 @router.post("/fazendas/{farm_id:int}/pluviometria-config")
@@ -10228,7 +10620,7 @@ def save_farm_rain_settings_action(
     row.notify_bell = bool(notify_bell)
     db.commit()
     _flash(request, "success", f"Alertas de pluviometria de {farm.name} atualizados.")
-    return _redirect(f"/fazendas/{farm.id}?aba=chuva")
+    return _redirect("/clima-agua")
 
 
 @router.get("/fazendas/municipios")
@@ -10426,7 +10818,7 @@ async def create_farm_action(
     if saved_attachments:
         message += f" {saved_attachments} anexo(s) salvo(s)."
     _flash(request, "success", message)
-    response = _redirect_with_query("/setores", selected_farm_id=farm.id) if redirect_to == "/setores" else _redirect("/fazendas")
+    response = _redirect_with_query("/setores", selected_farm_id=farm.id) if redirect_to == "/setores" else _redirect(f"/fazendas/{farm.id}")
     if geometry:
         response.background = BackgroundTask(schedule_farm_preview_generation, farm.id, geometry)
     return response
@@ -10567,8 +10959,8 @@ def delete_farm_attachment_action(
         _flash(request, "error", "Anexo nao encontrado.")
     else:
         repo.delete(attachment)
-        _flash(request, "success", "Anexo removido com sucesso.")
-    return _redirect_with_query("/fazendas", edit_id=farm_id)
+        _flash(request, "success", f"{attachment.filename} excluído.")
+    return _redirect(f"/fazendas/{farm_id}?aba=documentos")
 
 
 @router.post("/fazendas/{farm_id}/geometria")
@@ -20073,6 +20465,7 @@ def climate_water_overview_page(
             "climate_water",
             _repo=repo,
             title="Clima e Água",
+            rain_settings=rain_settings,
             cw_ctx=cw_ctx,
             cw_irrigation_count=len(irrigations),
             cw_rainfall_count=len(rainfalls),

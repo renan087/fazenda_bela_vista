@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
+from datetime import date
+
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -22,6 +24,15 @@ class Farm(Base):
     registry_office: Mapped[str | None] = mapped_column(String(180), nullable=True)
     boundary_geojson: Mapped[str] = mapped_column(Text, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+    # Dados do CAR: situação/área vêm da consulta pública; reserva legal e APP são informadas pelo produtor (recibo do CAR).
+    car_status: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    car_condition: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    car_declared_area: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    car_legal_reserve_ha: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    car_app_ha: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    car_checked_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Área do mapa que o produtor conferiu e decidiu manter diferente da cadastrada.
+    area_ack_ha: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     organization = relationship("Organization", back_populates="farms")
     attachments = relationship("FarmAttachment", back_populates="farm", cascade="all, delete-orphan")

@@ -223,9 +223,16 @@
                   : -42.8721;
         const zoom0 = typeof initialZoom === 'number' && initialZoom > 0 ? initialZoom : 14;
         const map = L.map(el, { scrollWheelZoom: true }).setView([lat0, lng0], zoom0);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap',
-        }).addTo(map);
+        if (options.satellite) {
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Imagens &copy; Esri',
+                maxZoom: 19,
+            }).addTo(map);
+        } else {
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap',
+            }).addTo(map);
+        }
 
         const contextLayers = [];
         contextGeoms.forEach((geom, idx) => {

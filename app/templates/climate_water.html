@@ -123,6 +123,25 @@
             </div>
         </aside>
     </section>
+    {% if active_farm %}
+    <details class="pd-card cw-rain-settings" style="margin-top:4px;">
+        <summary style="cursor:pointer; font-weight:700; font-size:15px; min-height:44px; display:flex; align-items:center;">Alertas de chuva de {{ active_farm.name }}</summary>
+        <form method="post" action="/fazendas/{{ active_farm.id }}/pluviometria-config" style="display:flex; flex-direction:column; gap:16px; margin-top:12px; max-width:680px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="vw-grid">
+                <label class="vw-f"><span>Chuva forte a partir de (mm)</span><input type="number" step="0.5" min="1" max="500" name="heavy_rain_mm" value="{{ rain_settings.heavy_rain_mm }}" {% if not can_write_page %}disabled{% endif %}></label>
+                <label class="vw-f"><span>Dia chuvoso acima de (mm)</span><input type="number" step="0.5" min="0" max="200" name="rainy_day_mm" value="{{ rain_settings.rainy_day_mm }}" {% if not can_write_page %}disabled{% endif %}></label>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:10px; border-top:1px solid #EEF1ED; padding-top:14px;">
+                <label class="bp-check"><input type="checkbox" name="alert_registered" value="1" {% if rain_settings.alert_registered %}checked{% endif %} {% if not can_write_page %}disabled{% endif %}><span>Alertar quando registrar chuva forte</span></label>
+                <label class="bp-check"><input type="checkbox" name="alert_forecast" value="1" {% if rain_settings.alert_forecast %}checked{% endif %} {% if not can_write_page %}disabled{% endif %}><span>Alertar previsão de chuva forte</span></label>
+                <label class="bp-check"><input type="checkbox" name="notify_dashboard" value="1" {% if rain_settings.notify_dashboard %}checked{% endif %} {% if not can_write_page %}disabled{% endif %}><span>Exibir aviso no Dashboard</span></label>
+                <label class="bp-check"><input type="checkbox" name="notify_bell" value="1" {% if rain_settings.notify_bell %}checked{% endif %} {% if not can_write_page %}disabled{% endif %}><span>Notificar no sininho do topo</span></label>
+            </div>
+            {% if can_write_page %}<div style="display:flex; justify-content:flex-end;"><button type="submit" class="sf-btn sf-btn-primary">Salvar preferências de chuva</button></div>{% endif %}
+        </form>
+    </details>
+    {% endif %}
 </div>
 
 <script>

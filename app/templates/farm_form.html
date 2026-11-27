@@ -1,508 +1,112 @@
 {% extends "base.html" %}
+{% from "partials/fz_icons.html" import icon %}
+{% set fz_toast_flash = true %}
 {% block content %}
-{% set is_edit = edit_farm is not none %}
-<div class="sf-page pd-page fm-page">
-    <nav class="pd-crumbs" aria-label="Caminho">
-        <a href="/fazendas">Fazendas</a><span aria-hidden="true">›</span>
-        {% if is_edit %}
-        <a href="/fazendas/{{ edit_farm.id }}">{{ edit_farm.name }}</a><span aria-hidden="true">›</span>
-        <span>Editar</span>
-        {% else %}
-        <span>Nova fazenda</span>
-        {% endif %}
-    </nav>
-
-    <form method="post"
-          enctype="multipart/form-data"
-          action="{{ '/fazendas/' ~ edit_farm.id ~ '/editar' if is_edit else '/fazendas' }}"
-          data-fm-wizard
-          data-initial-step="{{ initial_step or 1 }}"
-          data-cancel-url="{{ '/fazendas/' ~ edit_farm.id if is_edit else '/fazendas' }}"
-          novalidate>
+<main class="fz-page fz-wiz" data-fz-wizard data-fm-wizard>
+    <nav class="fz-crumb" aria-label="Caminho"><a href="/fazendas">Fazendas</a><span aria-hidden="true">/</span><span>Nova fazenda</span></nav>
+    <h1 class="fz-h1">Nova fazenda</h1>
+    <p class="fz-sub">Comece pelo essencial. Documentos, setores e dados agronômicos podem ser completados depois, na ficha da fazenda.</p>
+    <ol class="fz-steps">
+        <li class="fz-step on" data-fz-step="1"><i>1</i>Identificação</li>
+        <li class="fz-step" data-fz-step="2"><i>2</i>Perímetro</li>
+        <li class="fz-step" data-fz-step="3"><i>3</i>Conferir</li>
+    </ol>
+    <form method="post" action="/fazendas" data-fz-wizard-form novalidate>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="boundary_geojson" value="" data-fm-boundary-input>
-
-        <header class="pd-head" style="margin-bottom:20px;">
-            <div>
-                <h1 class="sf-page-title">{{ 'Editar ' ~ edit_farm.name if is_edit else 'Cadastrar nova fazenda' }}</h1>
-                <p class="sf-page-subtitle">Comece pelo essencial — você pode desenhar o mapa e anexar documentos agora ou depois.</p>
+        <input type="hidden" name="location" value="" data-fz-w-location>
+        <input type="hidden" name="boundary_geojson" value="" data-fz-w-geo>
+        <section class="fz-sec">
+            {# ---------- Passo 1 ---------- #}
+            <div data-fz-wstep="1">
+                <div class="fz-carbox">
+                    <h2 class="fz-h2">Tem o número do CAR?</h2>
+                    <p class="fz-desc">Com ele preenchemos município, área e perímetro para você. Se não tiver agora, preencha abaixo.</p>
+                    <div class="fz-inline"><label class="fz-sr" for="w-car">Número do CAR</label><input id="w-car" class="fz-in" name="car_registration_number" placeholder="Ex.: MG-3119302-A1B2.C3D4…" style="font-family:ui-monospace,Menlo,monospace; font-size:14px" data-fz-w-car autocomplete="off"><button type="button" class="fz-btn" data-fz-w-car-btn>Buscar dados</button></div>
+                    <p class="fz-help err" data-fz-w-car-err hidden style="margin:8px 0 0"></p>
+                    <div class="fz-box ok" style="margin-top:12px" data-fz-w-car-ok hidden>{{ icon('check', 18, 2.2) }}<div style="flex:1"><b>Imóvel encontrado no CAR</b><span data-fz-w-car-sum></span></div><button type="button" class="fz-link" data-fz-w-car-clear>Limpar</button></div>
+                </div>
+                <h2 class="fz-h2" style="margin:24px 0 12px">Identificação</h2>
+                <div class="fz-col" style="gap:14px">
+                    <div class="fz-field"><label class="fz-lab" for="w-nome">Nome da fazenda * <span class="fz-src" data-fz-fromcar hidden>Do CAR</span></label><input id="w-nome" class="fz-in" name="name" placeholder="Ex.: Fazenda Água Limpa" maxlength="160" required data-fz-w-name><span class="fz-help err" data-fz-err="name" hidden>Informe o nome da fazenda.</span></div>
+                    <div class="fz-g2">
+                        <div class="fz-field"><label class="fz-lab" for="w-uf">Estado * <span class="fz-src" data-fz-fromcar hidden>Do CAR</span></label><select id="w-uf" class="fz-in" required data-fz-uf data-fz-w-uf><option value="">Selecione o estado</option>{% for st in brazil_states %}<option value="{{ st.uf }}">{{ st.name }}</option>{% endfor %}</select><span class="fz-help err" data-fz-err="uf" hidden>Escolha o estado.</span></div>
+                        <div class="fz-field fz-combo" data-fz-city><label class="fz-lab" for="w-mun">Município * <span class="fz-src" data-fz-fromcar hidden>Do CAR</span></label><input id="w-mun" class="fz-in" placeholder="Selecione o estado primeiro" autocomplete="off" required data-fz-city-input data-fz-w-city><ul class="fz-combo-list" data-fz-city-list hidden></ul><span class="fz-help err" data-fz-err="city" hidden>Escolha o município da lista.</span></div>
+                    </div>
+                    <div class="fz-g2">
+                        <div class="fz-field"><label class="fz-lab" for="w-area">Área total (ha) * <span class="fz-src" data-fz-fromcar hidden>Do CAR</span></label><input id="w-area" class="fz-in" name="total_area" inputmode="decimal" placeholder="0,00" data-fz-decimal required data-fz-w-area><span class="fz-help" data-fz-w-area-help>Se desenhar o mapa no próximo passo, a área pode ser calculada por ele.</span><span class="fz-help err" data-fz-err="area" hidden>Informe a área em hectares.</span></div>
+                    </div>
+                </div>
             </div>
-            <ol class="fm-steps" aria-label="Passos do cadastro" data-fm-steps>
-                <li><button type="button" class="fm-step-btn" data-fm-step-btn="1" aria-current="step"><span>1</span>Identificação</button></li>
-                <li><button type="button" class="fm-step-btn" data-fm-step-btn="2"><span>2</span>Perímetro</button></li>
-                <li><button type="button" class="fm-step-btn" data-fm-step-btn="3"><span>3</span>Conferir</button></li>
-            </ol>
-        </header>
 
-        <div class="vw-layout">
-            <section class="pd-card vw-main">
-                {# ==================== PASSO 1 ==================== #}
-                <div class="vw-step" data-fm-step-panel="1">
-                    <div class="vw-step-head">
-                        <h2>1. Identificação e localização</h2>
-                        <p>Se tiver o número do CAR, consulte para preencher município, área e perímetro automaticamente.</p>
-                    </div>
-
-                    <div class="fm-car-box">
-                        <div class="fm-car-row">
-                            <label class="vw-f">
-                                <span style="font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:#294127;">Número do CAR (opcional)</span>
-                                <input type="text"
-                                       name="car_registration_number"
-                                       value="{{ edit_farm.car_registration_number if edit_farm and edit_farm.car_registration_number else '' }}"
-                                       placeholder="Ex.: BA-2933307-7A9B.4412.C03E.881F"
-                                       autocomplete="off"
-                                       style="text-transform:uppercase;"
-                                       data-fm-in="car">
-                            </label>
-                            <button type="button" class="sf-btn sf-btn-secondary" data-fm-car-lookup>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                                Consultar CAR
-                            </button>
-                        </div>
-                        <div class="pd-alert is-info" data-fm-car-feedback role="status" aria-live="polite" hidden></div>
-                    </div>
-
-                    <div class="vw-grid">
-                        <label class="vw-f" style="grid-column:1 / -1;">
-                            <span>Nome da fazenda *</span>
-                            <input type="text" name="name" value="{{ edit_farm.name if edit_farm else '' }}" placeholder="Ex.: Fazenda Serra Dourada" required data-fm-in="name">
-                        </label>
-
-                        <input type="hidden" name="location" value="{{ edit_farm.location if edit_farm else '' }}" data-fm-in="location">
-
-                        {# Seletor estilizado em cascata: Estado (UF) #}
-                        <div class="vw-f fm-combo-field" data-fm-combo="state">
-                            <span class="fm-combo-label" id="fm-state-label">Estado (UF) *</span>
-                            <div class="fm-combo">
-                                <button type="button"
-                                        class="fm-combo-trigger"
-                                        role="combobox"
-                                        aria-labelledby="fm-state-label"
-                                        aria-expanded="false"
-                                        aria-haspopup="listbox"
-                                        aria-controls="fm-state-listbox"
-                                        data-fm-combo-trigger>
-                                    <span class="fm-combo-value is-placeholder" data-fm-combo-display>Selecione o estado</span>
-                                    <svg class="fm-combo-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                                </button>
-                                <div class="fm-combo-panel" data-fm-combo-panel hidden>
-                                    <div class="fm-combo-search-wrap">
-                                        <div class="fm-combo-search">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                                            <input type="search"
-                                                   placeholder="Buscar estado ou sigla (ex.: MG, Bahia)..."
-                                                   autocomplete="off"
-                                                   spellcheck="false"
-                                                   aria-label="Buscar estado"
-                                                   data-fm-combo-search>
-                                            <button type="button" class="fm-combo-clear" aria-label="Limpar busca" data-fm-combo-clear hidden>&times;</button>
-                                        </div>
-                                        <span class="fm-combo-meta" data-fm-combo-meta>27 estados</span>
-                                    </div>
-                                    <ul class="fm-combo-list" id="fm-state-listbox" role="listbox" aria-labelledby="fm-state-label" data-fm-combo-list></ul>
-                                    <p class="fm-combo-empty" data-fm-combo-empty hidden>Nenhum estado encontrado.</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {# Seletor estilizado em cascata: Município #}
-                        <div class="vw-f fm-combo-field" data-fm-combo="city">
-                            <span class="fm-combo-label" id="fm-city-label">Município *</span>
-                            <div class="fm-combo">
-                                <button type="button"
-                                        class="fm-combo-trigger"
-                                        role="combobox"
-                                        aria-labelledby="fm-city-label"
-                                        aria-expanded="false"
-                                        aria-haspopup="listbox"
-                                        aria-controls="fm-city-listbox"
-                                        data-fm-combo-trigger
-                                        disabled>
-                                    <span class="fm-combo-value is-placeholder" data-fm-combo-display>Selecione o estado primeiro</span>
-                                    <svg class="fm-combo-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                                </button>
-                                <div class="fm-combo-panel" data-fm-combo-panel hidden>
-                                    <div class="fm-combo-search-wrap">
-                                        <div class="fm-combo-search">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                                            <input type="search"
-                                                   placeholder="Buscar município..."
-                                                   autocomplete="off"
-                                                   spellcheck="false"
-                                                   aria-label="Buscar município"
-                                                   data-fm-combo-search>
-                                            <button type="button" class="fm-combo-clear" aria-label="Limpar busca" data-fm-combo-clear hidden>&times;</button>
-                                        </div>
-                                        <span class="fm-combo-meta" data-fm-combo-meta></span>
-                                    </div>
-                                    <ul class="fm-combo-list" id="fm-city-listbox" role="listbox" aria-labelledby="fm-city-label" data-fm-combo-list></ul>
-                                    <p class="fm-combo-empty" data-fm-combo-empty hidden>Nenhum município encontrado.</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <label class="vw-f">
-                            <span>Área total (ha) *</span>
-                            <input type="number" step="0.01" min="0.01" name="total_area" value="{{ edit_farm.total_area if edit_farm else '' }}" placeholder="Ex.: 85,50" required data-fm-in="area">
-                        </label>
-                    </div>
-
-                    <details class="hf-more">
-                        <summary>Coordenadas GPS iniciais <small>opcional</small></summary>
-                        <div class="vw-grid" style="padding-bottom:16px;">
-                            <label class="vw-f">
-                                <span>Latitude (°)</span>
-                                <input type="text" inputmode="decimal" placeholder="-14,8605" data-fm-in="lat">
-                            </label>
-                            <label class="vw-f">
-                                <span>Longitude (°)</span>
-                                <input type="text" inputmode="decimal" placeholder="-40,8325" data-fm-in="lng">
-                            </label>
-                        </div>
-                    </details>
-
-                    <div class="pd-alert is-error" data-fm-step1-error role="alert" hidden></div>
+            {# ---------- Passo 2 ---------- #}
+            <div data-fz-wstep="2" hidden>
+                <h2 class="fz-h2">Perímetro no mapa</h2>
+                <p class="fz-desc">O contorno calcula a área real e serve de base para os setores, a chuva e o mapa da safra.</p>
+                <div class="fz-opts" role="radiogroup" aria-label="Como informar o perímetro">
+                    <button type="button" class="fz-opt" aria-pressed="false" data-fz-popt="car" disabled><span class="fz-tag" data-fz-popt-tag hidden>Recomendado</span><b>Usar o perímetro do CAR</b><span data-fz-popt-car-sub>Busque o CAR no passo 1</span></button>
+                    <button type="button" class="fz-opt" aria-pressed="false" data-fz-popt="draw"><b>Desenhar no mapa</b><span>Marque os cantos da propriedade</span></button>
+                    <button type="button" class="fz-opt" aria-pressed="false" data-fz-popt="file"><b>Importar arquivo</b><span>.kml, .geojson ou .json</span></button>
+                    <button type="button" class="fz-opt" aria-pressed="false" data-fz-popt="later"><b>Fazer depois</b><span>Desenhe quando quiser, na ficha</span></button>
                 </div>
-
-                {# ==================== PASSO 2 ==================== #}
-                {% set has_existing_map = edit_farm and edit_farm.boundary_geojson %}
-                <div class="vw-step" data-fm-step-panel="2" hidden>
-                    <div class="vw-step-head">
-                        <div>
-                            <h2>2. Perímetro no mapa</h2>
-                            <p>Desenhe o contorno clicando no mapa, arraste os cantos ou toque no (+) nas bordas para refinar.</p>
-                        </div>
-                        <span class="pd-chip {{ 'is-done' if has_existing_map else 'is-warn' }}" data-fm-poly-badge>
-                            {{ 'Perímetro pronto' if has_existing_map else 'Sem perímetro' }}
-                        </span>
-                    </div>
-
-                    <div class="fm-map-shell">
-                        <div class="fm-map-bar">
-                            <span>Vértices: <strong data-fm-wiz-vertices>0</strong> · Área estimada: <strong data-fm-wiz-poly-area>0,00 ha</strong></span>
-                            {% if google_maps_web_key %}
-                            <span class="pd-chip is-done">Satélite (Google Maps)</span>
-                            {% else %}
-                            <span class="pd-chip is-muted">OpenStreetMap</span>
-                            {% endif %}
-                        </div>
-
-                        {% if not has_existing_map %}
-                        <div class="fm-map-prompt" data-fm-map-prompt>
-                            <strong style="font-size:15px;">Carregar mapa da região</strong>
-                            <span style="font-size:13px; color:var(--pd-muted); max-width:360px;">Centralizamos o mapa na localização informada no passo 1 para você marcar os cantos da propriedade.</span>
-                            <button type="button" class="sf-btn sf-btn-primary" data-fm-load-map>Iniciar desenho no mapa</button>
-                        </div>
-                        {% endif %}
-
-                        <div data-fm-map-wrap {% if not has_existing_map %}hidden{% endif %}>
-                            <div id="fm-wizard-boundary-map" class="fm-map-canvas{% if has_existing_map %} is-expanded{% endif %}"></div>
-                            <div class="fm-map-tools">
-                                <div style="display:flex; flex-wrap:wrap; gap:8px;">
-                                    <button type="button" class="sf-btn sf-btn-secondary" data-fm-wiz-undo>Desfazer</button>
-                                    <button type="button" class="sf-btn sf-btn-secondary" data-fm-wiz-remove>Remover ponto</button>
-                                    <button type="button" class="sf-btn sf-btn-secondary" data-fm-wiz-clear>Limpar</button>
-                                </div>
-                                <button type="button" class="sf-btn sf-btn-secondary" data-fm-wiz-reset>Restaurar anterior</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="fm-geo-dropzone" data-fm-geo-dropzone>
-                        <span class="fm-geo-drop-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        </span>
-                        <div class="fm-geo-drop-copy">
-                            <strong>Importar perímetro do arquivo</strong>
-                            <small>Arraste e solte aqui ou procure no aparelho · aceita <b>.kml</b>, <b>.geojson</b> e <b>.json</b></small>
-                        </div>
-                        <label class="sf-btn sf-btn-secondary fm-geo-browse">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                            Procurar arquivo
-                            <input type="file"
-                                   name="boundary_geojson_file"
-                                   accept=".kml,.json,.geojson,application/vnd.google-earth.kml+xml,application/json,text/xml"
-                                   class="sr-only"
-                                   data-fm-geo-file>
-                        </label>
-                    </div>
-                    <div class="pd-alert is-info" data-fm-geo-status role="status" aria-live="polite" hidden></div>
-                    {% if edit_farm and edit_farm.boundary_geojson %}
-                    <p class="pd-note">Esta fazenda já possui perímetro salvo. Um novo desenho ou arquivo substitui o perímetro atual ao salvar.</p>
-                    {% endif %}
+                <div data-fz-pview="car" hidden>
+                    <div class="fz-mapcanvas" style="height:340px; border-radius:14px; overflow:hidden" data-fz-w-carmap></div>
+                    <div class="fz-box ok" style="margin-top:12px" data-fz-w-carcmp>{{ icon('check', 18, 2.2) }}<div data-fz-w-carcmp-text></div></div>
                 </div>
-
-                {# ==================== PASSO 3 ==================== #}
-                <div class="vw-step" data-fm-step-panel="3" hidden>
-                    <div class="vw-step-head">
-                        <h2>3. Conferir e finalizar</h2>
-                        <p>Confira o resumo abaixo. Se quiser, complete as informações adicionais agora ou deixe para depois na Ficha da Fazenda.</p>
+                <div data-fz-pview="draw" hidden>
+                    <div class="fz-mapwrap">
+                        <div id="fz-wizard-map" class="fz-mapcanvas" style="height:380px; border-radius:14px; overflow:hidden"></div>
+                        <div class="fz-maptools"><button type="button" class="fz-btn sm pri" data-fz-w-start>Iniciar desenho</button><button type="button" class="fz-btn sm" data-fz-w-undo>Desfazer</button><button type="button" class="fz-btn sm" data-fz-w-clear>Limpar</button></div>
+                        <div class="fz-maphint" data-fz-w-hint>Toque no mapa para marcar o primeiro canto</div>
                     </div>
+                </div>
+                <div data-fz-pview="file" hidden>
+                    <label class="fz-drop" data-fz-w-drop>{{ icon('upload', 26) }}<b style="color:#16201A" data-fz-w-drop-label>Arraste o arquivo do perímetro aqui</b><span>ou <span class="fz-link">procure no aparelho</span> · aceita .kml, .geojson e .json</span><input type="file" accept=".kml,.geojson,.json,application/json,application/vnd.google-earth.kml+xml" data-fz-w-file></label>
+                    <p class="fz-help err" data-fz-w-file-err hidden style="margin-top:8px"></p>
+                    <div class="fz-mapcanvas" style="height:300px; border-radius:14px; overflow:hidden; margin-top:12px" data-fz-w-filemap hidden></div>
+                </div>
+                <div data-fz-pview="later" hidden>
+                    <div class="fz-box info">{{ icon('info') }}<div><b>Tudo bem deixar para depois</b>A fazenda fica marcada como “sem mapa”. Você desenha quando quiser na aba Território da ficha.</div></div>
+                </div>
+            </div>
 
-                    <div style="border:1px solid #BFD6B6; background:#EEF3EB; border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:12px;">
-                        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px;">
-                            <p class="pd-eyebrow" style="color:#294127;">Resumo da fazenda</p>
-                            <span class="pd-chip is-ok" style="background:#fff; border:1px solid #BFD6B6;">Pronto para salvar</span>
-                        </div>
-                        <dl class="hf-review" style="margin:0;">
-                            <div style="background:#fff;"><dt>Fazenda</dt><dd data-fm-sum="name">—</dd></div>
-                            <div style="background:#fff;"><dt>Localização</dt><dd data-fm-sum="location">—</dd></div>
-                            <div style="background:#fff;"><dt>Área total</dt><dd data-fm-sum="area">—</dd></div>
+            {# ---------- Passo 3 ---------- #}
+            <div data-fz-wstep="3" hidden>
+                <div class="fz-grid2">
+                    <div>
+                        <h2 class="fz-h2">Confira antes de salvar</h2>
+                        <p class="fz-desc">Nada é gravado até você clicar em Salvar fazenda.</p>
+                        <dl class="fz-dl" style="margin-top:12px">
+                            <div><dt class="fz-dt">Nome</dt><dd class="fz-dd"><span class="v" data-fz-sum="name"></span><button type="button" class="fz-link" data-fz-goto-step="1">Alterar</button></dd></div>
+                            <div><dt class="fz-dt">Localização</dt><dd class="fz-dd"><span class="v" data-fz-sum="location"></span><button type="button" class="fz-link" data-fz-goto-step="1">Alterar</button></dd></div>
+                            <div><dt class="fz-dt">Área total</dt><dd class="fz-dd"><span class="v" data-fz-sum="area"></span><button type="button" class="fz-link" data-fz-goto-step="1">Alterar</button></dd></div>
+                            <div><dt class="fz-dt">CAR</dt><dd class="fz-dd"><span class="v" data-fz-sum="car"></span><button type="button" class="fz-link" data-fz-goto-step="1">Alterar</button></dd></div>
+                            <div><dt class="fz-dt">Perímetro</dt><dd class="fz-dd"><span class="v" data-fz-sum="perim"></span><button type="button" class="fz-link" data-fz-goto-step="2">Alterar</button></dd></div>
                         </dl>
-                        <div data-fm-impact style="background:#fff; border:1px solid #E3E8E2; border-radius:12px; padding:10px 12px; font-size:13px;"></div>
                     </div>
-
-                    {# Informações adicionais (revelação progressiva) #}
-                    {% set has_reg = edit_farm and (edit_farm.ccir_number or edit_farm.itr_registration_number or edit_farm.property_registration_number or edit_farm.registry_office) %}
-                    <div class="fm-opt-group">
-                        <div class="fm-opt-head">
-                            <p class="pd-eyebrow">Informações adicionais</p>
-                            <span style="font-size:12px; color:var(--pd-muted);">Toque para abrir apenas o que precisar</span>
+                    <div>
+                        <div class="fz-mapwrap" style="border-radius:14px; overflow:hidden">
+                            <div class="fz-mapcanvas" style="height:190px" data-fz-w-summap></div>
+                            <div class="fz-mapempty" data-fz-w-sumempty>{{ icon('map', 28) }}<b>Sem perímetro no mapa</b><span>A localização aproximada vem do município</span></div>
                         </div>
-
-                        <details class="fm-opt-card" {% if has_reg %}open{% endif %}>
-                            <summary>
-                                <div class="fm-opt-left">
-                                    <span class="fm-opt-icon" aria-hidden="true">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 9h8M8 13h8M8 17h4"/></svg>
-                                    </span>
-                                    <div style="min-width:0;">
-                                        <p class="fm-opt-title">Dados cadastrais e registrais</p>
-                                        <p class="fm-opt-sub">Preencha CCIR, ITR / NIRF / CIB, matrícula e cartório</p>
-                                    </div>
-                                </div>
-                                <div class="fm-opt-right">
-                                    <span class="pd-chip is-muted" data-fm-badge="reg">Opcional</span>
-                                    <svg class="fm-opt-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                                </div>
-                            </summary>
-                            <div class="fm-opt-body">
-                                <div class="vw-grid">
-                                    <label class="vw-f">
-                                        <span>CCIR</span>
-                                        <input type="text" name="ccir_number" inputmode="numeric" maxlength="17" value="{{ edit_farm.ccir_number if edit_farm and edit_farm.ccir_number else '' }}" placeholder="000.000.000.000-0" data-fm-in="ccir">
-                                    </label>
-                                    <label class="vw-f">
-                                        <span>ITR / NIRF / CIB</span>
-                                        <input type="text" name="itr_registration_number" maxlength="11" style="text-transform:uppercase;" value="{{ edit_farm.itr_registration_number if edit_farm and edit_farm.itr_registration_number else '' }}" placeholder="0.000.000-0 ou D.445.8ZN-M" data-fm-in="itr">
-                                    </label>
-                                    <label class="vw-f">
-                                        <span>Matrícula do imóvel</span>
-                                        <input type="text" name="property_registration_number" value="{{ edit_farm.property_registration_number if edit_farm and edit_farm.property_registration_number else '' }}" placeholder="Ex.: Matrícula 14.892" data-fm-in="matricula">
-                                    </label>
-                                    <label class="vw-f">
-                                        <span>Cartório de registro</span>
-                                        <input type="text" name="registry_office" value="{{ edit_farm.registry_office if edit_farm and edit_farm.registry_office else '' }}" placeholder="Ex.: 1º Ofício de Registro de Imóveis" data-fm-in="cartorio">
-                                    </label>
-                                </div>
-                            </div>
-                        </details>
-
-                        <details class="fm-opt-card">
-                            <summary>
-                                <div class="fm-opt-left">
-                                    <span class="fm-opt-icon" aria-hidden="true">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                                    </span>
-                                    <div style="min-width:0;">
-                                        <p class="fm-opt-title">Anexos da propriedade</p>
-                                        <p class="fm-opt-sub">Recibo do CAR, certidões, CCIR ou fotos</p>
-                                    </div>
-                                </div>
-                                <div class="fm-opt-right">
-                                    <span class="pd-chip {{ 'is-done' if edit_farm and edit_farm.attachments else 'is-muted' }}">
-                                        {{ (edit_farm.attachments|length ~ ' anexo(s)') if edit_farm and edit_farm.attachments else 'Opcional' }}
-                                    </span>
-                                    <svg class="fm-opt-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                                </div>
-                            </summary>
-                            <div class="fm-opt-body" style="display:flex; flex-direction:column; gap:12px;">
-                                <div class="fm-att-manager" data-attachment-manager data-attachment-style="sisfarm">
-                                    <div class="fm-geo-dropzone" data-attachments-dropzone>
-                                        <span class="fm-geo-drop-icon" aria-hidden="true">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                                        </span>
-                                        <div class="fm-geo-drop-copy">
-                                            <strong>Enviar documentos da fazenda</strong>
-                                            <small>Arraste e solte aqui ou procure no aparelho · CCIR, ITR, matrícula, certidões ou fotos (vários arquivos)</small>
-                                        </div>
-                                        <label class="sf-btn sf-btn-secondary fm-geo-browse" data-attachments-picker-slot>
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                                            Procurar arquivos
-                                            <input
-                                                type="file"
-                                                multiple
-                                                accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.odt,.ods"
-                                                class="sr-only"
-                                                data-attachments-picker
-                                            >
-                                        </label>
-                                    </div>
-                                    <input
-                                        type="file"
-                                        name="attachments"
-                                        multiple
-                                        class="hidden"
-                                        tabindex="-1"
-                                        aria-hidden="true"
-                                        data-attachments-submit-input
-                                    >
-                                    <div class="fm-att-feedback hidden" data-attachments-feedback role="status" aria-live="polite"></div>
-                                    <div class="fm-att-panel hidden" data-attachments-pending>
-                                        <div class="fm-att-panel-head">
-                                            <div>
-                                                <p class="pd-eyebrow">Novos anexos</p>
-                                                <h4>Arquivos prontos para salvar neste registro</h4>
-                                            </div>
-                                            <button type="button" class="sf-btn sf-btn-secondary fm-att-clear" data-attachments-clear>Limpar seleção</button>
-                                        </div>
-                                        <div class="fm-att-list" data-attachments-pending-list></div>
-                                    </div>
-                                </div>
-                                {% if edit_farm and edit_farm.attachments %}
-                                <div class="fm-att-panel">
-                                    <div class="fm-att-panel-head">
-                                        <div>
-                                            <p class="pd-eyebrow">Anexos salvos</p>
-                                            <h4>Arquivos vinculados a esta fazenda</h4>
-                                        </div>
-                                        <span class="pd-chip is-done">{{ edit_farm.attachments|length }} arquivo{{ 's' if edit_farm.attachments|length != 1 }}</span>
-                                    </div>
-                                    <div class="fm-att-list">
-                                        {% for attachment in edit_farm.attachments|sort(attribute='id', reverse=True) %}
-                                        <div class="fm-att-row">
-                                            <div class="fm-att-info">
-                                                <a href="/fazendas/anexos/{{ attachment.id }}" target="_blank" class="fm-att-link" title="{{ attachment.filename }}">{{ attachment.filename }}</a>
-                                                <p class="fm-att-meta">{{ attachment.content_type }}</p>
-                                            </div>
-                                        </div>
-                                        {% endfor %}
-                                    </div>
-                                </div>
-                                {% endif %}
-                            </div>
-                        </details>
-
-                        <details class="fm-opt-card" {% if edit_farm and edit_farm.notes %}open{% endif %}>
-                            <summary>
-                                <div class="fm-opt-left">
-                                    <span class="fm-opt-icon" aria-hidden="true">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-                                    </span>
-                                    <div style="min-width:0;">
-                                        <p class="fm-opt-title">Observações de campo</p>
-                                        <p class="fm-opt-sub">Altitude média, acesso principal, ponto de água</p>
-                                    </div>
-                                </div>
-                                <div class="fm-opt-right">
-                                    <span class="pd-chip is-muted" data-fm-badge="notes">Opcional</span>
-                                    <svg class="fm-opt-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                                </div>
-                            </summary>
-                            <div class="fm-opt-body">
-                                <label class="vw-f">
-                                    <span class="sr-only">Observações da fazenda</span>
-                                    <textarea name="notes" rows="3" placeholder="Ex.: Altitude média 960m, acesso principal, ponto de água..." data-fm-in="notes">{{ edit_farm.notes if edit_farm and edit_farm.notes else '' }}</textarea>
-                                </label>
-                            </div>
-                        </details>
+                        <h3 class="fz-h3" style="margin-top:18px">Depois de salvar, na ficha</h3>
+                        <ul class="fz-next">
+                            <li><i></i><div><b>Cadastrar os setores</b>Divida a área em talhões para lançar adubações e colheitas.</div></li>
+                            <li><i></i><div><b>Anexar CCIR, ITR e matrícula</b>Ficam ligados aos registros do imóvel.</div></li>
+                            <li><i></i><div><b>Completar o ambiente da lavoura</b>Altitude, solo e relevo melhoram as recomendações.</div></li>
+                        </ul>
                     </div>
                 </div>
-
-                <div class="vw-foot">
-                    <button type="button" class="sf-btn sf-btn-secondary" data-fm-prev>Cancelar</button>
-                    <button type="button" class="sf-btn sf-btn-primary" data-fm-next>Próximo passo →</button>
-                    <button type="submit" class="sf-btn sf-btn-primary" data-fm-submit hidden>{{ 'Salvar alterações' if is_edit else 'Confirmar e salvar fazenda' }}</button>
-                </div>
-            </section>
-
-            {# Resumo lateral sticky #}
-            <aside class="pd-card vw-summary">
-                <p class="pd-eyebrow">Resumo em tempo real</p>
-                <div class="hf-lot">
-                    <span>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10Z"/><circle cx="12" cy="11" r="2.5"/></svg>
-                    </span>
-                    <p>
-                        <strong data-fm-sum="name">{{ edit_farm.name if edit_farm else 'Nova fazenda' }}</strong>
-                        <small data-fm-sum="location">{{ edit_farm.location if edit_farm else 'Informe a localização' }}</small>
-                    </p>
-                </div>
-                <dl class="vw-sum-rows">
-                    <div><dt>Área total</dt><dd data-fm-sum="area">—</dd></div>
-                    <div><dt>CAR</dt><dd data-fm-sum="car">Não informado</dd></div>
-                    <div><dt>Perímetro</dt><dd data-fm-sum="poly">Sem desenho</dd></div>
-                </dl>
-                {% if plan_summary.max_hectares %}
-                <div class="pd-note" style="display:flex; flex-direction:column; gap:6px;">
-                    <div style="display:flex; justify-content:space-between; font-weight:600; color:var(--pd-ink);">
-                        <span>Uso do plano (área)</span>
-                        <span data-fm-plan-pct>{{ plan_summary.area_pct }}%</span>
-                    </div>
-                    <span class="fm-meter"><i data-fm-plan-bar style="width:{{ plan_summary.area_pct }}%"></i></span>
-                    <small data-fm-plan-hint>{{ plan_summary.used_area|decimal_br(1) }} ha de {{ plan_summary.max_hectares|decimal_br(0) }} ha contratados</small>
-                </div>
-                {% endif %}
-            </aside>
+            </div>
+        </section>
+        <div class="fz-wfoot">
+            <button type="button" class="fz-btn" data-fz-w-back>Cancelar</button>
+            <button type="button" class="fz-btn pri" data-fz-w-next>Continuar{{ icon('chev', 16, 2.2) }}</button>
+            <button type="submit" class="fz-btn pri" data-fz-w-submit hidden>Salvar fazenda</button>
         </div>
     </form>
-</div>
-
-{# Modal elegante de confirmação de área (quando área informada e mapa divergem) #}
-<dialog class="fm-dialog is-sm" data-fm-area-modal aria-labelledby="fm-area-modal-title">
-    <div class="fm-sheet">
-        <div class="fm-sheet-head">
-            <div>
-                <p class="pd-eyebrow">Conferência de área</p>
-                <h3 id="fm-area-modal-title">Qual área você quer usar nesta fazenda?</h3>
-            </div>
-            <button type="button" class="sf-icon-btn" aria-label="Fechar" data-fm-area-modal-close>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-            </button>
-        </div>
-        <div class="fm-sheet-body">
-            <p class="fm-area-modal-lead">A área medida no mapa ficou diferente da área que você informou. Escolha qual valor prefere manter — o desenho do mapa continua salvo nas duas opções.</p>
-            <div class="fm-area-choice-grid">
-                <button type="button" class="fm-area-option" data-fm-area-choice="keep">
-                    <span class="fm-area-option-tag">Informada no cadastro</span>
-                    <strong class="fm-area-option-val" data-fm-area-declared>—</strong>
-                    <small>Manter o valor que você digitou</small>
-                    <span class="sf-btn sf-btn-secondary fm-area-option-cta">Manter esta área</span>
-                </button>
-                <button type="button" class="fm-area-option is-map" data-fm-area-choice="map">
-                    <span class="fm-area-option-tag">Calculada no mapa</span>
-                    <strong class="fm-area-option-val" data-fm-area-calculated>—</strong>
-                    <small>Atualizar com a medida do desenho</small>
-                    <span class="sf-btn sf-btn-primary fm-area-option-cta">Usar área do mapa</span>
-                </button>
-            </div>
-        </div>
-        <div class="fm-sheet-foot">
-            <span style="font-size:12px; color:var(--pd-muted);">O perímetro desenhado não será alterado.</span>
-            <button type="button" class="sf-btn sf-btn-secondary" data-fm-area-modal-close>Voltar e ajustar mapa</button>
-        </div>
-    </div>
-</dialog>
-
-<script type="application/json" id="fm-location-data">{{ {
-    "states": brazil_states or [],
-    "initial_uf": initial_location_uf or "",
-    "initial_city": initial_location_city or "",
-    "initial_municipalities": initial_municipalities or []
-}|tojson }}</script>
-<script type="application/json" id="fm-edit-geometry-data">{{ edit_farm_geometry_json|safe }}</script>
-<script type="application/json" id="fm-plan-meta">{{ {
-    "plan_name": plan_summary.plan_name,
-    "used_farms": plan_summary.used_farms,
-    "max_farms": plan_summary.max_farms,
-    "used_area": plan_summary.used_area,
-    "max_hectares": plan_summary.max_hectares,
-    "is_edit": is_edit,
-    "edit_area": (edit_farm.total_area|float if edit_farm and edit_farm.total_area else 0)
-}|tojson }}</script>
+</main>
+{% if flash %}<div class="fz-toast {{ 'err' if flash.kind != 'success' }}" role="status" data-fz-toast>{{ icon('check' if flash.kind == 'success' else 'alert', 18, 2.4) }}{{ flash.message }}</div>{% endif %}
 <script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
-<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261121pzw3"></script>
-{% include "partials/attachment_manager_script.html" %}
-<script src="{{ url_for('static', path='js/farms.js') }}?v=20261126fmloc3"></script>
+<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261127fz1"></script>
+<script src="{{ url_for('static', path='js/fazendas.js') }}?v=20261127fz1"></script>
 {% endblock %}
