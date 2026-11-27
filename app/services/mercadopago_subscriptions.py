@@ -361,9 +361,21 @@ def reserve_checkout(db, *, organization, plan, amount, cycle, due, email, envir
         raise MercadoPagoError("organizacao_indisponivel")
     current = db.query(OrganizationSubscription).filter_by(organization_id=organization.id, is_current=True).first()
     if current:
-        if not can_replace_test_subscription(current, environment):
+        from app.services.mercadopago_pix_orders import has_unverified_pix_payment, is_unpaid_initial_pix_subscription
+
+        replaceable_pix = (
+            current.environment == environment
+            and is_unpaid_initial_pix_subscription(db, current)
+            and not has_unverified_pix_payment(db, current)
+        )
+        if not can_replace_test_subscription(current, environment) and not replaceable_pix:
             raise MercadoPagoError("assinatura_existente")
         current.is_current = False
+        if replaceable_pix:
+            current.status = "substituida"
+            current.mercadopago_status = "cancelled"
+            if not current.mercadopago_ended_at:
+                current.mercadopago_ended_at = _now()
         db.flush()
     row = OrganizationSubscription(
         organization_id=organization.id, plan_id=plan.id, plan_name=plan.name, amount=amount, cycle=cycle,

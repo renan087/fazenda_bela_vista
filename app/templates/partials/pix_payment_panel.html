@@ -24,6 +24,7 @@
     </div>
 
     {% elif active_pix_payment and active_pix_payment.status == 'PENDING' and not active_pix_expired %}
+    {% set is_initial_unpaid_pix = (subscription.mercadopago_status in [none, 'pending']) %}
     {% set kind_titles = {
         'contratacao': 'Conclua o pagamento via Pix',
         'renovacao': 'Renovação via Pix',
@@ -46,6 +47,9 @@
             <button type="button" class="sf-btn sf-btn-primary" data-pix-open-modal>Abrir QR Code Pix</button>
             {% if active_pix_payment.pix_qr_code %}
             <button type="button" class="sf-btn sf-btn-secondary" data-pix-copy-btn>Copiar código Pix</button>
+            {% endif %}
+            {% if is_initial_unpaid_pix and can_change_payment %}
+            <a href="/planos-disponiveis" class="sf-btn sf-btn-secondary">Trocar plano ou pagamento</a>
             {% endif %}
         </div>
     </div>
@@ -110,8 +114,10 @@
                 {% endif %}
 
                 <div class="px-expired-fallback" data-pix-expired-box hidden>
-                    <p><strong>Este código Pix expirou.</strong> Gere um novo para concluir.</p>
-                    {% if can_change_payment and pix_available %}
+                    <p><strong>Este código Pix expirou.</strong> Nenhuma cobrança foi feita.</p>
+                    {% if is_initial_unpaid_pix %}
+                    <a href="/planos-disponiveis" class="sf-btn sf-btn-primary">Escolher plano e pagamento</a>
+                    {% elif can_change_payment and pix_available %}
                     <form method="post" action="/minha-assinatura/pix/gerar">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <input type="hidden" name="cycle" value="{{ active_pix_payment.target_cycle or subscription.cycle }}">
@@ -127,7 +133,11 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <button type="submit" class="sf-btn sf-btn-secondary">Já paguei</button>
                     </form>
+                    {% if is_initial_unpaid_pix and can_change_payment %}
+                    <a href="/planos-disponiveis" class="sf-btn sf-btn-secondary">Trocar plano/cartão</a>
+                    {% else %}
                     <button type="button" class="sf-btn sf-btn-secondary" data-pix-close-modal>Fechar</button>
+                    {% endif %}
                 </div>
                 {% if can_change_payment %}
                 <form method="post" action="/minha-assinatura/pix/{{ active_pix_payment.id }}/cancelar" onsubmit="return confirm('Cancelar este código Pix pendente?');">
@@ -140,23 +150,26 @@
     </dialog>
 
     {% elif active_pix_expired or (state == 'pending' and not active_pix_payment) %}
+    {% set is_initial_unpaid_pix = (subscription.mercadopago_status in [none, 'pending']) %}
     <div class="px-head">
         <div>
             <span class="ms-eyebrow">Pix · Expirado</span>
             <h2 class="ms-subtitle" id="px-panel-title">O código Pix anterior expirou</h2>
-            <p class="ms-copy">Nenhuma cobrança foi feita. Gere um novo QR Code válido por 24 horas.</p>
+            <p class="ms-copy">Nenhuma cobrança foi feita. Escolha o plano e a forma de pagamento desejada para continuar.</p>
         </div>
         <span class="ms-badge ms-badge-muted">Expirado</span>
     </div>
-    {% if can_change_payment and pix_available %}
     <div class="px-actions-row">
+        {% if is_initial_unpaid_pix %}
+        <a href="/planos-disponiveis" class="sf-btn sf-btn-primary">Escolher plano e pagamento</a>
+        {% elif can_change_payment and pix_available %}
         <form method="post" action="/minha-assinatura/pix/gerar">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="cycle" value="{{ (active_pix_payment.target_cycle if active_pix_payment else none) or subscription.cycle }}">
             <button type="submit" class="sf-btn sf-btn-primary">Gerar novo Pix</button>
         </form>
+        {% endif %}
     </div>
-    {% endif %}
 
     {% elif can_renew_pix or state == 'overdue' %}
     <div class="px-head">

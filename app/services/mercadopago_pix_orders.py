@@ -67,6 +67,37 @@ def is_pix_order_subscription(subscription: OrganizationSubscription | None) -> 
     return ref.startswith(PIX_SUB_PREFIXES)
 
 
+def is_unpaid_initial_pix_subscription(db, subscription: OrganizationSubscription | None) -> bool:
+    """Retorna True se é uma tentativa inicial via Pix que nunca teve pagamento confirmado."""
+    if not subscription or not is_pix_order_subscription(subscription):
+        return False
+    if subscription.mercadopago_status not in {None, "pending"}:
+        return False
+    has_confirmed = (
+        db.query(OrganizationSubscriptionPayment.id)
+        .filter(
+            OrganizationSubscriptionPayment.subscription_id == subscription.id,
+            OrganizationSubscriptionPayment.status == "CONFIRMED",
+        )
+        .first()
+    )
+    return not bool(has_confirmed)
+
+
+def has_unverified_pix_payment(db, subscription: OrganizationSubscription | None) -> bool:
+    """Indica se há um pagamento Pix em estado inconclusivo aguardando verificação na API."""
+    if not subscription:
+        return False
+    return bool(
+        db.query(OrganizationSubscriptionPayment.id)
+        .filter(
+            OrganizationSubscriptionPayment.subscription_id == subscription.id,
+            OrganizationSubscriptionPayment.operation_state == "verificar",
+        )
+        .first()
+    )
+
+
 def pix_event_environment(environment: str) -> str:
     return PIX_EVENT_LIVE if environment == MERCADOPAGO_LIVE else PIX_EVENT_TEST
 
@@ -575,6 +606,25 @@ def apply_order(db, payment_row: OrganizationSubscriptionPayment, order: dict) -
         elif payment_row.status == "PENDING" and subscription.status == "criando":
             subscription.status = "criada"
             subscription.mercadopago_status = subscription.mercadopago_status or "pending"
+        elif payment_row.status in {"EXPIRED", "CANCELLED"} and is_unpaid_initial_pix_subscription(db, subscription):
+            other_open = (
+                db.query(OrganizationSubscriptionPayment.id)
+                .filter(
+                    OrganizationSubscriptionPayment.subscription_id == subscription.id,
+                    OrganizationSubscriptionPayment.id != payment_row.id,
+                    or_(
+                        OrganizationSubscriptionPayment.status == "PENDING",
+                        OrganizationSubscriptionPayment.operation_state == "verificar",
+                    ),
+                )
+                .first()
+            )
+            if not other_open:
+                subscription.is_current = False
+                subscription.status = "expirada" if payment_row.status == "EXPIRED" else "cancelada"
+                subscription.mercadopago_status = "cancelled"
+                if not subscription.mercadopago_ended_at:
+                    subscription.mercadopago_ended_at = _now()
 
     return payment_row.status
 
@@ -906,6 +956,42 @@ def cancel_pix_payment(db, api: MercadoPagoPixOrdersAPI, payment: OrganizationSu
         idempotency_key=f"cancel-{payment.mercadopago_order_reference or payment.id}",
     )
     return apply_order(db, payment, canceled)
+
+
+def release_unpaid_initial_pix_for_switch(
+    db,
+    api: MercadoPagoPixOrdersAPI | None,
+    subscription: OrganizationSubscription,
+) -> None:
+    """Cancela eventuais Pix pendentes de uma 1ª contratação não paga para permitir troca de modalidade/plano.
+
+    Se o Pix acabou de ser confirmado no Mercado Pago durante a conferência, levanta ``assinatura_existente``
+    para impedir cobrança duplicada.
+    """
+    sub = db.query(OrganizationSubscription).filter_by(id=subscription.id).with_for_update().one()
+    if not is_unpaid_initial_pix_subscription(db, sub):
+        raise MercadoPagoError("assinatura_existente")
+    if has_unverified_pix_payment(db, sub):
+        raise MercadoPagoError("assinatura_existente")
+    pending = (
+        db.query(OrganizationSubscriptionPayment)
+        .filter_by(subscription_id=sub.id, status="PENDING")
+        .all()
+    )
+    for row in pending:
+        if row.mercadopago_order_id and api:
+            status_after = cancel_pix_payment(db, api, row)
+            if status_after == "CONFIRMED":
+                raise MercadoPagoError("assinatura_existente")
+        else:
+            row.status = "CANCELLED"
+    if sub.is_current:
+        sub.is_current = False
+        sub.status = "substituida"
+        sub.mercadopago_status = "cancelled"
+        if not sub.mercadopago_ended_at:
+            sub.mercadopago_ended_at = _now()
+    db.flush()
 
 
 def refund_pix_payment(

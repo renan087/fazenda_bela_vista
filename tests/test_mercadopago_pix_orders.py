@@ -556,17 +556,20 @@ def test_timeout_recovery_expiration_and_qr_svg_fallback(database, pix_settings,
         assert pay.operation_state is None
         assert mp_pix.pix_qr_data_uri(pay).startswith("data:image/svg+xml;base64,")
 
-        # Expiração permite gerar novo Pix limpo
+        # Expiração encerra a tentativa inicial não paga e libera nova jornada de compra
         api.mark_expired("ORD01TIMEOUT999")
         assert mp_pix.reconcile_pix_payment(db, api, pay) == "EXPIRED"
         db.commit()
+        db.refresh(sub)
+        assert sub.is_current is False and sub.status == "expirada"
+        assert routes._subscribe_blocker(db, org.id) is None
 
         api.fail_create_with = None
         sub2, pay_new, reused_after_exp = mp_pix.reserve_pix_checkout(
             db, organization=org, plan=basic, amount=Decimal("99.00"), cycle="MONTHLY",
             due=TODAY, email="produtor@fazenda.com.br", environment=billing_environment.MERCADOPAGO_TEST,
         )
-        assert not reused_after_exp and sub2.id == sub.id and pay_new.id != pay.id
+        assert not reused_after_exp and sub2.id != sub.id and pay_new.id != pay.id
 
 
 def test_switching_plan_before_first_payment_cancels_previous_pix_order(database, pix_settings, monkeypatch):
@@ -756,4 +759,72 @@ def test_pix_web_routes_permissions_rendering_and_org_isolation(database, pix_se
         db.commit()
         resp2 = routes.my_subscription_pix_status(payment_id=pay.id, db=db, user=admin)
         assert b'"confirmed":true' in resp2.body
+
+
+def test_unpaid_initial_pix_allows_switching_to_card_or_other_plan_and_releases_on_cancel(database, pix_settings, monkeypatch):
+    monkeypatch.setattr(mp_pix, "today_in_app_timezone", lambda: TODAY)
+    api = FakePixOrdersAPI(billing_environment.MERCADOPAGO_TEST)
+
+    with database() as db:
+        org, basic, pro, admin = _make_org_and_plans(db)
+        sub, pay, _ = mp_pix.reserve_pix_checkout(
+            db, organization=org, plan=basic, amount=Decimal("99.00"), cycle="MONTHLY",
+            due=TODAY, email=admin.email, environment=billing_environment.MERCADOPAGO_TEST,
+        )
+        db.commit()
+        mp_pix.create_pix_order_for_payment(db, api, pay)
+
+        # Mesmo com Pix inicial pendente, cliente pode ir escolher outro plano ou trocar para Cartão
+        assert routes._subscribe_blocker(db, org.id) is None
+
+        # Ao trocar para Cartão, cancela o Pix pendente na API e libera a reserva do cartão
+        mp_pix.release_unpaid_initial_pix_for_switch(db, api, sub)
+        card_sub = mp.reserve_checkout(
+            db, organization=org, plan=pro, amount=Decimal("199.00"), cycle="MONTHLY",
+            due=TODAY, email="comprador@testuser.com", environment=billing_environment.MERCADOPAGO_TEST,
+        )
+        db.commit()
+        db.refresh(sub)
+        db.refresh(pay)
+        assert pay.status == "CANCELLED"
+        assert sub.is_current is False
+        assert card_sub.is_current is True and card_sub.plan_id == pro.id
+
+    # Cenário 2: cancelar o 1º Pix encerra a tentativa e libera imediatamente nova escolha
+    with database() as db:
+        org2 = Organization(name="Fazenda Sul", slug="fazenda-sul", is_active=True)
+        plan2 = SubscriptionPlan(code="sul", name="Essencial", status="ativo", price_monthly=Decimal("99.00"), price_yearly=Decimal("990.00"))
+        db.add_all([org2, plan2])
+        db.flush()
+        sub2, pay2, _ = mp_pix.reserve_pix_checkout(
+            db, organization=org2, plan=plan2, amount=Decimal("99.00"), cycle="MONTHLY",
+            due=TODAY, email="sul@fazenda.com.br", environment=billing_environment.MERCADOPAGO_TEST,
+        )
+        db.commit()
+        mp_pix.create_pix_order_for_payment(db, api, pay2)
+
+        assert mp_pix.cancel_pix_payment(db, api, pay2) == "CANCELLED"
+        db.commit()
+        db.refresh(sub2)
+        assert sub2.is_current is False and sub2.status == "cancelada"
+        assert routes._subscribe_blocker(db, org2.id) is None
+
+    # Cenário 3: se o Pix acabou de ser pago antes da troca para cartão, barra para evitar cobrança duplicada
+    with database() as db:
+        org3 = Organization(name="Fazenda Norte", slug="fazenda-norte", is_active=True)
+        plan3 = SubscriptionPlan(code="norte", name="Essencial", status="ativo", price_monthly=Decimal("99.00"), price_yearly=Decimal("990.00"))
+        db.add_all([org3, plan3])
+        db.flush()
+        sub3, pay3, _ = mp_pix.reserve_pix_checkout(
+            db, organization=org3, plan=plan3, amount=Decimal("99.00"), cycle="MONTHLY",
+            due=TODAY, email="norte@fazenda.com.br", environment=billing_environment.MERCADOPAGO_TEST,
+        )
+        db.commit()
+        mp_pix.create_pix_order_for_payment(db, api, pay3)
+        api.mark_paid(pay3.mercadopago_order_id, paid_on=TODAY)
+
+        with pytest.raises(mp.MercadoPagoError, match="assinatura_existente"):
+            mp_pix.release_unpaid_initial_pix_for_switch(db, api, sub3)
+        assert pay3.status == "CONFIRMED" and sub3.mercadopago_status == "authorized"
+
 

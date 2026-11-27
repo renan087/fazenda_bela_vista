@@ -11085,7 +11085,14 @@ def _subscribe_blocker(db: Session, organization_id: int) -> str | None:
     current = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, is_current=True).first()
     environment = billing_environment()
     mp_active = environment in MERCADOPAGO_ENVIRONMENTS
-    if current and not (mp_active and mp.can_replace_test_subscription(current, environment)):
+    replaceable_unpaid_pix = bool(
+        mp_active
+        and current
+        and current.environment == environment
+        and mp_pix.is_unpaid_initial_pix_subscription(db, current)
+        and not mp_pix.has_unverified_pix_payment(db, current)
+    )
+    if current and not (mp_active and mp.can_replace_test_subscription(current, environment)) and not replaceable_unpaid_pix:
         return "Sua organização já tem uma assinatura. Gerencie por aqui."
     if not mp_active and db.query(OrganizationCardMigration.id).filter_by(organization_id=organization_id, is_open=True).first():
         return "Já existe um pagamento com cartão em andamento. Conclua ou aguarde a confirmação."
@@ -11257,6 +11264,12 @@ def subscribe_action(
         today = today_in_app_timezone()
         due = mp.first_due_date(entitlements.trial_ends_on, today)
         try:
+            existing_pix = db.query(OrganizationSubscription).filter_by(
+                organization_id=organization.id, environment=environment, is_current=True,
+            ).first()
+            if existing_pix and mp_pix.is_unpaid_initial_pix_subscription(db, existing_pix):
+                pix_api = mp_pix.MercadoPagoPixOrdersAPI(environment, settings) if mp_pix.pix_active_for_environment(environment, settings) else None
+                mp_pix.release_unpaid_initial_pix_for_switch(db, pix_api, existing_pix)
             subscription = mp.reserve_checkout(db, organization=organization, plan=plan, amount=price,
                                                cycle=cycle, due=due, email=email, environment=environment)
             if environment == MERCADOPAGO_LIVE and cancelled_paid_period(db, organization.id, today)[1]:
@@ -11490,8 +11503,12 @@ def cancel_my_pix_payment_action(
     else:
         if status_after == "CONFIRMED":
             _flash(request, "success", "O Pix já havia sido pago e sua assinatura foi confirmada.")
-        else:
-            _flash(request, "success", "Código Pix pendente cancelado.")
+            return _redirect("/minha-assinatura")
+        subscription = db.get(OrganizationSubscription, payment.subscription_id)
+        if subscription and not subscription.is_current:
+            _flash(request, "success", "Código Pix cancelado. Escolha o plano e a forma de pagamento quando quiser.")
+            return _redirect("/planos-disponiveis")
+        _flash(request, "success", "Código Pix pendente cancelado.")
     return _redirect("/minha-assinatura#pix-pagamento")
 
 
@@ -11945,7 +11962,8 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
         can_change_pix_plan=can_change_pix_plan and can_write_finance,
         can_subscribe=can_subscribe,
         trial_plan_id=trial_plan_id, recorded_plan_id=recorded_plan_id,
-        current_plan_id=recorded_plan_id if confirmed else None, awaiting_first_payment=bool(recorded and not confirmed),
+        current_plan_id=recorded_plan_id if confirmed else None,
+        awaiting_first_payment=bool(recorded and not confirmed and not mp_pix.is_unpaid_initial_pix_subscription(db, recorded)),
         plan_limit_issues=limit_issues_map,
         plan_limit_cards=limit_cards_map,
         recommended_compatible_plan=recommended_compatible,
