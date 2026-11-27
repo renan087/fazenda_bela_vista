@@ -712,6 +712,7 @@
 
         const syncLocationHidden = () => {
             if (!locInput) return;
+            const prevLoc = locInput.value;
             if (selectedCity && selectedUf) {
                 locInput.value = `${selectedCity}, ${selectedUf}`;
             } else if (selectedCity) {
@@ -719,10 +720,17 @@
             } else {
                 locInput.value = '';
             }
+            // Se trocou o município antes de desenhar pontos, limpa o mapa antigo para re-centralizar no novo município
+            if (locInput.value !== prevLoc && formEditor && currentVertexCount === 0 && !currentGeom) {
+                try { formEditor.destroy(); } catch (e) { /* ignore */ }
+                formEditor = null;
+                if (mapWrap) mapWrap.hidden = true;
+                if (mapPrompt) mapPrompt.hidden = false;
+            }
             if (step1Err && !step1Err.hidden && selectedUf && selectedCity) {
                 step1Err.hidden = true;
             }
-            syncSummary();
+            if (typeof syncSummary === 'function') syncSummary();
         };
 
         const fetchMunicipalitiesForUf = async (uf) => {
@@ -1077,12 +1085,13 @@
             let center = null;
             const lat = parseFloat(String(latInput?.value || '').replace(',', '.'));
             const lng = parseFloat(String(lngInput?.value || '').replace(',', '.'));
+            const queryLoc = (locInput?.value || '').trim() || (selectedCity && selectedUf ? `${selectedCity}, ${selectedUf}` : '');
             if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
                 center = { lat, lng };
-            } else if (locInput?.value.trim().length >= 2) {
+            } else if (queryLoc.length >= 2) {
                 loadMapBtn.disabled = true;
                 try {
-                    const res = await fetch(`/fazendas/geocodificar?q=${encodeURIComponent(locInput.value.trim())}`);
+                    const res = await fetch(`/fazendas/geocodificar?q=${encodeURIComponent(queryLoc)}`);
                     const data = await res.json();
                     if (data.ok && typeof data.lat === 'number' && typeof data.lng === 'number') {
                         center = { lat: data.lat, lng: data.lng };

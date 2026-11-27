@@ -10253,15 +10253,34 @@ def geocode_farm_location(
     q: str = "",
     user: User = Depends(get_current_user_web),
 ):
-    """Geocodifica texto de localização (Nominatim/OSM) para centralizar o mapa do cadastro."""
+    """Geocodifica localização (base oficial IBGE local primeiro; Nominatim/OSM como fallback)."""
+    from app.services.ibge_municipalities import (
+        get_state_name,
+        parse_location_uf_city,
+        resolve_municipality_coords,
+    )
+
     del user
     query = (q or "").strip()
     if len(query) < 2:
         return JSONResponse({"ok": False, "code": "empty"}, status_code=400)
-    q_lower = query.lower()
-    search_q = query
-    if "brasil" not in q_lower and "brazil" not in q_lower:
-        search_q = f"{query}, Brasil"
+
+    # 1. Resolução instantânea offline pela base oficial dos 5.571 municípios (IBGE)
+    local_coords = resolve_municipality_coords(query)
+    if local_coords:
+        return JSONResponse(
+            {"ok": True, "lat": local_coords[0], "lng": local_coords[1], "source": "ibge_local"},
+            headers={"Cache-Control": "private, max-age=86400"},
+        )
+
+    # 2. Fallback externo (Nominatim) expandindo sigla UF -> nome completo do estado
+    uf, city = parse_location_uf_city(query)
+    if uf and city:
+        state_name = get_state_name(uf)
+        search_q = f"{city}, {state_name or uf}, Brasil"
+    else:
+        q_lower = query.lower()
+        search_q = query if ("brasil" in q_lower or "brazil" in q_lower) else f"{query}, Brasil"
     params = urlencode(
         {
             "format": "json",

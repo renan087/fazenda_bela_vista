@@ -480,3 +480,13 @@ def test_farm_cascading_state_municipality_selector_and_api(env):
     assert '"initial_uf": "BA"' in edit_html
     assert '"initial_city": "Vit\\u00f3ria da Conquista"' in edit_html or '"initial_city": "Vitória da Conquista"' in edit_html
 
+    # Geocodificação resolve instantaneamente pela base local IBGE para qualquer município selecionado
+    geo_vc = json.loads(env.routes.geocode_farm_location(q="Vitória da Conquista, BA", user=env.user).body.decode("utf-8"))
+    assert geo_vc["ok"] is True and geo_vc["source"] == "ibge_local"
+    assert -15.5 < geo_vc["lat"] < -14.0 and -41.5 < geo_vc["lng"] < -40.0
+
+    geo_pat = json.loads(env.routes.geocode_farm_location(q="Patrocínio, MG", user=env.user).body.decode("utf-8"))
+    assert geo_pat["ok"] is True and geo_pat["source"] == "ibge_local"
+    assert -19.5 < geo_pat["lat"] < -18.5 and -47.5 < geo_pat["lng"] < -46.5
+
+

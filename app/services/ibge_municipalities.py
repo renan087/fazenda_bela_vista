@@ -41,7 +41,47 @@ BRAZIL_STATES: tuple[dict[str, str], ...] = (
     {"uf": "TO", "name": "Tocantins"},
 )
 _VALID_UFS: frozenset[str] = frozenset(item["uf"] for item in BRAZIL_STATES)
+_UF_NAMES: dict[str, str] = {item["uf"]: item["name"] for item in BRAZIL_STATES}
 _IBGE_DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "ibge_municipios.json"
+_IBGE_COORDS_FILE = Path(__file__).resolve().parent.parent / "data" / "ibge_municipios_coords.json"
+
+
+@lru_cache(maxsize=1)
+def _load_municipality_coords() -> dict[str, tuple[float, float]]:
+    try:
+        raw = json.loads(_IBGE_COORDS_FILE.read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            out: dict[str, tuple[float, float]] = {}
+            for key, pair in raw.items():
+                if isinstance(pair, list) and len(pair) == 2:
+                    out[str(key)] = (float(pair[0]), float(pair[1]))
+            return out
+    except (OSError, ValueError, TypeError):
+        pass
+    return {}
+
+
+def get_state_name(uf: str | None) -> str:
+    """Retorna o nome completo do estado para a UF informada, ou ''."""
+    return _UF_NAMES.get(str(uf or "").strip().upper(), "")
+
+
+def resolve_municipality_coords(location: str | None) -> tuple[float, float] | None:
+    """Retorna (latitude, longitude) oficiais do IBGE para o município informado."""
+    uf, city = parse_location_uf_city(location)
+    coords = _load_municipality_coords()
+    if not coords:
+        return None
+    norm_city = _norm(city)
+    if uf and norm_city:
+        hit = coords.get(f"{uf}|{norm_city}")
+        if hit:
+            return hit
+    if not uf and norm_city:
+        matches = [val for key, val in coords.items() if key.endswith(f"|{norm_city}")]
+        if len(matches) == 1:
+            return matches[0]
+    return None
 
 
 @lru_cache(maxsize=1)
