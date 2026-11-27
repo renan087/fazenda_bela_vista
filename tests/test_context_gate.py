@@ -126,7 +126,8 @@ def test_many_farms_ask_inside_the_page(env, client):
     client.post("/test-session")
     page = client.get("/dashboard")
     assert page.status_code == 200
-    assert "Em qual fazenda vamos trabalhar hoje, Ana?" in page.text
+    assert "Para qual fazenda vamos hoje?" in page.text and page.text.count("data-cg-card ") == 2
+    assert "data-cg-search>" not in page.text  # poucas fazendas: sem busca
     assert 'class="cg-ghost' in page.text and "Contexto obrigatorio" not in page.text
     assert "Escolha a fazenda" in page.text  # topo destacado, menu livre
 
@@ -172,8 +173,8 @@ def test_tour_never_asks_for_context_and_welcomes_back(env, client):
     page = client.get("/dashboard")
     assert "data-cg-pick" not in page.text and "cg-empty" not in page.text and "cg-ghost" not in page.text
     welcome = tour_data(page.text)["welcome"]
-    assert welcome["title"] == "Que bom que você voltou, Ana!" and "parou no número do CAR" in welcome["sub"]
-    assert welcome["meta"].startswith("Você saiu ontem às") and welcome["meta"].endswith("Fazenda › CAR")
+    assert welcome["title"] == "Que bom que você voltou, Ana" and "parou no número do CAR" in welcome["sub"]
+    assert welcome["meta"].startswith("Você saiu ontem às") and welcome["meta"].endswith("Parou em Fazenda › CAR") and welcome["next"] == "Retomar pelo número do CAR"
     # Só uma vez por acesso.
     assert tour_data(client.get("/fazendas").text)["welcome"] is None
 
@@ -183,7 +184,7 @@ def test_tour_welcome_follows_saved_progress_and_mark(env, client):
     env.org(onboarding_tour="paused", created_at=datetime.now(timezone.utc))
     csrf = client.post("/test-session").json()
     welcome = tour_data(client.get("/dashboard").text)["welcome"]
-    assert welcome["title"] == "Oi de novo, Ana!" and welcome["sub"].startswith("Fazenda Água Limpa já está salva")
+    assert welcome["title"] == "Oi de novo, Ana" and welcome["sub"].startswith("Fazenda Água Limpa já está salva")
     assert welcome["act"] == "Abrir a safra"
     mark = client.post("/primeiros-passos/tour", data={**csrf, "action": "mark", "step": "Safra · Período<script>"}, headers={"x-sf-fetch": "1"})
     assert mark.json() == {"ok": True}
@@ -191,3 +192,22 @@ def test_tour_welcome_follows_saved_progress_and_mark(env, client):
         org = db.get(Organization, 1)
         assert org.onboarding_last_step == "Safra · Períodoscript" and org.onboarding_last_at is not None
         assert org.onboarding_tour == "paused"
+
+
+def test_many_farms_and_seasons_scale(env, client):
+    import json as _json
+    first = env.farm("Fazenda 00", [RUNNING, OLD] + [(f"Safra {y}/{y + 1}", date(y, 7, 1), date(y + 1, 6, 30), "encerrada") for y in range(2005, 2024)])
+    for i in range(1, 12):
+        env.farm(f"Fazenda {i:02d}", [RUNNING])
+    with env.sessions() as db:
+        farm = db.get(Farm, first)
+        farm.boundary_geojson = _json.dumps({"type": "Polygon", "coordinates": [[[-46.9, -18.9], [-46.8, -18.9], [-46.8, -18.95], [-46.9, -18.9]]]})
+        db.commit()
+    client.post("/test-session")
+    page = client.get("/dashboard").text
+    assert "data-cg-search>" in page and "Mostrar todas as 12 fazendas" in page
+    assert page.count("data-cg-extra hidden") == 4  # mostra 8 de início
+    seasons = json.loads(re.search(r"data-id=\"%d\"[^>]*data-seasons='([^']*)'" % first, page).group(1))
+    assert len(seasons) == 21 and seasons[0]["current"] and seasons[1]["name"] == "Safra 2025/2026"
+    with env.sessions() as db:
+        assert routes._boundary_path(db.get(Farm, first).boundary_geojson) in page  # contorno real da fazenda no cartão

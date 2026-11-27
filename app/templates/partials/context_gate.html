@@ -15,7 +15,7 @@
         </form>
         <a class="sf-btn cg-btn" href="/fazendas/nova">Cadastrar só a fazenda</a>
     </div>
-    <small>Recebeu convite de outra equipe? Peça ao administrador para liberar a fazenda para você.</small>
+    <small>Recebeu convite de outra equipe?<br>Peça ao administrador para liberar a fazenda para você.</small>
 </section>
 {% elif g.kind == 'no_season' %}
 <section class="cg-card" aria-labelledby="cg-title" data-cg-season>
@@ -45,35 +45,50 @@
     {% if g.other_farms %}<p class="cg-alt">Queria outra fazenda? <button type="button" class="cg-link" data-cg-open-picker>Trocar a fazenda</button></p>{% endif %}
 </section>
 {% else %}
-<section class="cg-card" aria-labelledby="cg-title" data-cg-pick>
-    <div class="cg-head">
+<section class="fx" aria-labelledby="cg-title" data-cg-pick>
+    <div class="fx-head">
         <span class="cg-pz" aria-hidden="true"><img src="{{ pz }}" alt=""></span>
-        <div><h2 id="cg-title">Em qual fazenda vamos trabalhar hoje{{ ', ' ~ who if who else '' }}?</h2><p>{% if title %}{{ title }} mostra{% else %}As páginas mostram{% endif %} os dados de uma fazenda e safra por vez. Toque na fazenda.</p></div>
+        <div><small>{{ g.greet }}{{ ', ' ~ who if who else '' }}</small><h2 id="cg-title">Para qual fazenda vamos hoje?</h2></div>
     </div>
     <form method="post" action="/contexto" data-cg-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
+        <input type="hidden" name="farm_id" value="" data-cg-farm-id>
         <input type="hidden" name="season_id" value="" data-cg-season-id>
-        <div class="cg-farms" role="radiogroup" aria-label="Fazendas">
+        {% if g.many %}
+        <div class="fx-tools">
+            <label class="fx-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" placeholder="Buscar fazenda ou cidade" aria-label="Buscar fazenda ou cidade" autocomplete="off" data-cg-search></label>
+            <span class="fx-count" data-cg-count aria-live="polite">{{ g.farms|length }} fazendas</span>
+        </div>
+        <p class="fx-empty" data-cg-nofound hidden></p>
+        {% endif %}
+        <div class="fx-grid{{ ' many' if g.many }}" role="radiogroup" aria-label="Fazendas">
             {% for f in g.farms %}
-            <label class="cg-farm">
-                <input type="radio" name="farm_id" value="{{ f.id }}" data-cg-farm data-seasons='{{ f.seasons|tojson }}' data-name="{{ f.name }}" {% if g.selected == f.id %}checked{% endif %}>
-                <b>{{ f.name }}</b>
-                <span>{% if f.where %}{{ f.where }} · {% endif %}{{ f.area }} ha</span>
-                {% if f.running %}<span class="cg-tag">● {{ f.running }} em andamento</span>{% elif not f.seasons %}<span class="cg-tag is-warn">Sem safra ainda</span>{% endif %}
-            </label>
+            {% set a = f.air %}
+            <div class="fx-card{{ ' compact' if g.many }}" data-cg-card data-id="{{ f.id }}" data-name="{{ f.name }}" data-search="{{ (f.name ~ ' ' ~ f.where)|lower }}" data-seasons='{{ f.seasons|tojson }}'{% if g.many and loop.index > 8 %} data-cg-extra hidden{% endif %}>
+                <button type="button" class="fx-pick" role="radio" aria-checked="false" aria-label="{{ f.name }}, {{ f.area }} hectares" data-cg-pickbtn>
+                    <span class="fx-air" aria-hidden="true">
+                        <svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMid slice">
+                            <defs><pattern id="fxp{{ f.id }}" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate({{ a.rot }})"><rect width="7" height="7" fill="{{ a.field }}"/><path d="M0 3.5h7" stroke="{{ a.row }}" stroke-width="3"/></pattern></defs>
+                            <rect width="300" height="150" fill="{{ a.ground }}"/>
+                            <path d="{{ a.road }}" stroke="#E9DFC8" stroke-width="7" fill="none" stroke-linecap="round"/>
+                            <ellipse cx="{{ a.pond[0] }}" cy="{{ a.pond[1] }}" rx="17" ry="10" fill="#A9CFE0" stroke="#fff" stroke-opacity=".6"/>
+                            <path d="{{ a.shape }}" fill="url(#fxp{{ f.id }})" stroke="#fff" stroke-width="2.5" stroke-dasharray="7 5" stroke-linejoin="round"/>
+                            {% for tx, ty, tr in a.trees %}<circle cx="{{ tx }}" cy="{{ ty }}" r="{{ tr }}" fill="{{ ['#6E9A5A', '#7DA866', '#628E50'][loop.index0] }}"/>{% endfor %}
+                        </svg>
+                        {% if f.running %}<span class="fx-live" title="Safra em andamento"></span>{% endif %}
+                        <span class="fx-ha">{% if f.where %}{{ f.where }} · {% endif %}{{ f.area }} ha</span>
+                    </span>
+                    <span class="fx-name">{{ f.name }}</span>
+                </button>
+                <span class="fx-ok" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+                <div class="fx-go" data-cg-go></div>
+            </div>
             {% endfor %}
         </div>
-        <div class="cg-seas" data-cg-seas hidden>
-            <div class="cg-seas-l" data-cg-seas-label>Safra</div>
-            <div class="cg-pills" role="radiogroup" aria-label="Safras" data-cg-pills></div>
-            <p class="cg-none" data-cg-none hidden>Esta fazenda ainda não tem safra. Escolha e toque em abrir: eu sugiro a safra deste ano no próximo passo.</p>
-        </div>
-        <div class="cg-foot">
-            <p>Fica salvo para os próximos acessos. Para trocar, é só tocar no nome da fazenda no topo.</p>
-            <button class="sf-btn sf-btn-primary cg-btn" data-cg-apply disabled>Escolha uma fazenda</button>
-        </div>
+        {% if g.many and g.farms|length > 8 %}<button type="button" class="fx-more" data-cg-more>Mostrar todas as {{ g.farms|length }} fazendas</button>{% endif %}
     </form>
+    <p class="fx-foot"><i aria-hidden="true"></i>Safra em andamento · sua escolha fica salva para os próximos acessos</p>
 </section>
 {% endif %}
 <script>
@@ -81,47 +96,84 @@
     const pick = document.querySelector('[data-cg-pick]');
     if (pick) {
         const form = pick.querySelector('[data-cg-form]');
-        const seasonInput = form.querySelector('[data-cg-season-id]');
-        const box = form.querySelector('[data-cg-seas]'), pills = form.querySelector('[data-cg-pills]');
-        const none = form.querySelector('[data-cg-none]'), label = form.querySelector('[data-cg-seas-label]');
-        const apply = form.querySelector('[data-cg-apply]');
-        const setSeason = (id) => {
-            seasonInput.value = id || '';
-            pills.querySelectorAll('button').forEach((b) => { const on = b.dataset.id === String(id); b.classList.toggle('is-on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
-        };
-        const show = (radio) => {
-            let seasons = [];
-            try { seasons = JSON.parse(radio.dataset.seasons || '[]'); } catch (e) { seasons = []; }
-            pills.innerHTML = '';
-            seasons.forEach((s) => {
-                const b = document.createElement('button');
-                b.type = 'button'; b.className = 'cg-pill'; b.dataset.id = s.id; b.setAttribute('role', 'radio');
-                b.textContent = s.name;
-                const small = document.createElement('small');
-                small.textContent = s.current ? 'em andamento' : (s.status === 'encerrada' ? 'encerrada' : s.start + ' a ' + s.end);
-                b.appendChild(small);
-                b.addEventListener('click', () => setSeason(s.id));
-                pills.appendChild(b);
+        const farmInput = form.querySelector('[data-cg-farm-id]'), seasonInput = form.querySelector('[data-cg-season-id]');
+        const cards = Array.from(form.querySelectorAll('[data-cg-card]'));
+        const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+        const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+        const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const short = (name) => String(name || '').replace(/^Safra\s+/i, '').replace(/^(\d{4})\/\d{2}(\d{2})$/, '$1/$2');
+        const seasonsOf = (card) => { try { return JSON.parse(card.dataset.seasons || '[]'); } catch (e) { return []; } };
+        let open = null, listOpen = false;
+        const draw = () => {
+            cards.forEach((card) => {
+                const on = card === open;
+                card.classList.toggle('sel', on);
+                card.querySelector('[data-cg-pickbtn]').setAttribute('aria-checked', on ? 'true' : 'false');
+                const go = card.querySelector('[data-cg-go]');
+                if (!on) { go.innerHTML = ''; return; }
+                const all = seasonsOf(card), sel = Number(seasonInput.value) || null;
+                if (!all.length) {
+                    go.innerHTML = '<p class="fx-nos">Ainda sem safra. Ao entrar, eu sugiro a safra deste ano.</p><button type="submit" class="fx-enter">Entrar na fazenda' + ARROW + '</button>';
+                    return;
+                }
+                let shown = all;
+                if (all.length > 3) {
+                    const cur = all.find((s) => s.current) || all[0];
+                    const prev = all.find((s) => s.status === 'encerrada' && s.id !== cur.id) || all.find((s) => s.id !== cur.id);
+                    shown = [cur, prev].filter(Boolean);
+                    const chosen = all.find((s) => s.id === sel);
+                    if (chosen && !shown.includes(chosen)) shown = [shown[0], chosen];
+                }
+                let html = '<div class="fx-seg" role="radiogroup" aria-label="Safra">' + shown.map((s) => '<button type="button" class="fx-s' + (s.id === sel ? ' sel' : '') + '" role="radio" aria-checked="' + (s.id === sel) + '" data-cg-s="' + s.id + '" aria-label="' + esc(s.name + (s.current ? ', em andamento' : '')) + '">' + (s.current ? '<i aria-hidden="true"></i>' : '') + esc((card.classList.contains('compact') ? '' : 'Safra ') + short(s.name)) + '</button>').join('') + '</div>';
+                if (all.length > 3) {
+                    const groups = [['Em andamento', (s) => s.current], ['Planejadas', (s) => !s.current && s.status !== 'encerrada'], ['Encerradas', (s) => !s.current && s.status === 'encerrada']];
+                    html += '<button type="button" class="fx-other" aria-expanded="' + listOpen + '" data-cg-other>' + (listOpen ? 'Fechar lista' : 'Outras safras (' + (all.length - 2) + ')') + CHEV + '</button>';
+                    if (listOpen) html += '<div class="fx-slist" role="listbox" aria-label="Todas as safras">' + groups.map(([label, test]) => { const items = all.filter(test); return items.length ? '<div class="fx-sh">' + label + ' · ' + items.length + '</div>' + items.map((s) => '<button type="button" role="option" aria-selected="' + (s.id === sel) + '" class="fx-si' + (s.id === sel ? ' sel' : '') + '" data-cg-s="' + s.id + '">' + esc(short(s.name)) + '</button>').join('') : ''; }).join('') + '</div>';
+                }
+                html += '<button type="submit" class="fx-enter">Entrar na fazenda' + ARROW + '</button>';
+                go.innerHTML = html;
             });
-            const pref = seasons.find((s) => s.current) || (seasons.length === 1 ? seasons[0] : null);
-            setSeason(pref ? pref.id : '');
-            label.textContent = seasons.length > 1 ? 'Qual safra? ' + (pref ? 'A em andamento já está marcada.' : 'Toque na safra.') : 'Safra';
-            none.hidden = seasons.length > 0;
-            box.hidden = false;
-            apply.disabled = false;
-            apply.textContent = 'Abrir ' + radio.dataset.name;
         };
-        form.querySelectorAll('[data-cg-farm]').forEach((r) => r.addEventListener('change', () => show(r)));
-        const pre = form.querySelector('[data-cg-farm]:checked');
-        if (pre) show(pre);
+        const choose = (card) => {
+            open = card; listOpen = false;
+            farmInput.value = card.dataset.id;
+            const all = seasonsOf(card);
+            const pref = all.find((s) => s.current) || (all.length === 1 ? all[0] : null);
+            seasonInput.value = pref ? pref.id : '';
+            draw();
+        };
+        form.addEventListener('click', (e) => {
+            const pickBtn = e.target.closest('[data-cg-pickbtn]');
+            if (pickBtn) { choose(pickBtn.closest('[data-cg-card]')); return; }
+            const s = e.target.closest('[data-cg-s]');
+            if (s) { seasonInput.value = s.dataset.cgS; listOpen = false; draw(); open?.querySelector('.fx-enter')?.focus(); return; }
+            if (e.target.closest('[data-cg-other]')) { listOpen = !listOpen; draw(); return; }
+            if (e.target.closest('[data-cg-more]')) { cards.forEach((c) => { if (c.hasAttribute('data-cg-extra')) c.hidden = false; }); e.target.closest('[data-cg-more]').remove(); }
+        });
+        const search = form.querySelector('[data-cg-search]');
+        if (search) {
+            const fold = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+            const count = form.querySelector('[data-cg-count]'), none = form.querySelector('[data-cg-nofound]'), more = () => form.querySelector('[data-cg-more]');
+            search.addEventListener('input', () => {
+                const q = fold(search.value.trim());
+                let shown = 0;
+                cards.forEach((c, i) => {
+                    const hit = !q || fold(c.dataset.search).includes(q);
+                    c.hidden = q ? !hit : (c.hasAttribute('data-cg-extra') && !!more());
+                    if (hit) shown += 1;
+                });
+                if (more()) more().hidden = !!q;
+                count.textContent = q ? shown + ' de ' + cards.length + ' fazendas' : cards.length + ' fazendas';
+                none.hidden = !(q && !shown);
+                if (q && !shown) none.textContent = 'Nenhuma fazenda com “' + search.value.trim() + '”. Confira o nome ou busque pela cidade.';
+            });
+        }
         form.addEventListener('submit', (e) => {
-            const farm = form.querySelector('[data-cg-farm]:checked');
-            if (!farm) { e.preventDefault(); return; }
-            let seasons = [];
-            try { seasons = JSON.parse(farm.dataset.seasons || '[]'); } catch (err) { seasons = []; }
-            if (seasons.length && !seasonInput.value) { e.preventDefault(); label.textContent = 'Toque na safra para continuar.'; label.classList.add('is-warn'); return; }
+            if (!farmInput.value) { e.preventDefault(); return; }
             window.showPageLoader?.('Abrindo', 'Carregando os dados da fazenda e safra.');
         });
+        const pre = cards.find((c) => c.dataset.id === String({{ g.selected or 0 }}));
+        if (pre) choose(pre);
     }
     const sea = document.querySelector('[data-cg-season]');
     if (sea) {

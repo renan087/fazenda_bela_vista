@@ -12,6 +12,7 @@ import time as monotonic_time
 import hashlib
 import base64
 import json
+import math
 from jinja2 import pass_context
 from markupsafe import Markup
 import segno
@@ -2478,6 +2479,7 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
             "start": season.start_date.strftime("%m/%Y") if season.start_date else "",
             "end": season.end_date.strftime("%m/%Y") if season.end_date else "",
             "current": season_in_progress(season, today_in_app_timezone()) if season.start_date and season.end_date else False,
+            "sort": season.start_date.isoformat() if season.start_date else "",
         }
         for season in all_seasons
     ]
@@ -4443,18 +4445,69 @@ def _context_gate(scope: dict) -> dict:
             "other_farms": len(farms) > 1,
         }
     cards = []
-    for farm in farms:
-        seasons = sorted((o for o in options if o["farm_id"] == farm.id), key=lambda o: (not o.get("current"), o["name"]), reverse=False)
-        running = next((o for o in seasons if o.get("current")), None)
+    for index, farm in enumerate(farms):
+        mine = [o for o in options if o["farm_id"] == farm.id]
+        mine.sort(key=lambda o: o.get("sort") or "", reverse=True)
+        mine.sort(key=lambda o: 0 if o.get("current") else 1 if o.get("status") != "encerrada" else 2)
         cards.append({
             "id": farm.id,
             "name": farm.name,
-            "where": farm.location or "",
+            "where": (farm.location or "").split(",")[0].strip(),
             "area": _br_area(farm.total_area),
-            "running": running["name"] if running else "",
-            "seasons": seasons,
+            "running": any(o.get("current") for o in mine),
+            "seasons": [{"id": o["id"], "name": o["name"], "current": bool(o.get("current")), "status": o.get("status") or ""} for o in mine],
+            "air": _farm_air(farm, index),
         })
-    return {"kind": "pick", "farms": cards, "selected": active_farm.id if active_farm else None}
+    hour = app_now().hour
+    greet = "Bom dia" if hour < 12 else "Boa tarde" if hour < 18 else "Boa noite"
+    return {"kind": "pick", "farms": cards, "selected": active_farm.id if active_farm else None, "many": len(cards) > 6, "greet": greet}
+
+
+AIR_STYLES = [
+    {"shape": "M40 30 L190 18 L262 58 L240 128 L70 136 Z", "road": "M0 110 C80 100 150 150 300 120", "rot": 28, "field": "#8DB874", "row": "#5E8A4A", "ground": "#C9DDB4", "pond": (272, 128), "trees": ((262, 22, 9), (24, 72, 7), (120, 140, 11))},
+    {"shape": "M60 20 L250 30 L238 96 L150 138 L48 110 Z", "road": "M20 0 C40 60 10 100 40 150", "rot": -18, "field": "#A3C27E", "row": "#6E9452", "ground": "#D8E3C3", "pond": (276, 76), "trees": ((280, 120, 9), (270, 40, 7), (22, 30, 11))},
+    {"shape": "M30 70 L110 16 L272 30 L266 118 L160 140 L52 126 Z", "road": "M300 20 C220 40 240 120 160 150", "rot": 62, "field": "#7FAE6A", "row": "#4F7A3F", "ground": "#CFDDBB", "pond": (24, 140), "trees": ((18, 30, 9), (286, 136, 7), (140, 8, 11))},
+]
+
+
+def _boundary_path(raw: str | None) -> str | None:
+    """Contorno real da fazenda (GeoJSON) reduzido ao quadro 300x150 do cartão."""
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+        geom = data
+        if geom.get("type") == "FeatureCollection":
+            geom = (geom.get("features") or [{}])[0].get("geometry") or {}
+        if geom.get("type") == "Feature":
+            geom = geom.get("geometry") or {}
+        coords = geom.get("coordinates") or []
+        if geom.get("type") == "MultiPolygon":
+            coords = max(coords, key=lambda poly: len(poly[0]) if poly else 0) if coords else []
+        ring = coords[0] if coords else []
+        if len(ring) < 3:
+            return None
+        if len(ring) > 80:
+            step = len(ring) / 80
+            ring = [ring[int(i * step)] for i in range(80)]
+        lat0 = math.radians(sum(p[1] for p in ring) / len(ring))
+        pts = [(p[0] * math.cos(lat0), -p[1]) for p in ring]
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        w, h = (max(xs) - min(xs)) or 1e-9, (max(ys) - min(ys)) or 1e-9
+        scale = min((300 - 60) / w, (150 - 30) / h)
+        ox = (300 - w * scale) / 2 - min(xs) * scale
+        oy = (150 - h * scale) / 2 - min(ys) * scale
+        return "M" + " L".join(f"{x * scale + ox:.1f} {y * scale + oy:.1f}" for x, y in pts) + " Z"
+    except (ValueError, TypeError, KeyError, IndexError, AttributeError):
+        return None
+
+
+def _farm_air(farm, index: int) -> dict:
+    style = dict(AIR_STYLES[(farm.id or index) % len(AIR_STYLES)])
+    real = _boundary_path(getattr(farm, "boundary_geojson", None))
+    if real:
+        style["shape"] = real
+    return style
 
 
 @router.post("/contexto/safra-sugerida")
@@ -4587,26 +4640,29 @@ def _tour_left_when(moment: datetime | None) -> str:
 
 
 def _tour_welcome(organization, progress: dict, first_name: str, plot_skipped: bool) -> dict | None:
-    """Boas-vindas de volta: o Pezinho lembra o passo em que a pessoa parou (sempre a partir do que está salvo)."""
+    """Boas-vindas de volta (modal grande): o Pezinho lembra o passo em que a pessoa parou, a partir do que está salvo."""
     farm, season, plot = progress["farm"], progress["season"], progress["plot"]
-    hi = (lambda base: f"{base}, {first_name}!") if first_name else (lambda base: f"{base}!")
+    hi = (lambda base: f"{base}, {first_name}") if first_name else (lambda base: base)
     step = (organization.onboarding_last_step or "").strip()
     when = _tour_left_when(organization.onboarding_last_at)
-    meta = " · ".join(part for part in [f"Você saiu {when}" if when else "", step.replace(" · ", " › ")] if part)
+    where = step.replace(" · ", " › ")
+    meta = " · ".join(part for part in [f"Você saiu {when}" if when else "", f"Parou em {where}" if where else ""] if part)
     if not farm:
-        where = step.split("·", 1)[1].strip() if step.startswith("Fazenda") and "·" in step else ""
-        detail = "parou no número do CAR" if where.upper() == "CAR" else (f"parou em {where.lower()}" if where else "")
-        sub = (f"Da última vez você começou a cadastrar a fazenda e {detail}. Vamos terminar? Leva uns 2 minutos."
+        part = step.split("·", 1)[1].strip() if step.startswith("Fazenda") and "·" in step else ""
+        car = part.upper() == "CAR"
+        detail = "parou no número do CAR" if car else (f"parou em {part.lower()}" if part else "")
+        sub = (f"Da última vez você começou a cadastrar a fazenda e {detail}. Vamos terminar? Leva uns 2 minutos e eu continuo mostrando cada clique."
                if detail else "Vamos continuar com o cadastro da sua fazenda? Leva uns 2 minutos e eu mostro cada clique.")
-        return {"step": "farm", "title": hi("Que bom que você voltou"), "sub": sub, "meta": meta, "act": "Continuar a fazenda", "later": "Mais tarde"}
+        return {"step": "farm", "title": hi("Que bom que você voltou"), "sub": sub, "meta": meta,
+                "next": "Retomar pelo número do CAR" if car else "Nome, município e área", "act": "Continuar a fazenda", "later": "Agora não"}
     if not season:
         return {"step": "season", "title": hi("Oi de novo"),
-                "sub": f"{farm.name} já está salva. Falta só abrir a safra para o SiSFarm ficar pronto. Já deixei a safra deste ano sugerida, é só conferir.",
-                "meta": meta, "act": "Abrir a safra", "later": "Mais tarde"}
+                "sub": f"{farm.name} já está salva. Falta só abrir a safra para o SiSFarm ficar pronto: deixei a safra deste ano sugerida, é só conferir.",
+                "meta": meta, "next": "Conferir o período sugerido", "act": "Abrir a safra", "later": "Agora não"}
     if not plot and not plot_skipped:
-        return {"step": "plot", "title": hi("Bom te ver") + " O SiSFarm já está liberado.",
-                "sub": f"{farm.name} e {season.name or 'a safra'} prontas. Quer cadastrar o primeiro setor agora? É opcional.",
-                "meta": meta, "act": "Cadastrar o setor", "later": "Deixar para depois"}
+        return {"step": "plot", "title": hi("Bom te ver"),
+                "sub": "Fazenda e safra prontas: o SiSFarm já está liberado. Quer cadastrar o primeiro setor agora? É opcional.",
+                "meta": meta, "next": "Nome e área do talhão", "act": "Cadastrar o setor", "later": "Deixar para depois"}
     return None
 
 

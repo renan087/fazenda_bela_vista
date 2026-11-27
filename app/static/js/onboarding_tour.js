@@ -214,25 +214,47 @@
         return afterAll();
     };
 
-    /* Boas-vindas de volta: o Pezinho lembra onde a pessoa parou (texto montado no servidor a partir do que está salvo). */
-    let welcomeOpen = !!D.welcome && !reviewing;
+    /* Boas-vindas de volta: modal grande como o da primeira vez; o Pezinho lembra onde a pessoa parou (texto do servidor). */
+    let welcomeOpen = false;
     const TOUR_PAGES = { farm: ['/fazendas', '/fazendas/nova'], season: ['/safras/nova'], plot: ['/setores'] };
-    const welcomePlan = () => {
+    const openBack = () => {
         const W = D.welcome;
-        const go = async () => {
-            welcomeOpen = false;
-            if (state !== 'active') { state = 'active'; await post('resume'); refresh(); }
-            if ((TOUR_PAGES[W.step] || []).includes(path)) { refresh(); return; }
-            location.href = CONTINUE;
-        };
-        const later = () => { welcomeOpen = false; refresh(); };
-        return { key: 'welcome', free: true, wave: true, label: 'Primeiros passos · ' + doneCount + ' de 3', title: W.title, sub: W.sub, meta: W.meta,
-            acts: [{ label: W.act, fn: go }, { label: W.later, kind: 'skip', fn: later }] };
+        const order = ['farm', 'season', 'plot'];
+        const curIdx = order.indexOf(W.step);
+        const rows = [
+            ['Cadastrar a fazenda', D.farm ? D.farm.name : '', 'Nome, município e área', '2 min'],
+            ['Abrir a safra', D.season ? D.season.name : '', 'O período que você vai acompanhar', '1 min'],
+            ['Cadastrar um setor', D.plot ? D.plot.name : '', 'Um talhão da fazenda · pode ficar para depois', '2 min']
+        ].map(([title, saved, hint, min], i) => {
+            const done = i < curIdx, cur = i === curIdx;
+            return '<li class="obt-rb-li' + (done ? ' done' : cur ? ' cur' : '') + '"><span class="obt-rb-num">' + (done ? CHECK : String(i + 1)) + '</span>'
+                + '<span class="obt-rb-txt"><b>' + esc(title) + (cur ? '<em class="obt-rb-here">Você parou aqui</em>' : '') + '</b><span>' + esc(done ? 'Concluído' + (saved ? ' · ' + saved : '') : cur ? (W.next || hint) : hint) + '</span></span>'
+                + '<span class="obt-rb-time">' + (done || cur ? '' : min) + '</span></li>';
+        }).join('');
+        openModal('<div class="obt-rb-hero"><div class="obt-rb-pz"><span class="obt-rb-hi" aria-hidden="true">Oi' + (D.first_name ? ', ' + esc(D.first_name) : '') + '!</span><img src="' + esc(IMG.wave || IMG.cheer) + '" alt="Pezinho acenando"></div></div>'
+            + '<div class="obt-rb-body"><span class="obt-kick">Primeiros passos · ' + doneCount + ' de 3</span>'
+            + '<h2 id="obt-mt">' + esc(W.title) + '</h2><p>' + esc(W.sub) + '</p>'
+            + '<ol class="obt-rb-list">' + rows + '</ol>'
+            + '<div class="obt-rb-acts"><button type="button" class="obt-mbtn pri" data-obt-m="back-go">' + esc(W.act) + '</button><button type="button" class="obt-rb-later" data-obt-m="close">' + esc(W.later) + '</button></div>'
+            + (W.meta ? '<p class="obt-rb-note">' + esc(W.meta) + '. O que já foi cadastrado está salvo.</p>' : '<p class="obt-rb-note">O que já foi cadastrado está salvo.</p>')
+            + '</div>', 'is-back');
+    };
+    const backGo = async () => {
+        closeModal();
+        if (state !== 'active') { state = 'active'; await post('resume'); refresh(); }
+        if ((TOUR_PAGES[D.welcome.step] || []).includes(path)) return;
+        location.href = CONTINUE;
     };
 
     const plan = () => {
-        if (welcomeOpen && !modalOpen) return welcomePlan();
         if (state !== 'active' || modalOpen) return null;
+        // Logo depois da safra: mostra no topo que fazenda e safra já ficaram ativas (uma vez).
+        if (!reviewing && sec === 'plot' && D.season && !get('sf-ob-ctx-' + D.season.id, true)) {
+            const top = firstVisible('.hd-ctx');
+            if (top) return { key: 'ctx', el: top, label: 'Fazenda e safra ativas', title: 'Já deixei tudo pronto aqui',
+                sub: 'A fazenda e a safra que você acabou de cadastrar já estão ativas. Não precisa escolher nada.',
+                acts: [{ label: 'Entendi', fn: () => { set('sf-ob-ctx-' + D.season.id, '1', true); lastSig = '__'; schedule(); } }] };
+        }
         const fields = fieldsNow();
         if (genericNow && !visible(genericNow.el)) genericNow = null;
 
@@ -503,6 +525,7 @@
         if (!b) return;
         const what = b.dataset.obtM;
         if (what === 'close') closeModal();
+        if (what === 'back-go') { b.disabled = true; backGo(); }
         if (what === 'pause') { state = 'paused'; closeModal(); await post('pause'); }
         if (what === 'resume') { b.disabled = true; await post('resume'); location.href = get('sf-ob-last', true) || CONTINUE; }
         if (what === 'end') { await post('end'); state = 'ended'; closeModal(); teardown(); }
@@ -526,7 +549,7 @@
     // Guarda no servidor o passo em que a pessoa está (para as boas-vindas quando ela voltar).
     let marked = '', markTimer = 0;
     const markStep = (p) => {
-        if (!p || p.free || reviewing || !p.label || p.label === marked) return;
+        if (!p || p.free || p.key === 'ctx' || reviewing || !p.label || p.label === marked) return;
         clearTimeout(markTimer);
         const label = p.label;
         markTimer = setTimeout(() => { marked = label; post('mark', { step: label }); }, 1500);
@@ -540,7 +563,8 @@
     // Onde parou: só telas que fazem parte do tour (para "Continuar de onde parei").
     if (['/fazendas', '/fazendas/nova', '/safras/nova', '/setores'].includes(path) && !reviewing) set('sf-ob-last', path, true);
 
-    if (state === 'active') {
+    if (D.welcome && !reviewing && sec !== 'done') { openBack(); }
+    else if (state === 'active') {
         if (sec === 'done') { conclusion(); }
         else if (sec === 'season' && D.farm && !get('sf-ob-cel-f-' + D.farm.id, true) && path !== '/safras/nova') { set('sf-ob-cel-f-' + D.farm.id, '1', true); celebrate('farm'); }
         else if (sec === 'plot' && D.season && !get('sf-ob-cel-s-' + D.season.id, true) && path !== '/setores') { set('sf-ob-cel-s-' + D.season.id, '1', true); celebrate('season'); }
