@@ -4530,27 +4530,6 @@ def _first_org_farm(db: Session, user: User) -> Farm | None:
 ONBOARDING_WINDOW_DAYS = 60
 
 
-def _onboarding_steps(db: Session, user: User) -> list[dict] | None:
-    """Checklist de primeiros passos para contas novas; None quando concluido, dispensado ou conta antiga."""
-    organization = user.organization
-    if not organization or organization.onboarding_dismissed or organization.slug == "sisfarm":
-        return None
-    created = organization.created_at.date() if organization.created_at else None
-    if created and (today_in_app_timezone() - created).days > ONBOARDING_WINDOW_DAYS:
-        return None
-    farm_ids = [row[0] for row in db.query(Farm.id).filter(Farm.organization_id == organization.id)]
-    has_season = bool(farm_ids) and db.query(CropSeason.id).filter(CropSeason.farm_id.in_(farm_ids)).first() is not None
-    has_plots = bool(farm_ids) and db.query(Plot.id).filter(Plot.farm_id.in_(farm_ids)).first() is not None
-    team = db.query(func.count(User.id)).filter(User.organization_id == organization.id).scalar() or 0
-    steps = [
-        {"title": "Cadastrar a fazenda", "hint": "Nome, localização e área.", "done": bool(farm_ids), "href": "/primeiros-passos"},
-        {"title": "Abrir a safra", "hint": "O período que você vai acompanhar.", "done": has_season, "href": "/primeiros-passos"},
-        {"title": "Cadastrar os talhões", "hint": "Desenhe no mapa ou importe o arquivo.", "done": has_plots, "href": "/setores"},
-        {"title": "Convidar sua equipe", "hint": "Gerente, agrônomo e operadores.", "done": team > 1, "href": "/usuarios"},
-    ]
-    return None if all(step["done"] for step in steps) else steps
-
-
 TOUR_STATES = {"active", "paused", "ended", "done"}
 TOUR_LIVE = {"active", "paused"}
 TOUR_GREETED_KEY = "tour_greeted"
@@ -4702,15 +4681,6 @@ def onboarding_tour_continue(request: Request, db: Session = Depends(get_db), us
     elif farm and season and (user.active_farm_id != farm.id or not user.active_season_id):
         persist_user_context(request, db, user, farm.id, season.id)
     return _redirect(_tour_next_url(progress, bool(organization.onboarding_plot_skipped)))
-
-
-@router.post("/primeiros-passos/dispensar")
-def onboarding_dismiss_action(request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
-    validate_csrf(request, csrf_token)
-    if user.organization:
-        user.organization.onboarding_dismissed = True
-        db.commit()
-    return _redirect("/dashboard")
 
 
 def _local_input_to_utc(value: str | None):
@@ -4954,7 +4924,6 @@ def dashboard(
             user,
             csrf_token,
             "dashboard",
-            onboarding_steps=_onboarding_steps(db, user),
             rain_filters={
                 "start_date": rain_start_date or "",
                 "end_date": rain_end_date or "",

@@ -69,26 +69,6 @@ def test_existing_farm_only_needs_season(env):
     assert db.query(Farm).count() == 1 and db.query(CropSeason).one().farm_id == db.query(Farm).one().id
 
 
-def test_checklist_progress_and_dismiss(env):
-    db, user = env
-    steps = routes._onboarding_steps(db, user)
-    assert [s['done'] for s in steps] == [False, False, False, False]
-    farm = Farm(name='F', location='MG', total_area=10, organization_id=user.organization_id)
-    db.add(farm)
-    db.flush()
-    db.add(CropSeason(farm_id=farm.id, name='S', start_date=date(2026, 7, 1), end_date=date(2027, 6, 30), culture='Cafe', cultivated_area=10))
-    db.add(Plot(name='T1', farm_id=farm.id, area_hectares=5, plant_count=100))
-    db.add(User(name='Op', email='op@x.com', hashed_password='h', organization_id=user.organization_id))
-    db.commit()
-    assert routes._onboarding_steps(db, user) is None
-    db.add(User(name='Z', email='z@x.com', hashed_password='h'))
-    db.query(Plot).delete()
-    db.commit()
-    assert [s['done'] for s in routes._onboarding_steps(db, user)] == [True, True, False, True]
-    routes.onboarding_dismiss_action(_request(), csrf_token='t', db=db, user=user)
-    assert routes._onboarding_steps(db, user) is None
-
-
 def test_plot_names_repeat_across_farms_but_not_in_the_same_farm(env):
     db, user = env
     a = Farm(name='A', location='MG', total_area=10, organization_id=user.organization_id)

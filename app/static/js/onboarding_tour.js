@@ -482,7 +482,7 @@
             + '<p style="margin-top:14px">Você parou em <b style="color:#16201A">' + where + '</b>. O que já foi cadastrado está salvo.</p>'
             + '<div class="obt-bar"><i style="width:' + Math.round(doneCount / 3 * 100) + '%"></i></div>'
             + '<div class="obt-mrow"><button type="button" class="obt-mbtn pri" data-obt-m="resume">Continuar de onde parei</button><button type="button" class="obt-mbtn ghost" data-obt-m="end">Encerrar tutorial</button><button type="button" class="obt-mbtn ghost" data-obt-m="close">Agora não</button></div>'
-            + '<p style="margin:14px 0 0;font-size:12.5px">Se encerrar, os passos que faltam continuam no painel, em Primeiros passos.</p>', 'is-left');
+            + '<p style="margin:14px 0 0;font-size:12.5px">Se encerrar, você pode fazer os cadastros pelo menu quando quiser.</p>', 'is-left');
     };
     const conclusion = () => {
         const rec = (title, sub) => '<div class="obt-rec"><span class="obt-rnum">' + CHECK + '</span><div><b>' + esc(title) + '</b><span>' + esc(sub) + '</span></div></div>';
