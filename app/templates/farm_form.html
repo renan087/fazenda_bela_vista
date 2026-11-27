@@ -68,10 +68,80 @@
                             <span>Nome da fazenda *</span>
                             <input type="text" name="name" value="{{ edit_farm.name if edit_farm else '' }}" placeholder="Ex.: Fazenda Serra Dourada" required data-fm-in="name">
                         </label>
-                        <label class="vw-f">
-                            <span>Município / Localização *</span>
-                            <input type="text" name="location" value="{{ edit_farm.location if edit_farm else '' }}" placeholder="Ex.: Vitória da Conquista, BA" autocomplete="address-level2" required data-fm-in="location">
-                        </label>
+
+                        <input type="hidden" name="location" value="{{ edit_farm.location if edit_farm else '' }}" data-fm-in="location">
+
+                        {# Seletor estilizado em cascata: Estado (UF) #}
+                        <div class="vw-f fm-combo-field" data-fm-combo="state">
+                            <span class="fm-combo-label" id="fm-state-label">Estado (UF) *</span>
+                            <div class="fm-combo">
+                                <button type="button"
+                                        class="fm-combo-trigger"
+                                        role="combobox"
+                                        aria-labelledby="fm-state-label"
+                                        aria-expanded="false"
+                                        aria-haspopup="listbox"
+                                        aria-controls="fm-state-listbox"
+                                        data-fm-combo-trigger>
+                                    <span class="fm-combo-value is-placeholder" data-fm-combo-display>Selecione o estado</span>
+                                    <svg class="fm-combo-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                                </button>
+                                <div class="fm-combo-panel" data-fm-combo-panel hidden>
+                                    <div class="fm-combo-search-wrap">
+                                        <div class="fm-combo-search">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                                            <input type="search"
+                                                   placeholder="Buscar estado ou sigla (ex.: MG, Bahia)..."
+                                                   autocomplete="off"
+                                                   spellcheck="false"
+                                                   aria-label="Buscar estado"
+                                                   data-fm-combo-search>
+                                            <button type="button" class="fm-combo-clear" aria-label="Limpar busca" data-fm-combo-clear hidden>&times;</button>
+                                        </div>
+                                        <span class="fm-combo-meta" data-fm-combo-meta>27 estados</span>
+                                    </div>
+                                    <ul class="fm-combo-list" id="fm-state-listbox" role="listbox" aria-labelledby="fm-state-label" data-fm-combo-list></ul>
+                                    <p class="fm-combo-empty" data-fm-combo-empty hidden>Nenhum estado encontrado.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {# Seletor estilizado em cascata: Município #}
+                        <div class="vw-f fm-combo-field" data-fm-combo="city">
+                            <span class="fm-combo-label" id="fm-city-label">Município *</span>
+                            <div class="fm-combo">
+                                <button type="button"
+                                        class="fm-combo-trigger"
+                                        role="combobox"
+                                        aria-labelledby="fm-city-label"
+                                        aria-expanded="false"
+                                        aria-haspopup="listbox"
+                                        aria-controls="fm-city-listbox"
+                                        data-fm-combo-trigger
+                                        disabled>
+                                    <span class="fm-combo-value is-placeholder" data-fm-combo-display>Selecione o estado primeiro</span>
+                                    <svg class="fm-combo-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                                </button>
+                                <div class="fm-combo-panel" data-fm-combo-panel hidden>
+                                    <div class="fm-combo-search-wrap">
+                                        <div class="fm-combo-search">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                                            <input type="search"
+                                                   placeholder="Buscar município..."
+                                                   autocomplete="off"
+                                                   spellcheck="false"
+                                                   aria-label="Buscar município"
+                                                   data-fm-combo-search>
+                                            <button type="button" class="fm-combo-clear" aria-label="Limpar busca" data-fm-combo-clear hidden>&times;</button>
+                                        </div>
+                                        <span class="fm-combo-meta" data-fm-combo-meta></span>
+                                    </div>
+                                    <ul class="fm-combo-list" id="fm-city-listbox" role="listbox" aria-labelledby="fm-city-label" data-fm-combo-list></ul>
+                                    <p class="fm-combo-empty" data-fm-combo-empty hidden>Nenhum município encontrado.</p>
+                                </div>
+                            </div>
+                        </div>
+
                         <label class="vw-f">
                             <span>Área total (ha) *</span>
                             <input type="number" step="0.01" min="0.01" name="total_area" value="{{ edit_farm.total_area if edit_farm else '' }}" placeholder="Ex.: 85,50" required data-fm-in="area">
@@ -415,6 +485,12 @@
     </div>
 </dialog>
 
+<script type="application/json" id="fm-location-data">{{ {
+    "states": brazil_states or [],
+    "initial_uf": initial_location_uf or "",
+    "initial_city": initial_location_city or "",
+    "initial_municipalities": initial_municipalities or []
+}|tojson }}</script>
 <script type="application/json" id="fm-edit-geometry-data">{{ edit_farm_geometry_json|safe }}</script>
 <script type="application/json" id="fm-plan-meta">{{ {
     "plan_name": plan_summary.plan_name,
@@ -428,5 +504,5 @@
 <script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
 <script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261121pzw3"></script>
 {% include "partials/attachment_manager_script.html" %}
-<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm7"></script>
+<script src="{{ url_for('static', path='js/farms.js') }}?v=20261126fmloc1"></script>
 {% endblock %}

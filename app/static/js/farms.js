@@ -452,6 +452,7 @@
 
         const planMeta = parseJsonScript('fm-plan-meta', {});
         const initialGeom = parseJsonScript('fm-edit-geometry-data', null);
+        const locationData = parseJsonScript('fm-location-data', { states: [], initial_uf: '', initial_city: '', initial_municipalities: [] });
         let wizStep = Number(wizard.dataset.initialStep || 1);
         let formEditor = null;
         let currentGeom = initialGeom;
@@ -459,6 +460,376 @@
         let currentPolyArea = 0;
         let areaChoiceSignature = null;
         let pendingAreaAction = null;
+
+        /* =====================================================================
+           SELETORES EM CASCATA COM BUSCA: ESTADO (UF) -> MUNICÍPIO
+           ===================================================================== */
+        const escHtml = (str) => String(str || '').replace(/[&<>"']/g, (ch) => (
+            { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+        ));
+        const normText = (str) => String(str || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+        const highlightMatch = (label, rawQuery) => {
+            const safe = escHtml(label);
+            const q = normText(rawQuery);
+            if (!q) return safe;
+            const normLabel = normText(label);
+            const idx = normLabel.indexOf(q);
+            if (idx === -1) return safe;
+            const orig = String(label || '');
+            return `${escHtml(orig.slice(0, idx))}<mark>${escHtml(orig.slice(idx, idx + q.length))}</mark>${escHtml(orig.slice(idx + q.length))}`;
+        };
+        const CHECK_SVG = '<svg class="fm-combo-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+        const PIN_SVG = '<svg class="fm-combo-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>';
+
+        const stateField = wizard.querySelector('[data-fm-combo="state"]');
+        const cityField = wizard.querySelector('[data-fm-combo="city"]');
+        const cityCache = new Map();
+        if (locationData.initial_uf && Array.isArray(locationData.initial_municipalities) && locationData.initial_municipalities.length) {
+            cityCache.set(String(locationData.initial_uf).toUpperCase(), locationData.initial_municipalities);
+        }
+        let selectedUf = String(locationData.initial_uf || '').toUpperCase();
+        let selectedCity = String(locationData.initial_city || '');
+        const openCombos = new Set();
+
+        const createSearchableCombo = (rootEl, config) => {
+            if (!rootEl) return null;
+            const trigger = rootEl.querySelector('[data-fm-combo-trigger]');
+            const display = rootEl.querySelector('[data-fm-combo-display]');
+            const panel = rootEl.querySelector('[data-fm-combo-panel]');
+            const search = rootEl.querySelector('[data-fm-combo-search]');
+            const clearBtn = rootEl.querySelector('[data-fm-combo-clear]');
+            const meta = rootEl.querySelector('[data-fm-combo-meta]');
+            const list = rootEl.querySelector('[data-fm-combo-list]');
+            const empty = rootEl.querySelector('[data-fm-combo-empty]');
+
+            let items = [];
+            let filtered = [];
+            let selectedValue = '';
+            let focusedIndex = -1;
+            let isOpen = false;
+
+            const close = ({ restoreFocus = false } = {}) => {
+                if (!isOpen) return;
+                isOpen = false;
+                openCombos.delete(api);
+                panel.hidden = true;
+                trigger.setAttribute('aria-expanded', 'false');
+                if (restoreFocus) trigger.focus();
+            };
+
+            const renderList = () => {
+                const rawQ = search ? search.value : '';
+                const q = normText(rawQ);
+                if (clearBtn) clearBtn.hidden = !rawQ;
+                filtered = q
+                    ? items.filter((item) => item.searchKey.includes(q))
+                    : items;
+
+                if (meta) {
+                    meta.textContent = config.formatMeta
+                        ? config.formatMeta(filtered.length, items.length, Boolean(q))
+                        : `${filtered.length} de ${items.length}`;
+                }
+
+                if (!filtered.length) {
+                    list.innerHTML = '';
+                    if (empty) {
+                        empty.textContent = q
+                            ? `${config.emptyPrefix || 'Nenhum resultado'} para "${rawQ.trim()}".`
+                            : (config.emptyDefault || 'Nenhuma opção disponível.');
+                        empty.hidden = false;
+                    }
+                    focusedIndex = -1;
+                    return;
+                }
+
+                if (empty) empty.hidden = true;
+                if (focusedIndex >= filtered.length) focusedIndex = 0;
+
+                list.innerHTML = filtered.map((item, idx) => {
+                    const isSel = item.value === selectedValue;
+                    const isFoc = idx === focusedIndex;
+                    const badge = item.badge ? `<span class="fm-combo-uf">${escHtml(item.badge)}</span>` : '';
+                    return `<li class="fm-combo-option${isSel ? ' is-selected' : ''}${isFoc ? ' is-focused' : ''}"
+                                role="option"
+                                id="${escHtml(config.idPrefix)}-opt-${idx}"
+                                aria-selected="${isSel ? 'true' : 'false'}"
+                                data-idx="${idx}">
+                                ${badge}
+                                <span class="fm-combo-opt-label">${highlightMatch(item.label, rawQ)}</span>
+                                ${isSel ? CHECK_SVG : ''}
+                            </li>`;
+                }).join('');
+            };
+
+            const syncFocusVisual = () => {
+                const opts = list.querySelectorAll('.fm-combo-option');
+                opts.forEach((el, idx) => {
+                    const on = idx === focusedIndex;
+                    el.classList.toggle('is-focused', on);
+                    if (on) el.scrollIntoView({ block: 'nearest' });
+                });
+            };
+
+            const selectItem = (item, { silent = false } = {}) => {
+                selectedValue = item ? item.value : '';
+                if (item) {
+                    display.classList.remove('is-placeholder');
+                    display.innerHTML = config.renderSelected(item);
+                } else {
+                    display.classList.add('is-placeholder');
+                    display.textContent = config.placeholder;
+                }
+                close({ restoreFocus: false });
+                if (!silent && config.onSelect) config.onSelect(item || null);
+            };
+
+            const open = () => {
+                if (trigger.disabled) return;
+                openCombos.forEach((other) => { if (other !== api) other.close(); });
+                isOpen = true;
+                openCombos.add(api);
+                panel.hidden = false;
+                trigger.setAttribute('aria-expanded', 'true');
+                if (search) search.value = '';
+                focusedIndex = Math.max(0, items.findIndex((i) => i.value === selectedValue));
+                renderList();
+                window.requestAnimationFrame(() => {
+                    search?.focus();
+                    const selEl = list.querySelector('.fm-combo-option.is-selected');
+                    if (selEl) selEl.scrollIntoView({ block: 'nearest' });
+                });
+            };
+
+            trigger.addEventListener('click', () => {
+                if (isOpen) close({ restoreFocus: true });
+                else open();
+            });
+
+            trigger.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    open();
+                }
+            });
+
+            search?.addEventListener('input', () => {
+                focusedIndex = 0;
+                renderList();
+            });
+
+            search?.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (filtered.length) {
+                        focusedIndex = (focusedIndex + 1) % filtered.length;
+                        syncFocusVisual();
+                    }
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (filtered.length) {
+                        focusedIndex = (focusedIndex - 1 + filtered.length) % filtered.length;
+                        syncFocusVisual();
+                    }
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const target = filtered[focusedIndex] || filtered[0];
+                    if (target) selectItem(target);
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    close({ restoreFocus: true });
+                } else if (e.key === 'Tab') {
+                    close();
+                }
+            });
+
+            clearBtn?.addEventListener('click', () => {
+                if (search) {
+                    search.value = '';
+                    search.focus();
+                }
+                focusedIndex = 0;
+                renderList();
+            });
+
+            list.addEventListener('click', (e) => {
+                const opt = e.target.closest('.fm-combo-option');
+                if (!opt) return;
+                const item = filtered[Number(opt.dataset.idx)];
+                if (item) selectItem(item);
+            });
+
+            const api = {
+                open,
+                close,
+                setItems(nextItems) {
+                    items = nextItems || [];
+                    if (isOpen) renderList();
+                },
+                setDisabled(flag, placeholderText) {
+                    trigger.disabled = Boolean(flag);
+                    if (placeholderText) config.placeholder = placeholderText;
+                    if (!selectedValue) {
+                        display.classList.add('is-placeholder');
+                        display.textContent = config.placeholder;
+                    }
+                },
+                setLoading(flag) {
+                    trigger.classList.toggle('is-loading', Boolean(flag));
+                    if (flag) {
+                        trigger.disabled = true;
+                        display.classList.add('is-placeholder');
+                        display.textContent = 'Carregando municípios...';
+                    }
+                },
+                setValue(val, { silent = true } = {}) {
+                    const found = items.find((i) => i.value === val) || null;
+                    if (found) {
+                        selectItem(found, { silent });
+                    } else if (val) {
+                        selectedValue = val;
+                        display.classList.remove('is-placeholder');
+                        display.innerHTML = config.renderSelected({ value: val, label: val, badge: '' });
+                    } else {
+                        selectItem(null, { silent });
+                    }
+                },
+                getValue: () => selectedValue,
+                contains: (node) => rootEl.contains(node),
+            };
+            return api;
+        };
+
+        document.addEventListener('click', (e) => {
+            openCombos.forEach((combo) => {
+                if (!combo.contains(e.target)) combo.close();
+            });
+        });
+
+        const syncLocationHidden = () => {
+            if (!locInput) return;
+            if (selectedCity && selectedUf) {
+                locInput.value = `${selectedCity}, ${selectedUf}`;
+            } else if (selectedCity) {
+                locInput.value = selectedCity;
+            } else {
+                locInput.value = '';
+            }
+            if (step1Err && !step1Err.hidden && selectedUf && selectedCity) {
+                step1Err.hidden = true;
+            }
+            syncSummary();
+        };
+
+        const fetchMunicipalitiesForUf = async (uf) => {
+            const code = String(uf || '').toUpperCase();
+            if (!code) return [];
+            if (cityCache.has(code)) return cityCache.get(code);
+            const res = await fetch(`/fazendas/municipios?uf=${encodeURIComponent(code)}`);
+            if (!res.ok) return [];
+            const payload = await res.json();
+            const list = Array.isArray(payload.municipalities) ? payload.municipalities : [];
+            if (list.length) cityCache.set(code, list);
+            return list;
+        };
+
+        const cityCombo = createSearchableCombo(cityField, {
+            idPrefix: 'fm-city',
+            placeholder: 'Selecione o estado primeiro',
+            emptyPrefix: 'Nenhum município encontrado',
+            emptyDefault: 'Nenhum município disponível para este estado.',
+            formatMeta: (shown, total, hasQ) => (hasQ
+                ? `${shown} de ${total} municípios em ${selectedUf}`
+                : `${total} municípios em ${selectedUf}`),
+            renderSelected: (item) => `${PIN_SVG}<span>${escHtml(item.label)}</span>`,
+            onSelect: (item) => {
+                selectedCity = item ? item.value : '';
+                syncLocationHidden();
+            },
+        });
+
+        const loadCitiesForState = async (uf, { preselectCity = '', autoOpen = false } = {}) => {
+            if (!cityCombo) return;
+            if (!uf) {
+                selectedCity = '';
+                cityCombo.setItems([]);
+                cityCombo.setValue('', { silent: true });
+                cityCombo.setDisabled(true, 'Selecione o estado primeiro');
+                syncLocationHidden();
+                return;
+            }
+            if (!cityCache.has(uf)) cityCombo.setLoading(true);
+            let names = [];
+            try {
+                names = await fetchMunicipalitiesForUf(uf);
+            } catch (e) {
+                names = [];
+            }
+            cityCombo.setLoading(false);
+            const cityItems = names.map((name) => ({
+                value: name,
+                label: name,
+                searchKey: normText(name),
+            }));
+            cityCombo.setItems(cityItems);
+            cityCombo.setDisabled(false, `Selecione o município (${uf})`);
+
+            if (preselectCity) {
+                const targetNorm = normText(preselectCity);
+                const matched = cityItems.find((c) => c.searchKey === targetNorm);
+                selectedCity = matched ? matched.value : preselectCity;
+                cityCombo.setValue(selectedCity, { silent: true });
+            } else {
+                selectedCity = '';
+                cityCombo.setValue('', { silent: true });
+            }
+            syncLocationHidden();
+            if (autoOpen && !selectedCity) {
+                window.setTimeout(() => cityCombo.open(), 60);
+            }
+        };
+
+        const stateItems = (locationData.states || []).map((st) => ({
+            value: st.uf,
+            label: st.name,
+            badge: st.uf,
+            searchKey: `${normText(st.uf)} ${normText(st.name)}`,
+        }));
+
+        const stateCombo = createSearchableCombo(stateField, {
+            idPrefix: 'fm-state',
+            placeholder: 'Selecione o estado',
+            emptyPrefix: 'Nenhum estado encontrado',
+            emptyDefault: 'Nenhum estado disponível.',
+            formatMeta: (shown, total, hasQ) => (hasQ ? `${shown} de ${total} estados` : `${total} estados`),
+            renderSelected: (item) => `<span class="fm-combo-uf">${escHtml(item.badge || item.value)}</span><span>${escHtml(item.label)}</span>`,
+            onSelect: (item) => {
+                const nextUf = item ? item.value : '';
+                const changed = nextUf !== selectedUf;
+                selectedUf = nextUf;
+                if (changed) {
+                    selectedCity = '';
+                    loadCitiesForState(selectedUf, { preselectCity: '', autoOpen: true });
+                }
+            },
+        });
+
+        const applyLocationFromText = async (rawLocation) => {
+            const text = String(rawLocation || '').trim();
+            if (!text || !stateCombo) return;
+            const match = text.match(/(?:[,\-/|]|\()\s*([A-Za-z]{2})\s*\)?$/);
+            if (!match) return;
+            const uf = match[1].toUpperCase();
+            if (!stateItems.some((s) => s.value === uf)) return;
+            const city = text.slice(0, match.index).replace(/[,\-/|()\s]+$/, '').trim();
+            selectedUf = uf;
+            stateCombo.setValue(uf, { silent: true });
+            await loadCitiesForState(uf, { preselectCity: city, autoOpen: false });
+        };
 
         const getDeclaredArea = () => parseFloat(String(areaInput?.value || '').replace(',', '.')) || 0;
         const areaDiffSig = () => `${getDeclaredArea().toFixed(2)}|${currentPolyArea.toFixed(2)}`;
@@ -585,9 +956,14 @@
             const name = nameInput?.value.trim();
             const loc = locInput?.value.trim();
             const area = parseFloat(String(areaInput?.value || '').replace(',', '.')) || 0;
-            if (!name || !loc || area <= 0) {
+            const missingStateCity = Boolean(stateCombo) && (!selectedUf || !selectedCity) && !loc;
+            if (!name || !loc || missingStateCity || area <= 0) {
                 if (step1Err) {
-                    step1Err.textContent = 'Preencha nome da fazenda, localização e área total maior que zero para avançar.';
+                    if (stateCombo && (!selectedUf || !selectedCity) && !loc) {
+                        step1Err.textContent = 'Selecione o estado e o município da fazenda para avançar.';
+                    } else {
+                        step1Err.textContent = 'Preencha nome da fazenda, estado, município e área total maior que zero para avançar.';
+                    }
                     step1Err.hidden = false;
                 }
                 return false;
@@ -862,7 +1238,10 @@
                 } else {
                     const d = payload.data || {};
                     if (d.car_number && carInput) carInput.value = d.car_number;
-                    if (d.location && locInput && !locInput.value.trim()) locInput.value = d.location;
+                    if (d.location && locInput && !locInput.value.trim()) {
+                        locInput.value = d.location;
+                        await applyLocationFromText(d.location);
+                    }
                     if (d.area_hectares && areaInput && !areaInput.value.trim()) areaInput.value = d.area_hectares;
                     if (d.geometry) {
                         currentGeom = d.geometry;
@@ -906,6 +1285,16 @@
             }
             if (formEditor?.syncToHidden) formEditor.syncToHidden();
         });
+
+        if (stateCombo) {
+            stateCombo.setItems(stateItems);
+            if (selectedUf) {
+                stateCombo.setValue(selectedUf, { silent: true });
+                loadCitiesForState(selectedUf, { preselectCity: selectedCity, autoOpen: false });
+            } else if (cityCombo) {
+                cityCombo.setDisabled(true, 'Selecione o estado primeiro');
+            }
+        }
 
         renderStep();
     }

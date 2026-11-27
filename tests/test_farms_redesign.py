@@ -419,3 +419,64 @@ def test_area_divergence_5_percent_rule_and_geometry_save_preserves_choice(env):
     env.db.refresh(farm)
     assert float(farm.total_area) == round(poly_area, 2)
     assert farm.boundary_geojson is not None
+
+
+def test_farm_cascading_state_municipality_selector_and_api(env):
+    from app.services.ibge_municipalities import (
+        list_brazil_states,
+        list_municipalities_by_uf,
+        parse_location_uf_city,
+    )
+
+    states = list_brazil_states()
+    assert len(states) == 27
+    assert any(s["uf"] == "MG" and s["name"] == "Minas Gerais" for s in states)
+    assert any(s["uf"] == "BA" and s["name"] == "Bahia" for s in states)
+
+    mg_cities = list_municipalities_by_uf("mg")
+    ba_cities = list_municipalities_by_uf("BA")
+    assert len(mg_cities) >= 850 and "Patrocínio" in mg_cities
+    assert len(ba_cities) >= 415 and "Vitória da Conquista" in ba_cities
+    assert list_municipalities_by_uf("XX") == []
+
+    assert parse_location_uf_city("Vitória da Conquista, BA") == ("BA", "Vitória da Conquista")
+    assert parse_location_uf_city("vitoria da conquista - ba") == ("BA", "Vitória da Conquista")
+    assert parse_location_uf_city("Patrocínio/MG") == ("MG", "Patrocínio")
+
+    # Endpoint JSON /fazendas/municipios?uf=BA
+    api_ok = env.routes.list_farm_municipalities_api(uf="BA", user=env.user)
+    payload_ok = json.loads(api_ok.body.decode("utf-8"))
+    assert payload_ok["ok"] is True
+    assert payload_ok["uf"] == "BA"
+    assert "Barra do Choça" in payload_ok["municipalities"]
+
+    api_bad = env.routes.list_farm_municipalities_api(uf="ZZ", user=env.user)
+    payload_bad = json.loads(api_bad.body.decode("utf-8"))
+    assert payload_bad["ok"] is False and payload_bad["municipalities"] == []
+
+    # Formulário /fazendas/nova renderiza seletores em cascata com busca
+    new_html = env.routes.new_farm_page(
+        env.request("/fazendas/nova"), db=env.db, user=env.user, csrf_token="x"
+    ).body.decode("utf-8")
+    assert 'data-fm-combo="state"' in new_html
+    assert 'data-fm-combo="city"' in new_html
+    assert "data-fm-combo-search" in new_html
+    assert 'id="fm-location-data"' in new_html
+    assert "Minas Gerais" in new_html
+
+    # Formulário /fazendas/{id}/editar pré-seleciona UF e município existentes
+    farm = env.db.query(Farm).one()
+    farm.location = "Vitória da Conquista, BA"
+    env.db.commit()
+    edit_html = env.routes.edit_farm_page(
+        farm.id,
+        env.request(f"/fazendas/{farm.id}/editar"),
+        BackgroundTasks(),
+        passo=1,
+        db=env.db,
+        user=env.user,
+        csrf_token="x",
+    ).body.decode("utf-8")
+    assert '"initial_uf": "BA"' in edit_html
+    assert '"initial_city": "Vit\\u00f3ria da Conquista"' in edit_html or '"initial_city": "Vitória da Conquista"' in edit_html
+

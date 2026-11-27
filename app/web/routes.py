@@ -9858,6 +9858,8 @@ def new_farm_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
+    from app.services.ibge_municipalities import list_brazil_states
+
     repo = _repository(db)
     farms = repo.list_farms(organization_id=user.organization_id)
     plan_summary = _farm_plan_summary(db, user, farms)
@@ -9876,6 +9878,10 @@ def new_farm_page(
             plan_summary=plan_summary,
             google_maps_web_key=google_maps_web_key,
             initial_step=1,
+            brazil_states=list_brazil_states(),
+            initial_location_uf="",
+            initial_location_city="",
+            initial_municipalities=[],
             _repo=repo,
         ),
     )
@@ -10144,8 +10150,15 @@ def edit_farm_page(
             edit_farm_geometry_json = json.dumps(json.loads(farm.boundary_geojson))
         except json.JSONDecodeError:
             edit_farm_geometry_json = "null"
+    from app.services.ibge_municipalities import (
+        list_brazil_states,
+        list_municipalities_by_uf,
+        parse_location_uf_city,
+    )
+
     google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
     initial_step = passo if passo in {1, 2, 3} else 1
+    initial_uf, initial_city = parse_location_uf_city(farm.location)
     return templates.TemplateResponse(
         "farm_form.html",
         _base_context(
@@ -10160,6 +10173,10 @@ def edit_farm_page(
             plan_summary=plan_summary,
             google_maps_web_key=google_maps_web_key,
             initial_step=initial_step,
+            brazil_states=list_brazil_states(),
+            initial_location_uf=initial_uf,
+            initial_location_city=initial_city,
+            initial_municipalities=list_municipalities_by_uf(initial_uf),
             _repo=repo,
         ),
     )
@@ -10203,6 +10220,23 @@ def save_farm_rain_settings_action(
     db.commit()
     _flash(request, "success", f"Alertas de pluviometria de {farm.name} atualizados.")
     return _redirect(f"/fazendas/{farm.id}?aba=chuva")
+
+
+@router.get("/fazendas/municipios")
+def list_farm_municipalities_api(
+    uf: str = "",
+    user: User = Depends(get_current_user_web),
+):
+    """Retorna todos os municípios oficiais (IBGE) para o estado (UF) selecionado."""
+    from app.services.ibge_municipalities import list_municipalities_by_uf
+
+    del user
+    uf_clean = str(uf or "").strip().upper()
+    municipalities = list_municipalities_by_uf(uf_clean)
+    return JSONResponse(
+        {"ok": bool(municipalities), "uf": uf_clean, "municipalities": municipalities},
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 @router.get("/fazendas/geocodificar")

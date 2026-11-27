@@ -5,8 +5,95 @@ priorizando a Bahia (regiões cafeeiras e polos) e principais polos cafeeiros na
 """
 from __future__ import annotations
 
+from functools import lru_cache
+import json
+from pathlib import Path
 import re
 import unicodedata
+
+BRAZIL_STATES: tuple[dict[str, str], ...] = (
+    {"uf": "AC", "name": "Acre"},
+    {"uf": "AL", "name": "Alagoas"},
+    {"uf": "AP", "name": "Amapá"},
+    {"uf": "AM", "name": "Amazonas"},
+    {"uf": "BA", "name": "Bahia"},
+    {"uf": "CE", "name": "Ceará"},
+    {"uf": "DF", "name": "Distrito Federal"},
+    {"uf": "ES", "name": "Espírito Santo"},
+    {"uf": "GO", "name": "Goiás"},
+    {"uf": "MA", "name": "Maranhão"},
+    {"uf": "MT", "name": "Mato Grosso"},
+    {"uf": "MS", "name": "Mato Grosso do Sul"},
+    {"uf": "MG", "name": "Minas Gerais"},
+    {"uf": "PA", "name": "Pará"},
+    {"uf": "PB", "name": "Paraíba"},
+    {"uf": "PR", "name": "Paraná"},
+    {"uf": "PE", "name": "Pernambuco"},
+    {"uf": "PI", "name": "Piauí"},
+    {"uf": "RJ", "name": "Rio de Janeiro"},
+    {"uf": "RN", "name": "Rio Grande do Norte"},
+    {"uf": "RS", "name": "Rio Grande do Sul"},
+    {"uf": "RO", "name": "Rondônia"},
+    {"uf": "RR", "name": "Roraima"},
+    {"uf": "SC", "name": "Santa Catarina"},
+    {"uf": "SP", "name": "São Paulo"},
+    {"uf": "SE", "name": "Sergipe"},
+    {"uf": "TO", "name": "Tocantins"},
+)
+_VALID_UFS: frozenset[str] = frozenset(item["uf"] for item in BRAZIL_STATES)
+_IBGE_DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "ibge_municipios.json"
+
+
+@lru_cache(maxsize=1)
+def _load_municipalities_by_uf() -> dict[str, tuple[str, ...]]:
+    try:
+        raw = json.loads(_IBGE_DATA_FILE.read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            return {
+                str(uf).upper(): tuple(str(name) for name in names if name)
+                for uf, names in raw.items()
+                if str(uf).upper() in _VALID_UFS and isinstance(names, list)
+            }
+    except (OSError, ValueError):
+        pass
+    return {}
+
+
+def list_brazil_states() -> list[dict[str, str]]:
+    """Retorna os 27 estados brasileiros ordenados por nome."""
+    return [dict(item) for item in BRAZIL_STATES]
+
+
+def list_municipalities_by_uf(uf: str | None) -> list[str]:
+    """Retorna todos os municípios oficiais do IBGE para a UF informada."""
+    code = str(uf or "").strip().upper()
+    if code not in _VALID_UFS:
+        return []
+    return list(_load_municipalities_by_uf().get(code, ()))
+
+
+def parse_location_uf_city(location: str | None) -> tuple[str, str]:
+    """Extrai (UF, Município) de strings como 'Vitória da Conquista, BA' ou 'Patrocínio - MG'."""
+    text = re.sub(r"\s+", " ", str(location or "").strip())
+    if not text:
+        return ("", "")
+    uf = ""
+    city = text
+    match = re.search(r"(?:[,\-/|]|\()\s*([A-Za-z]{2})\s*\)?$", text)
+    if match:
+        candidate = match.group(1).upper()
+        if candidate in _VALID_UFS:
+            uf = candidate
+            city = text[: match.start()].strip(" ,-/|()")
+    elif len(text) == 2 and text.upper() in _VALID_UFS:
+        return (text.upper(), "")
+
+    if uf and city:
+        norm_city = _norm(city)
+        for official in list_municipalities_by_uf(uf):
+            if _norm(official) == norm_city:
+                return (uf, official)
+    return (uf, city)
 
 
 def _norm(text: str | None) -> str:
