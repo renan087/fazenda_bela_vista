@@ -308,7 +308,7 @@ def test_template_renders_v3_plan_and_legacy(farm, monkeypatch):
     html = template.render(item=item, soil_ai_allowed_pages=PAGES, dialog_id="rec-7")
     for text in ("O que fazer primeiro", "Calagem: 2,15 t/ha de calcário dolomítico", "Laudo interpretado",
                  "Como calculamos", "Produtos e quantidades", "Adubação — parcela 1 de 4", "Ácido bórico",
-                 "Memória de cálculo", "Manual do Café", "Em breve", 'id="rec-7-panel-crono"', "Resumo gerado pelo sistema"):
+                 "Memória de cálculo", "Manual do Café", "Agendar aplicações", 'id="rec-7-panel-crono"', "Resumo gerado pelo sistema"):
         assert text in html, text
     assert "Seu acesso atual" in template.render(item=item, soil_ai_allowed_pages=set())
     legacy = SimpleNamespace(id=1, ai_recommendation=json.dumps({"versao": 2, "diagnostico": ["Antigo"], "modulos_utilizados": []}),

@@ -1,300 +1,381 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="stock-page-shell sf-page pest-page" data-modal-single-pane>
-    <section class="stock-page-header">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-                <div class="stock-page-header-intro-inner">
-                    <h2 class="stock-page-card-title">Pragas e Doenças</h2>
-                    <p class="stock-page-card-subtitle">Registre ocorrências fitossanitárias por setor e acompanhe o histórico no mesmo padrão visual dos módulos mais refinados.</p>
-                </div>
-            </div>
-            <div class="stock-header-actions stock-header-actions-top stock-actions-row-mobile-adaptive max-[899px]:w-full">
-                <button type="button" class="stock-action-button stock-action-button-primary" data-pest-launch-open>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M12 5v14"/>
-                        <path d="M5 12h14"/>
-                    </svg>
-                    <span class="stock-action-button-label"><span class="sm:hidden">Nova</span><span class="hidden sm:inline">Registrar ocorrência</span></span>
-                </button>
-            </div>
+{% set ctx = pest_ctx %}
+{% set k = ctx.kpi %}
+<div class="sf-page pd-page ft-page pest-page" data-pests-page data-can-write="{{ '1' if can_write_page else '0' }}">
+    <header class="pd-head">
+        <div>
+            <h1 class="sf-page-title">Pragas e doenças</h1>
+            <p class="sf-page-subtitle">Monitore focos fitossanitários com fotos e severidade, dispare pulverizações corretivas e acompanhe a reinspeção até o controle.</p>
         </div>
+        <div class="pd-head-actions">
+            {% if can_write_page %}
+            <button type="button" class="sf-btn sf-btn-primary" data-pest-launch-open>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Registrar ocorrência
+            </button>
+            {% endif %}
+        </div>
+    </header>
+
+    {% if ctx.climate_alert %}
+    <div class="pd-alert is-warn" role="status">
+        <strong>{{ ctx.climate_alert.title }}</strong> — {{ ctx.climate_alert.detail }}
+    </div>
+    {% endif %}
+
+    <section class="ft-kpis" aria-label="Indicadores fitossanitários">
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Focos ativos</span>
+            <div class="ft-kpi-val"><strong class="{{ 'is-warn' if k.active else 'is-ok' }}">{{ k.active }}</strong><span>em aberto</span></div>
+            <p class="ft-kpi-sub">{{ k.affected_plots }} talhão(ões) com ocorrência ativa</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Nível crítico (4–5)</span>
+            <div class="ft-kpi-val"><strong class="{{ 'is-err' if k.critical else 'is-ok' }}">{{ k.critical }}</strong><span>foco{{ 's' if k.critical != 1 }}</span></div>
+            <p class="ft-kpi-sub">{% if k.critical %}Prioridade imediata de controle{% else %}Nenhum foco em nível crítico{% endif %}</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Em tratamento</span>
+            <div class="ft-kpi-val"><strong>{{ k.treating }}</strong><span>em ação</span></div>
+            <p class="ft-kpi-sub">Aguardando reinspeção para encerramento</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Controlados na safra</span>
+            <div class="ft-kpi-val"><strong class="is-ok">{{ k.controlled }}</strong><span>encerrado{{ 's' if k.controlled != 1 }}</span></div>
+            <p class="ft-kpi-sub">{{ k.total }} registro(s) no histórico da safra</p>
+        </article>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Monitoramento fitossanitário</p>
-                <h3 class="mt-2 text-2xl font-semibold">Ocorrências registradas</h3>
+    <section class="pd-card ft-stage" aria-label="Monitoramento fitossanitário">
+        <div class="ft-stage-top">
+            <div>
+                <h2>Ocorrências registradas</h2>
+                <p class="ft-stage-sub">Clique em <strong>Pulverizar</strong> para lançar o defensivo já vinculado ao talhão e à ocorrência.</p>
             </div>
-            <div class="stock-search-field">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                    <path d="M13 13l4 4"></path>
-                </svg>
-                <input type="search" placeholder="Buscar setor, nome, categoria, tratamento ou observação" data-pest-search>
+            <label class="sl-search ft-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <span class="sr-only">Buscar ocorrências</span>
+                <input type="search" placeholder="Buscar praga, doença, talhão ou tratamento..." data-pest-search>
+            </label>
+        </div>
+
+        <div class="ft-filters-row">
+            <div class="sl-chips" role="group" aria-label="Filtrar ocorrências">
+                <button type="button" class="sl-chip" aria-pressed="true" data-pest-filter="all">Todas <span>{{ k.total }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-pest-filter="active">Ativas <span>{{ k.active }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-pest-filter="critical">Críticas (4–5) <span>{{ k.critical }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-pest-filter="em_tratamento">Em tratamento <span>{{ k.treating }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-pest-filter="controlada">Controladas <span>{{ k.controlled }}</span></button>
             </div>
         </div>
 
-        <div class="mt-6 space-y-4">
+        {% if incidents %}
+        <div class="lv-pest-list">
             {% for item in incidents %}
-            <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 transition hover:border-brand-200 hover:bg-brand-50/40" data-pest-card data-pest-search-text="{{ item.name }} {{ item.category }} {{ item.severity }} {{ item.plot.name if item.plot else '' }} {{ item.treatment or '' }} {{ item.notes or '' }} {{ item.occurrence_date }}">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div class="min-w-0">
-                        <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Ocorrência" data-history-view-title="{{ item.name }}" data-history-view-subtitle="{{ item.plot.name if item.plot else 'Setor removido' }} • {{ item.occurrence_date.strftime('%d-%m-%Y') if item.occurrence_date else '-' }}" data-history-view-source="incident-view-{{ item.id }}" data-history-view-edit-url="/pragas?edit_id={{ item.id }}">{{ item.name }}</button>
-                        <p class="mt-1 text-sm text-slate-500">{{ item.plot.name if item.plot else "Setor removido" }} • {{ item.occurrence_date.strftime('%d-%m-%Y') if item.occurrence_date else "-" }}</p>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2">
-                        <span class="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-700">{{ item.category }} • Nível {{ item.severity }}</span>
-                        <a href="/pragas?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M12 20h9"/>
-                                <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-                            </svg>
-                        </a>
-                        <details class="sf-menu" data-sf-dropdown>
-                            <summary class="sf-icon-btn" aria-label="Mais ações" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
-                            <div class="sf-menu-panel">
-                                <form method="post" action="/pragas/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta ocorrência?');">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button type="submit" class="sf-menu-danger">Excluir</button></form>
-                            </div>
-                        </details>
-                    </div>
-                </div>
-
-                <div class="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div class="rounded-2xl bg-white px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Categoria</p>
-                        <p class="mt-2 text-sm font-medium text-slate-800">{{ item.category }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Severidade</p>
-                        <p class="mt-2 text-sm font-medium text-slate-800">Nível {{ item.severity }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tratamento</p>
-                        <p class="mt-2 text-sm font-medium text-slate-800">{{ item.treatment or "Não informado" }}</p>
+            {% set m = ctx.meta_by_id.get(item.id, {}) %}
+            <article class="lv-pest-card"
+                data-pest-card
+                data-status="{{ m.status_code }}"
+                data-severity="{{ item.severity }}"
+                data-pest-search-text="{{ item.name }} {{ m.category_label }} {{ item.plot.name if item.plot else '' }} {{ item.treatment or '' }} {{ item.notes or '' }} {{ item.occurrence_date }}">
+                <div class="lv-pest-main">
+                    {% if m.has_photo %}
+                    <a href="/pragas/{{ item.id }}/foto" target="_blank" class="lv-pest-thumb" title="Abrir foto em tamanho real">
+                        <img src="/pragas/{{ item.id }}/foto" alt="Foto de {{ item.name }}" loading="lazy">
+                    </a>
+                    {% endif %}
+                    <div class="min-w-0" style="flex:1;">
+                        <div class="lv-rec-badges">
+                            <span class="pd-chip is-{{ m.status_tone }}">{{ m.status_label }}</span>
+                            <span class="pd-chip is-{{ m.severity_tone }}">{{ m.severity_label }}</span>
+                            <span class="pd-chip is-muted">{{ m.category_label }}</span>
+                            {% if item.incidence_pct is not none %}
+                            <span class="pd-chip is-info">{{ item.incidence_pct|decimal_br(1) }}% incidência</span>
+                            {% endif %}
+                        </div>
+                        <h3 class="lv-rec-title">{{ item.name }}</h3>
+                        <p class="lv-rec-meta">
+                            {{ item.plot.name if item.plot else "Talhão removido" }} · {{ item.occurrence_date.strftime('%d/%m/%Y') if item.occurrence_date else "—" }}
+                            {% if item.reinspection_date %} · Reinspeção: {{ item.reinspection_date.strftime('%d/%m/%Y') }}{% endif %}
+                            {% if item.resolved_date %} · Controlada em {{ item.resolved_date.strftime('%d/%m/%Y') }}{% endif %}
+                        </p>
+                        {% if item.treatment %}<p class="lv-pest-treat"><strong>Tratamento:</strong> {{ item.treatment }}</p>{% endif %}
+                        {% if item.notes %}<p class="lv-rec-notes">{{ item.notes }}</p>{% endif %}
                     </div>
                 </div>
 
-                <div class="mt-4 rounded-2xl bg-white px-4 py-4">
-                    <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
-                    <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observações." }}</p>
+                {% if can_write_page %}
+                <div class="lv-pest-actions">
+                    {% if m.status_code != 'controlada' %}
+                    <a class="sf-btn sf-btn-primary sf-btn-sm" href="/operacoes?novo=1&amp;plot_id={{ item.plot_id }}&amp;pest_id={{ item.id }}&amp;op_type=pulverizacao">Pulverizar / Tratar →</a>
+                    <button type="button" class="sf-btn sf-btn-secondary sf-btn-sm"
+                        data-pest-status-open
+                        data-pest-id="{{ item.id }}"
+                        data-pest-title="{{ item.name }} · {{ item.plot.name if item.plot else '' }}"
+                        data-pest-status="{{ m.status_code }}"
+                        data-pest-severity="{{ item.severity }}">Reinspecionar</button>
+                    {% endif %}
+                    <a href="/pragas?edit_id={{ item.id }}" class="sf-btn sf-btn-secondary sf-btn-sm">Editar</a>
+                    <details class="sf-menu" data-sf-dropdown>
+                        <summary class="sf-icon-btn" aria-label="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
+                        <div class="sf-menu-panel">
+                            <form method="post" action="/pragas/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta ocorrência fitossanitária?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="sf-menu-danger">Excluir</button>
+                            </form>
+                        </div>
+                    </details>
                 </div>
-
-                <template id="incident-view-{{ item.id }}">
-                    <div class="grid gap-3 sm:grid-cols-2">
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "Setor removido" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.occurrence_date.strftime('%d-%m-%Y') if item.occurrence_date else "-" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Categoria</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.category }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Nível</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.severity }}</p></div>
-                    </div>
-                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tratamento</p>
-                        <p class="mt-2 text-sm text-slate-600">{{ item.treatment or "Sem tratamento informado." }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
-                        <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observações." }}</p>
-                    </div>
-                </template>
+                {% endif %}
             </article>
-            {% else %}
-            <p class="text-sm text-slate-500">Nenhuma ocorrência registrada.</p>
             {% endfor %}
         </div>
-        <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-pest-search-empty>Nenhuma ocorrência corresponde à busca digitada.</p>
+        <div class="pd-empty" data-pest-search-empty hidden><strong>Nenhuma ocorrência corresponde ao filtro ou busca.</strong></div>
+        {% else %}
+        <div class="pd-empty">
+            <strong>Nenhuma ocorrência registrada nesta safra.</strong>
+            <span>Ao identificar qualquer foco de praga ou doença no campo, registre aqui com foto para acompanhar evolução e controle.</span>
+            {% if can_write_page %}<button type="button" class="sf-btn sf-btn-primary" data-pest-launch-open>Registrar primeira ocorrência</button>{% endif %}
+        </div>
+        {% endif %}
         {% with pagination=incidents_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </section>
 </div>
 
-<dialog id="pest-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_incident %}Editar ocorrência{% else %}Registrar ocorrência{% endif %}</p>
-                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_incident %}Editar ocorrência fitossanitária{% else %}Novo registro fitossanitário{% endif %}</h3>
-                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Concentre histórico, severidade, tratamento e observações no mesmo fluxo operacional do restante do sistema.</p>
+{# Modal: Nova / Editar ocorrência #}
+<dialog id="pest-launch-modal" class="ft-dialog is-md">
+    <form method="post" enctype="multipart/form-data" action="{% if edit_incident %}/pragas/{{ edit_incident.id }}/editar{% else %}/pragas{% endif %}" class="ft-dialog-shell" id="pest-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ft-dialog-head">
+            <div>
+                <p class="pd-eyebrow is-brand">Lavoura · Fitossanidade</p>
+                <h2>{% if edit_incident %}Editar ocorrência{% else %}Registrar praga ou doença{% endif %}</h2>
+                <p class="ft-dialog-sub">Escolha no catálogo do café ou informe manualmente e anexe foto do campo.</p>
             </div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-pest-launch-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
-            </button>
+            <button type="button" class="ft-x" data-pest-launch-close aria-label="Fechar">✕</button>
         </div>
 
-        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
-            <form method="post" action="{% if edit_incident %}/pragas/{{ edit_incident.id }}/editar{% else %}/pragas{% endif %}" class="grid gap-4" id="pest-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-
-                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
-                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
-                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-pest-launch-close>Cancelar</button>
-                        <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_incident %}Salvar alterações{% else %}Salvar ocorrência{% endif %}</button>
-                    </div>
+        <div class="ft-dialog-body">
+            {% if not edit_incident %}
+            <div class="ft-field" style="margin-bottom:.75rem;">
+                <span>Seleção rápida (pragas e doenças comuns do café)</span>
+                <div class="lv-cat-chips">
+                    {% for item in ctx.catalog %}
+                    <button type="button" class="sl-chip" data-pest-quick-name="{{ item.name }}" data-pest-quick-cat="{{ item.category }}">{{ item.name }}</button>
+                    {% endfor %}
                 </div>
+            </div>
+            {% endif %}
 
-                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
-                        <div class="min-w-0">
-                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
-                            <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
-                        </div>
-                        <button type="button" class="stock-summary-toggle" data-pest-context-toggle aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                <path d="M5 12h14"/>
-                                <path d="M12 5v14" data-pest-context-toggle-plus></path>
-                            </svg>
-                            <span data-pest-context-toggle-label>Expandir</span>
-                        </button>
-                    </div>
-                    <div class="stock-summary-collapse" data-pest-context-collapse>
-                        <div class="stock-summary-collapse-inner">
-                            <div class="mt-4">
-                                {% include "partials/launch_context.html" %}
-                            </div>
-                        </div>
-                    </div>
+            <div class="ft-field">
+                {% if edit_incident %}
+                <span>Talhão</span>
+                <select name="plot_id" required>
+                    {% for plot in launch_plots %}
+                    <option value="{{ plot.id }}" {% if edit_incident.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <span>Talhões afetados (selecione um ou mais)</span>
+                <div class="lv-plot-checks">
+                    {% for plot in launch_plots %}
+                    <label class="lv-plot-check">
+                        <input type="checkbox" name="plot_id" value="{{ plot.id }}" {% if preselect_plot_id == plot.id or (not preselect_plot_id and launch_plots|length == 1) %}checked{% endif %}>
+                        <span><strong>{{ plot.name }}</strong><small>{{ (plot.area_hectares or 0)|decimal_br(1) }} ha</small></span>
+                    </label>
+                    {% endfor %}
                 </div>
+                {% endif %}
+            </div>
 
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Setor</span>
-                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        {% for plot in launch_plots %}
-                        <option value="{{ plot.id }}" {% if edit_incident and edit_incident.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
-                        {% endfor %}
+            <div class="lv-form-grid" style="margin-top:.85rem;">
+                <label class="ft-field">
+                    <span>Data da constatação</span>
+                    <input type="date" name="occurrence_date" value="{{ edit_incident.occurrence_date.isoformat() if edit_incident else today_iso }}" required>
+                </label>
+                <label class="ft-field">
+                    <span>Categoria</span>
+                    {% set cur_cat = ('Doença' if edit_incident and (edit_incident.category or '').lower() in ['doenca', 'doença'] else (edit_incident.category if edit_incident else 'Praga')) %}
+                    <select name="category" data-pest-cat-select>
+                        <option value="Praga" {% if cur_cat == 'Praga' %}selected{% endif %}>Praga</option>
+                        <option value="Doença" {% if cur_cat == 'Doença' %}selected{% endif %}>Doença</option>
                     </select>
                 </label>
-                <div class="grid gap-4 md:grid-cols-2">
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Data</span>
-                        <input type="date" name="occurrence_date" value="{{ edit_incident.occurrence_date.isoformat() if edit_incident else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    </label>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Categoria</span>
-                        <select name="category" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                            <option value="Praga" {% if edit_incident and edit_incident.category == 'Praga' %}selected{% endif %}>Praga</option>
-                            <option value="Doenca" {% if edit_incident and edit_incident.category == 'Doenca' %}selected{% endif %}>Doença</option>
-                        </select>
-                    </label>
-                </div>
-                <div class="grid gap-4 md:grid-cols-2">
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Nome</span>
-                        <input name="name" value="{{ edit_incident.name if edit_incident else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    </label>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Severidade (1 a 5)</span>
-                        <input type="number" min="1" max="5" name="severity" value="{{ edit_incident.severity if edit_incident else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    </label>
-                </div>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Tratamento</span>
-                    <input name="treatment" value="{{ edit_incident.treatment if edit_incident else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                <label class="ft-field">
+                    <span>Nome da praga / doença</span>
+                    <input type="text" name="name" data-pest-name-input value="{{ edit_incident.name if edit_incident else '' }}" placeholder="Ex.: Ferrugem-alaranjada" required>
                 </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Observações</span>
-                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_incident.notes if edit_incident else '' }}</textarea>
+                <label class="ft-field">
+                    <span>Severidade</span>
+                    {% set cur_sev = edit_incident.severity if edit_incident else 2 %}
+                    <select name="severity" required>
+                        <option value="1" {% if cur_sev == 1 %}selected{% endif %}>1 — Foco isolado (preventivo)</option>
+                        <option value="2" {% if cur_sev == 2 %}selected{% endif %}>2 — Baixa incidência</option>
+                        <option value="3" {% if cur_sev == 3 %}selected{% endif %}>3 — Moderada (atenção)</option>
+                        <option value="4" {% if cur_sev == 4 %}selected{% endif %}>4 — Alta (nível de ação)</option>
+                        <option value="5" {% if cur_sev == 5 %}selected{% endif %}>5 — Crítica (dano econômico)</option>
+                    </select>
                 </label>
-            </form>
+                <label class="ft-field">
+                    <span>Status</span>
+                    {% set cur_st = (edit_incident.status if edit_incident and edit_incident.status else 'ativa') %}
+                    <select name="status">
+                        <option value="ativa" {% if cur_st == 'ativa' %}selected{% endif %}>Ativa</option>
+                        <option value="em_tratamento" {% if cur_st == 'em_tratamento' %}selected{% endif %}>Em tratamento</option>
+                        <option value="monitoramento" {% if cur_st == 'monitoramento' %}selected{% endif %}>Em monitoramento</option>
+                        <option value="controlada" {% if cur_st == 'controlada' %}selected{% endif %}>Controlada</option>
+                    </select>
+                </label>
+                <label class="ft-field">
+                    <span>Incidência amostrada (% opcional)</span>
+                    <input type="number" step="0.1" min="0" max="100" name="incidence_pct" value="{{ edit_incident.incidence_pct if edit_incident and edit_incident.incidence_pct is not none else '' }}" placeholder="Ex.: 12,5">
+                </label>
+                <label class="ft-field is-span-2">
+                    <span>Foto do campo (folha, fruto ou armadilha — opcional)</span>
+                    <input type="file" name="photo" accept="image/*">
+                    {% if edit_incident and edit_incident.photo_data %}
+                    <small>Foto atual anexada. <a href="/pragas/{{ edit_incident.id }}/foto" target="_blank" style="color:#446A36; font-weight:600;">Ver foto</a></small>
+                    {% endif %}
+                </label>
+                <label class="ft-field is-span-2">
+                    <span>Tratamento orientado / realizado (opcional)</span>
+                    <input type="text" name="treatment" value="{{ edit_incident.treatment if edit_incident else '' }}" placeholder="Ou clique em Pulverizar após salvar para baixar o defensivo do estoque">
+                </label>
+                <label class="ft-field is-span-2">
+                    <span>Observações</span>
+                    <textarea name="notes" rows="2" placeholder="Ex.: bordadura do talhão, reboleira próxima ao carreador...">{{ edit_incident.notes if edit_incident else '' }}</textarea>
+                </label>
+            </div>
         </div>
-    </div>
+
+        <div class="ft-dialog-foot">
+            <button type="button" class="sf-btn sf-btn-secondary" data-pest-launch-close>Cancelar</button>
+            <button type="submit" class="sf-btn sf-btn-primary">{% if edit_incident %}Salvar alterações{% else %}Salvar ocorrência{% endif %}</button>
+        </div>
+    </form>
 </dialog>
 
-{% include "partials/history_view_modal.html" %}
+{# Modal rápido de reinspeção / mudança de status #}
+<dialog id="pest-status-modal" class="ft-dialog is-sm">
+    <form method="post" action="" class="ft-dialog-shell" data-pest-status-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ft-dialog-head">
+            <div>
+                <p class="pd-eyebrow is-brand">Reinspeção em campo</p>
+                <h2 data-pest-status-title>Atualizar ocorrência</h2>
+            </div>
+            <button type="button" class="ft-x" data-pest-status-close aria-label="Fechar">✕</button>
+        </div>
+        <div class="ft-dialog-body">
+            <div class="lv-form-grid">
+                <label class="ft-field is-span-2">
+                    <span>Novo status</span>
+                    <select name="status" data-pest-status-select>
+                        <option value="em_tratamento">Em tratamento</option>
+                        <option value="monitoramento">Em monitoramento</option>
+                        <option value="controlada">Controlada (encerrar foco)</option>
+                        <option value="ativa">Permanece ativa</option>
+                    </select>
+                </label>
+                <label class="ft-field">
+                    <span>Severidade atual</span>
+                    <select name="severity" data-pest-status-severity>
+                        <option value="1">1 — Isolado</option>
+                        <option value="2">2 — Baixa</option>
+                        <option value="3">3 — Moderada</option>
+                        <option value="4">4 — Alta</option>
+                        <option value="5">5 — Crítica</option>
+                    </select>
+                </label>
+                <label class="ft-field">
+                    <span>Data da reinspeção</span>
+                    <input type="date" name="reinspection_date" value="{{ today_iso }}" required>
+                </label>
+                <label class="ft-field is-span-2">
+                    <span>Nota da reinspeção</span>
+                    <textarea name="reinspection_note" rows="2" placeholder="Ex.: incidência caiu após pulverização, foco controlado."></textarea>
+                </label>
+            </div>
+        </div>
+        <div class="ft-dialog-foot">
+            <button type="button" class="sf-btn sf-btn-secondary" data-pest-status-close>Cancelar</button>
+            <button type="submit" class="sf-btn sf-btn-primary">Salvar reinspeção</button>
+        </div>
+    </form>
+</dialog>
+
 <script>
 (() => {
     const launchModal = document.getElementById('pest-launch-modal');
-    const openButtons = Array.from(document.querySelectorAll('[data-pest-launch-open]'));
-    const closeButtons = Array.from(document.querySelectorAll('[data-pest-launch-close]'));
-    const searchInput = document.querySelector('[data-pest-search]');
-    const cards = Array.from(document.querySelectorAll('[data-pest-card]'));
-    const emptyState = document.querySelector('[data-pest-search-empty]');
-    const stickyHeader = document.querySelector('.stock-page-header');
-    const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
-    const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
     const isEditing = {{ 'true' if edit_incident else 'false' }};
+    const autoOpenNew = {{ 'true' if open_new_modal else 'false' }};
 
     const closeModal = () => {
-        if (isEditing) {
-            window.location.href = '/pragas';
-            return;
-        }
+        if (isEditing) { window.location.href = '/pragas'; return; }
         launchModal?.close();
     };
+    document.querySelectorAll('[data-pest-launch-open]').forEach((b) => b.addEventListener('click', () => launchModal?.showModal()));
+    document.querySelectorAll('[data-pest-launch-close]').forEach((b) => b.addEventListener('click', closeModal));
+    launchModal?.addEventListener('cancel', (e) => { e.preventDefault(); closeModal(); });
+    if (isEditing || autoOpenNew) launchModal?.showModal();
 
-    openButtons.forEach((button) => {
-        button.addEventListener('click', () => launchModal?.showModal());
-    });
-    closeButtons.forEach((button) => button.addEventListener('click', closeModal));
-    launchModal?.addEventListener('cancel', (event) => {
-        event.preventDefault();
-        closeModal();
-    });
-    if (isEditing) launchModal?.showModal();
-
-    const contextToggle = document.querySelector('[data-pest-context-toggle]');
-    const contextCollapse = document.querySelector('[data-pest-context-collapse]');
-    const contextToggleLabel = document.querySelector('[data-pest-context-toggle-label]');
-    const contextTogglePlus = document.querySelector('[data-pest-context-toggle-plus]');
-    const syncContextToggle = (expanded) => {
-        if (!contextCollapse || !contextToggle) return;
-        contextCollapse.classList.toggle('is-expanded', expanded);
-        contextToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        if (contextToggleLabel) contextToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
-        if (contextTogglePlus) contextTogglePlus.classList.toggle('hidden', expanded);
-    };
-    syncContextToggle(false);
-    contextToggle?.addEventListener('click', () => {
-        const expanded = !contextCollapse?.classList.contains('is-expanded');
-        syncContextToggle(!!expanded);
-    });
-
-    const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    const applyLocalSearch = () => {
-        const query = normalizeText(searchInput?.value || '');
-        let visible = 0;
-        cards.forEach((card) => {
-            const haystack = normalizeText(card.dataset.pestSearchText || card.textContent);
-            const matches = !query || haystack.includes(query);
-            card.classList.toggle('hidden', !matches);
-            if (matches) visible += 1;
+    const nameIn = launchModal?.querySelector('[data-pest-name-input]');
+    const catSel = launchModal?.querySelector('[data-pest-cat-select]');
+    launchModal?.querySelectorAll('[data-pest-quick-name]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            if (nameIn) nameIn.value = btn.dataset.pestQuickName || '';
+            if (catSel && btn.dataset.pestQuickCat) catSel.value = btn.dataset.pestQuickCat;
         });
-        emptyState?.classList.toggle('hidden', visible !== 0);
-    };
-    searchInput?.addEventListener('input', applyLocalSearch);
-    applyLocalSearch();
+    });
 
-    const mobileCompactMq = window.matchMedia('(max-width: 899px)');
-    const parseStickyTopPx = (el) => {
-        const raw = getComputedStyle(el).top;
-        if (!raw || raw === 'auto') return 0;
-        const pxMatch = /^([\d.]+)px$/.exec(raw);
-        if (pxMatch) return parseFloat(pxMatch[1]);
-        return 0;
+    // Reinspeção
+    const stModal = document.getElementById('pest-status-modal');
+    const stForm = stModal?.querySelector('[data-pest-status-form]');
+    const stTitle = stModal?.querySelector('[data-pest-status-title]');
+    const stSelect = stModal?.querySelector('[data-pest-status-select]');
+    const stSev = stModal?.querySelector('[data-pest-status-severity]');
+    document.querySelectorAll('[data-pest-status-open]').forEach((b) => {
+        b.addEventListener('click', () => {
+            if (stForm) stForm.action = `/pragas/${b.dataset.pestId}/reinspecao`;
+            if (stTitle) stTitle.textContent = b.dataset.pestTitle || 'Reinspeção';
+            if (stSelect) stSelect.value = b.dataset.pestStatus === 'em_tratamento' ? 'controlada' : 'em_tratamento';
+            if (stSev && b.dataset.pestSeverity) stSev.value = b.dataset.pestSeverity;
+            stModal?.showModal();
+        });
+    });
+    document.querySelectorAll('[data-pest-status-close]').forEach((b) => b.addEventListener('click', () => stModal?.close()));
+
+    // Filtros e busca
+    let activeFilter = 'all';
+    const filterBtns = Array.from(document.querySelectorAll('[data-pest-filter]'));
+    const cards = Array.from(document.querySelectorAll('[data-pest-card]'));
+    const searchInput = document.querySelector('[data-pest-search]');
+    const emptyEl = document.querySelector('[data-pest-search-empty]');
+    const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const applyFilter = () => {
+        const q = norm(searchInput?.value || '');
+        let vis = 0;
+        cards.forEach((c) => {
+            const st = c.dataset.status || 'ativa';
+            const sev = Number(c.dataset.severity || 1);
+            const matchF = activeFilter === 'all'
+                || (activeFilter === 'active' && st !== 'controlada')
+                || (activeFilter === 'critical' && st !== 'controlada' && sev >= 4)
+                || st === activeFilter;
+            const matchQ = !q || norm(c.dataset.pestSearchText || c.textContent).includes(q);
+            const show = matchF && matchQ;
+            c.hidden = !show;
+            if (show) vis += 1;
+        });
+        if (emptyEl) emptyEl.hidden = vis > 0 || cards.length === 0;
     };
-    const syncHeaderFade = () => {
-        if (!stickyHeader || !headerIntro || !fadingPanels.length) return;
-        const compact = mobileCompactMq.matches;
-        const stickyTop = parseStickyTopPx(stickyHeader);
-        const introRect = headerIntro.getBoundingClientRect();
-        const activePanel = fadingPanels[0];
-        const panelRect = activePanel.getBoundingClientRect();
-        const overlap = compact ? Math.max(0, (stickyTop + introRect.height) - panelRect.top) : 0;
-        const fadeDistance = compact ? Math.max(introRect.height * 0.95, 1) : 1;
-        const progress = compact ? Math.min(overlap / fadeDistance, 1) : 0;
-        stickyHeader.style.setProperty('--stock-header-progress', progress.toFixed(3));
-        activePanel.style.setProperty('--stock-header-progress', progress.toFixed(3));
-        activePanel.classList.toggle('stock-panel-under-header', compact && progress > 0.02);
-    };
-    const requestHeaderSync = () => window.requestAnimationFrame(syncHeaderFade);
-    window.addEventListener('scroll', requestHeaderSync, { passive: true });
-    window.addEventListener('resize', requestHeaderSync);
-    if (mobileCompactMq.addEventListener) mobileCompactMq.addEventListener('change', requestHeaderSync);
-    else if (mobileCompactMq.addListener) mobileCompactMq.addListener(requestHeaderSync);
-    requestHeaderSync();
+    filterBtns.forEach((b) => b.addEventListener('click', () => {
+        activeFilter = b.dataset.pestFilter || 'all';
+        filterBtns.forEach((x) => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+        applyFilter();
+    }));
+    searchInput?.addEventListener('input', applyFilter);
 })();
 </script>
 {% endblock %}

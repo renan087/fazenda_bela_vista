@@ -1045,6 +1045,20 @@ def _dashboard_agenda(repository: FarmRepository, farm_id: int | None, plot_ids:
                 "title": f"{item['method']} — {item['plot']}", "meta": item["products"], "status": item["status"],
                 "link": item["link"],
             })
+    if plot_ids:
+        for op in repository.list_agricultural_operations(plot_ids):
+            if (getattr(op, "status", None) or "realizada") != "planejada":
+                continue
+            day = op.operation_date
+            if not day or not (start <= day <= end):
+                continue
+            events.append({
+                "id": f"op-{op.id}", "date": day.isoformat(), "type": "app",
+                "title": f"{op.operation_type} — {op.plot.name if op.plot else 'Talhão'}",
+                "meta": op.target_pest or op.responsible_name or "Operação planejada",
+                "status": "late" if day < today else "plan",
+                "link": f"/operacoes?edit_id={op.id}",
+            })
     if farm_id:
         for transaction in repository.list_finance_transactions(farm_id=farm_id):
             if not _finance_transaction_uses_future_settlement(transaction):

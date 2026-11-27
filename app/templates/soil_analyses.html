@@ -1,22 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
+{% set ctx = soil_ctx %}
+{% set k = ctx.kpi %}
 {% macro soil_recommendations_modal(item, dialog_id) %}
 <dialog id="{{ dialog_id }}" class="app-modal soil-recommendations-dialog ar-dialog border-0 p-0 shadow-2xl" aria-labelledby="{{ dialog_id }}-title" data-soil-recommendations-dialog>
     <div class="ar-dialog-shell">
         <header class="ar-dialog-head">
             <div class="ar-grow">
                 <p class="ar-kicker">Recomendação agronômica</p>
-                <h3 id="{{ dialog_id }}-title" class="ar-title">{{ item.plot.name if item.plot else "Setor removido" }}{% if item.farm %} · {{ item.farm.name }}{% endif %}</h3>
+                <h3 id="{{ dialog_id }}-title" class="ar-title">{{ item.plot.name if item.plot else "Talhão removido" }}{% if item.farm %} · {{ item.farm.name }}{% endif %}</h3>
                 <p class="ar-muted">Laudo de {{ item.analysis_date.strftime('%d/%m/%Y') if item.analysis_date else "-" }} · {{ item.laboratory }}{% if item.ai_generated_at %} · gerado em {{ item.ai_generated_at|datetime_sp }}{% endif %}</p>
             </div>
             <div class="ar-head-actions">
                 {% set ar_plan = item.ai_recommendation|soil_recommendation %}
                 {% if ar_plan and ar_plan.versao == 3 and not ar_plan.modulos_utilizados|reject('in', soil_ai_allowed_pages)|list %}
-                <a href="/analise-solo/{{ item.id }}/recomendacao.pdf" class="ar-btn ar-btn-primary" download>
+                {% if can_write_page and ar_plan.cronograma %}
+                <button type="button" class="ar-btn ar-btn-primary" data-soil-schedule-open="{{ item.id }}">
+                    <span>Levar p/ Agenda</span>
+                </button>
+                {% endif %}
+                <a href="/analise-solo/{{ item.id }}/recomendacao.pdf" class="ar-btn ar-btn-secondary" download>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
                     <span>Baixar PDF</span>
                 </a>
                 {% endif %}
+                {% if can_write_page %}
                 <form method="post" action="/analise-solo/{{ item.id }}/regenerar" data-soil-ai-generate-form>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit" class="ar-btn ar-btn-secondary">
@@ -24,6 +32,7 @@
                         <span>Gerar de novo</span>
                     </button>
                 </form>
+                {% endif %}
             </div>
             <button type="button" class="ar-btn ar-btn-secondary ar-btn-icon" aria-label="Fechar" data-soil-recommendations-close>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -35,160 +44,247 @@
     </div>
 </dialog>
 {% endmacro %}
-<div class="stock-page-shell sf-page" data-modal-single-pane>
-    <section class="stock-page-header">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-                <div class="stock-page-header-intro-inner">
-                    <h2 class="stock-page-card-title">Análise de Solo</h2>
-                    <p class="stock-page-card-subtitle">Concentre análises laboratoriais, comparativos de fertilidade e histórico de recomendações no mesmo padrão visual dos módulos mais recentes.</p>
-                </div>
-            </div>
-            <div class="stock-header-actions stock-header-actions-top stock-actions-row-mobile-adaptive max-[899px]:w-full">
-                <button type="button" class="stock-action-button stock-action-button-primary" data-soil-launch-open>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M12 5v14"/>
-                        <path d="M5 12h14"/>
-                    </svg>
-                    <span class="stock-action-button-label"><span class="sm:hidden">Nova</span><span class="hidden sm:inline">Nova análise</span></span>
-                </button>
-            </div>
-        </div>
 
+<div class="sf-page pd-page ft-page" data-soil-page data-can-write="{{ '1' if can_write_page else '0' }}">
+    <header class="pd-head">
+        <div>
+            <h1 class="sf-page-title">Análise de solo</h1>
+            <p class="sf-page-subtitle">Acompanhe a fertilidade de cada talhão, interprete laudos laboratoriais e leve a recomendação agronômica direto para a Agenda de adubação.</p>
+        </div>
+        <div class="pd-head-actions">
+            {% if active_farm_id %}
+            <a class="sf-btn sf-btn-secondary" href="/fazendas/{{ active_farm_id }}?aba=agronomico">Dados agronômicos</a>
+            {% endif %}
+            {% if can_write_page %}
+            <button type="button" class="sf-btn sf-btn-primary" data-soil-launch-open>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Nova análise
+            </button>
+            {% endif %}
+        </div>
+    </header>
+
+    <section class="ft-kpis" aria-label="Indicadores de fertilidade do solo">
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Cobertura de laudos</span>
+            <div class="ft-kpi-val"><strong>{{ k.covered_plots }} <small>de {{ k.total_plots }}</small></strong></div>
+            <div class="ft-meter"><i class="is-brand" style="width: {{ k.coverage_pct }}%"></i></div>
+            <p class="ft-kpi-sub">Talhões com laudo nos últimos 24 meses</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Sem laudo ou vencidos</span>
+            <div class="ft-kpi-val"><strong class="{{ 'is-warn' if k.missing_or_stale else 'is-ok' }}">{{ k.missing_or_stale }}</strong><span>talh{{ 'ão' if k.missing_or_stale == 1 else 'ões' }}</span></div>
+            <p class="ft-kpi-sub">{% if k.missing_or_stale %}Recomenda-se nova coleta de solo{% else %}Todos os talhões atualizados{% endif %}</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">V% médio da fazenda</span>
+            <div class="ft-kpi-val"><strong>{% if k.avg_v_pct is not none %}{{ k.avg_v_pct|decimal_br(1) }}%{% else %}—{% endif %}</strong></div>
+            <p class="ft-kpi-sub">Meta de referência café: 60% a 70%</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Necessitam calagem</span>
+            <div class="ft-kpi-val"><strong class="{{ 'is-warn' if k.liming_needed else 'is-ok' }}">{{ k.liming_needed }}</strong><span>talh{{ 'ão' if k.liming_needed == 1 else 'ões' }}</span></div>
+            <p class="ft-kpi-sub">{{ k.total_analyses }} laudo{{ 's' if k.total_analyses != 1 }} registrado{{ 's' if k.total_analyses != 1 }} no histórico</p>
+        </article>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico laboratorial</p>
-                <h3 class="mt-2 text-2xl font-semibold">Análises registradas</h3>
+    <section class="ft-overview-grid" aria-label="Cobertura de solo por talhão e evolução">
+        <article class="pd-card ft-plots-card">
+            <div class="ft-card-head">
+                <div>
+                    <h2>Cobertura de solo por talhão</h2>
+                    <p>Veja quais talhões precisam de nova coleta ou de amostra de subsolo (20–40 cm).</p>
+                </div>
+                {% if filters.plot_id %}
+                <a class="ft-link-btn is-brand" href="/analise-solo">Mostrar todos</a>
+                {% endif %}
             </div>
-            <div class="stock-search-field">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                    <path d="M13 13l4 4"></path>
-                </svg>
-                <input type="search" placeholder="Buscar setor, laboratório ou data" data-soil-search>
-            </div>
-        </div>
-
-        <div class="stock-filter-bar mt-6">
-            <form method="get" action="/analise-solo" class="stock-filter-grid">
-                <div class="stock-filter-fields-row soil-filter-fields-row">
-                <label class="stock-filter-field {% if filters.farm_id %}is-filtered{% endif %}">
-                    <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Fazenda</span>
-                    <select name="farm_id" class="w-full rounded-2xl border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
-                        <option value="">Todas</option>
-                        {% for farm in farms %}
-                        <option value="{{ farm.id }}" {% if filters.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label class="stock-filter-field {% if filters.plot_id %}is-filtered{% endif %}">
-                    <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Setor</span>
-                    <select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
-                        <option value="">Todos</option>
-                        {% for plot in plots %}
-                        <option value="{{ plot.id }}" {% if filters.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label class="stock-filter-field {% if filters.compare_plot_id %}is-filtered{% endif %}">
-                    <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Comparar setor</span>
-                    <select name="compare_plot_id" class="w-full rounded-2xl border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
-                        <option value="">Usar filtro atual</option>
-                        {% for plot in plots %}
-                        <option value="{{ plot.id }}" {% if filters.compare_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <div class="stock-filter-field-actions flex flex-wrap items-end gap-3">
-                    <button class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800" type="submit">
-                        <span class="stock-action-button-label">Aplicar</span>
-                    </button>
-                    <a href="/analise-solo" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">
-                        <span class="stock-action-button-label">Limpar</span>
+            {% if ctx.plot_coverage %}
+            <div class="ft-plot-list">
+                {% for row in ctx.plot_coverage %}
+                <div class="ft-plot-row">
+                    <a class="ft-plot-main" href="/analise-solo?plot_id={{ row.plot_id }}&compare_plot_id={{ row.plot_id }}">
+                        <div class="ft-plot-top">
+                            <strong>{{ row.plot_name }}</strong>
+                            <span>{{ row.area|decimal_br(1) }} ha</span>
+                            {% if row.status == 'missing' %}
+                            <span class="pd-chip is-warn">Sem laudo</span>
+                            {% elif row.status == 'stale' %}
+                            <span class="pd-chip is-warn">Laudo vencido ({{ row.age_months }}m)</span>
+                            {% else %}
+                            <span class="pd-chip is-{{ row.v_tone }}">V% {{ row.v_pct|decimal_br(0) if row.v_pct is not none else '—' }} · {{ row.v_label }}</span>
+                            {% endif %}
+                            {% if row.has_subsoil %}
+                            <span class="pd-chip is-info">20–40 cm ok</span>
+                            {% endif %}
+                        </div>
+                        <div class="ft-plot-meta">
+                            <span>{% if row.latest_date_br %}Último laudo: {{ row.latest_date_br }}{% else %}Nenhuma amostra cadastrada{% endif %}</span>
+                            {% if row.ph is not none %}<span>pH: <strong>{{ row.ph|decimal_br(2) }}</strong></span>{% endif %}
+                            {% if row.needs_liming %}<span class="is-warn" style="color:#7A4F00; font-weight:600;">Indicação de calagem</span>{% endif %}
+                        </div>
                     </a>
+                    {% if can_write_page %}
+                    <button type="button" class="sf-btn sf-btn-secondary sf-btn-sm" data-soil-launch-open data-soil-preselect-plot="{{ row.plot_id }}">+ Laudo</button>
+                    {% endif %}
                 </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="pd-empty">
+                <strong>Nenhum talhão cadastrado para a fazenda ativa.</strong>
+                <span>Cadastre os talhões em Setores para acompanhar os laudos de solo.</span>
+                <a class="sf-btn sf-btn-primary" href="/setores">Ir para Setores</a>
+            </div>
+            {% endif %}
+        </article>
+
+        <aside class="pd-card ft-side-card">
+            <div class="ft-card-head" style="margin-bottom:0;">
+                <div>
+                    <h2>Evolução da fertilidade</h2>
+                    <p>Compare indicadores ao longo das coletas.</p>
                 </div>
-            </form>
+            </div>
+            <div class="sl-chips" role="group" aria-label="Indicador do gráfico" data-soil-chart-chips>
+                <button type="button" class="sl-chip" aria-pressed="true" data-soil-metric="all">Todos</button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-soil-metric="V%">V%</button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-soil-metric="pH">pH</button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-soil-metric="P">P</button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-soil-metric="K">K</button>
+            </div>
+            <div style="height: 230px; position: relative;">
+                <canvas id="soilHistoryChart"></canvas>
+            </div>
+        </aside>
+    </section>
+
+    <section class="pd-card ft-stage" aria-label="Laudos laboratoriais registrados">
+        <div class="ft-stage-top">
+            <div>
+                <h2>Laudos registrados</h2>
+                <p class="ft-stage-sub">Abra <strong>Ver recomendação</strong> para consultar diagnóstico, doses oficiais e levar o plano para a Agenda.</p>
+            </div>
+            <label class="sl-search ft-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <span class="sr-only">Buscar laudos</span>
+                <input type="search" placeholder="Buscar talhão, laboratório ou data..." data-soil-search>
+            </label>
         </div>
 
-        <div class="mt-6 space-y-4">
+        <form method="get" action="/analise-solo" class="lv-filter-bar">
+            <label class="ft-field">
+                <span>Talhão</span>
+                <select name="plot_id">
+                    <option value="">Todos os talhões</option>
+                    {% for plot in plots %}
+                    <option value="{{ plot.id }}" {% if filters.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="ft-field">
+                <span>Comparar no gráfico</span>
+                <select name="compare_plot_id">
+                    <option value="">Usar talhão filtrado</option>
+                    {% for plot in plots %}
+                    <option value="{{ plot.id }}" {% if filters.compare_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <div class="lv-filter-actions">
+                <button type="submit" class="sf-btn sf-btn-secondary sf-btn-sm">Aplicar</button>
+                {% if filters.plot_id or filters.compare_plot_id %}
+                <a href="/analise-solo" class="sf-btn sf-btn-ghost sf-btn-sm">Limpar</a>
+                {% endif %}
+            </div>
+        </form>
+
+        <div class="lv-soil-list">
             {% for item in analyses %}
-            <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 transition hover:border-brand-200 hover:bg-brand-50/40" data-soil-card data-soil-search-text="{{ item.plot.name if item.plot else '' }} {{ item.laboratory }} {{ item.analysis_date }} {{ item.observations or '' }}">
-                <div class="flex flex-wrap items-start justify-between gap-4">
+            {% set meta = ctx.analysis_meta.get(item.id, {}) %}
+            <article class="lv-soil-card" data-soil-card data-soil-search-text="{{ item.plot.name if item.plot else '' }} {{ item.laboratory }} {{ item.analysis_date }} {{ item.observations or '' }}">
+                <div class="lv-soil-head">
                     <div class="min-w-0">
-                        <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Análise de solo" data-history-view-title="{{ item.plot.name if item.plot else 'Setor removido' }}" data-history-view-subtitle="{{ item.analysis_date.strftime('%d-%m-%Y') if item.analysis_date else '-' }} • {{ item.laboratory }}" data-history-view-source="soil-analysis-view-{{ item.id }}" data-history-view-edit-url="/analise-solo?edit_id={{ item.id }}&plot_id={{ item.plot_id }}&compare_plot_id={{ item.plot_id }}">{{ item.plot.name if item.plot else "Setor removido" }}</button>
-                        <p class="mt-1 text-sm text-slate-500">{{ item.analysis_date.strftime('%d-%m-%Y') if item.analysis_date else "-" }} • {{ item.laboratory }}</p>
+                        <div class="lv-rec-badges">
+                            <span class="pd-chip is-muted">{{ meta.depth_label or '0–20 cm' }}</span>
+                            {% if meta.v_status and meta.v_status != '—' %}
+                            <span class="pd-chip is-{{ meta.v_tone }}">V% {{ meta.v_status }}</span>
+                            {% endif %}
+                            {% if meta.ph_status and meta.ph_status != '—' %}
+                            <span class="pd-chip is-{{ meta.ph_tone }}">pH {{ meta.ph_status }}</span>
+                            {% endif %}
+                            {% if item.ai_status == 'outdated' %}
+                            <span class="pd-chip is-warn">Recomendação desatualizada</span>
+                            {% elif meta.has_plan %}
+                            <span class="pd-chip is-ok">Plano agronômico pronto</span>
+                            {% endif %}
+                        </div>
+                        <h3 class="lv-rec-title">
+                            <button type="button" class="lv-title-btn" data-history-view-trigger data-history-view-kicker="Análise de solo" data-history-view-title="{{ item.plot.name if item.plot else 'Talhão removido' }}" data-history-view-subtitle="{{ item.analysis_date.strftime('%d/%m/%Y') if item.analysis_date else '-' }} · {{ item.laboratory }}" data-history-view-source="soil-analysis-view-{{ item.id }}" data-history-view-edit-url="/analise-solo?edit_id={{ item.id }}&plot_id={{ item.plot_id }}&compare_plot_id={{ item.plot_id }}">{{ item.plot.name if item.plot else "Talhão removido" }}</button>
+                        </h3>
+                        <p class="lv-rec-meta">{{ item.analysis_date.strftime('%d/%m/%Y') if item.analysis_date else "-" }} · {{ item.laboratory }}</p>
                     </div>
-                    <div class="flex flex-wrap gap-2">
-                        <a href="/analise-solo?edit_id={{ item.id }}&plot_id={{ item.plot_id }}&compare_plot_id={{ item.plot_id }}" class="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-100">Editar</a>
-                        {% if item.pdf_data %}
-                        <a href="/analise-solo/{{ item.id }}/pdf" target="_blank" class="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-100">PDF</a>
+                    <div class="lv-soil-actions">
+                        <button type="button" class="sf-btn sf-btn-primary sf-btn-sm" data-soil-recommendations-open="soil-recommendations-{{ item.id }}">Ver recomendação</button>
+                        {% if can_write_page and meta.can_schedule %}
+                        <button type="button" class="sf-btn sf-btn-secondary sf-btn-sm" data-soil-schedule-open="{{ item.id }}">Levar p/ Agenda</button>
                         {% endif %}
-                        <form method="post" action="/analise-solo/{{ item.id }}/regenerar" data-soil-ai-generate-form>
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button class="inline-flex h-9 items-center justify-center rounded-xl bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-700">Gerar IA</button>
-                        </form>
+                        {% if item.pdf_data %}
+                        <a href="/analise-solo/{{ item.id }}/pdf" target="_blank" class="sf-btn sf-btn-secondary sf-btn-sm">PDF</a>
+                        {% endif %}
+                        {% if can_write_page %}
                         <details class="sf-menu" data-sf-dropdown>
-                            <summary class="sf-icon-btn" aria-label="Mais ações" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
+                            <summary class="sf-icon-btn" aria-label="Mais ações" title="Mais ações">
+                                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+                            </summary>
                             <div class="sf-menu-panel">
+                                <a href="/analise-solo?edit_id={{ item.id }}&plot_id={{ item.plot_id }}&compare_plot_id={{ item.plot_id }}" class="sf-menu-link">Editar laudo</a>
+                                <form method="post" action="/analise-solo/{{ item.id }}/regenerar" data-soil-ai-generate-form>
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="sf-menu-link">Recalcular recomendação</button>
+                                </form>
                                 <form method="post" action="/analise-solo/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta análise de solo? Esta ação não pode ser desfeita.');">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                    <button type="submit" class="sf-menu-danger">Excluir análise</button>
+                                    <button type="submit" class="sf-menu-danger">Excluir laudo</button>
                                 </form>
                             </div>
                         </details>
+                        {% endif %}
                     </div>
                 </div>
 
-                <div class="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">pH: <strong>{{ item.ph if item.ph is not none else '-' }}</strong></div>
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">P: <strong>{{ item.phosphorus if item.phosphorus is not none else '-' }}</strong></div>
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">K: <strong>{{ item.potassium if item.potassium is not none else '-' }}</strong></div>
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">Ca: <strong>{{ item.calcium if item.calcium is not none else '-' }}</strong></div>
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">Mg: <strong>{{ item.magnesium if item.magnesium is not none else '-' }}</strong></div>
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">V%: <strong>{{ item.base_saturation if item.base_saturation is not none else '-' }}</strong></div>
+                <div class="lv-soil-metrics">
+                    <div><span>pH</span><strong>{{ item.ph|decimal_br(2) if item.ph is not none else '—' }}</strong></div>
+                    <div><span>Fósforo (P)</span><strong>{{ item.phosphorus|decimal_br(1) if item.phosphorus is not none else '—' }}</strong></div>
+                    <div><span>Potássio (K)</span><strong>{{ item.potassium|decimal_br(1) if item.potassium is not none else '—' }}</strong></div>
+                    <div><span>Cálcio (Ca)</span><strong>{{ item.calcium|decimal_br(2) if item.calcium is not none else '—' }}</strong></div>
+                    <div><span>Magnésio (Mg)</span><strong>{{ item.magnesium|decimal_br(2) if item.magnesium is not none else '—' }}</strong></div>
+                    <div><span>V%</span><strong>{{ item.base_saturation|decimal_br(1) if item.base_saturation is not none else '—' }}{% if item.base_saturation is not none %}%{% endif %}</strong></div>
                 </div>
 
-                <button type="button" class="soil-rec-open-button mt-4 flex w-full flex-col items-start gap-1 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-brand-300 hover:bg-brand-50/40" data-soil-recommendations-open="soil-recommendations-{{ item.id }}">
-                    <span class="text-sm font-semibold text-slate-900">Ver recomendação agronômica</span>
-                </button>
                 {{ soil_recommendations_modal(item, 'soil-recommendations-' ~ item.id) }}
 
                 <template id="soil-analysis-view-{{ item.id }}">
                     <div class="grid gap-3 sm:grid-cols-2">
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "Setor removido" }}</p></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Talhão</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "Talhão removido" }}</p></div>
                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Laboratório</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.laboratory }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.analysis_date.strftime('%d-%m-%Y') if item.analysis_date else "-" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">PDF</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.pdf_data %}<a href="/analise-solo/{{ item.id }}/pdf" target="_blank" class="text-brand-700 hover:text-brand-500">Abrir PDF</a>{% else %}-{% endif %}</p></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.analysis_date.strftime('%d/%m/%Y') if item.analysis_date else "-" }}</p></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">PDF</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.pdf_data %}<a href="/analise-solo/{{ item.id }}/pdf" target="_blank" class="text-brand-700 hover:text-brand-500">Abrir PDF</a>{% else %}—{% endif %}</p></div>
                     </div>
-                    <div class="grid gap-3 sm:grid-cols-3">
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">pH: <strong>{{ item.ph if item.ph is not none else '-' }}</strong></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Fósforo: <strong>{{ item.phosphorus if item.phosphorus is not none else '-' }}</strong></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Potássio: <strong>{{ item.potassium if item.potassium is not none else '-' }}</strong></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Cálcio: <strong>{{ item.calcium if item.calcium is not none else '-' }}</strong></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">Magnésio: <strong>{{ item.magnesium if item.magnesium is not none else '-' }}</strong></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">V%: <strong>{{ item.base_saturation if item.base_saturation is not none else '-' }}</strong></div>
-                    </div>
-                    <button type="button" class="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-left text-sm font-semibold text-brand-800 hover:bg-brand-100" data-soil-recommendations-open="soil-recommendations-{{ item.id }}">Ver recomendação agronômica</button>
                     {% set metadata = item.laboratory_metadata|soil_metadata %}
                     <div class="rounded-2xl bg-slate-50 p-4">
                         <h4 class="font-semibold text-slate-900">Resultados e identificação do laudo</h4>
                         <div class="mt-3 grid gap-2 sm:grid-cols-2 text-sm text-slate-700">
+                            <p>pH: <strong>{{ item.ph if item.ph is not none else '—' }}</strong></p>
                             {% for field, (label, options) in soil_fields.items() %}
                             {% set value = item|attr(field) %}
-                            <p>{{ label }}: <strong>{{ value if value is not none else '—' }}</strong> {{ metadata.get('units', {}).get(field) or 'unidade não informada' }}</p>
+                            <p>{{ label }}: <strong>{{ value if value is not none else '—' }}</strong> {{ metadata.get('units', {}).get(field) or '' }}</p>
                             {% endfor %}
                             {% for field, (label, options) in soil_extra_fields.items() %}
                             {% set value = metadata.get('extra_values', {}).get(field) %}
-                            {% if value is not none %}<p>{{ label }}: <strong>{{ value }}</strong> {{ metadata.get('units', {}).get(field) or 'unidade não informada' }}</p>{% endif %}
+                            {% if value is not none %}<p>{{ label }}: <strong>{{ value }}</strong> {{ metadata.get('units', {}).get(field) or '' }}</p>{% endif %}
                             {% endfor %}
-                            <p>Coleta: {{ metadata.get('collected') or 'Não informada' }}</p>
-                            <p>Emissão: {{ metadata.get('issued') or 'Não informada' }}</p>
                             <p>Profundidade: {% if metadata.get('depth_from_cm') is not none %}{{ metadata.depth_from_cm }}–{{ metadata.depth_to_cm }} cm{% else %}Não informada{% endif %}</p>
-                            {% for field, (label, options) in soil_methods.items() %}<p>{{ label }}: {{ metadata.get('methods', {}).get(field, 'Não informado') }}</p>{% endfor %}
                         </div>
                     </div>
                     <div class="rounded-2xl bg-slate-50 px-4 py-4">
@@ -198,217 +294,206 @@
                 </template>
             </article>
             {% else %}
-            <p class="text-sm text-slate-500">Nenhuma análise de solo registrada.</p>
+            <div class="pd-empty">
+                <strong>Nenhuma análise de solo registrada.</strong>
+                <span>Cadastre o laudo do laboratório para calcular automaticamente calagem, gessagem e o cronograma de adubação do talhão.</span>
+                {% if can_write_page %}
+                <button type="button" class="sf-btn sf-btn-primary" data-soil-launch-open>Cadastrar primeira análise</button>
+                {% endif %}
+            </div>
             {% endfor %}
         </div>
-        <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-soil-search-empty>Nenhuma análise corresponde à busca digitada.</p>
+        <div class="pd-empty" data-soil-search-empty hidden>
+            <strong>Nenhum laudo corresponde à busca digitada.</strong>
+        </div>
         {% with pagination=analyses_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
-    </section>
-
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Comparativo</p>
-        <h3 class="mt-2 text-2xl font-semibold">Evolução da fertilidade</h3>
-        <div class="mt-6 h-80">
-            <canvas id="soilHistoryChart"></canvas>
-        </div>
-    </section>
-
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">IA Agronômica</p>
-        <h3 class="mt-2 text-2xl font-semibold">Histórico de recomendações</h3>
-        <div class="mt-6 space-y-4">
-            {% for item in latest_recommendations %}
-            <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                <p class="font-medium text-slate-900">{{ item.plot.name if item.plot else "Setor removido" }} • {{ item.analysis_date.strftime('%d-%m-%Y') if item.analysis_date else "-" }}</p>
-                <button type="button" class="soil-rec-open-button mt-3 flex w-full flex-col items-start gap-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50/40" data-soil-recommendations-open="soil-recommendations-hist-{{ item.id }}">
-                    <span class="text-sm font-semibold text-slate-900">Ver recomendação agronômica</span>
-                </button>
-                {{ soil_recommendations_modal(item, 'soil-recommendations-hist-' ~ item.id) }}
-            </article>
-            {% else %}
-            <p class="text-sm text-slate-500">Sem recomendações agronômicas geradas.</p>
-            {% endfor %}
-        </div>
     </section>
 </div>
 
+{# Overlay de processamento da recomendação #}
 <div class="fixed inset-0 z-[100] hidden items-center justify-center bg-slate-950/55 p-5 backdrop-blur-sm" data-soil-ai-loading-overlay aria-live="assertive" aria-busy="true" role="status">
-    <div class="w-full max-w-md rounded-[2rem] bg-white p-7 text-center shadow-2xl">
+    <div class="w-full max-w-md rounded-[1.5rem] bg-white p-7 text-center shadow-2xl">
         <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
-            <svg class="h-7 w-7 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
-                <path d="M21 12a9 9 0 1 1-3-6.7" stroke-linecap="round"/>
-            </svg>
+            <svg class="h-7 w-7 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7" stroke-linecap="round"/></svg>
         </div>
-        <p class="mt-5 text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">IA Agronômica</p>
-        <h3 class="mt-2 text-xl font-semibold text-slate-900">Gerando análise agronômica</h3>
-        <p class="mt-3 text-sm leading-6 text-slate-600">Estamos interpretando os dados laboratoriais e preparando a recomendação para sua lavoura. Isso pode levar alguns segundos.</p>
-        <div class="mt-6 h-1.5 overflow-hidden rounded-full bg-slate-100">
-            <div class="h-full w-2/3 animate-pulse rounded-full bg-brand-500"></div>
-        </div>
+        <p class="mt-5 text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">Motor agronômico</p>
+        <h3 class="mt-2 text-xl font-semibold text-slate-900">Calculando recomendação</h3>
+        <p class="mt-3 text-sm leading-6 text-slate-600">Estamos interpretando o laudo, consultando seu estoque e preparando o plano de adubação.</p>
     </div>
 </div>
 
-<dialog id="soil-analysis-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-5xl overflow-hidden">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_analysis %}Editar análise{% else %}Cadastrar análise de solo{% endif %}</p>
-                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_analysis %}Editar análise{% else %}Nova análise de solo{% endif %}</h3>
-                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Reúna indicadores laboratoriais, PDF da análise e contexto operacional em um único lançamento.</p>
+{# Modal: Levar plano da Análise de Solo para a Agenda (rascunho -> conferir -> confirmar) #}
+<dialog id="soil-schedule-dialog" class="ft-dialog is-lg" aria-labelledby="soil-schedule-title">
+    <form method="post" action="" class="ft-dialog-shell" id="soil-schedule-form" data-soil-schedule-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="entries_json" value="" data-soil-schedule-entries-input>
+        <div class="ft-dialog-head">
+            <div>
+                <p class="pd-eyebrow is-brand">Integração · Análise de Solo → Agenda de Adubação</p>
+                <h2 id="soil-schedule-title">Conferir agendamentos do plano</h2>
+                <p class="ft-dialog-sub" data-soil-schedule-subtitle>Revise datas, métodos e produtos antes de enviar para a Agenda.</p>
             </div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-soil-launch-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
-            </button>
+            <button type="button" class="ft-x" data-soil-schedule-close aria-label="Fechar">✕</button>
         </div>
-        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
-            <form method="post" enctype="multipart/form-data" action="{% if edit_analysis %}/analise-solo/{{ edit_analysis.id }}/editar{% else %}/analise-solo{% endif %}" class="grid gap-4 md:grid-cols-2" id="soil-analysis-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ft-dialog-body" data-soil-schedule-body>
+            <p class="ft-calm">Carregando etapas do cronograma...</p>
+        </div>
+        <div class="ft-dialog-foot">
+            <button type="button" class="sf-btn sf-btn-secondary" data-soil-schedule-close>Cancelar</button>
+            <button type="submit" class="sf-btn sf-btn-primary" data-soil-schedule-submit>Confirmar e criar agendamentos</button>
+        </div>
+    </form>
+</dialog>
 
-                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur md:col-span-2">
-                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
-                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-soil-launch-close>Cancelar</button>
-                        <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_analysis %}Salvar alterações{% else %}Salvar análise{% endif %}</button>
-                    </div>
-                </div>
+{# Modal: Cadastrar / Editar análise de solo #}
+<dialog id="soil-analysis-modal" class="ft-dialog is-lg">
+    <form method="post" enctype="multipart/form-data" action="{% if edit_analysis %}/analise-solo/{{ edit_analysis.id }}/editar{% else %}/analise-solo{% endif %}" class="ft-dialog-shell" id="soil-analysis-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ft-dialog-head">
+            <div>
+                <p class="pd-eyebrow is-brand">{% if edit_analysis %}Editar laudo{% else %}Novo laudo laboratorial{% endif %}</p>
+                <h2>{% if edit_analysis %}Editar análise de solo{% else %}Cadastrar análise de solo{% endif %}</h2>
+                <p class="ft-dialog-sub">Informe os resultados do laboratório e anexe o PDF para gerar a recomendação agronômica automática.</p>
+            </div>
+            <button type="button" class="ft-x" data-soil-launch-close aria-label="Fechar">✕</button>
+        </div>
+        <div class="ft-dialog-body">
+            <div class="lv-form-grid">
+                <label class="ft-field">
+                    <span>Talhão</span>
+                    <select name="plot_id" data-soil-plot-select required>
+                        {% for plot in plots %}
+                        <option value="{{ plot.id }}" {% if edit_analysis and edit_analysis.plot_id == plot.id %}selected{% elif filters.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="ft-field">
+                    <span>Data da análise</span>
+                    <input type="date" name="analysis_date" value="{{ edit_analysis.analysis_date.isoformat() if edit_analysis else '' }}" required>
+                </label>
+                <label class="ft-field">
+                    <span>Laboratório</span>
+                    <input name="laboratory" value="{{ edit_analysis.laboratory if edit_analysis else '' }}" placeholder="Ex.: Laboratório Agronômico" required>
+                </label>
+                <label class="ft-field">
+                    <span>pH</span>
+                    <input type="number" step="0.0001" min="0" max="14" name="ph" value="{{ edit_analysis.ph if edit_analysis else '' }}">
+                </label>
 
-                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4 md:col-span-2">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
-                        <div class="min-w-0">
-                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
-                            <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
-                        </div>
-                        <button type="button" class="stock-summary-toggle" data-soil-context-toggle aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                <path d="M5 12h14"/>
-                                <path d="M12 5v14" data-soil-context-toggle-plus></path>
-                            </svg>
-                            <span data-soil-context-toggle-label>Expandir</span>
-                        </button>
-                    </div>
-                    <div class="stock-summary-collapse" data-soil-context-collapse>
-                        <div class="stock-summary-collapse-inner">
-                            <div class="mt-4">
-                                {% include "partials/launch_context.html" %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <label class="ft-field is-span-2">
+                    <span>PDF do laudo (opcional)</span>
+                    <input type="file" name="analysis_pdf" accept="application/pdf">
+                    {% if edit_analysis and edit_analysis.pdf_data %}
+                    <small>PDF atual salvo. <a href="/analise-solo/{{ edit_analysis.id }}/pdf" target="_blank" style="color:#446A36; font-weight:600;">Abrir anexo</a></small>
+                    {% endif %}
+                </label>
+            </div>
 
-                <label><span class="mb-2 block text-sm font-medium">Setor</span><select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}" {% if edit_analysis and edit_analysis.plot_id == plot.id %}selected{% elif filters.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}</select></label>
-                <label><span class="mb-2 block text-sm font-medium">Data da análise</span><input type="date" name="analysis_date" value="{{ edit_analysis.analysis_date.isoformat() if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-                <label><span class="mb-2 block text-sm font-medium">Laboratório</span><input name="laboratory" value="{{ edit_analysis.laboratory if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-                <label><span class="mb-2 block text-sm font-medium">pH</span><input type="number" step="0.0001" min="0" max="14" name="ph" value="{{ edit_analysis.ph if edit_analysis else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                {% for field, (label, options) in soil_fields.items() %}
-                {% set value = edit_analysis|attr(field) if edit_analysis else none %}
-                {% set selected = soil_metadata.get('units', {}).get(field, '' if edit_analysis else options[0]) %}
-                <div>
-                    <label for="soil-{{ field }}" class="mb-2 block text-sm font-medium">{{ label }}</label>
-                    <div class="flex gap-2">
-                        <input id="soil-{{ field }}" type="number" step="0.0001" min="0" name="{{ field }}" value="{{ value if value is not none else '' }}" class="min-h-[3.25rem] min-w-0 flex-1 rounded-2xl border-slate-200 bg-slate-50">
-                        <select name="unit_{{ field }}" aria-label="Unidade de {{ label }}" class="min-h-[3.25rem] max-w-[45%] rounded-2xl border-slate-200 bg-slate-50">
-                            {% if edit_analysis and not selected %}<option value="" selected>Não informada</option>{% endif %}
-                            {% for option in options %}<option value="{{ option }}" {% if selected == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
-                        </select>
-                    </div>
-                </div>
-                {% endfor %}
-                <fieldset class="md:col-span-2 grid gap-4 md:grid-cols-2">
-                    <legend class="mb-3 text-base font-semibold text-slate-900">Enxofre, micronutrientes, argila e P-rem</legend>
-                    {% for field, (label, options) in soil_extra_fields.items() %}
-                    {% set value = soil_metadata.get('extra_values', {}).get(field) %}
+            <fieldset class="lv-fieldset">
+                <legend>Macronutrientes e saturação por bases</legend>
+                <div class="lv-form-grid">
+                    {% for field, (label, options) in soil_fields.items() %}
+                    {% set value = edit_analysis|attr(field) if edit_analysis else none %}
                     {% set selected = soil_metadata.get('units', {}).get(field, '' if edit_analysis else options[0]) %}
-                    <div>
-                        <label for="soil-{{ field }}" class="mb-2 block text-sm font-medium">{{ label }}</label>
-                        <div class="flex gap-2">
-                            <input id="soil-{{ field }}" type="number" step="any" min="0" name="{{ field }}" value="{{ value if value is not none else '' }}" class="min-h-[3.25rem] min-w-0 flex-1 rounded-2xl border-slate-200 bg-slate-50">
-                            <select name="unit_{{ field }}" aria-label="Unidade de {{ label }}" class="min-h-[3.25rem] max-w-[45%] rounded-2xl border-slate-200 bg-slate-50">
+                    <div class="ft-field">
+                        <label for="soil-{{ field }}">{{ label }}</label>
+                        <div class="lv-val-unit">
+                            <input id="soil-{{ field }}" type="number" step="0.0001" min="0" name="{{ field }}" value="{{ value if value is not none else '' }}">
+                            <select name="unit_{{ field }}" aria-label="Unidade de {{ label }}">
                                 {% if edit_analysis and not selected %}<option value="" selected>Não informada</option>{% endif %}
                                 {% for option in options %}<option value="{{ option }}" {% if selected == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
                             </select>
                         </div>
                     </div>
                     {% endfor %}
-                </fieldset>
-                <fieldset class="md:col-span-2 grid gap-4 md:grid-cols-2">
-                    <legend class="mb-3 text-base font-semibold text-slate-900">Amostragem e laudo</legend>
-                    <label><span class="mb-2 block text-sm font-medium">Data da coleta</span><input type="date" name="collection_date" value="{{ soil_metadata.get('collected') or '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Data de emissão do laudo</span><input type="date" name="report_date" value="{{ soil_metadata.get('issued') or '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Profundidade inicial (cm)</span><input type="number" min="0" max="1000" step="0.1" name="depth_from" value="{{ soil_metadata.get('depth_from_cm') if soil_metadata.get('depth_from_cm') is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Profundidade final (cm)</span><input type="number" min="0" max="1000" step="0.1" name="depth_to" value="{{ soil_metadata.get('depth_to_cm') if soil_metadata.get('depth_to_cm') is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                </fieldset>
-                <fieldset class="md:col-span-2 grid gap-4 md:grid-cols-2">
-                    <legend class="mb-3 text-base font-semibold text-slate-900">Métodos de análise</legend>
-                    {% for field, (label, options) in soil_methods.items() %}
-                    <label><span class="mb-2 block text-sm font-medium">{{ label }}</span><select name="method_{{ field }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                        {% for option in options %}<option value="{{ option }}" {% if soil_metadata.get('methods', {}).get(field, 'Não informado') == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
-                    </select></label>
+                </div>
+            </fieldset>
+
+            <details class="lv-details" {% if edit_analysis %}open{% endif %}>
+                <summary>Enxofre, micronutrientes, argila e P-rem (opcional)</summary>
+                <div class="lv-form-grid" style="margin-top: .75rem;">
+                    {% for field, (label, options) in soil_extra_fields.items() %}
+                    {% set value = soil_metadata.get('extra_values', {}).get(field) %}
+                    {% set selected = soil_metadata.get('units', {}).get(field, '' if edit_analysis else options[0]) %}
+                    <div class="ft-field">
+                        <label for="soil-{{ field }}">{{ label }}</label>
+                        <div class="lv-val-unit">
+                            <input id="soil-{{ field }}" type="number" step="any" min="0" name="{{ field }}" value="{{ value if value is not none else '' }}">
+                            <select name="unit_{{ field }}" aria-label="Unidade de {{ label }}">
+                                {% if edit_analysis and not selected %}<option value="" selected>Não informada</option>{% endif %}
+                                {% for option in options %}<option value="{{ option }}" {% if selected == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+                            </select>
+                        </div>
+                    </div>
                     {% endfor %}
-                </fieldset>
-                <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">PDF da análise</span><input type="file" name="analysis_pdf" accept="application/pdf" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-xl file:border file:border-gray-200 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"></label>
-                {% if edit_analysis and edit_analysis.pdf_data %}
-                <p class="md:col-span-2 -mt-2 text-sm text-slate-500">PDF atual salvo. <a href="/analise-solo/{{ edit_analysis.id }}/pdf" target="_blank" class="font-semibold text-brand-700 hover:text-brand-500">Abrir anexo</a></p>
-                {% endif %}
-                <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">Observações</span><p class="mb-2 text-xs text-slate-600">Para calcular a quantidade de um produto específico, informe sua garantia, como o PRNT do calcário, quando ela não constar no estoque.</p><textarea name="observations" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_analysis.observations if edit_analysis else '' }}</textarea></label>
-            </form>
+                </div>
+            </details>
+
+            <details class="lv-details" {% if edit_analysis %}open{% endif %}>
+                <summary>Profundidade da amostra, datas e métodos laboratoriais</summary>
+                <div class="lv-form-grid" style="margin-top: .75rem;">
+                    <label class="ft-field"><span>Profundidade inicial (cm)</span><input type="number" min="0" max="1000" step="0.1" name="depth_from" value="{{ soil_metadata.get('depth_from_cm') if soil_metadata.get('depth_from_cm') is not none else '' }}" placeholder="0"></label>
+                    <label class="ft-field"><span>Profundidade final (cm)</span><input type="number" min="0" max="1000" step="0.1" name="depth_to" value="{{ soil_metadata.get('depth_to_cm') if soil_metadata.get('depth_to_cm') is not none else '' }}" placeholder="20"></label>
+                    <label class="ft-field"><span>Data da coleta</span><input type="date" name="collection_date" value="{{ soil_metadata.get('collected') or '' }}"></label>
+                    <label class="ft-field"><span>Data de emissão do laudo</span><input type="date" name="report_date" value="{{ soil_metadata.get('issued') or '' }}"></label>
+                    {% for field, (label, options) in soil_methods.items() %}
+                    <label class="ft-field">
+                        <span>{{ label }}</span>
+                        <select name="method_{{ field }}">
+                            {% for option in options %}<option value="{{ option }}" {% if soil_metadata.get('methods', {}).get(field, 'Não informado') == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+                        </select>
+                    </label>
+                    {% endfor %}
+                </div>
+            </details>
+
+            <label class="ft-field" style="margin-top: 1rem;">
+                <span>Observações (opcional)</span>
+                <textarea name="observations" rows="3" placeholder="Ex.: PRNT do calcário disponível, observações da coleta...">{{ edit_analysis.observations if edit_analysis else '' }}</textarea>
+            </label>
         </div>
-    </div>
+        <div class="ft-dialog-foot">
+            <button type="button" class="sf-btn sf-btn-secondary" data-soil-launch-close>Cancelar</button>
+            <button type="submit" class="sf-btn sf-btn-primary">{% if edit_analysis %}Salvar alterações{% else %}Salvar e calcular recomendação{% endif %}</button>
+        </div>
+    </form>
 </dialog>
 
 {% include "partials/history_view_modal.html" %}
 <script>
 (() => {
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
     const launchModal = document.getElementById('soil-analysis-modal');
-    const openButtons = Array.from(document.querySelectorAll('[data-soil-launch-open]'));
-    const closeButtons = Array.from(document.querySelectorAll('[data-soil-launch-close]'));
-    const searchInput = document.querySelector('[data-soil-search]');
-    const cards = Array.from(document.querySelectorAll('[data-soil-card]'));
-    const emptyState = document.querySelector('[data-soil-search-empty]');
-    const stickyHeader = document.querySelector('.stock-page-header');
-    const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
-    const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+    const plotSelect = launchModal?.querySelector('[data-soil-plot-select]');
     const isEditing = {{ 'true' if edit_analysis else 'false' }};
     const generatedRecommendationId = {{ generated_recommendation_id or 'null' }};
     const aiLoadingOverlay = document.querySelector('[data-soil-ai-loading-overlay]');
 
     const closeModal = () => {
-        if (isEditing) {
-            window.location.href = '/analise-solo';
-            return;
-        }
+        if (isEditing) { window.location.href = '/analise-solo'; return; }
         launchModal?.close();
     };
-
-    openButtons.forEach((button) => button.addEventListener('click', () => launchModal?.showModal()));
-    closeButtons.forEach((button) => button.addEventListener('click', closeModal));
-    launchModal?.addEventListener('cancel', (event) => {
-        event.preventDefault();
-        closeModal();
+    document.querySelectorAll('[data-soil-launch-open]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const pre = btn.dataset.soilPreselectPlot;
+            if (pre && plotSelect) plotSelect.value = pre;
+            launchModal?.showModal();
+        });
     });
+    document.querySelectorAll('[data-soil-launch-close]').forEach((b) => b.addEventListener('click', closeModal));
+    launchModal?.addEventListener('cancel', (e) => { e.preventDefault(); closeModal(); });
     if (isEditing) launchModal?.showModal();
 
     document.querySelectorAll('[data-soil-ai-generate-form]').forEach((form) => {
         form.addEventListener('submit', () => {
-            const submitButton = form.querySelector('button[type="submit"], button:not([type])');
-            if (submitButton) {
-                submitButton.disabled = true;
-                submitButton.classList.add('cursor-wait', 'opacity-70');
-            }
             aiLoadingOverlay?.classList.remove('hidden');
             aiLoadingOverlay?.classList.add('flex');
         });
     });
 
     document.querySelectorAll('[data-soil-recommendations-dialog]').forEach((dlg) => {
-        dlg.querySelectorAll('[data-soil-recommendations-close]').forEach((btn) => {
-            btn.addEventListener('click', () => dlg.close());
-        });
-        dlg.addEventListener('cancel', (event) => {
-            event.preventDefault();
-            dlg.close();
-        });
+        dlg.querySelectorAll('[data-soil-recommendations-close]').forEach((btn) => btn.addEventListener('click', () => dlg.close()));
+        dlg.addEventListener('cancel', (e) => { e.preventDefault(); dlg.close(); });
     });
     document.querySelectorAll('[data-ar-root]').forEach((root) => {
         const tabs = Array.from(root.querySelectorAll('[data-ar-tab]'));
@@ -424,24 +509,23 @@
         };
         tabs.forEach((tab, index) => {
             tab.addEventListener('click', () => select(tab.dataset.arTab));
-            tab.addEventListener('keydown', (event) => {
-                const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+            tab.addEventListener('keydown', (e) => {
+                const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
                 if (!step) return;
-                event.preventDefault();
+                e.preventDefault();
                 select(tabs[(index + step + tabs.length) % tabs.length].dataset.arTab, true);
             });
         });
-        root.querySelectorAll('[data-ar-goto]').forEach((button) => button.addEventListener('click', () => select(button.dataset.arGoto, true)));
+        root.querySelectorAll('[data-ar-goto]').forEach((b) => b.addEventListener('click', () => select(b.dataset.arGoto, true)));
     });
-    document.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-soil-recommendations-open]');
-        if (!button) return;
-        const dialog = document.getElementById(button.dataset.soilRecommendationsOpen);
-        if (!dialog) return;
-        button.closest('#history-view-modal')?.close();
-        dialog.showModal();
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-soil-recommendations-open]');
+        if (!btn) return;
+        const dlg = document.getElementById(btn.dataset.soilRecommendationsOpen);
+        if (!dlg) return;
+        btn.closest('#history-view-modal')?.close();
+        dlg.showModal();
     });
-
     if (generatedRecommendationId) {
         document.getElementById(`soil-recommendations-${generatedRecommendationId}`)?.showModal();
         const url = new URL(window.location.href);
@@ -449,119 +533,151 @@
         window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
     }
 
-    const contextToggle = document.querySelector('[data-soil-context-toggle]');
-    const contextCollapse = document.querySelector('[data-soil-context-collapse]');
-    const contextToggleLabel = document.querySelector('[data-soil-context-toggle-label]');
-    const contextTogglePlus = document.querySelector('[data-soil-context-toggle-plus]');
-    const syncContextToggle = (expanded) => {
-        if (!contextCollapse || !contextToggle) return;
-        contextCollapse.classList.toggle('is-expanded', expanded);
-        contextToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        if (contextToggleLabel) contextToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
-        if (contextTogglePlus) contextTogglePlus.classList.toggle('hidden', expanded);
-    };
-    syncContextToggle(false);
-    contextToggle?.addEventListener('click', () => {
-        const expanded = !contextCollapse?.classList.contains('is-expanded');
-        syncContextToggle(!!expanded);
-    });
+    // Ponte Análise de Solo -> Agenda (rascunho conferível)
+    const schedDialog = document.getElementById('soil-schedule-dialog');
+    const schedForm = document.getElementById('soil-schedule-form');
+    const schedBody = schedDialog?.querySelector('[data-soil-schedule-body]');
+    const schedSub = schedDialog?.querySelector('[data-soil-schedule-subtitle]');
+    const schedEntriesInput = schedDialog?.querySelector('[data-soil-schedule-entries-input]');
+    const schedSubmit = schedDialog?.querySelector('[data-soil-schedule-submit]');
+    let schedDraft = null;
 
-    const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    const applyLocalSearch = () => {
-        const query = normalizeText(searchInput?.value || '');
-        let visible = 0;
-        cards.forEach((card) => {
-            const haystack = normalizeText(card.dataset.soilSearchText || card.textContent);
-            const matches = !query || haystack.includes(query);
-            card.classList.toggle('hidden', !matches);
-            if (matches) visible += 1;
-        });
-        emptyState?.classList.toggle('hidden', visible !== 0);
-    };
-    searchInput?.addEventListener('input', applyLocalSearch);
-    applyLocalSearch();
-
-    const mobileCompactMq = window.matchMedia('(max-width: 899px)');
-    const parseStickyTopPx = (el) => {
-        const raw = getComputedStyle(el).top;
-        if (!raw || raw === 'auto') return 0;
-        const pxMatch = /^([\d.]+)px$/.exec(raw);
-        if (pxMatch) return parseFloat(pxMatch[1]);
-        const remMatch = /^([\d.]+)rem$/.exec(raw);
-        if (remMatch) {
-            const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-            return parseFloat(remMatch[1]) * rootPx;
-        }
-        return 0;
-    };
-
-    let compactRaf = null;
-    const syncSoilHeaderCompact = () => {
-        compactRaf = null;
-        if (!stickyHeader) return;
-        if (!mobileCompactMq.matches) {
-            stickyHeader.classList.remove('is-compact');
-            headerIntro?.removeAttribute('aria-hidden');
+    const renderSchedDraft = () => {
+        if (!schedDraft || !schedBody) return;
+        const catalogOpts = (selectedId, recName) => {
+            const opts = [`<option value="auto" ${!selectedId ? 'selected' : ''}>+ Cadastrar automático: ${esc(recName)}</option>`];
+            (schedDraft.catalog || []).forEach((c) => {
+                opts.push(`<option value="${c.id}" ${Number(selectedId) === c.id ? 'selected' : ''}>${esc(c.name)} (${c.available} ${esc(c.unit)} disp.)</option>`);
+            });
+            return opts.join('');
+        };
+        if (!schedDraft.events.length) {
+            schedBody.innerHTML = '<div class="pd-empty"><strong>Nenhuma etapa pronta para agendar neste laudo.</strong></div>';
+            if (schedSubmit) schedSubmit.disabled = true;
             return;
         }
-        const topPx = parseStickyTopPx(stickyHeader);
-        const rect = stickyHeader.getBoundingClientRect();
-        const isCompact = stickyHeader.classList.contains('is-compact');
-        const nextCompact = rect.top <= topPx + 2 ? true : rect.top > topPx + 8 ? false : isCompact;
-        stickyHeader.classList.toggle('is-compact', nextCompact);
-        headerIntro?.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
-    };
-    const scheduleSoilHeaderCompact = () => {
-        if (compactRaf !== null) return;
-        compactRaf = window.requestAnimationFrame(syncSoilHeaderCompact);
+        if (schedSubmit) schedSubmit.disabled = false;
+        schedBody.innerHTML = `<div class="lv-sched-draft-list">${schedDraft.events.map((ev, eIdx) => `
+            <article class="lv-sched-draft-card">
+                <div class="lv-sched-draft-head">
+                    <label style="display:flex; align-items:center; gap:.55rem; font-weight:700; color:#16201A; cursor:pointer;">
+                        <input type="checkbox" ${ev.selected !== false ? 'checked' : ''} data-sd-toggle="${eIdx}" style="width:1.1rem; height:1.1rem; accent-color:#446A36;">
+                        <span>${esc(ev.operation)}</span>
+                    </label>
+                    <div class="lv-sched-draft-ctrl">
+                        <input type="date" value="${esc(ev.scheduled_date)}" data-sd-date="${eIdx}">
+                        <select data-sd-method="${eIdx}">
+                            <option value="fertirrigacao" ${ev.method === 'fertirrigacao' ? 'selected' : ''}>Fertirrigação</option>
+                            <option value="adubacao_solida" ${ev.method === 'adubacao_solida' ? 'selected' : ''}>Adubação sólida</option>
+                            <option value="fertilizacao_foliar" ${ev.method === 'fertilizacao_foliar' ? 'selected' : ''}>Foliar</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="lv-sched-draft-items">
+                    ${ev.items.map((it, iIdx) => `
+                        <div class="lv-sched-draft-item">
+                            <div class="min-w-0">
+                                <small class="lv-muted">Recomendado: ${esc(it.recommended_name)}</small>
+                                <select data-sd-input="${eIdx}:${iIdx}">${catalogOpts(it.input_id, it.recommended_name)}</select>
+                            </div>
+                            <div class="lv-sched-draft-qty">
+                                <input type="number" step="0.01" min="0.01" value="${it.quantity}" data-sd-qty="${eIdx}:${iIdx}">
+                                <span>${esc(it.unit)}</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </article>
+        `).join('')}</div>`;
     };
 
-    let fadeRaf = null;
-    const syncSoilFadingPanels = () => {
-        fadeRaf = null;
-        if (!stickyHeader) return;
-        const stickyBottom = stickyHeader.getBoundingClientRect().bottom;
-        fadingPanels.forEach((panel) => {
-            const panelRect = panel.getBoundingClientRect();
-            const overlap = Math.min(Math.max(stickyBottom - panelRect.top, 0), panelRect.height);
-            const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
-            panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
-            panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
-            panel.classList.toggle('stock-panel-under-header', mobileCompactMq.matches && overlap > 0.02);
+    schedBody?.addEventListener('change', (e) => {
+        if (!schedDraft) return;
+        const t = e.target;
+        if (t.matches('[data-sd-toggle]')) schedDraft.events[Number(t.dataset.sdToggle)].selected = t.checked;
+        if (t.matches('[data-sd-date]')) schedDraft.events[Number(t.dataset.sdDate)].scheduled_date = t.value;
+        if (t.matches('[data-sd-method]')) schedDraft.events[Number(t.dataset.sdMethod)].method = t.value;
+        if (t.matches('[data-sd-input]')) {
+            const [ei, ii] = t.dataset.sdInput.split(':').map(Number);
+            schedDraft.events[ei].items[ii].input_id = t.value === 'auto' ? null : Number(t.value);
+        }
+        if (t.matches('[data-sd-qty]')) {
+            const [ei, ii] = t.dataset.sdQty.split(':').map(Number);
+            schedDraft.events[ei].items[ii].quantity = Number(t.value || 0);
+        }
+    });
+
+    schedForm?.addEventListener('submit', (e) => {
+        if (!schedDraft || !schedEntriesInput) { e.preventDefault(); return; }
+        const chosen = schedDraft.events.filter((ev) => ev.selected !== false);
+        if (!chosen.length) { e.preventDefault(); alert('Selecione ao menos uma etapa para agendar.'); return; }
+        schedEntriesInput.value = JSON.stringify(chosen);
+    });
+
+    document.querySelectorAll('[data-soil-schedule-close]').forEach((b) => b.addEventListener('click', () => schedDialog?.close()));
+    document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-soil-schedule-open]');
+        if (!btn || !schedDialog || !schedBody) return;
+        const id = btn.dataset.soilScheduleOpen;
+        btn.closest('dialog[data-soil-recommendations-dialog]')?.close();
+        schedForm.action = `/analise-solo/${id}/agendar`;
+        schedBody.innerHTML = '<p class="ft-calm">Montando rascunho dos agendamentos a partir do plano agronômico...</p>';
+        schedDialog.showModal();
+        try {
+            const res = await fetch(`/analise-solo/${id}/agendar`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+            const data = await res.json();
+            if (!res.ok || !data.ok) throw new Error(data.error || 'Não foi possível preparar o cronograma.');
+            schedDraft = { ...data, events: (data.events || []).map((ev) => ({ ...ev, selected: true })) };
+            if (schedSub) schedSub.textContent = `${data.plot_name} (${data.area_ha} ha) · confira cada etapa antes de criar na Agenda.`;
+            renderSchedDraft();
+        } catch (err) {
+            schedBody.innerHTML = `<div class="pd-alert is-error">${esc(err.message || 'Erro ao carregar cronograma.')}</div>`;
+            if (schedSubmit) schedSubmit.disabled = true;
+        }
+    });
+
+    // Busca local
+    const searchInput = document.querySelector('[data-soil-search]');
+    const cards = Array.from(document.querySelectorAll('[data-soil-card]'));
+    const emptyEl = document.querySelector('[data-soil-search-empty]');
+    const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    searchInput?.addEventListener('input', () => {
+        const q = norm(searchInput.value);
+        let vis = 0;
+        cards.forEach((c) => {
+            const show = !q || norm(c.dataset.soilSearchText || c.textContent).includes(q);
+            c.hidden = !show;
+            if (show) vis += 1;
         });
-    };
-    const scheduleSoilFadingPanels = () => {
-        if (fadeRaf !== null) return;
-        fadeRaf = window.requestAnimationFrame(syncSoilFadingPanels);
-    };
+        if (emptyEl) emptyEl.hidden = vis > 0 || cards.length === 0;
+    });
 
-    if (stickyHeader) {
-        window.addEventListener('scroll', scheduleSoilHeaderCompact, { passive: true });
-        window.addEventListener('scroll', scheduleSoilFadingPanels, { passive: true });
-        window.addEventListener('resize', scheduleSoilHeaderCompact);
-        window.addEventListener('resize', scheduleSoilFadingPanels);
-        if (mobileCompactMq.addEventListener) mobileCompactMq.addEventListener('change', scheduleSoilHeaderCompact);
-        else if (mobileCompactMq.addListener) mobileCompactMq.addListener(scheduleSoilHeaderCompact);
-        scheduleSoilHeaderCompact();
-        scheduleSoilFadingPanels();
+    // Gráfico de evolução com filtro por indicador
+    const soilHistory = {{ compare_chart|safe }};
+    const allDatasets = [
+        { label: 'pH', data: soilHistory.ph, borderColor: '#1F5FA8', backgroundColor: 'rgba(31,95,168,0.08)', tension: 0.3 },
+        { label: 'P', data: soilHistory.phosphorus, borderColor: '#446A36', backgroundColor: 'rgba(68,106,54,0.08)', tension: 0.3 },
+        { label: 'K', data: soilHistory.potassium, borderColor: '#D18A00', backgroundColor: 'rgba(209,138,0,0.08)', tension: 0.3 },
+        { label: 'Ca', data: soilHistory.calcium, borderColor: '#7C3AED', backgroundColor: 'rgba(124,58,237,0.08)', tension: 0.3 },
+        { label: 'Mg', data: soilHistory.magnesium, borderColor: '#0F766E', backgroundColor: 'rgba(15,118,110,0.08)', tension: 0.3 },
+        { label: 'V%', data: soilHistory.base_saturation, borderColor: '#B42318', backgroundColor: 'rgba(180,35,24,0.08)', tension: 0.3 },
+    ];
+    const chartCanvas = document.getElementById('soilHistoryChart');
+    if (chartCanvas && typeof Chart !== 'undefined') {
+        const chart = new Chart(chartCanvas, {
+            type: 'line',
+            data: { labels: soilHistory.labels, datasets: allDatasets },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } } },
+        });
+        document.querySelectorAll('[data-soil-metric]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const metric = btn.dataset.soilMetric;
+                document.querySelectorAll('[data-soil-metric]').forEach((b) => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+                chart.data.datasets = metric === 'all' ? allDatasets : allDatasets.filter((d) => d.label === metric);
+                chart.update();
+            });
+        });
     }
 })();
-
-const soilHistory = {{ compare_chart|safe }};
-new Chart(document.getElementById('soilHistoryChart'), {
-    type: 'line',
-    data: {
-        labels: soilHistory.labels,
-        datasets: [
-            { label: 'pH', data: soilHistory.ph, borderColor: '#1d4ed8', backgroundColor: 'rgba(29,78,216,0.08)', tension: 0.3 },
-            { label: 'P', data: soilHistory.phosphorus, borderColor: '#446a36', backgroundColor: 'rgba(68,106,54,0.08)', tension: 0.3 },
-            { label: 'K', data: soilHistory.potassium, borderColor: '#b45309', backgroundColor: 'rgba(180,83,9,0.08)', tension: 0.3 },
-            { label: 'Ca', data: soilHistory.calcium, borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,0.08)', tension: 0.3 },
-            { label: 'Mg', data: soilHistory.magnesium, borderColor: '#0f766e', backgroundColor: 'rgba(15,118,110,0.08)', tension: 0.3 },
-            { label: 'V%', data: soilHistory.base_saturation, borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.08)', tension: 0.3 }
-        ]
-    },
-    options: { responsive: true, maintainAspectRatio: false }
-});
 </script>
 {% endblock %}

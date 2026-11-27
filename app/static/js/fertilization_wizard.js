@@ -72,8 +72,33 @@
         catalogOnlyInStock: true,
         catalogSort: 'popular',
         catalogLimit: 20,
+        saveAsRecipe: false,
+        saveRecipeName: '',
         items: (init.items || []).map((it) => ({ inputId: Number(it.inputId), value: Number(it.value || 0) })),
     };
+
+    function checkMixCompatibility() {
+        const names = wiz.items
+            .filter((it) => it.inputId && Number(it.value) > 0)
+            .map((it) => (getInput(it.inputId)?.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase());
+        const alerts = [];
+        const hasCalciumNitrate = names.some((n) => n.includes('nitrato') && n.includes('calcio'));
+        const hasPhosOrSulf = names.some((n) => n.includes('map') || n.includes('mkp') || n.includes('fosfat') || n.includes('sulfato') || n.includes('superfosf'));
+        if (hasCalciumNitrate && hasPhosOrSulf) {
+            alerts.push({ level: 'err', text: 'Incompatibilidade no tanque: Nitrato de Cálcio não deve ser misturado com fosfatos (MAP/MKP) ou sulfatos — forma precipitado e entope gotejadores. Aplique em tanques ou dias separados.' });
+        }
+        const hasUrea = names.some((n) => n.includes('ureia'));
+        const hasSsp = names.some((n) => n.includes('superfosfato simples') || /\bssp\b/.test(n));
+        if (hasUrea && hasSsp) {
+            alerts.push({ level: 'warn', text: 'Atenção à mistura: Ureia com Superfosfato Simples absorve umidade e empedra se misturada com antecedência. Misture apenas na hora da aplicação.' });
+        }
+        const hasLime = names.some((n) => n.includes('calcario'));
+        const hasAmmoniacal = names.some((n) => n.includes('ureia') || n.includes('sulfato de amon') || n.includes('map'));
+        if (hasLime && hasAmmoniacal) {
+            alerts.push({ level: 'warn', text: 'Atenção agronômica: evite aplicar calcário junto com adubos nitrogenados amoniacais ou fosfatados na mesma operação — prefira intervalo mínimo de 60 dias para evitar perda de nitrogênio.' });
+        }
+        return alerts;
+    }
 
     const stageEl = root.querySelector('[data-ftw-step-stage]');
     const summaryEl = root.querySelector('[data-ftw-summary]');
@@ -452,6 +477,18 @@
             </div>
 
             <!-- Composição dos insumos selecionados (stepper + impacto de estoque) -->
+            ${(() => {
+                const compatAlerts = checkMixCompatibility();
+                if (!compatAlerts.length) return '';
+                return compatAlerts.map((a) => `
+                    <div class="ftw-stock-notice ${a.level === 'err' ? 'is-block' : ''}" role="alert" style="margin-bottom: .75rem;">
+                        <div class="ftw-stock-notice-body">
+                            <strong>${a.level === 'err' ? 'Alerta de mistura incompatível' : 'Cuidado na mistura'}</strong>
+                            <p>${esc(a.text)}</p>
+                        </div>
+                    </div>
+                `).join('');
+            })()}
             <div class="ftw-sec">
                 <div class="ftw-sec-head">
                     <div class="ftw-sec-title-inline">
@@ -699,6 +736,21 @@
                 <div class="ftw-rev-notes">
                     <span class="pd-eyebrow">Observações de campo</span>
                     <p>${esc(wiz.notes)}</p>
+                </div>
+            ` : ''}
+
+            ${!IS_EDIT ? `
+                <div class="ftw-rev-box" style="margin-top: .75rem;">
+                    <label style="display:flex; align-items:center; gap:.6rem; cursor:pointer; font-size:.9rem; font-weight:600; color:#16201A;">
+                        <input type="checkbox" ${wiz.saveAsRecipe ? 'checked' : ''} data-ftw-save-recipe-toggle style="width:1.1rem; height:1.1rem; accent-color:#446A36;">
+                        <span>Salvar esta mistura como receita reutilizável</span>
+                    </label>
+                    ${wiz.saveAsRecipe ? `
+                        <label class="ft-field" style="margin-top:.65rem;">
+                            <span>Nome da nova receita</span>
+                            <input type="text" placeholder="Ex.: Fertirrigação de Pegamento" value="${esc(wiz.saveRecipeName || wiz.recipeName || '')}" data-ftw-save-recipe-name>
+                        </label>
+                    ` : ''}
                 </div>
             ` : ''}
         `;
@@ -953,8 +1005,9 @@
                 const rec = RECS.find((r) => r.id === Number(b.dataset.ftwRec));
                 if (!rec) return;
                 wiz.recipeName = rec.name;
-                wiz.doseMode = 'per_ha';
-                wiz.items = rec.items.map((x) => ({ inputId: Number(x.inputId), value: Number(x.dosePerHa || 0) }));
+                wiz.doseMode = rec.doseMode || 'per_ha';
+                if (rec.method && METHOD_META[rec.method]) wiz.method = rec.method;
+                wiz.items = rec.items.map((x) => ({ inputId: Number(x.inputId), value: Number(x.value ?? x.dosePerHa ?? 0) }));
                 render();
             });
         });
@@ -1014,6 +1067,14 @@
         stageEl.querySelectorAll('[data-ftw-jump]').forEach((b) => {
             b.addEventListener('click', () => { wiz.step = Number(b.dataset.ftwJump); render(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
         });
+        stageEl.querySelector('[data-ftw-save-recipe-toggle]')?.addEventListener('change', (e) => {
+            wiz.saveAsRecipe = Boolean(e.target.checked);
+            if (wiz.saveAsRecipe && !wiz.saveRecipeName) wiz.saveRecipeName = wiz.recipeName || '';
+            render();
+        });
+        stageEl.querySelector('[data-ftw-save-recipe-name]')?.addEventListener('input', (e) => {
+            wiz.saveRecipeName = e.target.value;
+        });
     }
 
     // Navegação dos passos
@@ -1052,6 +1113,8 @@
             recipeName: wiz.recipeName,
             notes: wiz.notes,
             doseMode: wiz.doseMode,
+            saveAsRecipe: Boolean(wiz.saveAsRecipe && !IS_EDIT),
+            saveRecipeName: (wiz.saveRecipeName || wiz.recipeName || '').trim(),
             items: wiz.items.filter((x) => x.inputId && Number(x.value) > 0),
         });
     });

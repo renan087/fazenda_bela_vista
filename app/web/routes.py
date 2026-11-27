@@ -372,10 +372,27 @@ from app.services.forms import (
 )
 from app.services.fertilization_views import (
     build_fertilization_page_context,
+    build_recipes_page_context,
     build_schedules_page_context,
     build_wizard_payload,
 )
 from app.services.openai_service import gerar_recomendacao_adubacao, read_soil_recommendation
+from app.services.soil_schedule_bridge import (
+    build_soil_page_context,
+    build_soil_schedule_preview,
+    create_schedules_from_soil_plan,
+)
+from app.services.climate_water import (
+    build_climate_water_context,
+    build_irrigation_page_context,
+    build_rainfall_page_context,
+)
+from app.services.lavoura_overview import build_lavoura_overview_context
+from app.services.operations_pests_views import (
+    active_withdrawals_by_plot,
+    build_operations_page_context,
+    build_pests_page_context,
+)
 from app.services.soil_measurements import FIELDS as SOIL_FIELDS, EXTRA_FIELDS as SOIL_EXTRA_FIELDS, METHODS as SOIL_METHODS, canonical_value, parse_metadata, validate_metadata, validate_measurements
 from app.services.stock_assistant import assistant_available
 from app.services.password_change import (
@@ -922,12 +939,14 @@ FINANCE_TRANSACTION_OPERATIONAL_EXPENSE_CATEGORIES = frozenset(
     }
 )
 AGRICULTURAL_OPERATION_TYPES = (
-    ("preparo_solo", "Preparo do solo", "Preparo do Solo"),
+    ("pulverizacao", "Pulverização fitossanitária", "Outros Defensivos"),
+    ("manejo_mato", "Controle de mato / Herbicida", "Herbicida"),
     ("rocagem", "Roçagem", "Serviços Terceirizados"),
-    ("pulverizacao", "Pulverização", "Outros Defensivos"),
     ("poda", "Poda", "Serviços Terceirizados"),
-    ("manejo_mato", "Manejo de plantas daninhas", "Herbicida"),
-    ("colheita", "Colheita", "Serviços Terceirizados"),
+    ("calagem_gessagem", "Calagem / Gessagem", "Corretivos de Solo"),
+    ("preparo_solo", "Preparo do solo", "Preparo do Solo"),
+    ("arruacao", "Arruação / Esquiamento", "Serviços Terceirizados"),
+    ("colheita", "Apoio à colheita (serviço)", "Serviços Terceirizados"),
     ("servico_terceirizado", "Serviço terceirizado", "Serviços Terceirizados"),
     ("outro", "Outra operação", "Outros Itens"),
 )
@@ -9911,7 +9930,7 @@ def farm_detail_page(
     if not farm or (user.organization_id and farm.organization_id != user.organization_id):
         _flash(request, "error", "Fazenda não encontrada.")
         return _redirect("/fazendas")
-    active_tab = aba if aba in {"visao", "setores", "safras", "documentos", "chuva"} else "visao"
+    active_tab = aba if aba in {"visao", "setores", "safras", "documentos", "chuva", "agronomico"} else "visao"
     farm_preview_ready, farm_preview_fingerprint, farm_boundary_by_id = _farm_preview_bundle(db, [farm], background_tasks)
     farm_metrics, _ = _farm_overview_metrics(db, [farm])
     metrics = farm_metrics[farm.id]
@@ -9959,6 +9978,48 @@ def farm_detail_page(
 
     rain_settings = _farm_rain_settings(db, farm.id) if active_tab == "chuva" else dict(RAIN_SETTINGS_DEFAULTS)
     month_rain_mm = _farm_month_rainfall_mm(db, farm.id, today_in_app_timezone()) if active_tab == "visao" else 0.0
+    agronomic_profile = None
+    agronomic_completion = 0
+    agronomic_derived: dict = {}
+    if active_tab == "agronomico":
+        agronomic_profile = repo.get_agronomic_profile_by_farm(farm.id)
+        agronomic_completion, _ = _agronomic_profile_completion(agronomic_profile)
+        farm_plots = repo.list_plots(farm_ids=[farm.id])
+        farm_plot_ids = {p.id for p in farm_plots}
+        sug_base: dict[str, dict[str, str]] = {}
+        from app.services.agronomic_profile_suggestions import _append_plot_suggestions
+        _append_plot_suggestions(sug_base, farm_plots)
+        top_ferts: list[str] = []
+        if farm_plot_ids:
+            fert_names = [f.product for f in repo.list_fertilizations() if f.plot_id in farm_plot_ids and f.product]
+            seen_f: list[str] = []
+            for fn in fert_names:
+                if fn not in seen_f:
+                    seen_f.append(fn)
+                if len(seen_f) >= 4:
+                    break
+            top_ferts = seen_f
+        top_pests: list[str] = []
+        if farm_plot_ids:
+            pest_names = [p.name for p in repo.list_pest_incidents() if p.plot_id in farm_plot_ids and p.name]
+            seen_p: list[str] = []
+            for pn in pest_names:
+                if pn not in seen_p:
+                    seen_p.append(pn)
+                if len(seen_p) >= 4:
+                    break
+            top_pests = seen_p
+        agronomic_derived = {
+            "culture": sug_base.get("culture", {}).get("value", ""),
+            "cultivar": sug_base.get("cultivar", {}).get("value", ""),
+            "production_system": sug_base.get("production_system", {}).get("value", ""),
+            "irrigation_system": sug_base.get("irrigation_system", {}).get("value", ""),
+            "plant_spacing": sug_base.get("plant_spacing", {}).get("value", ""),
+            "drip_spacing": sug_base.get("drip_spacing", {}).get("value", ""),
+            "crop_stage": sug_base.get("crop_stage", {}).get("value", ""),
+            "top_fertilizers": ", ".join(top_ferts),
+            "top_pests": ", ".join(top_pests),
+        }
     google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
     return templates.TemplateResponse(
         "farm_detail.html",
@@ -9974,6 +10035,9 @@ def farm_detail_page(
             active_tab=active_tab,
             rain_settings=rain_settings,
             month_rain_mm=month_rain_mm,
+            agronomic_profile=agronomic_profile,
+            agronomic_completion=agronomic_completion,
+            agronomic_derived=agronomic_derived,
             farm_preview_ready=farm_preview_ready,
             farm_preview_fingerprint=farm_preview_fingerprint,
             farm_boundary_geometries_json=json.dumps(farm_boundary_by_id),
@@ -9982,6 +10046,78 @@ def farm_detail_page(
             _repo=repo,
         ),
     )
+
+
+@router.post("/fazendas/{farm_id:int}/agronomico")
+def save_farm_agronomic_profile_action(
+    farm_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    culture: str = Form(...),
+    region: str = Form(...),
+    climate: str | None = Form(None),
+    soil_type: str | None = Form(None),
+    irrigation_system: str | None = Form(None),
+    plant_spacing: str | None = Form(None),
+    drip_spacing: str | None = Form(None),
+    fertilizers_used: str | None = Form(None),
+    crop_stage: str | None = Form(None),
+    common_pests: str | None = Form(None),
+    cultivar: str | None = Form(None),
+    production_system: str | None = Form(None),
+    altitude_meters: str | None = Form(None),
+    terrain_slope: str | None = Form(None),
+    sun_exposure: str | None = Form(None),
+    target_productivity_sacks_per_ha: str | None = Form(None),
+    last_liming_date: str | None = Form(None),
+    last_gypsum_date: str | None = Form(None),
+    last_organic_matter_date: str | None = Form(None),
+    pruning_history: str | None = Form(None),
+    current_limitations: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    denied = _require_permission(request, user, db, write_permission_for_page(PAGE_PRODUCTIVE_UNIT))
+    if denied:
+        return denied
+    repo = _repository(db)
+    farm = repo.get_farm(farm_id)
+    if not farm or (user.organization_id and farm.organization_id != user.organization_id):
+        _flash(request, "error", "Fazenda não encontrada.")
+        return _redirect("/fazendas")
+    existing = repo.get_agronomic_profile_by_farm(farm.id)
+    payload = {
+        "farm_id": farm.id,
+        "culture": culture,
+        "region": region,
+        "climate": climate,
+        "soil_type": soil_type,
+        "irrigation_system": irrigation_system,
+        "plant_spacing": plant_spacing,
+        "drip_spacing": drip_spacing,
+        "fertilizers_used": fertilizers_used,
+        "crop_stage": crop_stage,
+        "common_pests": common_pests,
+        "cultivar": cultivar,
+        "production_system": production_system,
+        "altitude_meters": _int_or_none(altitude_meters),
+        "terrain_slope": terrain_slope,
+        "sun_exposure": sun_exposure,
+        "target_productivity_sacks_per_ha": _float_or_none(target_productivity_sacks_per_ha),
+        "last_liming_date": _date_or_none(last_liming_date),
+        "last_gypsum_date": _date_or_none(last_gypsum_date),
+        "last_organic_matter_date": _date_or_none(last_organic_matter_date),
+        "pruning_history": pruning_history,
+        "current_limitations": current_limitations,
+    }
+    if existing:
+        update_agronomic_profile(repo, existing, payload)
+        _flash(request, "success", f"Dados agronômicos de {farm.name} atualizados.")
+    else:
+        create_agronomic_profile(repo, payload)
+        _flash(request, "success", f"Dados agronômicos de {farm.name} salvos.")
+    return _redirect(f"/fazendas/{farm.id}?aba=agronomico")
 
 
 @router.get("/fazendas/{farm_id:int}/editar")
@@ -17958,6 +18094,58 @@ def delete_equipment_asset_attachment_action(
     return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
 
 
+def _maybe_save_wizard_recipe(
+    repo: FarmRepository,
+    *,
+    scope: dict,
+    wiz_payload: dict | None,
+    catalog_by_id: dict,
+    application_method: str | None,
+    dose_mode: str,
+    notes: str | None,
+) -> None:
+    if not wiz_payload or not wiz_payload.get("saveAsRecipe"):
+        return
+    name = str(wiz_payload.get("saveRecipeName") or wiz_payload.get("recipeName") or "").strip()
+    raw_items = wiz_payload.get("items") or []
+    if not name or not raw_items:
+        return
+    rec_items = []
+    for raw in raw_items:
+        input_id = _int_or_none(raw.get("inputId"))
+        try:
+            qty = float(raw.get("value") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        cat = catalog_by_id.get(input_id) if input_id else None
+        if cat and qty > 0:
+            rec_items.append({"input_id": cat.id, "unit": cat.default_unit or "kg", "quantity": round(qty, 2)})
+    if not rec_items:
+        return
+    create_input_recommendation(
+        repo,
+        {
+            "farm_id": scope.get("active_farm_id"),
+            "plot_id": None,
+            "application_name": name,
+            "dose_mode": dose_mode,
+            "application_method": application_method or "fertirrigacao",
+            "items": rec_items,
+            "notes": notes,
+        },
+    )
+
+
+def _count_scoped_recipes(repo: FarmRepository, farm_id: int | None, plot_ids: set[int]) -> int:
+    recs = repo.list_input_recommendations(farm_id=farm_id) if farm_id else repo.list_input_recommendations()
+    return sum(
+        1
+        for r in recs
+        if (not farm_id or r.farm_id == farm_id) and (not plot_ids or r.plot_id is None or r.plot_id in plot_ids)
+    )
+
+
+@router.get("/fertilizacao/receitas")
 @router.get("/insumos/recomendacao")
 def input_recommendations_page(
     request: Request,
@@ -17969,7 +18157,10 @@ def input_recommendations_page(
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    start_date, end_date, _, _ = _schedule_filter_date_bounds(request, scope["active_season"], flash_invalid=False)
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    linked_plots = _season_launch_plots(plots, scope)
+    plots = list({plot.id: plot for plot in [*plots, *linked_plots]}.values())
     plot_ids = {plot.id for plot in plots}
     edit_recommendation = repo.get_input_recommendation(edit_id) if edit_id else None
     if edit_recommendation and not _farm_matches_scope(edit_recommendation.farm_id, scope):
@@ -17977,11 +18168,10 @@ def input_recommendations_page(
     launch_plots = _season_launch_plots(plots, scope)
     if edit_recommendation and edit_recommendation.plot and _plot_matches_scope(edit_recommendation.plot, scope) and edit_recommendation.plot not in launch_plots:
         launch_plots = [*launch_plots, edit_recommendation.plot]
-    catalog_inputs = repo.list_input_catalog(
-        item_type="insumo_agricola",
-        organization_id=_scope_organization_id(scope),
-    )
-    purchase_entries = repo.list_purchased_inputs(include_stock_adjustments=True)
+    farm_id = scope["active_farm_id"] if scope["active_farm_id"] else None
+    stock_context = _build_stock_context(repo, farm_id=farm_id, item_type="insumo_agricola")
+    catalog_inputs = stock_context["consumption_catalog_inputs"]
+    purchase_entries = stock_context["purchase_entries"]
     input_stock = {
         item.id: {
             "available": round(
@@ -18004,6 +18194,15 @@ def input_recommendations_page(
         recommendations,
         lambda item: item.id,
     )
+    ft_recipes_ctx = build_recipes_page_context(
+        recommendations=recommendations,
+        inputs_catalog=catalog_inputs,
+        purchased_inputs=purchase_entries,
+        farm_id=farm_id,
+    )
+    schedules = repo.list_fertilization_schedules_for_scope(plot_ids, start_date, end_date)
+    active_sched_count = sum(1 for s in schedules if (s.status or "").lower() != "completed")
+    fertilizations = _filter_fertilization_records(repo, plot_ids, start_date, end_date)
     recommendations_pagination = _paginate_collection(request, recommendations, "recommendations_page")
     return templates.TemplateResponse(
         "input_recommendations.html",
@@ -18011,10 +18210,10 @@ def input_recommendations_page(
             request,
             user,
             csrf_token,
-            "input_recommendations",
+            "fertilization",
             _repo=repo,
-            title="Recomendacao de Insumos",
-            farms=scope["context_farms"],
+            title="Receitas de Adubação",
+            farms=scope.get("context_farms", []),
             plots=plots,
             launch_plots=launch_plots,
             inputs_catalog=catalog_inputs,
@@ -18022,10 +18221,14 @@ def input_recommendations_page(
             recommendations=recommendations_pagination["items"],
             recommendations_pagination=recommendations_pagination,
             edit_recommendation=edit_recommendation,
+            ft_recipes_ctx=ft_recipes_ctx,
+            ft_active_schedules_count=active_sched_count,
+            ft_fert_count=len(fertilizations),
         ),
     )
 
 
+@router.post("/fertilizacao/receitas")
 @router.post("/insumos/recomendacao")
 async def create_input_recommendation_action(
     request: Request,
@@ -18035,23 +18238,24 @@ async def create_input_recommendation_action(
     del user
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
+    back_path = "/fertilizacao/receitas" if request.url.path.startswith("/fertilizacao") else "/insumos/recomendacao"
     application_name = str(form.get("application_name") or "").strip()
     items = _parse_recommendation_items(form)
     if not application_name or not items:
-        _flash(request, "error", "Informe a aplicacao e adicione ao menos um insumo.")
-        return _redirect("/insumos/recomendacao")
+        _flash(request, "error", "Informe o nome da receita e adicione ao menos um insumo.")
+        return _redirect(back_path)
     repo = _repository(db)
     plot, scope, denied = _resolve_optional_plot_in_scope(
         request,
         repo,
         _int_or_none(form.get("plot_id")),
-        "/insumos/recomendacao",
+        back_path,
     )
     if denied:
         return denied
     if plot and not _plot_allowed_for_season_launch(plot, scope):
-        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
-        return _redirect("/insumos/recomendacao")
+        _flash(request, "error", "O talhão selecionado não está vinculado à safra ativa.")
+        return _redirect(back_path)
     notes = str(form.get("notes") or "") or None
     create_input_recommendation(
         repo,
@@ -18059,14 +18263,17 @@ async def create_input_recommendation_action(
             "farm_id": scope["active_farm_id"],
             "plot_id": plot.id if plot else None,
             "application_name": application_name,
+            "dose_mode": str(form.get("dose_mode") or "per_ha"),
+            "application_method": str(form.get("application_method") or "fertirrigacao"),
             "items": items,
             "notes": notes,
         },
     )
-    _flash(request, "success", "Recomendacao cadastrada com sucesso.")
-    return _redirect("/insumos/recomendacao")
+    _flash(request, "success", "Receita cadastrada com sucesso.")
+    return _redirect(back_path)
 
 
+@router.post("/fertilizacao/receitas/{recommendation_id}/editar")
 @router.post("/insumos/recomendacao/{recommendation_id}/editar")
 async def update_input_recommendation_action(
     recommendation_id: int,
@@ -18077,33 +18284,34 @@ async def update_input_recommendation_action(
     del user
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
+    back_path = "/fertilizacao/receitas" if request.url.path.startswith("/fertilizacao") else "/insumos/recomendacao"
     repo = _repository(db)
     plot, scope, denied = _resolve_optional_plot_in_scope(
         request,
         repo,
         _int_or_none(form.get("plot_id")),
-        "/insumos/recomendacao",
+        back_path,
     )
     if denied:
         return denied
     recommendation = repo.get_input_recommendation(recommendation_id)
     if not recommendation:
-        _flash(request, "error", "Recomendacao nao encontrada.")
-        return _redirect_for_request(request, "/insumos/recomendacao")
+        _flash(request, "error", "Receita não encontrada.")
+        return _redirect_for_request(request, back_path)
     if not _farm_matches_scope(recommendation.farm_id, scope):
-        _flash(request, "error", "Esta recomendacao nao pertence ao contexto ativo.")
-        return _redirect_for_request(request, "/insumos/recomendacao")
+        _flash(request, "error", "Esta receita não pertence ao contexto ativo.")
+        return _redirect_for_request(request, back_path)
     if recommendation.plot_id and not _plot_matches_scope(recommendation.plot, scope):
-        _flash(request, "error", "Esta recomendacao nao pertence ao contexto ativo.")
-        return _redirect_for_request(request, "/insumos/recomendacao")
+        _flash(request, "error", "Esta receita não pertence ao contexto ativo.")
+        return _redirect_for_request(request, back_path)
     if plot and plot.id != recommendation.plot_id and not _plot_allowed_for_season_launch(plot, scope):
-        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
-        return _redirect_for_request(request, "/insumos/recomendacao", edit_id=recommendation_id)
+        _flash(request, "error", "O talhão selecionado não está vinculado à safra ativa.")
+        return _redirect_for_request(request, back_path, edit_id=recommendation_id)
     application_name = str(form.get("application_name") or "").strip()
     items = _parse_recommendation_items(form)
     if not application_name or not items:
-        _flash(request, "error", "Informe a aplicacao e adicione ao menos um insumo.")
-        return _redirect_for_request(request, "/insumos/recomendacao", edit_id=recommendation_id)
+        _flash(request, "error", "Informe o nome da receita e adicione ao menos um insumo.")
+        return _redirect_for_request(request, back_path, edit_id=recommendation_id)
     update_input_recommendation(
         repo,
         recommendation,
@@ -18111,14 +18319,17 @@ async def update_input_recommendation_action(
             "farm_id": scope["active_farm_id"],
             "plot_id": plot.id if plot else None,
             "application_name": application_name,
+            "dose_mode": str(form.get("dose_mode") or recommendation.dose_mode or "per_ha"),
+            "application_method": str(form.get("application_method") or recommendation.application_method or "fertirrigacao"),
             "items": items,
             "notes": str(form.get("notes") or "") or None,
         },
     )
-    _flash(request, "success", "Recomendacao atualizada com sucesso.")
-    return _redirect_for_request(request, "/insumos/recomendacao")
+    _flash(request, "success", "Receita atualizada com sucesso.")
+    return _redirect_for_request(request, back_path)
 
 
+@router.post("/fertilizacao/receitas/{recommendation_id}/excluir")
 @router.post("/insumos/recomendacao/{recommendation_id}/excluir")
 def delete_input_recommendation_action(
     recommendation_id: int,
@@ -18129,14 +18340,15 @@ def delete_input_recommendation_action(
 ):
     del user
     validate_csrf(request, csrf_token)
+    back_path = "/fertilizacao/receitas" if request.url.path.startswith("/fertilizacao") else "/insumos/recomendacao"
     repo = _repository(db)
     recommendation = repo.get_input_recommendation(recommendation_id)
     if not recommendation:
-        _flash(request, "error", "Recomendacao nao encontrada.")
-        return _redirect("/insumos/recomendacao")
+        _flash(request, "error", "Receita não encontrada.")
+        return _redirect(back_path)
     repo.delete(recommendation)
-    _flash(request, "success", "Recomendacao excluida com sucesso.")
-    return _redirect("/insumos/recomendacao")
+    _flash(request, "success", "Receita excluída com sucesso.")
+    return _redirect(back_path)
 
 
 def _variety_form_values(name, species, maturation_cycle, flavor_profile, notes, plant_height, rust_resistance, map_color) -> dict:
@@ -18569,6 +18781,86 @@ def sector_costs_page(
     )
 
 
+def _restore_operation_stock_outputs(repo: FarmRepository, operation_id: int) -> None:
+    from app.models.stock_output import StockOutput
+
+    outputs = (
+        repo.db.query(StockOutput)
+        .filter(StockOutput.reference_type == "agricultural_operation", StockOutput.reference_id == operation_id)
+        .all()
+    )
+    for out in outputs:
+        allocations = (
+            repo.db.query(StockOutput)
+            .filter(
+                StockOutput.reference_type == "manual_stock_output_allocation",
+                StockOutput.reference_id == out.id,
+            )
+            .all()
+        )
+        for alloc in allocations:
+            if alloc.purchased_input:
+                alloc.purchased_input.available_quantity = round(
+                    float(alloc.purchased_input.available_quantity or 0) + float(alloc.quantity or 0), 2
+                )
+                repo.db.add(alloc.purchased_input)
+            repo.db.delete(alloc)
+        if out.purchased_input:
+            out.purchased_input.available_quantity = round(
+                float(out.purchased_input.available_quantity or 0) + float(out.quantity or 0), 2
+            )
+            repo.db.add(out.purchased_input)
+        repo.db.delete(out)
+    if outputs:
+        repo.db.flush()
+
+
+def _sync_operation_side_effects(
+    repo: FarmRepository,
+    *,
+    farm_id: int | None,
+    operation: AgriculturalOperation,
+    op_key: str,
+) -> None:
+    """Atualiza horímetro de máquina, status da ocorrência fitossanitária e histórico agronômico."""
+    if (operation.status or "realizada") != "realizada":
+        return
+    # 1. Horímetro de máquina (se mede em horas)
+    if operation.equipment_asset_id and operation.equipment_hours and float(operation.equipment_hours) > 0:
+        eq = repo.db.get(EquipmentAsset, operation.equipment_asset_id)
+        if eq and (eq.measurement_unit or "").strip().lower() in {"h", "hora", "horas", "hr", "hrs", ""}:
+            eq.measurement_value = round(float(eq.measurement_value or 0) + float(operation.equipment_hours), 2)
+            repo.db.add(eq)
+    # 2. Ocorrência fitossanitária -> em_tratamento
+    if operation.pest_incident_id:
+        inc = repo.get_pest_incident(operation.pest_incident_id)
+        if inc and (inc.status or "ativa") != "controlada":
+            inc.status = "em_tratamento"
+            treat_txt = f"{operation.operation_type} em {operation.operation_date.strftime('%d/%m/%Y')}"
+            if operation.target_pest:
+                treat_txt += f" ({operation.target_pest})"
+            inc.treatment = treat_txt[:180]
+            repo.db.add(inc)
+    # 3. Histórico agronômico (calagem/gessagem e poda)
+    if farm_id:
+        prof = repo.get_agronomic_profile_by_farm(farm_id)
+        if prof:
+            low_notes = _normalize_search_value(f"{operation.operation_type} {operation.notes or ''}")
+            if op_key == "calagem_gessagem" or "calcario" in low_notes or "calagem" in low_notes:
+                if not prof.last_liming_date or operation.operation_date > prof.last_liming_date:
+                    prof.last_liming_date = operation.operation_date
+                    repo.db.add(prof)
+            if "gesso" in low_notes or "gessagem" in low_notes:
+                if not prof.last_gypsum_date or operation.operation_date > prof.last_gypsum_date:
+                    prof.last_gypsum_date = operation.operation_date
+                    repo.db.add(prof)
+            if op_key == "poda":
+                entry = f"{operation.operation_date.strftime('%d/%m/%Y')}: {operation.pruning_subtype or 'Poda'} — {operation.plot.name if operation.plot else ''}".strip(" —")
+                if not prof.pruning_history or entry not in prof.pruning_history:
+                    prof.pruning_history = f"{prof.pruning_history}\n{entry}".strip() if prof.pruning_history else entry
+                    repo.db.add(prof)
+
+
 @router.get("/operacoes")
 def agricultural_operations_page(
     request: Request,
@@ -18577,6 +18869,10 @@ def agricultural_operations_page(
     start_date: str | None = None,
     end_date: str | None = None,
     edit_id: str | None = None,
+    novo: int | None = None,
+    plot_id: int | None = None,
+    pest_id: int | None = None,
+    op_type: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -18608,58 +18904,106 @@ def agricultural_operations_page(
         edit_operation = None
     if edit_operation and edit_operation.plot and edit_operation.plot not in plots:
         plots = [*plots, edit_operation.plot]
+    farm_id = active_farm.id if active_farm else None
+    stock_context = _build_stock_context(repo, farm_id=farm_id, item_type="insumo_agricola")
+    op_inputs_catalog = stock_context["consumption_catalog_inputs"]
+    purchase_entries = stock_context["purchase_entries"]
+    op_input_stock = {
+        c.id: round(sum(float(e.available_quantity or 0) for e in purchase_entries if e.input_id == c.id), 2)
+        for c in op_inputs_catalog
+    }
+    stock_outputs = repo.list_stock_outputs(farm_id=farm_id) if farm_id else []
+    today_val = today_in_app_timezone()
+    op_ctx = build_operations_page_context(operations=operations, stock_outputs=stock_outputs, today=today_val)
+    equipment_assets = repo.list_equipment_assets(farm_id=farm_id) if farm_id else []
+    plot_ids = {p.id for p in all_plots}
+    open_pests = [
+        p for p in repo.list_pest_incidents()
+        if p.plot_id in plot_ids and (getattr(p, "status", None) or "ativa") != "controlada"
+    ] if plot_ids else []
+    preselect_pest = next((p for p in open_pests if pest_id and p.id == pest_id), None)
     return templates.TemplateResponse(
         "agricultural_operations.html",
         _base_context(
             request, user, csrf_token, "agricultural_operations", _repo=repo,
-            title="Operações Agrícolas", plots=plots, operations=operations, edit_operation=edit_operation,
+            title="Operações e Pulverizações", plots=plots, operations=operations, edit_operation=edit_operation,
             operation_types=AGRICULTURAL_OPERATION_TYPES,
-            finance_accounts=repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else [],
-            finance_account_default=next((item for item in repo.list_finance_accounts(farm_id=active_farm.id) if item.is_default), None) if active_farm else None,
-            finance_credit_cards=repo.list_finance_credit_cards(farm_id=active_farm.id) if active_farm else [],
-            finance_credit_card_default=next((item for item in repo.list_finance_credit_cards(farm_id=active_farm.id) if item.is_default), None) if active_farm else None,
+            finance_accounts=repo.list_finance_accounts(farm_id=farm_id) if farm_id else [],
+            finance_account_default=next((item for item in repo.list_finance_accounts(farm_id=farm_id) if item.is_default), None) if farm_id else None,
+            finance_credit_cards=repo.list_finance_credit_cards(farm_id=farm_id) if farm_id else [],
+            finance_credit_card_default=next((item for item in repo.list_finance_credit_cards(farm_id=farm_id) if item.is_default), None) if farm_id else None,
             finance_payment_methods=FINANCE_TRANSACTION_EXPENSE_PAYMENT_METHODS,
             selected_plot_id=selected_plot_id,
             selected_operation_type=selected_operation_type,
             selected_start_date=selected_start_date,
             selected_end_date=selected_end_date,
-            today=today_in_app_timezone(),
+            today=today_val,
+            op_ctx=op_ctx,
+            op_inputs_catalog=op_inputs_catalog,
+            op_input_stock=op_input_stock,
+            equipment_assets=equipment_assets,
+            open_pests=open_pests,
+            default_responsible_name=user.display_name or user.name or user.email,
+            open_new_modal=bool(novo),
+            preselect_plot_id=plot_id if novo else (preselect_pest.plot_id if preselect_pest else None),
+            preselect_pest=preselect_pest,
+            preselect_op_type=op_type or ("pulverizacao" if preselect_pest else None),
         ),
     )
 
 
 @router.post("/operacoes")
-def create_agricultural_operation_action(
+async def create_agricultural_operation_action(
     request: Request,
-    csrf_token: str = Form(...),
-    plot_id: int = Form(...),
-    operation_date: str = Form(...),
-    operation_type: str = Form(...),
-    notes: str | None = Form(None),
-    generate_expense: bool = Form(False),
-    expense_amount: str | None = Form(None),
-    finance_account_id: str | None = Form(None),
-    credit_card_id: str | None = Form(None),
-    payment_condition: str | None = Form("a_vista"),
-    installment_count: str | None = Form(None),
-    installment_frequency: str | None = Form(None),
-    first_installment_date: str | None = Form(None),
-    payment_method: str | None = Form("PIX"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    validate_csrf(request, csrf_token)
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
     scope, denied = _launch_scope_or_redirect(request, repo, "/operacoes")
     if denied:
         return denied
-    plot = repo.get_plot(plot_id)
-    if not plot or not _plot_matches_scope(plot, scope):
-        _flash(request, "error", "Selecione um setor pertencente ao contexto ativo.")
+
+    raw_plot_ids = [pid for pid in (_int_or_none(v) for v in form.getlist("plot_id")) if pid]
+    if not raw_plot_ids:
+        _flash(request, "error", "Selecione ao menos um talhão.")
         return _redirect("/operacoes")
-    if not _plot_allowed_for_season_launch(plot, scope):
-        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
-        return _redirect("/operacoes")
+    selected_plots = []
+    for pid in raw_plot_ids:
+        plot = repo.get_plot(pid)
+        if not plot or not _plot_matches_scope(plot, scope):
+            _flash(request, "error", "Selecione apenas talhões pertencentes à fazenda ativa.")
+            return _redirect("/operacoes")
+        if not _plot_allowed_for_season_launch(plot, scope):
+            _flash(request, "error", "O talhão selecionado não está vinculado à safra ativa.")
+            return _redirect("/operacoes")
+        selected_plots.append(plot)
+
+    operation_type = str(form.get("operation_type") or "").strip()
+    operation_date = str(form.get("operation_date") or "").strip()
+    status_val = str(form.get("status") or "realizada").strip().lower()
+    if status_val not in {"realizada", "planejada"}:
+        status_val = "realizada"
+    responsible_name = (str(form.get("responsible_name") or "").strip() or user.display_name or user.name or user.email)[:160]
+    notes = str(form.get("notes") or "").strip() or None
+    equipment_asset_id = _int_or_none(form.get("equipment_asset_id"))
+    equipment_hours = _float_or_none(form.get("equipment_hours"))
+    pest_incident_id = _int_or_none(form.get("pest_incident_id"))
+    spray_volume_liters = _float_or_none(form.get("spray_volume_liters"))
+    withdrawal_days = _int_or_none(form.get("withdrawal_days"))
+    target_pest = str(form.get("target_pest") or "").strip() or None
+    pruning_subtype = str(form.get("pruning_subtype") or "").strip() or None
+    generate_expense = str(form.get("generate_expense") or "").strip().lower() in {"1", "true", "on", "sim", "yes"}
+    expense_amount = str(form.get("expense_amount") or "").strip()
+    finance_account_id = form.get("finance_account_id")
+    credit_card_id = form.get("credit_card_id")
+    payment_condition = str(form.get("payment_condition") or "a_vista")
+    installment_count = form.get("installment_count")
+    installment_frequency = form.get("installment_frequency")
+    first_installment_date = form.get("first_installment_date")
+    payment_method = str(form.get("payment_method") or "PIX")
+
     operation_map = {key: (label, category) for key, label, category in AGRICULTURAL_OPERATION_TYPES}
     if operation_type not in operation_map:
         _flash(request, "error", "Selecione um tipo de operação válido.")
@@ -18670,46 +19014,144 @@ def create_agricultural_operation_action(
         _flash(request, "error", "Informe uma data válida para a operação.")
         return _redirect("/operacoes")
     label, category = operation_map[operation_type]
-    transaction = None
+
+    # Parse insumos/defensivos para baixa FIFO
+    raw_input_ids = form.getlist("op_input_id")
+    raw_input_qtys = form.getlist("op_input_qty")
+    op_items: list[tuple[int, float]] = []
+    for raw_iid, raw_qty in zip(raw_input_ids, raw_input_qtys):
+        iid = _int_or_none(raw_iid)
+        qty = _float_or_none(raw_qty)
+        if iid and qty and qty > 0:
+            op_items.append((iid, qty))
+
+    total_area = sum(max(float(p.area_hectares or 0), 0.01) for p in selected_plots)
+    total_expense_val = _float_or_none(expense_amount) if generate_expense else None
+    created_ops = 0
     try:
-        if generate_expense:
-            payload = _finance_transaction_payload(
-                repo, active_farm=scope["active_farm"], operation_type="despesa", launch_date=operation_date,
-                amount=expense_amount or "", finance_account_id=finance_account_id, credit_card_id=credit_card_id,
-                payment_condition=payment_condition, installment_count=installment_count, installment_frequency=installment_frequency,
-                first_installment_date=first_installment_date, category=category, product_service=f"{label} · {plot.name}",
-                description=notes, counterparty_name=None, document_number=None, payment_method=payment_method,
-                notes=notes, plot_id=plot.id, season_id=scope.get("active_season_id"),
-            )
-            transaction = repo.create(FinanceTransaction(
-                farm_id=payload["farm_id"], plot_id=payload["plot_id"], season_id=payload["season_id"],
-                finance_account_id=payload["finance_account_id"], credit_card_id=payload["credit_card_id"], operation_type="despesa",
-                launch_date=payload["launch_date"], amount=payload["amount"], category=category,
-                product_service=payload["product_service"], description=payload["description"],
-                counterparty_name=None, document_number=None, payment_method=payload["payment_method"],
-                payment_condition=payload["payment_condition"], installment_count=payload["installment_count"], installment_frequency=payload["installment_frequency"],
-                first_installment_date=payload["first_installment_date"], notes=payload["notes"],
-                source="Operações Agrícolas", created_at=app_now(),
+        for idx, plot in enumerate(selected_plots):
+            share = max(float(plot.area_hectares or 0), 0.01) / total_area if total_area > 0 else (1.0 / len(selected_plots))
+            transaction = None
+            if generate_expense and total_expense_val and total_expense_val > 0:
+                plot_amount = round(total_expense_val * share, 2)
+                payload = _finance_transaction_payload(
+                    repo, active_farm=scope["active_farm"], operation_type="despesa", launch_date=operation_date,
+                    amount=f"{plot_amount:.2f}", finance_account_id=finance_account_id, credit_card_id=credit_card_id,
+                    payment_condition=payment_condition, installment_count=installment_count, installment_frequency=installment_frequency,
+                    first_installment_date=first_installment_date, category=category, product_service=f"{label} · {plot.name}",
+                    description=notes, counterparty_name=None, document_number=None, payment_method=payment_method,
+                    notes=notes, plot_id=plot.id, season_id=scope.get("active_season_id"),
+                )
+                transaction = repo.create(FinanceTransaction(
+                    farm_id=payload["farm_id"], plot_id=payload["plot_id"], season_id=payload["season_id"],
+                    finance_account_id=payload["finance_account_id"], credit_card_id=payload["credit_card_id"], operation_type="despesa",
+                    launch_date=payload["launch_date"], amount=payload["amount"], category=category,
+                    product_service=payload["product_service"], description=payload["description"],
+                    counterparty_name=None, document_number=None, payment_method=payload["payment_method"],
+                    payment_condition=payload["payment_condition"], installment_count=payload["installment_count"], installment_frequency=payload["installment_frequency"],
+                    first_installment_date=payload["first_installment_date"], notes=payload["notes"],
+                    source="Operações Agrícolas", created_at=app_now(),
+                ))
+                _replace_finance_transaction_installments(
+                    repo,
+                    transaction,
+                    _build_finance_transaction_installments(
+                        amount=payload["amount"], payment_condition=payload["payment_condition"],
+                        payment_method=payload["payment_method"], credit_card=payload["credit_card"],
+                        reference_date=payload["launch_date"], installment_count=payload["installment_count"],
+                        installment_frequency=payload["installment_frequency"], first_installment_date=payload["first_installment_date"],
+                    ),
+                )
+
+            plot_hours = round(equipment_hours * share, 2) if equipment_hours else None
+            plot_spray = round(spray_volume_liters * share, 2) if spray_volume_liters else None
+            operation = repo.create(AgriculturalOperation(
+                plot_id=plot.id,
+                season_id=scope.get("active_season_id"),
+                finance_transaction_id=transaction.id if transaction else None,
+                equipment_asset_id=equipment_asset_id,
+                pest_incident_id=pest_incident_id if (idx == 0 or (pest_incident_id and repo.get_pest_incident(pest_incident_id) and repo.get_pest_incident(pest_incident_id).plot_id == plot.id)) else None,
+                operation_date=parsed_date,
+                operation_type=label,
+                status=status_val,
+                responsible_name=responsible_name,
+                equipment_hours=plot_hours,
+                spray_volume_liters=plot_spray,
+                withdrawal_days=withdrawal_days,
+                target_pest=target_pest,
+                pruning_subtype=pruning_subtype if operation_type == "poda" else None,
+                inputs_cost=0.0,
+                notes=_clean_text(notes),
             ))
-            _replace_finance_transaction_installments(
+
+            # Baixa FIFO de defensivos/insumos quando operação já foi realizada
+            op_inputs_cost = 0.0
+            if status_val == "realizada" and op_items:
+                for iid, total_qty in op_items:
+                    plot_qty = round(total_qty * share, 2)
+                    if plot_qty <= 0:
+                        continue
+                    out = create_manual_stock_output(
+                        repo,
+                        {
+                            "input_id": iid,
+                            "quantity": plot_qty,
+                            "farm_id": scope["active_farm_id"],
+                            "plot_id": plot.id,
+                            "season_id": scope.get("active_season_id"),
+                            "movement_date": operation_date,
+                            "notes": f"{label} ({target_pest})" if target_pest else label,
+                        },
+                        commit=False,
+                    )
+                    out.origin = "Operações Agrícolas"
+                    out.reference_type = "agricultural_operation"
+                    out.reference_id = operation.id
+                    repo.db.add(out)
+                    op_inputs_cost += float(out.total_cost or 0)
+                operation.inputs_cost = round(op_inputs_cost, 2)
+                repo.db.add(operation)
+
+            _sync_operation_side_effects(
                 repo,
-                transaction,
-                _build_finance_transaction_installments(
-                    amount=payload["amount"], payment_condition=payload["payment_condition"],
-                    payment_method=payload["payment_method"], credit_card=payload["credit_card"],
-                    reference_date=payload["launch_date"], installment_count=payload["installment_count"],
-                    installment_frequency=payload["installment_frequency"], first_installment_date=payload["first_installment_date"],
-                ),
+                farm_id=scope.get("active_farm_id"),
+                operation=operation,
+                op_key=operation_type,
             )
-        repo.create(AgriculturalOperation(
-            plot_id=plot.id, season_id=scope.get("active_season_id"),
-            finance_transaction_id=transaction.id if transaction else None, operation_date=parsed_date,
-            operation_type=label, responsible_name=user.display_name or user.name or user.email, notes=_clean_text(notes),
-        ))
+            created_ops += 1
+        repo.db.commit()
     except ValueError as exc:
+        repo.db.rollback()
         _flash(request, "error", str(exc))
         return _redirect("/operacoes")
-    _flash(request, "success", "Operação registrada com despesa vinculada." if transaction else "Operação registrada com sucesso.")
+    if created_ops > 1:
+        _flash(request, "success", f"{created_ops} operações registradas (rateadas por área entre os talhões).")
+    else:
+        _flash(request, "success", "Operação registrada com sucesso.")
+    return _redirect("/operacoes")
+
+
+@router.post("/operacoes/{operation_id}/concluir")
+def conclude_agricultural_operation_action(
+    operation_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    operation = repo.get_agricultural_operation(operation_id)
+    if not operation or not _plot_matches_scope(operation.plot, scope):
+        _flash(request, "error", "Operação não encontrada no contexto ativo.")
+        return _redirect("/operacoes")
+    operation.status = "realizada"
+    repo.db.add(operation)
+    op_key = next((k for k, lbl, _ in AGRICULTURAL_OPERATION_TYPES if lbl == operation.operation_type), "outro")
+    _sync_operation_side_effects(repo, farm_id=scope.get("active_farm_id"), operation=operation, op_key=op_key)
+    repo.db.commit()
+    _flash(request, "success", "Operação marcada como realizada.")
     return _redirect("/operacoes")
 
 
@@ -18732,8 +19174,9 @@ def delete_agricultural_operation_action(
                 return _redirect("/operacoes")
             repo.db.delete(transaction)
             repo.db.flush()
+    _restore_operation_stock_outputs(repo, operation.id)
     repo.delete(operation)
-    _flash(request, "success", "Operação excluída com sucesso.")
+    _flash(request, "success", "Operação excluída e eventuais insumos devolvidos ao estoque.")
     return _redirect("/operacoes")
 
 
@@ -18833,6 +19276,15 @@ def update_agricultural_operation_action(
     plot_id: int = Form(...),
     operation_date: str = Form(...),
     operation_type: str = Form(...),
+    status_value: str = Form("realizada", alias="status"),
+    responsible_name: str | None = Form(None),
+    equipment_asset_id: str | None = Form(None),
+    equipment_hours: str | None = Form(None),
+    pest_incident_id: str | None = Form(None),
+    spray_volume_liters: str | None = Form(None),
+    withdrawal_days: str | None = Form(None),
+    target_pest: str | None = Form(None),
+    pruning_subtype: str | None = Form(None),
     notes: str | None = Form(None),
     generate_expense: bool = Form(False),
     expense_amount: str | None = Form(None),
@@ -18942,6 +19394,16 @@ def update_agricultural_operation_action(
         operation.season_id = scope.get("active_season_id")
         operation.operation_date = parsed_date
         operation.operation_type = label
+        operation.status = status_value if status_value in {"realizada", "planejada"} else "realizada"
+        if responsible_name and responsible_name.strip():
+            operation.responsible_name = responsible_name.strip()[:160]
+        operation.equipment_asset_id = _int_or_none(equipment_asset_id)
+        operation.equipment_hours = _float_or_none(equipment_hours)
+        operation.pest_incident_id = _int_or_none(pest_incident_id)
+        operation.spray_volume_liters = _float_or_none(spray_volume_liters)
+        operation.withdrawal_days = _int_or_none(withdrawal_days)
+        operation.target_pest = _clean_text(target_pest)
+        operation.pruning_subtype = _clean_text(pruning_subtype) if operation_type == "poda" else None
         operation.notes = _clean_text(notes)
         repo.db.add(operation)
         repo.db.commit()
@@ -19434,10 +19896,89 @@ def _irrigation_history_dataset(
     }
 
 
+@router.get("/lavoura")
+def lavoura_overview_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    farm = scope.get("active_farm")
+    season = scope.get("active_season")
+    farm_ids, variety_ids = _scoped_plot_filters(request, season)
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    linked = _season_launch_plots(plots, scope)
+    plots = list({p.id: p for p in [*plots, *linked]}.values())
+    rain_settings = _farm_rain_settings(db, farm.id if farm else None)
+    lv_ctx = build_lavoura_overview_context(
+        repo=repo,
+        farm=farm,
+        season=season,
+        plots=plots,
+        today=today_in_app_timezone(),
+        rain_settings=rain_settings,
+    )
+    return templates.TemplateResponse(
+        "lavoura_overview.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "lavoura_overview",
+            _repo=repo,
+            title="Lavoura",
+            lv_ctx=lv_ctx,
+        ),
+    )
+
+
+@router.get("/clima-agua")
+def climate_water_overview_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    farm = scope.get("active_farm")
+    farm_id = farm.id if farm else None
+    plots = repo.list_plots(farm_ids=[farm_id]) if farm_id else []
+    plot_ids = {p.id for p in plots}
+    rainfalls = repo.list_rainfalls(farm_id=farm_id) if farm_id else []
+    irrigations = [i for i in repo.list_irrigations() if i.plot_id in plot_ids] if plot_ids else []
+    rain_settings = _farm_rain_settings(db, farm_id)
+    cw_ctx = build_climate_water_context(
+        farm=farm,
+        plots=plots,
+        rainfalls=rainfalls,
+        irrigations=irrigations,
+        today=today_in_app_timezone(),
+        rain_settings=rain_settings,
+    )
+    return templates.TemplateResponse(
+        "climate_water.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "climate_water",
+            _repo=repo,
+            title="Clima e Água",
+            cw_ctx=cw_ctx,
+            cw_irrigation_count=len(irrigations),
+            cw_rainfall_count=len(rainfalls),
+        ),
+    )
+
+
 @router.get("/irrigacao")
 def irrigation_page(
     request: Request,
     edit_id: int | None = None,
+    novo: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -19482,6 +20023,28 @@ def irrigation_page(
     raw_plot_lower = raw_plot.lower()
     irrigation_plot_filter_hint = raw_plot == ""
     selected_irrigation_plot_all = bool(raw_plot) and raw_plot_lower in {"all", "todos", "todas"}
+
+    farm = scope.get("active_farm")
+    rainfalls_farm = repo.list_rainfalls(farm_id=farm.id) if farm else []
+    today_val = today_in_app_timezone()
+    irr_ctx = build_irrigation_page_context(
+        irrigations=irrigations,
+        plots=plots,
+        rainfalls=rainfalls_farm,
+        farm=farm,
+        today=today_val,
+    )
+    all_known_plots = list({plot.id: plot for plot in [*plots, *launch_plots]}.values())
+    irrigation_plot_specs = {}
+    for p in all_known_plots:
+        vol_60 = calculate_irrigation_volume(p, 60)
+        irrigation_plot_specs[str(p.id)] = {
+            "id": p.id,
+            "name": p.name,
+            "area_hectares": float(p.area_hectares or 0),
+            "liters_per_hour": float(vol_60) if vol_60 is not None else 0.0,
+        }
+
     return templates.TemplateResponse(
         "irrigation.html",
         _base_context(
@@ -19490,6 +20053,7 @@ def irrigation_page(
             csrf_token,
             "irrigation",
             _repo=repo,
+            title="Irrigação",
             plots=plots,
             launch_plots=launch_plots,
             plots_for_irrigation_filter=plots_for_irrigation_filter,
@@ -19506,6 +20070,12 @@ def irrigation_page(
             irrigation_filters_active=irrigation_filters_active,
             irrigation_edit_urls=irrigation_edit_urls,
             edit_irrigation=edit_irrigation,
+            irr_ctx=irr_ctx,
+            cw_rainfall_count=len(rainfalls_farm),
+            today_iso=today_val.isoformat(),
+            open_new_modal=bool(novo),
+            preselect_plot_id=plot_id_filter if novo else None,
+            irrigation_plot_specs=irrigation_plot_specs,
             plot_irrigation_configs=[
                 {
                     "id": plot.id,
@@ -19518,7 +20088,7 @@ def irrigation_page(
                     "sprinkler_count": plot.sprinkler_count,
                     "sprinkler_lph": float(plot.sprinkler_liters_per_hour) if plot.sprinkler_liters_per_hour is not None else None,
                 }
-                for plot in list({plot.id: plot for plot in [*plots, *launch_plots]}.values())
+                for plot in all_known_plots
             ],
         ),
     )
@@ -19974,6 +20544,7 @@ def _rainfall_history_dataset(
 def rainfall_page(
     request: Request,
     edit_id: int | None = None,
+    novo: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -20005,6 +20576,20 @@ def rainfall_page(
     rainfall_filters_active = bool(
         _period_filter_explicit_in_query(request) or bool(search_q)
     )
+    farm = scope.get("active_farm")
+    farm_id = farm.id if farm else None
+    rain_settings = _farm_rain_settings(db, farm_id)
+    rainfalls_all = repo.list_rainfalls(farm_id=farm_id) if farm_id else []
+    farm_plots = repo.list_plots(farm_ids=[farm_id]) if farm_id else []
+    plot_ids = {p.id for p in farm_plots}
+    irrigations_count = sum(1 for i in repo.list_irrigations() if i.plot_id in plot_ids) if plot_ids else 0
+    today_val = today_in_app_timezone()
+    rf_ctx = build_rainfall_page_context(
+        rainfalls_all=rainfalls_all,
+        farm=farm,
+        today=today_val,
+        rain_settings=rain_settings,
+    )
     return templates.TemplateResponse(
         "rainfall.html",
         _base_context(
@@ -20013,6 +20598,7 @@ def rainfall_page(
             csrf_token,
             "rainfall",
             _repo=repo,
+            title="Chuva e Alertas",
             rainfalls=rainfalls_pagination["items"],
             rainfalls_pagination=rainfalls_pagination,
             rainfall_filter_start_date=filter_start_str or None,
@@ -20023,6 +20609,13 @@ def rainfall_page(
             rainfall_filters_active=rainfall_filters_active,
             rainfall_edit_urls=rainfall_edit_urls,
             edit_rainfall=repo.get_rainfall(edit_id) if edit_id else None,
+            rf_ctx=rf_ctx,
+            rain_settings=rain_settings,
+            farm_plots=farm_plots,
+            cw_irrigation_count=irrigations_count,
+            cw_rainfall_count=len(rainfalls_all),
+            today_iso=today_val.isoformat(),
+            open_new_modal=bool(novo),
         ),
     )
 
@@ -20105,6 +20698,7 @@ def create_rainfall_action(
     csrf_token: str = Form(...),
     rainfall_date: str = Form(...),
     millimeters: float = Form(...),
+    plot_id: str | None = Form(None),
     source: str | None = Form(None),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -20113,20 +20707,26 @@ def create_rainfall_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    scope, denied = _launch_scope_or_redirect(request, repo, "/pluviometria")
+    scope, denied = _launch_scope_or_redirect(request, repo, "/pluviometria", require_season=False)
     if denied:
         return denied
+    parsed_plot_id = _int_or_none(plot_id)
+    if parsed_plot_id:
+        p = repo.get_plot(parsed_plot_id)
+        if not p or p.farm_id != scope["active_farm_id"]:
+            parsed_plot_id = None
     create_rainfall(
         repo,
         {
             "farm_id": scope["active_farm_id"],
+            "plot_id": parsed_plot_id,
             "rainfall_date": rainfall_date,
             "millimeters": millimeters,
             "source": source,
             "notes": notes,
         },
     )
-    _flash(request, "success", "Pluviometria registrada com sucesso.")
+    _flash(request, "success", "Chuva registrada com sucesso.")
     return _redirect("/pluviometria")
 
 
@@ -20137,6 +20737,7 @@ def update_rainfall_action(
     csrf_token: str = Form(...),
     rainfall_date: str = Form(...),
     millimeters: float = Form(...),
+    plot_id: str | None = Form(None),
     source: str | None = Form(None),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -20145,28 +20746,34 @@ def update_rainfall_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    scope, denied = _launch_scope_or_redirect(request, repo, "/pluviometria")
+    scope, denied = _launch_scope_or_redirect(request, repo, "/pluviometria", require_season=False)
     if denied:
         return denied
     rainfall = repo.get_rainfall(record_id)
     if not rainfall:
-        _flash(request, "error", "Registro de pluviometria nao encontrado.")
+        _flash(request, "error", "Registro de chuva não encontrado.")
         return _redirect_for_request(request, "/pluviometria")
     if not _farm_matches_scope(rainfall.farm_id, scope):
-        _flash(request, "error", "Este registro de pluviometria nao pertence ao contexto ativo.")
+        _flash(request, "error", "Este registro de chuva não pertence à fazenda ativa.")
         return _redirect_for_request(request, "/pluviometria")
+    parsed_plot_id = _int_or_none(plot_id)
+    if parsed_plot_id:
+        p = repo.get_plot(parsed_plot_id)
+        if not p or p.farm_id != scope["active_farm_id"]:
+            parsed_plot_id = None
     update_rainfall(
         repo,
         rainfall,
         {
             "farm_id": scope["active_farm_id"],
+            "plot_id": parsed_plot_id,
             "rainfall_date": rainfall_date,
             "millimeters": millimeters,
             "source": source,
             "notes": notes,
         },
     )
-    _flash(request, "success", "Pluviometria atualizada com sucesso.")
+    _flash(request, "success", "Registro de chuva atualizado com sucesso.")
     return _redirect_for_request(request, "/pluviometria")
 
 
@@ -20477,6 +21084,7 @@ def _render_fertilization_wizard(
     preselect_plot_id: int | None = None,
     preselect_date: str | None = None,
     copy_from_fertilization: FertilizationRecord | None = None,
+    preselect_recipe_id: int | None = None,
 ):
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
@@ -20517,6 +21125,7 @@ def _render_fertilization_wizard(
         preselect_plot_id=preselect_plot_id,
         preselect_date=preselect_date,
         copy_from_fertilization=copy_from_fertilization,
+        preselect_recipe_id=preselect_recipe_id,
     )
 
     is_sched = "schedule" in mode
@@ -20605,6 +21214,7 @@ def fertilization_page(
             ft_ctx=ft_ctx,
             ft_active_schedules_count=active_sched_count,
             ft_fert_count=len(fertilizations),
+            ft_recipes_count=_count_scoped_recipes(repo, scope.get("active_farm_id"), plot_ids),
             fertilization_filter_start_date=filter_start_str or None,
             fertilization_filter_end_date=filter_end_str or None,
         ),
@@ -20615,6 +21225,7 @@ def fertilization_page(
 def new_fertilization_wizard_page(
     request: Request,
     plot_id: int | None = None,
+    recipe_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -20626,6 +21237,7 @@ def new_fertilization_wizard_page(
         csrf_token,
         mode="new_fertilization",
         preselect_plot_id=plot_id,
+        preselect_recipe_id=recipe_id,
     )
 
 
@@ -20747,6 +21359,15 @@ async def create_fertilization_action(
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect("/fertilizacao/nova" if wiz_payload is not None else "/fertilizacao")
+    _maybe_save_wizard_recipe(
+        repo,
+        scope=scope,
+        wiz_payload=wiz_payload,
+        catalog_by_id=catalog_by_id,
+        application_method=application_method,
+        dose_mode=dose_mode,
+        notes=notes,
+    )
     _flash(
         request,
         "success",
@@ -21108,6 +21729,7 @@ def fertilization_schedules_page(
             ft_sched_ctx=sched_ctx,
             ft_active_schedules_count=len(active_schedules),
             ft_fert_count=len(fertilizations),
+            ft_recipes_count=_count_scoped_recipes(repo, farm_id, plot_ids),
             schedule_filter_start_date=filter_start_str or None,
             schedule_filter_end_date=filter_end_str or None,
             today=today_in_app_timezone(),
@@ -21120,6 +21742,7 @@ def new_fertilization_schedule_wizard_page(
     request: Request,
     plot_id: int | None = None,
     copy_fert_id: int | None = None,
+    recipe_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -21147,6 +21770,7 @@ def new_fertilization_schedule_wizard_page(
         preselect_plot_id=plot_id,
         preselect_date=safe_date,
         copy_from_fertilization=copy_fert,
+        preselect_recipe_id=recipe_id,
     )
 
 
@@ -21508,6 +22132,15 @@ async def create_fertilization_schedule_action(
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect("/fertilizacao/agendamentos/novo" if wiz_payload is not None else "/fertilizacao/agendamentos")
+    _maybe_save_wizard_recipe(
+        repo,
+        scope=scope,
+        wiz_payload=wiz_payload,
+        catalog_by_id=catalog_by_id,
+        application_method=application_method,
+        dose_mode=dose_mode,
+        notes=notes,
+    )
     total_created = len(selected_plots) * len(scheduled_dates)
     if total_created == 1:
         _flash(request, "success", "Agendamento salvo com sucesso.")
@@ -22060,6 +22693,12 @@ def harvest_form_page(
     yields_learned = {unit: farm_yield_average(db, plot_ids, unit) is not None for unit in ("litros", "sacos_roca")}
     season = scope.get("active_season")
     locked = bool(harvest and repo.harvest_has_commercializations(harvest.id))
+    from app.services.operations_pests_views import active_withdrawals_by_plot
+    all_plot_ids_for_hv = {p.id for p in [*launch_plots, *other_plots]}
+    hv_withdrawals = active_withdrawals_by_plot(
+        repo.list_agricultural_operations(all_plot_ids_for_hv),
+        today_in_app_timezone(),
+    )
     return templates.TemplateResponse(
         "harvest_form.html",
         _base_context(
@@ -22074,6 +22713,7 @@ def harvest_form_page(
                                        if h.plot_id in plot_ids and harvest_matches_season(h, season))},
             hv_preselect_plot=_optional_query_int(request.query_params.get("talhao")),
             hv_other_plots=[] if harvest else other_plots,
+            hv_withdrawals=hv_withdrawals,
         ),
     )
 
@@ -25241,6 +25881,8 @@ def coffee_buyer_cep_lookup(cep: str, user: User = Depends(get_current_user_web)
 def pests_page(
     request: Request,
     edit_id: int | None = None,
+    novo: int | None = None,
+    plot_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -25267,6 +25909,8 @@ def pests_page(
         lambda item: item.occurrence_date,
         lambda item: item.id,
     )
+    today_val = today_in_app_timezone()
+    pest_ctx = build_pests_page_context(incidents=incidents, farm=scope.get("active_farm"), today=today_val)
     incidents_pagination = _paginate_collection(request, incidents, "incidents_page")
     return templates.TemplateResponse(
         "pests.html",
@@ -25276,100 +25920,198 @@ def pests_page(
             csrf_token,
             "pests",
             _repo=repo,
+            title="Pragas e Doenças",
             plots=plots,
             launch_plots=launch_plots,
             incidents=incidents_pagination["items"],
             incidents_pagination=incidents_pagination,
             edit_incident=edit_incident,
+            pest_ctx=pest_ctx,
+            today_iso=today_val.isoformat(),
+            open_new_modal=bool(novo),
+            preselect_plot_id=plot_id if novo else None,
         ),
     )
 
 
-@router.post("/pragas")
-def create_pest_action(
+@router.get("/pragas/{record_id}/foto")
+def pest_incident_photo(
+    record_id: int,
     request: Request,
-    csrf_token: str = Form(...),
-    plot_id: int = Form(...),
-    occurrence_date: str = Form(...),
-    category: str = Form(...),
-    name: str = Form(...),
-    severity: int = Form(...),
-    treatment: str | None = Form(None),
-    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    incident = repo.get_pest_incident(record_id)
+    if not incident or not incident.photo_data or not _plot_matches_scope(incident.plot, scope):
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    return Response(content=incident.photo_data, media_type=incident.photo_content_type or "image/jpeg")
+
+
+@router.post("/pragas")
+async def create_pest_action(
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
-    validate_csrf(request, csrf_token)
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
-    plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/pragas")
-    if denied:
-        return denied
-    if not _plot_allowed_for_season_launch(plot, scope):
-        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
+    raw_plot_ids = [pid for pid in (_int_or_none(v) for v in form.getlist("plot_id")) if pid]
+    if not raw_plot_ids:
+        _flash(request, "error", "Selecione ao menos um talhão.")
         return _redirect("/pragas")
-    create_pest_incident(
-        repo,
-        {
-            "plot_id": plot.id,
-            "occurrence_date": occurrence_date,
-            "category": category,
-            "name": name,
-            "severity": severity,
-            "treatment": treatment,
-            "notes": notes,
-        },
-    )
-    _flash(request, "success", "Ocorrencia registrada com sucesso.")
+    occurrence_date = str(form.get("occurrence_date") or "").strip()
+    category = str(form.get("category") or "Praga").strip()
+    if category.lower() == "doenca":
+        category = "Doença"
+    name = str(form.get("name") or "").strip()
+    severity = _int_or_none(form.get("severity")) or 2
+    status_val = str(form.get("status") or "ativa").strip().lower()
+    incidence_pct = _float_or_none(form.get("incidence_pct"))
+    treatment = str(form.get("treatment") or "").strip() or None
+    notes = str(form.get("notes") or "").strip() or None
+    photo_file = form.get("photo")
+    photo_filename, photo_content_type, photo_data = (None, None, None)
+    if photo_file and hasattr(photo_file, "read") and getattr(photo_file, "filename", None):
+        raw_bytes = await photo_file.read()
+        if raw_bytes:
+            photo_filename = str(photo_file.filename)[:255]
+            photo_content_type = getattr(photo_file, "content_type", None) or "image/jpeg"
+            photo_data = raw_bytes
+    if not name or not occurrence_date:
+        _flash(request, "error", "Informe a data e o nome da praga ou doença.")
+        return _redirect("/pragas")
+    created = 0
+    for pid in raw_plot_ids:
+        plot, scope, denied = _resolve_plot_in_scope(request, repo, pid, "/pragas")
+        if denied:
+            return denied
+        if not _plot_allowed_for_season_launch(plot, scope):
+            _flash(request, "error", "O talhão selecionado não está vinculado à safra ativa.")
+            return _redirect("/pragas")
+        create_pest_incident(
+            repo,
+            {
+                "plot_id": plot.id,
+                "occurrence_date": occurrence_date,
+                "category": category,
+                "name": name,
+                "severity": max(1, min(5, severity)),
+                "status": status_val,
+                "incidence_pct": incidence_pct,
+                "treatment": treatment,
+                "notes": notes,
+                "photo_filename": photo_filename,
+                "photo_content_type": photo_content_type,
+                "photo_data": photo_data,
+            },
+        )
+        created += 1
+    _flash(request, "success", f"{created} ocorrência(s) registrada(s) com sucesso." if created > 1 else "Ocorrência registrada com sucesso.")
     return _redirect("/pragas")
 
 
 @router.post("/pragas/{record_id}/editar")
-def update_pest_action(
+async def update_pest_action(
     record_id: int,
     request: Request,
-    csrf_token: str = Form(...),
-    plot_id: int = Form(...),
-    occurrence_date: str = Form(...),
-    category: str = Form(...),
-    name: str = Form(...),
-    severity: int = Form(...),
-    treatment: str | None = Form(None),
-    notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
-    validate_csrf(request, csrf_token)
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
-    plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/pragas")
+    pid = _int_or_none(form.get("plot_id"))
+    plot, scope, denied = _resolve_plot_in_scope(request, repo, pid or 0, "/pragas")
     if denied:
         return denied
     incident = repo.get_pest_incident(record_id)
     if not incident:
-        _flash(request, "error", "Ocorrencia nao encontrada.")
+        _flash(request, "error", "Ocorrência não encontrada.")
         return _redirect_for_request(request, "/pragas")
     if not _plot_matches_scope(incident.plot, scope):
-        _flash(request, "error", "Esta ocorrencia nao pertence ao contexto ativo.")
+        _flash(request, "error", "Esta ocorrência não pertence ao contexto ativo.")
         return _redirect_for_request(request, "/pragas")
     if plot.id != incident.plot_id and not _plot_allowed_for_season_launch(plot, scope):
-        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
+        _flash(request, "error", "O talhão selecionado não está vinculado à safra ativa.")
         return _redirect_for_request(request, "/pragas", edit_id=record_id)
+    category = str(form.get("category") or incident.category or "Praga").strip()
+    if category.lower() == "doenca":
+        category = "Doença"
+    photo_file = form.get("photo")
+    photo_filename, photo_content_type, photo_data = (None, None, None)
+    if photo_file and hasattr(photo_file, "read") and getattr(photo_file, "filename", None):
+        raw_bytes = await photo_file.read()
+        if raw_bytes:
+            photo_filename = str(photo_file.filename)[:255]
+            photo_content_type = getattr(photo_file, "content_type", None) or "image/jpeg"
+            photo_data = raw_bytes
     update_pest_incident(
         repo,
         incident,
         {
             "plot_id": plot.id,
-            "occurrence_date": occurrence_date,
+            "occurrence_date": str(form.get("occurrence_date") or incident.occurrence_date.isoformat()),
             "category": category,
-            "name": name,
-            "severity": severity,
-            "treatment": treatment,
-            "notes": notes,
+            "name": str(form.get("name") or incident.name).strip(),
+            "severity": max(1, min(5, _int_or_none(form.get("severity")) or incident.severity or 2)),
+            "status": str(form.get("status") or incident.status or "ativa").strip().lower(),
+            "incidence_pct": _float_or_none(form.get("incidence_pct")),
+            "treatment": str(form.get("treatment") or "").strip() or None,
+            "notes": str(form.get("notes") or "").strip() or None,
+            "photo_filename": photo_filename,
+            "photo_content_type": photo_content_type,
+            "photo_data": photo_data,
         },
     )
-    _flash(request, "success", "Ocorrencia atualizada com sucesso.")
+    _flash(request, "success", "Ocorrência atualizada com sucesso.")
     return _redirect_for_request(request, "/pragas")
+
+
+@router.post("/pragas/{record_id}/reinspecao")
+def reinspect_pest_action(
+    record_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    status_value: str = Form("controlada", alias="status"),
+    severity: int = Form(1),
+    reinspection_date: str = Form(...),
+    reinspection_note: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    incident = repo.get_pest_incident(record_id)
+    if not incident or not _plot_matches_scope(incident.plot, scope):
+        _flash(request, "error", "Ocorrência não encontrada no contexto ativo.")
+        return _redirect("/pragas")
+    st = status_value if status_value in {"ativa", "em_tratamento", "monitoramento", "controlada"} else "monitoramento"
+    try:
+        re_dt = date.fromisoformat(reinspection_date)
+    except ValueError:
+        re_dt = today_in_app_timezone()
+    incident.status = st
+    incident.severity = max(1, min(5, severity))
+    incident.reinspection_date = re_dt
+    if st == "controlada":
+        incident.resolved_date = re_dt
+    else:
+        incident.resolved_date = None
+    note_clean = (reinspection_note or "").strip()
+    if note_clean:
+        stamp = f"[Reinspeção {re_dt.strftime('%d/%m/%Y')}] {note_clean}"
+        incident.notes = f"{incident.notes}\n{stamp}".strip() if incident.notes else stamp
+    repo.db.add(incident)
+    repo.db.commit()
+    _flash(request, "success", "Reinspeção registrada com sucesso.")
+    return _redirect("/pragas")
 
 
 @router.post("/pragas/{record_id}/excluir")
@@ -25400,49 +26142,31 @@ def agronomic_profiles_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
+    del csrf_token
     repo = _repository(db)
-    scope = _global_scope_context(request, repo)
-    active_farm_id = scope["active_farm_id"]
-    selected_farm = scope["active_farm"]
-    active_profile = repo.get_agronomic_profile_by_farm(active_farm_id) if active_farm_id else None
-    profile_completion, _ = _agronomic_profile_completion(active_profile)
-    auto_open_profile_modal = bool(
-        edit_farm_id is not None and active_farm_id is not None and edit_farm_id == active_farm_id
-    )
-    return templates.TemplateResponse(
-        "agronomic_profiles.html",
-        _base_context(
-            request,
-            user,
-            csrf_token,
-            "agronomic_profiles",
-            _repo=repo,
-            title="Perfil Agronomico",
-            farms=scope["context_farms"],
-            profiles=[
-                profile
-                for profile in repo.list_agronomic_profiles()
-                if not active_farm_id or profile.farm_id == active_farm_id
-            ],
-            edit_farm=selected_farm,
-            edit_profile=active_profile,
-            profile_completion=profile_completion,
-            auto_open_profile_modal=auto_open_profile_modal,
-        ),
-    )
+    scope = _global_scope_context(request, repo, user)
+    target_farm_id = edit_farm_id or scope.get("active_farm_id")
+    if target_farm_id:
+        farm = repo.get_farm(target_farm_id)
+        if farm and (not user.organization_id or farm.organization_id == user.organization_id):
+            return _redirect(f"/fazendas/{farm.id}?aba=agronomico")
+    return _redirect("/fazendas")
 
 
 @router.get("/perfil-agronomico/sugestoes")
 def agronomic_profile_suggestions_api(
     request: Request,
+    farm_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    if not user_has_permission(db, user, PAGE_AGRONOMIC):
-        return JSONResponse({"ok": False, "error": "Você não tem permissão para consultar o perfil agronômico."}, status_code=403)
+    if not (user_has_permission(db, user, PAGE_AGRONOMIC) or user_has_permission(db, user, PAGE_PRODUCTIVE_UNIT)):
+        return JSONResponse({"ok": False, "error": "Você não tem permissão para consultar os dados agronômicos."}, status_code=403)
     repo = _repository(db)
     scope = _global_scope_context(request, repo, user)
-    farm = scope.get("active_farm")
+    farm = repo.get_farm(farm_id) if farm_id else scope.get("active_farm")
+    if farm and user.organization_id and farm.organization_id != user.organization_id:
+        farm = None
     if not farm:
         return JSONResponse({"ok": False, "error": "Selecione uma fazenda ativa para gerar sugestões."}, status_code=400)
     plots = repo.list_plots(farm_ids=[farm.id])
@@ -25594,6 +26318,7 @@ def soil_analysis_page(
     edit_analysis = repo.get_soil_analysis(edit_id) if edit_id else None
     if edit_analysis and (edit_analysis.plot_id not in plot_ids or edit_analysis.farm_id not in farm_ids):
         edit_analysis = None
+    soil_ctx = build_soil_page_context(analyses=analyses, plots=plots, today=today_in_app_timezone())
     return templates.TemplateResponse(
         "soil_analyses.html",
         _base_context(
@@ -25602,12 +26327,13 @@ def soil_analysis_page(
             csrf_token,
             "soil_analyses",
             _repo=repo,
-            title="Analise de Solo",
+            title="Análise de Solo",
             farms=scope["context_farms"],
             plots=plots,
             analyses=analyses_pagination["items"],
             analyses_pagination=analyses_pagination,
             edit_analysis=edit_analysis,
+            soil_ctx=soil_ctx,
             soil_ai_allowed_pages=_soil_ai_allowed_pages(db, user),
             soil_fields=SOIL_FIELDS, soil_extra_fields=SOIL_EXTRA_FIELDS, soil_methods=SOIL_METHODS,
             soil_metadata=parse_metadata(edit_analysis.laboratory_metadata) if edit_analysis else {},
@@ -25618,6 +26344,71 @@ def soil_analysis_page(
             latest_recommendations=[item for item in analyses if item.ai_recommendation][:4],
         ),
     )
+
+
+@router.get("/analise-solo/{analysis_id}/agendar")
+def preview_soil_schedule_api(
+    analysis_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    analysis = repo.get_soil_analysis(analysis_id)
+    if not analysis or not analysis.plot or (scope["active_farm_id"] and analysis.farm_id != scope["active_farm_id"]):
+        return JSONResponse({"ok": False, "error": "Análise de solo não encontrada na fazenda ativa."}, status_code=404)
+    stock_context = _build_stock_context(repo, farm_id=analysis.farm_id, item_type="insumo_agricola")
+    preview = build_soil_schedule_preview(
+        analysis=analysis,
+        inputs_catalog=stock_context["consumption_catalog_inputs"],
+        purchased_inputs=stock_context["purchase_entries"],
+        farm_id=analysis.farm_id,
+        today=today_in_app_timezone(),
+    )
+    return JSONResponse(preview, status_code=200 if preview.get("ok") else 400)
+
+
+@router.post("/analise-solo/{analysis_id}/agendar")
+async def confirm_soil_schedule_action(
+    analysis_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    denied_perm = _require_permission(request, user, db, write_permission_for_page(PAGE_AGENDA))
+    if denied_perm:
+        return denied_perm
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/analise-solo", require_season=False)
+    if denied:
+        return denied
+    analysis = repo.get_soil_analysis(analysis_id)
+    if not analysis or not analysis.plot or analysis.farm_id != scope["active_farm_id"]:
+        _flash(request, "error", "Análise de solo não encontrada na fazenda ativa.")
+        return _redirect("/analise-solo")
+    raw_entries = str(form.get("entries_json") or "").strip()
+    try:
+        entries = json.loads(raw_entries) if raw_entries else []
+    except json.JSONDecodeError:
+        entries = []
+    if not isinstance(entries, list) or not entries:
+        _flash(request, "error", "Selecione ao menos uma etapa do cronograma para agendar.")
+        return _redirect("/analise-solo")
+    created = create_schedules_from_soil_plan(
+        repo=repo,
+        analysis=analysis,
+        season_id=scope.get("active_season_id"),
+        entries=entries,
+        organization_id=_scope_organization_id(scope),
+    )
+    if created:
+        _flash(request, "success", f"{created} agendamento(s) criado(s) na Agenda a partir da análise de solo.")
+        return _redirect("/fertilizacao/agendamentos")
+    _flash(request, "error", "Nenhum agendamento pôde ser criado. Verifique produtos e quantidades.")
+    return _redirect("/analise-solo")
 
 
 @router.post("/analise-solo")
@@ -25899,11 +26690,21 @@ def soil_recommendation_pdf_download(
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
-def _map_page_data(geojson: str, plots: list, scope: dict, varieties: list | None = None) -> dict:
+def _map_page_data(
+    geojson: str,
+    plots: list,
+    scope: dict,
+    varieties: list | None = None,
+    pest_incidents: list | None = None,
+) -> dict:
     """Setores, fazendas e indicadores da pagina Mapa da Fazenda."""
     varieties = varieties or []
     variety_by_id = {v.id: v for v in varieties}
     colors = variety_colors(varieties)
+    active_pests_by_plot: dict[int, list] = {}
+    for inc in pest_incidents or []:
+        if (getattr(inc, "status", None) or "ativa") != "controlada":
+            active_pests_by_plot.setdefault(inc.plot_id, []).append(inc)
     try:
         features = json.loads(geojson or "{}").get("features") or []
     except (TypeError, ValueError):
@@ -25921,6 +26722,14 @@ def _map_page_data(geojson: str, plots: list, scope: dict, varieties: list | Non
         estimated = float(plot.estimated_yield_sacks or 0)
         variety_id = plot_variety_id(plot)
         variety = variety_by_id.get(variety_id) or getattr(plot, "variety", None)
+        plot_pests = active_pests_by_plot.get(plot.id, [])
+        if plot_pests:
+            max_sev = max(int(getattr(p, "severity", 1) or 1) for p in plot_pests)
+            sanidade_color = "#B42318" if max_sev >= 4 else "#D18A00"
+            sanidade_label = f"{len(plot_pests)} foco(s) · Nv. {max_sev}"
+        else:
+            sanidade_color = "#1F7A3A"
+            sanidade_label = "Sadio"
         map_plots.append({
             "id": plot.id,
             "name": plot.name,
@@ -25928,6 +26737,8 @@ def _map_page_data(geojson: str, plots: list, scope: dict, varieties: list | Non
             "variety": variety.name if variety else "Sem variedade",
             "variety_id": getattr(variety, "id", None),
             "variety_color": colors.get(getattr(variety, "id", None), NO_VARIETY_COLOR) if variety else NO_VARIETY_COLOR,
+            "sanidade_color": sanidade_color,
+            "sanidade_label": sanidade_label,
             "area": area,
             "estimated": estimated,
             "yield": (estimated / area) if area and estimated else None,
@@ -25977,6 +26788,8 @@ def map_page(
     )["map_geojson"]
     edit_plot = repo.get_plot(edit_plot_id) if edit_plot_id else None
     google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
+    scoped_map_plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    map_plot_ids = {p.id for p in scoped_map_plots}
     return templates.TemplateResponse(
         "map.html",
         _base_context(
@@ -25987,9 +26800,10 @@ def map_page(
             _repo=repo,
             **_map_page_data(
                 geojson,
-                repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
+                scoped_map_plots,
                 scope,
                 repo.list_varieties(organization_id=scope.get("active_organization_id")),
+                pest_incidents=repo.list_pest_incidents(farm_ids=farm_ids),
             ),
             edit_plot=edit_plot,
             edit_plot_geometry=edit_plot.boundary_geojson if edit_plot and edit_plot.boundary_geojson else None,
@@ -27657,36 +28471,9 @@ def mobile_page(
     request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
-    csrf_token: str = Depends(get_csrf_token),
 ):
-    repo = _repository(db)
-    scope = _global_scope_context(request, repo)
-    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
-    start_date, end_date = _scoped_dates(scope["active_season"])
-    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
-    plot_ids = {plot.id for plot in plots}
-    return templates.TemplateResponse(
-        "mobile.html",
-        _base_context(
-            request,
-            user,
-            csrf_token,
-            "mobile",
-            _repo=repo,
-            can_use_stock_assistant=_can_use_stock_assistant(db, user),
-            plots=plots,
-            quick_irrigations=[
-                irrigation
-                for irrigation in repo.list_irrigations(limit=20)
-                if irrigation.plot_id in plot_ids and _within_scope(irrigation.irrigation_date, start_date, end_date)
-            ][:3],
-            quick_incidents=[
-                incident
-                for incident in repo.list_pest_incidents(limit=20)
-                if incident.plot_id in plot_ids and _within_scope(incident.occurrence_date, start_date, end_date)
-            ][:3],
-        ),
-    )
+    del request, db, user
+    return _redirect("/lavoura")
 
 
 @router.get("/qualidade/testes-automatizados")

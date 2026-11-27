@@ -27,23 +27,36 @@
             <legend class="sr-only">Dados da colheita</legend>
             <div class="vw-step" data-vw-step="1">
                 <h2>De qual talhão?</h2>
+                {% if hv_withdrawals %}
+                <div class="pd-alert is-warn" role="alert" style="margin-bottom:0.85rem;">
+                    <strong>Atenção à carência de defensivos:</strong>
+                    {% for pid, w in hv_withdrawals.items() %}
+                        <span>{{ w.plot_name }} (liberado em {{ w.safe_date.strftime('%d/%m/%Y') }} — faltam {{ w.days_left }} dia(s){% if w.target_pest %}, {{ w.target_pest }}{% endif %}){% if not loop.last %}; {% endif %}</span>
+                    {% endfor %}.
+                    Confira antes de colher esses talhões.
+                </div>
+                {% endif %}
                 {% if hv_plots or hv_other_plots %}
                 <input type="hidden" name="incluir_safra" value="" data-hf-include-flag>
                 <div class="hf-plots">
                     {% for plot in hv_plots %}
                     {% set last = hv_last_by_plot.get(plot.id) %}
+                    {% set w_info = hv_withdrawals.get(plot.id) if hv_withdrawals else None %}
                     <label class="hf-plot">
                         <input type="radio" name="plot_id" value="{{ plot.id }}" data-area="{{ plot.area_hectares or 0 }}" data-name="{{ plot.name }}"
                                {% if (hv and hv.plot_id == plot.id) or (not hv and hv_preselect_plot == plot.id) %}checked{% endif %} required>
                         <span><strong>{{ plot.name }}</strong><small>{{ plot.variety.name ~ ' · ' if plot.variety }}{{ (plot.area_hectares or 0)|decimal_br(1) }} ha</small>
-                        <em>{{ ('Colhido em ' ~ last.strftime('%d/%m')) if last else 'Ainda não colhido' }}</em></span>
+                        <em>{{ ('Colhido em ' ~ last.strftime('%d/%m')) if last else 'Ainda não colhido' }}</em>
+                        {% if w_info %}<em style="color:#B42318;font-weight:700;">Carência até {{ w_info.safe_date.strftime('%d/%m') }}</em>{% endif %}</span>
                     </label>
                     {% endfor %}
                     {% for plot in hv_other_plots or [] %}
+                    {% set w_info = hv_withdrawals.get(plot.id) if hv_withdrawals else None %}
                     <label class="hf-plot is-out">
                         <input type="radio" name="plot_id" value="{{ plot.id }}" data-area="{{ plot.area_hectares or 0 }}" data-name="{{ plot.name }}" data-out="1" required>
                         <span><strong>{{ plot.name }}</strong><small>{{ plot.variety.name ~ ' · ' if plot.variety }}{{ (plot.area_hectares or 0)|decimal_br(1) }} ha</small>
-                        <em class="hf-out">Fora da safra</em></span>
+                        <em class="hf-out">Fora da safra</em>
+                        {% if w_info %}<em style="color:#B42318;font-weight:700;">Carência até {{ w_info.safe_date.strftime('%d/%m') }}</em>{% endif %}</span>
                     </label>
                     {% endfor %}
                 </div>

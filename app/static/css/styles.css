@@ -12703,3 +12703,149 @@ b.fc-filled { animation: none; color: #1f7a3a; }
     .px-modal-foot-main { flex:1 1 auto; }
     .px-modal-foot-main .px-inline-form, .px-modal-foot-main .sf-btn { flex:1 1 0; justify-content:center; }
 }
+
+/* ==========================================================================
+   Módulos Lavoura & Clima e Água (.lv-*) — Sistema de Design Oficial SiSFarm
+   ========================================================================== */
+.lv-quick-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(185px, 1fr)); gap:12px; margin-top:1rem; }
+.lv-qa { display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:16px; border:1px solid #E3E8E2; background:#FFFFFF; text-decoration:none; color:#16201A; transition:border-color .15s ease, background .15s ease; min-height:62px; }
+.lv-qa:hover { border-color:#446A36; background:#F6F8F5; }
+.lv-qa strong { display:block; font-size:14px; font-weight:600; color:#16201A; }
+.lv-qa small { display:block; font-size:12px; color:#5B6660; margin-top:1px; }
+.lv-qa-ic { width:38px; height:38px; border-radius:11px; display:grid; place-items:center; font-size:18px; flex:none; }
+.lv-qa-ic.is-green { background:#EEF3EB; }
+.lv-qa-ic.is-info { background:#E8F1FB; }
+.lv-qa-ic.is-warn { background:#FFF6E5; }
+
+.lv-weather-banner { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-top:1rem; padding:14px 18px; }
+.lv-weather-banner-left { display:flex; flex-wrap:wrap; align-items:center; gap:10px; font-size:13.5px; color:#16201A; }
+.lv-weather-banner-right { display:flex; flex-wrap:wrap; align-items:center; gap:14px; font-size:13px; color:#5B6660; font-variant-numeric:tabular-nums; }
+.lv-weather-banner-right strong { color:#16201A; }
+
+.lv-weather-card { margin-top:1rem; display:flex; flex-direction:column; gap:14px; }
+.lv-weather-top { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:12px; }
+.lv-weather-detail { margin:6px 0 0; font-size:13.5px; color:#5B6660; }
+.lv-weather-nums { display:flex; flex-wrap:wrap; gap:14px; font-size:13.5px; color:#5B6660; font-variant-numeric:tabular-nums; }
+.lv-weather-nums strong { color:#16201A; }
+.lv-weather-nums strong.is-info { color:#1F5FA8; }
+.lv-forecast-strip { display:grid; grid-template-columns:repeat(auto-fit, minmax(112px, 1fr)); gap:10px; }
+.lv-fday { padding:12px; border-radius:14px; border:1px solid #E3E8E2; background:#F6F8F5; display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; font-variant-numeric:tabular-nums; }
+.lv-fday.is-high { border-color:#F0D9A6; background:#FFF6E5; }
+.lv-fday.is-medium { border-color:#C7DCF4; background:#F2F7FD; }
+.lv-fday-wk { font-size:11.5px; font-weight:600; color:#5B6660; }
+.lv-fday-em { font-size:22px; line-height:1.2; }
+.lv-fday-temp { font-size:15px; font-weight:700; color:#16201A; }
+.lv-fday-temp small { font-weight:500; color:#5B6660; }
+.lv-fday-rain { font-size:11.5px; color:#1F5FA8; font-weight:600; }
+.lv-forecast-col { display:flex; flex-direction:column; gap:8px; }
+.lv-fday-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-radius:12px; background:#F6F8F5; font-size:13px; color:#16201A; font-variant-numeric:tabular-nums; }
+.lv-fday-meta { color:#5B6660; font-size:12.5px; }
+
+.lv-radar-list { display:flex; flex-direction:column; gap:10px; margin-top:.75rem; }
+.lv-radar-row { display:grid; grid-template-columns:minmax(150px, 1.1fr) minmax(0, 3fr) auto; align-items:center; gap:14px; padding:14px 16px; border-radius:14px; border:1px solid #E3E8E2; background:#FFFFFF; }
+.lv-radar-row:hover { border-color:#D6DDD5; background:#FAFBF9; }
+.lv-radar-id strong { display:block; font-size:15px; font-weight:700; color:#16201A; }
+.lv-radar-id small { display:block; font-size:12.5px; color:#5B6660; margin-top:2px; }
+.lv-radar-cells { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:10px; align-items:center; }
+.lv-radar-cell { display:flex; flex-direction:column; gap:3px; min-width:0; font-variant-numeric:tabular-nums; }
+.lv-radar-cell > span:first-child { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:#7A857E; }
+.lv-radar-cell > strong { font-size:13px; color:#16201A; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lv-dot-lbl { font-style:normal; font-weight:600; font-size:12px; color:#5B6660; }
+.lv-dot-lbl.is-warn { color:#7A4F00; }
+.lv-dot-lbl.is-err { color:#B42318; }
+.lv-dot-lbl.is-ok { color:#1F7A3A; }
+.lv-radar-actions { display:flex; align-items:center; gap:6px; }
+
+.lv-rec-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(310px, 1fr)); gap:14px; margin-top:1rem; }
+.lv-rec-card { display:flex; flex-direction:column; gap:12px; padding:18px; border-radius:16px; border:1px solid #E3E8E2; background:#FFFFFF; }
+.lv-rec-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.lv-rec-badges { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
+.lv-rec-title { margin:0; font-size:16px; font-weight:700; color:#16201A; }
+.lv-rec-meta { margin:4px 0 0; font-size:13px; color:#5B6660; font-variant-numeric:tabular-nums; }
+.lv-rec-items { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.lv-rec-items li { display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:8px 10px; border-radius:10px; background:#F6F8F5; font-size:13px; font-variant-numeric:tabular-nums; }
+.lv-rec-it-name { font-weight:600; color:#16201A; }
+.lv-rec-it-dose { text-align:right; color:#16201A; }
+.lv-rec-it-dose small { margin-left:4px; font-size:11.5px; color:#5B6660; }
+.lv-rec-it-dose small.is-ok { color:#1F7A3A; }
+.lv-rec-it-dose small.is-err { color:#B42318; font-weight:600; }
+.lv-rec-notes { margin:0; font-size:13px; color:#5B6660; line-height:1.45; }
+.lv-rec-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:auto; padding-top:8px; border-top:1px solid #EEF1ED; }
+.lv-rec-actions .sf-btn { flex:1 1 0; justify-content:center; }
+
+.lv-soil-list, .lv-pest-list { display:flex; flex-direction:column; gap:12px; margin-top:1rem; }
+.lv-soil-card, .lv-pest-card { padding:18px; border-radius:16px; border:1px solid #E3E8E2; background:#FFFFFF; display:flex; flex-direction:column; gap:12px; }
+.lv-soil-head { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:12px; }
+.lv-soil-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.lv-soil-metrics { display:grid; grid-template-columns:repeat(6, minmax(0, 1fr)); gap:8px; }
+.lv-soil-metrics > div { padding:10px 12px; border-radius:12px; background:#F6F8F5; display:flex; flex-direction:column; gap:2px; font-variant-numeric:tabular-nums; }
+.lv-soil-metrics span { font-size:11px; font-weight:600; text-transform:uppercase; color:#7A857E; }
+.lv-soil-metrics strong { font-size:15px; font-weight:700; color:#16201A; }
+
+.lv-pest-main { display:flex; align-items:flex-start; gap:14px; }
+.lv-pest-thumb { width:84px; height:84px; border-radius:12px; overflow:hidden; border:1px solid #E3E8E2; flex:none; display:block; }
+.lv-pest-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.lv-pest-treat { margin:6px 0 0; font-size:13px; color:#16201A; }
+.lv-pest-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; padding-top:10px; border-top:1px solid #EEF1ED; }
+.lv-cat-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+
+.lv-filter-bar { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; align-items:end; padding:12px 14px; border-radius:14px; background:#F6F8F5; border:1px solid #EEF1ED; margin-top:.75rem; }
+.lv-filter-actions { display:flex; align-items:center; gap:8px; }
+.lv-form-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+.lv-form-grid .is-span-2 { grid-column:span 2; }
+.lv-val-unit { display:flex; gap:6px; }
+.lv-val-unit input { flex:1 1 auto; min-width:0; }
+.lv-val-unit select { width:44%; min-width:86px; }
+.lv-fieldset { border:1px solid #E3E8E2; border-radius:14px; padding:14px; margin:1rem 0 0; }
+.lv-fieldset legend { padding:0 6px; font-size:13px; font-weight:700; color:#16201A; }
+.lv-details { border:1px solid #E3E8E2; border-radius:14px; padding:12px 14px; margin-top:.85rem; background:#FAFBF9; }
+.lv-details summary { cursor:pointer; font-size:13.5px; font-weight:600; color:#16201A; }
+.lv-items-box { border:1px solid #E3E8E2; border-radius:14px; padding:14px; background:#F6F8F5; margin-top:1rem; }
+.lv-items-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; }
+.lv-items-head strong { display:block; font-size:14px; color:#16201A; }
+.lv-items-head small { display:block; font-size:12px; color:#5B6660; }
+.lv-items-list { display:flex; flex-direction:column; gap:10px; margin-top:10px; }
+.lv-item-row { display:grid; grid-template-columns:minmax(0, 1.5fr) minmax(90px, .7fr) minmax(70px, .5fr) auto; gap:8px; align-items:end; padding:10px; border-radius:12px; background:#FFFFFF; border:1px solid #E3E8E2; }
+.lv-plot-checks { display:grid; grid-template-columns:repeat(auto-fill, minmax(155px, 1fr)); gap:8px; margin-top:6px; }
+.lv-plot-check { display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:12px; border:1px solid #D6DDD5; background:#FFFFFF; cursor:pointer; min-height:44px; }
+.lv-plot-check:has(input:checked) { border-color:#446A36; background:#EEF3EB; }
+.lv-plot-check input { accent-color:#446A36; width:1rem; height:1rem; flex:none; }
+.lv-plot-check strong { display:block; font-size:13.5px; color:#16201A; }
+.lv-plot-check small { display:block; font-size:11.5px; color:#5B6660; }
+.lv-calc-box { margin-top:.85rem; padding:12px 14px; border-radius:12px; border:1px solid #C7DCF4; background:#F2F7FD; font-size:13px; color:#16201A; font-weight:500; }
+.lv-title-btn { background:none; border:0; padding:0; text-align:left; font:inherit; color:#16201A; cursor:pointer; }
+.lv-title-btn:hover { color:#446A36; text-decoration:underline; }
+.lv-muted { color:#7A857E; font-size:12.5px; }
+.lv-kv-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
+.lv-kv-grid > div { padding:10px 12px; border-radius:12px; background:#F6F8F5; }
+.lv-kv-grid span { display:block; font-size:11px; font-weight:600; text-transform:uppercase; color:#7A857E; }
+.lv-kv-grid strong { display:block; font-size:14px; color:#16201A; margin-top:2px; }
+
+.lv-sched-draft-list { display:flex; flex-direction:column; gap:12px; }
+.lv-sched-draft-card { padding:14px; border-radius:14px; border:1px solid #E3E8E2; background:#F6F8F5; display:flex; flex-direction:column; gap:10px; }
+.lv-sched-draft-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; }
+.lv-sched-draft-ctrl { display:flex; flex-wrap:wrap; gap:8px; }
+.lv-sched-draft-ctrl input, .lv-sched-draft-ctrl select { min-height:38px; border-radius:10px; border:1px solid #D6DDD5; background:#FFFFFF; padding:6px 10px; font-size:13px; }
+.lv-sched-draft-items { display:flex; flex-direction:column; gap:8px; }
+.lv-sched-draft-item { display:grid; grid-template-columns:minmax(0, 1fr) 130px; gap:8px; align-items:end; padding:10px; border-radius:10px; background:#FFFFFF; border:1px solid #E3E8E2; }
+.lv-sched-draft-item select { width:100%; min-height:38px; border-radius:10px; border:1px solid #D6DDD5; padding:6px 8px; font-size:13px; margin-top:3px; }
+.lv-sched-draft-qty { display:flex; align-items:center; gap:6px; }
+.lv-sched-draft-qty input { width:100%; min-height:38px; border-radius:10px; border:1px solid #D6DDD5; padding:6px 8px; font-size:13px; text-align:right; }
+.lv-sched-draft-qty span { font-size:12.5px; font-weight:600; color:#5B6660; }
+
+@media (max-width: 1023px) {
+    .lv-radar-row { grid-template-columns:1fr; }
+    .lv-radar-cells { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+    .lv-soil-metrics { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 639px) {
+    .lv-form-grid { grid-template-columns:1fr; }
+    .lv-form-grid .is-span-2 { grid-column:span 1; }
+    .lv-item-row { grid-template-columns:1fr; }
+    .lv-radar-cells { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    .lv-soil-metrics { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    .lv-kv-grid { grid-template-columns:1fr; }
+    .lv-sched-draft-item { grid-template-columns:1fr; }
+    .lv-pest-main { flex-direction:column; }
+    .lv-pest-thumb { width:100%; height:160px; }
+}

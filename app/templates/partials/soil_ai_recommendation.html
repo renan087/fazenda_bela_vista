@@ -70,6 +70,12 @@
             <div class="ar-card ar-card-warn">
                 <h4>{{ 'Falta 1 dado' if plan.pendencias|length == 1 else 'Faltam ' ~ plan.pendencias|length ~ ' dados' }} para fechar o plano</h4>
                 <ul class="ar-pending">{% for row in plan.pendencias %}<li><strong>{{ row.dado }}.</strong> {{ row.motivo }} {{ row.impacto }}</li>{% endfor %}</ul>
+                <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
+                    <a class="ar-btn ar-btn-secondary" href="/setores">Completar no talhão</a>
+                    {% if item.farm_id %}
+                    <a class="ar-btn ar-btn-secondary" href="/fazendas/{{ item.farm_id }}?aba=agronomico">Dados agronômicos da fazenda</a>
+                    {% endif %}
+                </div>
             </div>
             {% endif %}
             {% if plan.alertas %}
@@ -222,8 +228,17 @@
             {% endif %}
             <div class="ar-card">
                 <h4>Levar para a agenda</h4>
-                <p class="ar-muted">Cria os agendamentos de adubação com estes produtos, para você conferir e confirmar.</p>
-                <button type="button" class="ar-btn ar-btn-disabled ar-btn-block" disabled>Agendar aplicações <span class="ar-badge ar-badge-soon">Em breve</span></button>
+                <p class="ar-muted">Cria os agendamentos de adubação com estes produtos, para você conferir datas, insumos e confirmar antes de salvar.</p>
+                {% if (can_write_page if can_write_page is defined else true) and events %}
+                <button type="button" class="ar-btn ar-btn-primary ar-btn-block" data-soil-schedule-open="{{ item.id }}">Agendar aplicações ({{ events|length }}) →</button>
+                {% elif not events %}
+                <p class="ar-muted" style="margin:0;">Nenhuma etapa pendente no cronograma para agendar.</p>
+                {% else %}
+                <p class="ar-muted" style="margin:0;">Sem permissão de escrita para criar agendamentos.</p>
+                {% endif %}
+                {% if buy %}
+                <a href="{{ module_href('/insumos/comprados/nova') }}" class="ar-btn ar-btn-secondary ar-btn-block" style="margin-top:8px;">Lançar compra de insumos faltantes</a>
+                {% endif %}
             </div>
         </div>
     </section>

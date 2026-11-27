@@ -53,6 +53,7 @@
                 <div class="fm-seg fm-seg-color" role="group" aria-label="Colorir setores por">
                     <button type="button" aria-pressed="true" data-fm-color="setor">Cor por setor</button>
                     <button type="button" aria-pressed="false" data-fm-color="var">Por variedade</button>
+                    <button type="button" aria-pressed="false" data-fm-color="sanidade">Por sanidade</button>
                 </div>
                 {% endif %}
             </div>
@@ -139,11 +140,17 @@
                         <dl class="fm-stats">
                             <div><dt>Área</dt><dd>{{ plot.area|decimal_br(1) }} ha</dd></div>
                             <div><dt>Estimativa</dt><dd>{% if plot.estimated %}{{ plot.estimated|decimal_br(0) }} sc{% else %}—{% endif %}</dd></div>
-                            <div><dt>Produtiv.</dt><dd>{% if plot.yield %}{{ plot.yield|decimal_br(1) }} sc/ha{% else %}—{% endif %}</dd></div>
+                            <div><dt>Sanidade</dt><dd>{{ plot.sanidade_label or 'Sadio' }}</dd></div>
                         </dl>
                         <div class="fm-detail-actions">
                             <a href="/mapa?edit_plot_id={{ plot.id }}" class="sf-btn sf-btn-secondary db-btn-sm">{{ ic('edit', 15) }}Editar perímetro</a>
                             <a href="/setores?edit_id={{ plot.id }}" class="sf-btn sf-btn-primary db-btn-sm">{{ ic('open', 15) }}Abrir setor</a>
+                        </div>
+                        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+                            <a href="/fertilizacao/nova?plot_id={{ plot.id }}" class="sf-btn sf-btn-secondary sf-btn-sm">+ Adubar</a>
+                            <a href="/operacoes?novo=1&amp;plot_id={{ plot.id }}" class="sf-btn sf-btn-secondary sf-btn-sm">+ Operação</a>
+                            <a href="/irrigacao?novo=1&amp;plot_id={{ plot.id }}" class="sf-btn sf-btn-secondary sf-btn-sm">+ Irrigar</a>
+                            <a href="/pragas?novo=1&amp;plot_id={{ plot.id }}" class="sf-btn sf-btn-secondary sf-btn-sm">+ Praga</a>
                         </div>
                     </div>
                 </div>
@@ -190,6 +197,7 @@
     const PARAMS = new URLSearchParams(window.location.search);
     if (PARAMS.get('cor') === 'variedade') store.set('sf-map-color', 'var');
     if (PARAMS.get('cor') === 'setor') store.set('sf-map-color', 'setor');
+    if (PARAMS.get('cor') === 'sanidade') store.set('sf-map-color', 'sanidade');
     const keyOf = (p) => (p.variety_id == null ? 'none' : String(p.variety_id));
     // Variedades na ordem da maior área; "Sem variedade" sempre no fim.
     const varGroups = (() => {
@@ -202,11 +210,17 @@
         });
         return [...m.values()].sort((a, b) => (a.key === 'none') - (b.key === 'none') || b.area - a.area);
     })();
-    let colorMode = store.get('sf-map-color') === 'var' ? 'var' : 'setor';
+    let colorMode = ['var', 'sanidade'].includes(store.get('sf-map-color')) ? store.get('sf-map-color') : 'setor';
     let focusVar = null;
     let engineRef = null;
     let baseMode = store.get('sf-map-base') === 'map' ? 'map' : 'sat';
-    const colorOf = (p) => colorMode === 'var' ? [p.variety_color || '#9AA59E', p.variety_color || '#9AA59E'] : PAL[PLOTS.indexOf(p) % PAL.length];
+    const colorOf = (p) => {
+        if (colorMode === 'sanidade') {
+            const c = p.sanidade_color || '#1F7A3A';
+            return [c, c];
+        }
+        return colorMode === 'var' ? [p.variety_color || '#9AA59E', p.variety_color || '#9AA59E'] : PAL[PLOTS.indexOf(p) % PAL.length];
+    };
 
     // ---------- Geometria ----------
     const ringToPoints = (ring) => (ring || []).slice(0, -1).map((c) => ({ lat: c[1], lng: c[0] }));
@@ -352,6 +366,27 @@
             if (sw) sw.style.cssText = `background:${fill};border-color:${stroke}`;
         });
         if (!legend) return;
+        if (colorMode === 'sanidade' && EDIT_ID === null) {
+            legend.hidden = false;
+            const title = document.createElement('p');
+            title.textContent = 'Sanidade dos talhões';
+            legend.replaceChildren(title);
+            [
+                { color: '#1F7A3A', label: 'Sadio (sem focos ativos)' },
+                { color: '#D18A00', label: 'Atenção (foco nível 1–3)' },
+                { color: '#B42318', label: 'Crítico (foco nível 4–5)' },
+            ].forEach((item) => {
+                const row = document.createElement('div');
+                row.className = 'fm-leg';
+                const sw = document.createElement('i');
+                sw.style.cssText = `background:${item.color};border-color:${item.color}`;
+                const sp = document.createElement('span');
+                sp.textContent = item.label;
+                row.append(sw, sp);
+                legend.append(row);
+            });
+            return;
+        }
         const show = colorMode === 'var' && EDIT_ID === null && varGroups.length > 0;
         legend.hidden = !show;
         if (!show) return;

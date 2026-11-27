@@ -1146,6 +1146,23 @@
     });
     root.querySelector('[data-ft-bulk-clear]')?.addEventListener('click', () => { state.selectedIds.clear(); renderAll(); });
     root.querySelector('[data-ft-open-bulk-resched]')?.addEventListener('click', () => openReschedDialog([...state.selectedIds]));
+    document.querySelector('[data-ft-copy-buylist]')?.addEventListener('click', (e) => {
+        const btn = e.currentTarget;
+        const rows = Array.from(document.querySelectorAll('#ft-buylist-dialog .ft-buy-row'));
+        if (!rows.length) return;
+        const lines = ['*Lista de cotação — SiSFarm*', ''];
+        rows.forEach((row) => {
+            const name = row.querySelector('strong')?.textContent?.trim() || '';
+            const qty = row.querySelector('.ft-buy-right strong')?.textContent?.trim() || '';
+            if (name) lines.push(`• ${name}: ${qty}`);
+        });
+        const text = lines.join('\n');
+        navigator.clipboard?.writeText(text).then(() => {
+            const prev = btn.textContent;
+            btn.textContent = 'Lista copiada ✓';
+            setTimeout(() => { btn.textContent = prev; }, 2200);
+        }).catch(() => {});
+    });
 
     document.querySelectorAll('[data-ft-close-dialog]').forEach((btn) => {
         btn.addEventListener('click', () => btn.closest('dialog')?.close());

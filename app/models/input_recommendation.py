@@ -11,6 +11,8 @@ class InputRecommendation(Base):
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id"), nullable=True)
     plot_id: Mapped[int] = mapped_column(ForeignKey("plots.id"), nullable=True)
     application_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    dose_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="per_ha")
+    application_method: Mapped[str] = mapped_column(String(40), nullable=False, default="fertirrigacao")
     purchased_input_id: Mapped[int] = mapped_column(ForeignKey("purchased_inputs.id"), nullable=True)
     unit: Mapped[str] = mapped_column(String(20), nullable=True)
     quantity_per_hectare: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)

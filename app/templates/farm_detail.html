@@ -43,6 +43,7 @@
         <a href="/fazendas/{{ farm.id }}?aba=visao" {% if active_tab == 'visao' %}aria-current="page"{% endif %}>Visão geral</a>
         <a href="/fazendas/{{ farm.id }}?aba=setores" {% if active_tab == 'setores' %}aria-current="page"{% endif %}>Setores ({{ metrics.plots_count }})</a>
         <a href="/fazendas/{{ farm.id }}?aba=safras" {% if active_tab == 'safras' %}aria-current="page"{% endif %}>Safras ({{ metrics.seasons_count }})</a>
+        <a href="/fazendas/{{ farm.id }}?aba=agronomico" {% if active_tab == 'agronomico' %}aria-current="page"{% endif %}>Dados agronômicos</a>
         <a href="/fazendas/{{ farm.id }}?aba=documentos" {% if active_tab == 'documentos' %}aria-current="page"{% endif %}>Documentos &amp; CAR</a>
         <a href="/fazendas/{{ farm.id }}?aba=chuva" {% if active_tab == 'chuva' %}aria-current="page"{% endif %}>Pluviometria &amp; Alertas</a>
     </nav>
@@ -256,6 +257,186 @@
             <p class="pd-note">Nenhum documento anexado ainda. Guarde aqui recibo do CAR, CCIR, matrícula ou fotos da fazenda.</p>
             {% endif %}
         </article>
+    </div>
+
+    {% elif active_tab == 'agronomico' %}
+    {% set prof = agronomic_profile %}
+    {% set der = agronomic_derived or {} %}
+    <div style="display:flex; flex-direction:column; gap:16px;">
+        <article class="pd-card" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; background:#F6F8F5;">
+            <div style="max-width:640px;">
+                <p class="pd-eyebrow is-brand">Contexto técnico da fazenda · usado pela Análise de Solo</p>
+                <h2 style="margin-top:4px;">Dados agronômicos de {{ farm.name }}</h2>
+                <p class="fm-card-sub">Os dados dos seus talhões são herdados automaticamente. Preencha abaixo apenas os complementos da propriedade.</p>
+            </div>
+            <div style="min-width:190px;">
+                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; color:#16201A;">
+                    <span>Completude</span><span>{{ agronomic_completion|default(0) }}%</span>
+                </div>
+                <div class="ft-meter"><i class="is-brand" style="width: {{ agronomic_completion|default(0) }}%"></i></div>
+                <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+                    <a class="fm-hcard-link" href="/analise-solo">Ir para Análise de Solo →</a>
+                </div>
+            </div>
+        </article>
+
+        <article class="pd-card" style="display:flex; flex-direction:column; gap:12px;">
+            <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px;">
+                <div>
+                    <h2>Herdado automaticamente dos talhões e da lavoura</h2>
+                    <p class="fm-card-sub">Estes valores já estão no SiSFarm — não precisam ser digitados duas vezes.</p>
+                </div>
+                <a class="sf-btn sf-btn-secondary sf-btn-sm" href="/setores">Ajustar nos talhões</a>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+                <div class="fm-kv"><dt>Cultivar predominante</dt><dd>{{ der.cultivar or '—' }}</dd></div>
+                <div class="fm-kv"><dt>Irrigação predominante</dt><dd>{{ der.irrigation_system or '—' }}</dd></div>
+                <div class="fm-kv"><dt>Espaçamento predominante</dt><dd>{{ der.plant_spacing or '—' }}</dd></div>
+                <div class="fm-kv"><dt>Gotejamento</dt><dd>{{ der.drip_spacing or '—' }}</dd></div>
+                <div class="fm-kv"><dt>Insumos mais aplicados</dt><dd>{{ der.top_fertilizers or '—' }}</dd></div>
+                <div class="fm-kv"><dt>Pragas registradas</dt><dd>{{ der.top_pests or '—' }}</dd></div>
+            </div>
+        </article>
+
+        <article class="pd-card">
+            <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;">
+                <div>
+                    <h2>Complemento agronômico da fazenda</h2>
+                    <p class="fm-card-sub" data-fm-agro-status>Use o botão ao lado para preencher campos vazios com sugestões geográficas (altitude, declive e exposição solar).</p>
+                </div>
+                {% if can_write_page %}
+                <button type="button" class="sf-btn sf-btn-secondary sf-btn-sm" data-fm-agro-suggest="{{ farm.id }}">Preencher sugestões automáticas</button>
+                {% endif %}
+            </div>
+            <form method="post" action="/fazendas/{{ farm.id }}/agronomico" id="farm-agronomic-form" style="display:flex; flex-direction:column; gap:16px;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="lv-form-grid">
+                    <label class="ft-field">
+                        <span>Cultura principal</span>
+                        <input name="culture" list="fm-agro-cultures" value="{{ prof.culture if prof else (der.culture or 'Café arábica') }}" required {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Região / Município</span>
+                        <input name="region" value="{{ prof.region if prof else (farm.location or '') }}" required {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Sistema de produção</span>
+                        <input name="production_system" list="fm-agro-systems" value="{{ prof.production_system if prof else (der.production_system or '') }}" placeholder="Ex.: Convencional, Irrigado, Orgânico" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Clima predominante</span>
+                        <input name="climate" list="fm-agro-climates" value="{{ prof.climate if prof else '' }}" placeholder="Ex.: Tropical de altitude" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Tipo de solo predominante</span>
+                        <input name="soil_type" list="fm-agro-soils" value="{{ prof.soil_type if prof else '' }}" placeholder="Ex.: Latossolo argiloso" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Meta de produtividade (sc/ha)</span>
+                        <input type="number" step="0.1" min="0" name="target_productivity_sacks_per_ha" value="{{ prof.target_productivity_sacks_per_ha if prof and prof.target_productivity_sacks_per_ha is not none else '' }}" placeholder="Ex.: 45" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Altitude média (m)</span>
+                        <input type="number" min="0" name="altitude_meters" value="{{ prof.altitude_meters if prof and prof.altitude_meters is not none else '' }}" placeholder="Ex.: 950" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Declividade</span>
+                        <input name="terrain_slope" list="fm-agro-slopes" value="{{ prof.terrain_slope if prof else '' }}" placeholder="Ex.: Ondulado" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Exposição solar</span>
+                        <input name="sun_exposure" list="fm-agro-sun" value="{{ prof.sun_exposure if prof else '' }}" placeholder="Ex.: Face norte" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Fase predominante</span>
+                        <input name="crop_stage" list="fm-agro-stages" value="{{ prof.crop_stage if prof else (der.crop_stage or '') }}" placeholder="Ex.: Produção" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Cultivar predominante</span>
+                        <input name="cultivar" value="{{ prof.cultivar if prof else (der.cultivar or '') }}" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Sistema de irrigação</span>
+                        <input name="irrigation_system" value="{{ prof.irrigation_system if prof else (der.irrigation_system or '') }}" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <input type="hidden" name="plant_spacing" value="{{ prof.plant_spacing if prof else (der.plant_spacing or '') }}">
+                    <input type="hidden" name="drip_spacing" value="{{ prof.drip_spacing if prof else (der.drip_spacing or '') }}">
+                </div>
+
+                <div class="lv-form-grid" style="grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));">
+                    <label class="ft-field">
+                        <span>Última calagem</span>
+                        <input type="date" name="last_liming_date" value="{{ prof.last_liming_date.isoformat() if prof and prof.last_liming_date else '' }}" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Última gessagem</span>
+                        <input type="date" name="last_gypsum_date" value="{{ prof.last_gypsum_date.isoformat() if prof and prof.last_gypsum_date else '' }}" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                    <label class="ft-field">
+                        <span>Última matéria orgânica</span>
+                        <input type="date" name="last_organic_matter_date" value="{{ prof.last_organic_matter_date.isoformat() if prof and prof.last_organic_matter_date else '' }}" {% if not can_write_page %}disabled{% endif %}>
+                    </label>
+                </div>
+
+                <div class="lv-form-grid">
+                    <label class="ft-field">
+                        <span>Histórico de podas</span>
+                        <textarea name="pruning_history" rows="3" placeholder="Ex.: esqueletamento em 2025, decote previsto..." {% if not can_write_page %}disabled{% endif %}>{{ prof.pruning_history if prof else '' }}</textarea>
+                    </label>
+                    <label class="ft-field">
+                        <span>Limitações atuais da lavoura</span>
+                        <textarea name="current_limitations" rows="3" placeholder="Ex.: déficit hídrico, compactação, falhas de estande..." {% if not can_write_page %}disabled{% endif %}>{{ prof.current_limitations if prof else '' }}</textarea>
+                    </label>
+                </div>
+
+                <input type="hidden" name="fertilizers_used" value="{{ prof.fertilizers_used if prof else (der.top_fertilizers or '') }}">
+                <input type="hidden" name="common_pests" value="{{ prof.common_pests if prof else (der.top_pests or '') }}">
+
+                <datalist id="fm-agro-cultures"><option value="Café arábica"><option value="Café conilon/robusta"></datalist>
+                <datalist id="fm-agro-systems"><option value="Convencional"><option value="Orgânico"><option value="Regenerativo"><option value="Irrigado"><option value="Sequeiro"></datalist>
+                <datalist id="fm-agro-climates"><option value="Tropical de altitude"><option value="Tropical semiárido"><option value="Tropical úmido"><option value="Subtropical"></datalist>
+                <datalist id="fm-agro-soils"><option value="Argiloso"><option value="Arenoso"><option value="Franco-argiloso"><option value="Latossolo"><option value="Cambissolo"></datalist>
+                <datalist id="fm-agro-slopes"><option value="Plano"><option value="Suave ondulado"><option value="Ondulado"><option value="Forte ondulado"></datalist>
+                <datalist id="fm-agro-sun"><option value="Pleno sol"><option value="Face norte"><option value="Face sul"><option value="Face leste"><option value="Face oeste"></datalist>
+                <datalist id="fm-agro-stages"><option value="Implantação"><option value="Formação"><option value="Produção"><option value="Pós-colheita"><option value="Renovação / recepa"></datalist>
+
+                {% if can_write_page %}
+                <div style="display:flex; justify-content:flex-end; gap:10px;">
+                    <button type="submit" class="sf-btn sf-btn-primary">Salvar dados agronômicos</button>
+                </div>
+                {% endif %}
+            </form>
+        </article>
+        <script>
+        (() => {
+            const btn = document.querySelector('[data-fm-agro-suggest]');
+            const form = document.getElementById('farm-agronomic-form');
+            const statusEl = document.querySelector('[data-fm-agro-status]');
+            if (!btn || !form) return;
+            btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                if (statusEl) statusEl.textContent = 'Buscando sugestões com base na fazenda e nos setores...';
+                try {
+                    const res = await fetch(`/perfil-agronomico/sugestoes?farm_id=${encodeURIComponent(btn.dataset.fmAgroSuggest)}`, { credentials: 'same-origin' });
+                    const data = await res.json();
+                    if (!res.ok || !data.ok) throw new Error(data.error || 'Não foi possível carregar sugestões.');
+                    let applied = 0;
+                    Object.entries(data.suggestions || {}).forEach(([field, sug]) => {
+                        const el = form.elements.namedItem(field);
+                        if (el && sug?.value && !String(el.value || '').trim()) {
+                            el.value = String(sug.value);
+                            applied += 1;
+                        }
+                    });
+                    if (statusEl) statusEl.textContent = applied ? `${applied} campo(s) vazio(s) preenchido(s) automaticamente. Revise e salve.` : 'Todos os campos sugeridos já estão preenchidos.';
+                } catch (err) {
+                    if (statusEl) statusEl.textContent = err.message || 'Erro ao buscar sugestões.';
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        })();
+        </script>
     </div>
 
     {% elif active_tab == 'chuva' %}

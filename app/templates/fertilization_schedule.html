@@ -31,7 +31,7 @@
         </div>
     </header>
 
-    {{ fertilization_tabs('schedules', ft_active_schedules_count, ft_fert_count) }}
+    {{ fertilization_tabs('schedules', ft_active_schedules_count, ft_fert_count, ft_recipes_count) }}
 
     <!-- KPIs operacionais -->
     <section class="ft-kpis" aria-label="Resumo do planejamento">
@@ -318,7 +318,10 @@
         </div>
         <div class="ft-dialog-foot">
             <button type="button" class="sf-btn sf-btn-secondary" data-ft-close-dialog>Fechar</button>
-            <a class="sf-btn sf-btn-primary" href="{{ module_href('/insumos/comprados') }}">Ir para Compras →</a>
+            {% if demand.missing_rows %}
+            <button type="button" class="sf-btn sf-btn-secondary" data-ft-copy-buylist>Copiar p/ WhatsApp</button>
+            {% endif %}
+            <a class="sf-btn sf-btn-primary" href="{{ module_href('/insumos/comprados/nova') }}">Lançar compra →</a>
         </div>
     </div>
 </dialog>
@@ -355,5 +358,5 @@
     "weather": ctx.weather_map,
     "buyHref": module_href('/insumos/comprados')
 }|tojson }}</script>
-<script src="{{ url_for('static', path='js/fertilization_schedule.js') }}?v=20261121ft4" defer></script>
+<script src="{{ url_for('static', path='js/fertilization_schedule.js') }}?v=20261126lv1" defer></script>
 {% endblock %}

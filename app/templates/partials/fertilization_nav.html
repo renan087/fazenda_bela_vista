@@ -1,5 +1,5 @@
-{# Abas integradas do ciclo nutricional (Agendamentos <-> Fertilização). active: 'schedules' | 'fertilization' #}
-{% macro fertilization_tabs(active, active_schedules_count=None, fert_count=None) %}
+{# Abas integradas do ciclo nutricional (Agendamentos <-> Fertilização <-> Receitas). active: 'schedules' | 'fertilization' | 'recipes' #}
+{% macro fertilization_tabs(active, active_schedules_count=None, fert_count=None, recipes_count=None) %}
 {% set mv = menu_visibility or {} %}
 <nav class="pd-tabs ft-tabs" aria-label="Ciclo de adubação">
     {% if mv.get('agenda', True) %}
@@ -10,6 +10,9 @@
     {% if mv.get('operations', True) %}
     <a href="{{ module_href('/fertilizacao') }}" {% if active == 'fertilization' %}aria-current="page"{% endif %}>
         Fertilização{% if fert_count is not none %} <span class="ft-tab-count">{{ fert_count }}</span>{% endif %}
+    </a>
+    <a href="{{ module_href('/fertilizacao/receitas') }}" {% if active == 'recipes' %}aria-current="page"{% endif %}>
+        Receitas{% if recipes_count is not none %} <span class="ft-tab-count">{{ recipes_count }}</span>{% endif %}
     </a>
     {% endif %}
 </nav>

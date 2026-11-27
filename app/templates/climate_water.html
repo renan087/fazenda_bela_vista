@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% from "partials/climate_water_nav.html" import climate_water_tabs %}
+{% block content %}
+{% set ctx = cw_ctx %}
+{% set k = ctx.kpi %}
+{% set sw = ctx.spray_window %}
+<div class="sf-page pd-page ft-page" data-climate-water-page>
+    <header class="pd-head">
+        <div>
+            <h1 class="sf-page-title">Clima e Água</h1>
+            <p class="sf-page-subtitle">Previsão do tempo, chuvas registradas e balanço hídrico em milímetros por talhão{% if active_farm %} — {{ active_farm.name }}{% endif %}.</p>
+        </div>
+        <div class="pd-head-actions">
+            {% if can_write_page %}
+            <a class="sf-btn sf-btn-secondary" href="/pluviometria?novo=1">Registrar chuva</a>
+            <a class="sf-btn sf-btn-primary" href="/irrigacao?novo=1">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Registrar irrigação
+            </a>
+            {% endif %}
+        </div>
+    </header>
+
+    {{ climate_water_tabs('overview', cw_irrigation_count, cw_rainfall_count) }}
+
+    {# Janela de campo + Previsão 7 dias #}
+    <section class="pd-card lv-weather-card" aria-label="Previsão do tempo e janela de campo">
+        <div class="lv-weather-top">
+            <div>
+                <span class="pd-chip is-{{ sw.tone }}">{{ sw.title }}</span>
+                <p class="lv-weather-detail">{{ sw.detail }}</p>
+            </div>
+            <div class="lv-weather-nums">
+                <span>Chuva últimos 7d: <strong>{{ k.rain_7d_mm|decimal_br(1) }} mm</strong></span>
+                <span>Previsto próx. 3d: <strong class="is-info">{{ k.forecast_3d_mm|decimal_br(1) }} mm</strong></span>
+            </div>
+        </div>
+        {% if ctx.forecast_days %}
+        <div class="lv-forecast-strip">
+            {% for d in ctx.forecast_days %}
+            <div class="lv-fday is-{{ d.risk }}">
+                <span class="lv-fday-wk">{{ d.weekday }} · {{ d.day_label }}</span>
+                <span class="lv-fday-em" aria-hidden="true">{{ d.emoji }}</span>
+                <strong class="lv-fday-temp">{% if d.tmax is not none %}{{ d.tmax|round(0)|int }}°{% else %}—{% endif %}{% if d.tmin is not none %}<small>/{{ d.tmin|round(0)|int }}°</small>{% endif %}</strong>
+                <span class="lv-fday-rain">{{ d.precip_mm|decimal_br(1) }} mm · {{ d.prob }}%</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="ft-calm">Cadastre o perímetro da fazenda ou dos talhões para ver a previsão de 7 dias aqui.</p>
+        {% endif %}
+    </section>
+
+    {# KPIs de água e chuva #}
+    <section class="ft-kpis" aria-label="Indicadores hídricos">
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Chuva em {{ k.month_label }}</span>
+            <div class="ft-kpi-val"><strong class="is-info">{{ k.month_rain_mm|decimal_br(1) }}</strong><span>mm</span></div>
+            <p class="ft-kpi-sub">{% if k.month_avg_mm is not none %}Média histórica do mês: {{ k.month_avg_mm|decimal_br(1) }} mm{% else %}Acumulado de 30d: {{ k.rain_30d_mm|decimal_br(1) }} mm{% endif %}</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Última chuva</span>
+            <div class="ft-kpi-val"><strong>{% if k.latest_rain_days is not none %}{{ 'Hoje' if k.latest_rain_days == 0 else ('Há ' ~ k.latest_rain_days ~ 'd') }}{% else %}—{% endif %}</strong></div>
+            <p class="ft-kpi-sub">{% if k.latest_rain_mm is not none %}{{ k.latest_rain_mm|decimal_br(1) }} mm registrados{% else %}Nenhuma chuva registrada{% endif %}</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Irrigação (últimos 30d)</span>
+            <div class="ft-kpi-val"><strong>{{ k.irr_30d_m3|decimal_br(1) }}</strong><span>m³</span></div>
+            <p class="ft-kpi-sub">{{ k.irrigated_plots_count }} talhão(ões) com sistema de irrigação</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Atenção hídrica</span>
+            <div class="ft-kpi-val"><strong class="{{ 'is-warn' if k.dry_alert_count else 'is-ok' }}">{{ k.dry_alert_count }}</strong><span>talh{{ 'ão' if k.dry_alert_count == 1 else 'ões' }}</span></div>
+            <p class="ft-kpi-sub">{% if k.dry_alert_count %}Irrigados há 5+ dias sem água{% else %}Todos os talhões irrigados em dia{% endif %}</p>
+        </article>
+    </section>
+
+    <section class="ft-overview-grid" aria-label="Balanço hídrico por talhão e gráfico combinado">
+        <article class="pd-card ft-plots-card">
+            <div class="ft-card-head">
+                <div>
+                    <h2>Balanço hídrico por talhão (últimos 15 dias)</h2>
+                    <p>Soma automática de chuva + irrigação convertida em milímetros de lâmina.</p>
+                </div>
+            </div>
+            {% if ctx.plot_water_rows %}
+            <div class="ft-plot-list">
+                {% for row in ctx.plot_water_rows %}
+                <div class="ft-plot-row">
+                    <div class="ft-plot-main" style="cursor:default;">
+                        <div class="ft-plot-top">
+                            <strong>{{ row.plot_name }}</strong>
+                            <span>{{ row.area|decimal_br(1) }} ha · {{ row.irrigation_label }}</span>
+                            <span class="pd-chip is-{{ row.status }}">{{ row.status_label }}</span>
+                        </div>
+                        <div class="ft-plot-meta">
+                            <span>Chuva 15d: <strong>{{ row.rain_15d_mm|decimal_br(1) }} mm</strong></span>
+                            <span>Irrigação 15d: <strong>{{ row.irr_15d_mm|decimal_br(1) }} mm</strong>{% if row.irr_15d_liters %} ({{ row.irr_15d_liters|decimal_br(0) }} L){% endif %}</span>
+                            <span>Total: <strong style="color:#1F5FA8;">{{ row.total_15d_mm|decimal_br(1) }} mm</strong></span>
+                        </div>
+                    </div>
+                    {% if can_write_page %}
+                    <a class="sf-btn sf-btn-secondary sf-btn-sm" href="/irrigacao?novo=1&plot_id={{ row.plot_id }}">+ Irrigar</a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="pd-empty">
+                <strong>Nenhum talhão cadastrado para a fazenda ativa.</strong>
+                <a class="sf-btn sf-btn-primary" href="/setores">Cadastrar talhões</a>
+            </div>
+            {% endif %}
+        </article>
+
+        <aside class="pd-card ft-side-card">
+            <div>
+                <h2>Chuva × Irrigação (6 meses)</h2>
+                <p class="ft-stage-sub" style="margin-top:2px;">Lâmina mensal em milímetros (mm).</p>
+            </div>
+            <div style="height:240px; position:relative;">
+                <canvas id="cwBalanceChart"></canvas>
+            </div>
+        </aside>
+    </section>
+</div>
+
+<script>
+(() => {
+    const data = {{ ctx.chart|tojson }};
+    const canvas = document.getElementById('cwBalanceChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: data.labels,
+            datasets: [
+                { label: 'Chuva (mm)', data: data.rain, backgroundColor: '#1F5FA8', borderRadius: 6 },
+                { label: 'Irrigação média (mm)', data: data.irrigation, backgroundColor: '#9BCB6B', borderRadius: 6 },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } },
+            scales: { y: { beginAtZero: true } },
+        },
+    });
+})();
+</script>
+{% endblock %}

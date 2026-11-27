@@ -1,0 +1,19 @@
+{# Abas integradas do módulo Clima e Água. active: 'overview' | 'irrigation' | 'rainfall' #}
+{% macro climate_water_tabs(active, irrigation_count=None, rainfall_count=None) %}
+{% set mv = menu_visibility or {} %}
+<nav class="pd-tabs ft-tabs" aria-label="Navegação de Clima e Água">
+    <a href="{{ module_href('/clima-agua') }}" {% if active == 'overview' %}aria-current="page"{% endif %}>
+        Balanço e Previsão
+    </a>
+    {% if mv.get('nav_irrigation', True) %}
+    <a href="{{ module_href('/irrigacao') }}" {% if active == 'irrigation' %}aria-current="page"{% endif %}>
+        Irrigação{% if irrigation_count is not none %} <span class="ft-tab-count">{{ irrigation_count }}</span>{% endif %}
+    </a>
+    {% endif %}
+    {% if mv.get('nav_rainfall', True) %}
+    <a href="{{ module_href('/pluviometria') }}" {% if active == 'rainfall' %}aria-current="page"{% endif %}>
+        Chuva e Alertas{% if rainfall_count is not none %} <span class="ft-tab-count">{{ rainfall_count }}</span>{% endif %}
+    </a>
+    {% endif %}
+</nav>
+{% endmacro %}

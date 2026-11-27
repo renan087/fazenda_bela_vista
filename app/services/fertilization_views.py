@@ -731,6 +731,114 @@ def build_fertilization_page_context(
     }
 
 
+DOSE_MODE_LABELS: dict[str, str] = {
+    "per_ha": "Por hectare",
+    "per_plant": "Por pé de café",
+    "fixed_plot": "Total por talhão",
+}
+
+
+def build_recipes_page_context(
+    *,
+    recommendations: list,
+    inputs_catalog: list[InputCatalog],
+    purchased_inputs: list[PurchasedInput],
+    farm_id: int | None = None,
+) -> dict[str, Any]:
+    """Consolida KPIs, custo estimado (FIFO) e disponibilidade de estoque das receitas."""
+    metrics = build_input_stock_metrics(inputs_catalog, purchased_inputs, farm_id=farm_id)
+    catalog_by_id = {c.id: c for c in inputs_catalog}
+    rows: list[dict[str, Any]] = []
+    ready_count = 0
+    shortage_count = 0
+    per_ha_costs: list[float] = []
+    method_counts = {"fertirrigacao": 0, "adubacao_solida": 0, "fertilizacao_foliar": 0}
+
+    for rec in recommendations:
+        dose_mode = (getattr(rec, "dose_mode", None) or "per_ha").strip().lower()
+        if dose_mode not in DOSE_MODE_LABELS:
+            dose_mode = "per_ha"
+        m_code = (getattr(rec, "application_method", None) or "fertirrigacao").strip().lower()
+        if m_code not in METHOD_META:
+            m_code = "fertirrigacao"
+        method_counts[m_code] = method_counts.get(m_code, 0) + 1
+        method_meta = METHOD_META[m_code]
+
+        rec_items: list[dict[str, Any]] = []
+        est_cost = 0.0
+        has_shortage = False
+        for it in rec.items:
+            cat = it.input_catalog or (catalog_by_id.get(it.input_id) if it.input_id else None)
+            name = cat.name if cat else (it.purchased_input.name if it.purchased_input else "Insumo removido")
+            qty = round(float(it.quantity or 0), 2)
+            unit = it.unit or (cat.default_unit if cat else "kg")
+            m = metrics.get(it.input_id, {"available": 0.0, "unit": unit, "avg_cost": 0.0}) if it.input_id else {"available": 0.0, "unit": unit, "avg_cost": 0.0}
+            avail = float(m.get("available") or 0)
+            avg_cost = float(m.get("avg_cost") or 0)
+            # Para custo estimado da referência (1 ha ou dose fixa)
+            if dose_mode == "per_plant":
+                item_cost = 0.0
+            else:
+                conv = _convert_qty(qty, unit, m.get("unit") or unit)
+                qty_in_stock_unit = conv if conv is not None else qty
+                item_cost = round(qty_in_stock_unit * avg_cost, 2)
+                if avail <= 0 or avail < qty_in_stock_unit:
+                    has_shortage = True
+            est_cost += item_cost
+            rec_items.append(
+                {
+                    "input_id": it.input_id,
+                    "name": name,
+                    "quantity": qty,
+                    "unit": unit,
+                    "available": round(avail, 2),
+                    "stock_unit": m.get("unit") or unit,
+                    "in_stock": avail > 0,
+                    "est_cost": item_cost,
+                }
+            )
+
+        est_cost = round(est_cost, 2)
+        if dose_mode == "per_ha" and est_cost > 0:
+            per_ha_costs.append(est_cost)
+        if has_shortage:
+            shortage_count += 1
+        else:
+            ready_count += 1
+
+        rows.append(
+            {
+                "id": rec.id,
+                "name": rec.application_name,
+                "farm_name": rec.farm.name if rec.farm else "",
+                "plot_id": rec.plot_id,
+                "plot_name": rec.plot.name if rec.plot else "",
+                "dose_mode": dose_mode,
+                "dose_mode_label": DOSE_MODE_LABELS[dose_mode],
+                "method": m_code,
+                "method_label": method_meta["label"],
+                "method_short": method_meta["short"],
+                "method_tone": method_meta["tone"],
+                "notes": rec.notes or "",
+                "items": rec_items,
+                "est_cost": est_cost,
+                "has_shortage": has_shortage,
+            }
+        )
+
+    avg_cost_per_ha = round(sum(per_ha_costs) / len(per_ha_costs), 2) if per_ha_costs else 0.0
+    return {
+        "kpi": {
+            "total": len(rows),
+            "ready": ready_count,
+            "shortage": shortage_count,
+            "avg_cost_per_ha": avg_cost_per_ha,
+            "method_counts": method_counts,
+        },
+        "rows": rows,
+    }
+
+
 def build_wizard_payload(
     *,
     mode: str,
@@ -748,6 +856,7 @@ def build_wizard_payload(
     preselect_plot_id: int | None = None,
     preselect_date: str | None = None,
     copy_from_fertilization: FertilizationRecord | None = None,
+    preselect_recipe_id: int | None = None,
 ) -> dict[str, Any]:
     catalog_payload, _ = build_catalog_payload(
         inputs_catalog, purchased_inputs, fertilizations, schedules, farm_id=farm_id
@@ -774,20 +883,34 @@ def build_wizard_payload(
         rec_items = []
         for it in rec.items:
             if it.input_id and it.input_id in valid_input_ids:
+                val = round(float(it.quantity or 0), 2)
                 rec_items.append(
                     {
                         "inputId": it.input_id,
                         "unit": it.unit,
-                        "dosePerHa": round(float(it.quantity or 0), 2),
+                        "dosePerHa": val,
+                        "value": val,
                     }
                 )
         if not rec_items:
             continue
+        rec_dose_mode = (getattr(rec, "dose_mode", None) or "per_ha").strip().lower()
+        if rec_dose_mode not in DOSE_MODE_LABELS:
+            rec_dose_mode = "per_ha"
+        rec_method = (getattr(rec, "application_method", None) or "fertirrigacao").strip().lower()
+        if rec_method not in METHOD_META:
+            rec_method = "fertirrigacao"
         recs_payload.append(
             {
                 "id": rec.id,
                 "name": rec.application_name,
-                "source": (f"{rec.plot.name}" if rec.plot else "Recomendação cadastrada"),
+                "plotId": rec.plot_id,
+                "doseMode": rec_dose_mode,
+                "doseModeLabel": DOSE_MODE_LABELS[rec_dose_mode],
+                "method": rec_method,
+                "methodLabel": METHOD_META[rec_method]["short"],
+                "notes": rec.notes or "",
+                "source": (f"{rec.plot.name}" if rec.plot else "Receita da fazenda"),
                 "items": rec_items,
             }
         )
@@ -805,6 +928,21 @@ def build_wizard_payload(
         "doseMode": "per_ha",
         "items": [],
     }
+
+    if preselect_recipe_id and not edit_schedule and not edit_fertilization and not copy_from_fertilization:
+        chosen = next((r for r in recs_payload if r["id"] == preselect_recipe_id), None)
+        if chosen:
+            if not preselect_plot_id and chosen.get("plotId") and any(p["id"] == chosen["plotId"] for p in plots_payload):
+                initial["plotIds"] = [chosen["plotId"]]
+            initial.update(
+                {
+                    "method": chosen["method"],
+                    "recipeName": chosen["name"],
+                    "doseMode": chosen["doseMode"],
+                    "notes": chosen["notes"],
+                    "items": [{"inputId": x["inputId"], "value": x["value"]} for x in chosen["items"]],
+                }
+            )
 
     if edit_schedule:
         area = float(edit_schedule.plot.area_hectares or 0) if edit_schedule.plot else 0.0

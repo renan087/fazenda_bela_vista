@@ -11,9 +11,11 @@ class RainfallRecord(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id"), nullable=False)
+    plot_id: Mapped[int | None] = mapped_column(ForeignKey("plots.id", ondelete="SET NULL"), nullable=True)
     rainfall_date: Mapped[date] = mapped_column(Date, nullable=False)
     millimeters: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     source: Mapped[str] = mapped_column(String(120), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     farm = relationship("Farm", back_populates="rainfalls")
+    plot = relationship("Plot")

@@ -34,7 +34,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261126fmactions">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261126lavoura1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -168,7 +168,7 @@
                         <span>Buscar ou perguntar ao Pezinho…</span><kbd>⌘K</kbd>
                     </button>
                     <div class="hd-right">
-                        <a class="hd-weather" href="/pluviometria" data-hd-weather hidden title="Previsão para a fazenda"></a>
+                        <a class="hd-weather" href="/clima-agua" data-hd-weather hidden title="Previsão e balanço hídrico da fazenda"></a>
                         <button type="button" class="hd-ctx hidden md:flex" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
                             <span class="hd-farm{% if not (active_farm and active_season) %} is-empty{% endif %}" aria-hidden="true">{{ farm_initials }}</span>
                             <span class="hd-ctx-text"><b>{% if active_farm %}{{ active_farm.name }}{% else %}Selecionar fazenda{% endif %}</b><span>{% if active_season %}Safra {{ active_season.name }}{% elif active_farm %}Selecione a safra{% else %}e safra{% endif %}</span></span>
@@ -178,10 +178,12 @@
                             <summary class="hd-new-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Novo</summary>
                             <div class="hd-pop hd-new-pop">
                                 <p class="hd-pop-label">Registrar</p>
-                                <a href="/mobile/assistente?q=Usei%20" class="hd-mi">Consumo de insumo</a>
-                                <a href="{{ module_href('/insumos/comprados/nova') }}" class="hd-mi">Compra</a>
-                                <a href="{{ module_href('/fertilizacao') }}" class="hd-mi">Aplicação</a>
-                                <a href="/pluviometria" class="hd-mi">Chuva</a>
+                                <a href="{{ module_href('/fertilizacao/nova') }}" class="hd-mi">Adubação</a>
+                                <a href="{{ module_href('/operacoes?novo=1') }}" class="hd-mi">Operação ou pulverização</a>
+                                <a href="{{ module_href('/pragas?novo=1') }}" class="hd-mi">Ocorrência de praga</a>
+                                <a href="{{ module_href('/irrigacao?novo=1') }}" class="hd-mi">Irrigação</a>
+                                <a href="/pluviometria?novo=1" class="hd-mi">Chuva</a>
+                                <a href="{{ module_href('/insumos/comprados/nova') }}" class="hd-mi">Compra de insumo</a>
                                 <a href="{{ module_href('/gestao-financeira/contas') }}" class="hd-mi">Conta a pagar</a>
                                 <hr>
                                 <a href="/mobile/assistente" class="hd-mi"><img src="{{ url_for('static', path='img/pezinho/cabeca-pronto.svg') }}" alt="" width="22" height="22">Pedir ao Pezinho</a>

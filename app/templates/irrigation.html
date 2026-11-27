@@ -1,92 +1,81 @@
 {% extends "base.html" %}
-{% block content %}
-<style>
-    .app-hint-popover::backdrop {
-        background: rgba(15, 23, 42, 0.35);
-    }
-    .app-hint-popover:popover-open {
-        position: fixed;
-        inset: 0;
-        width: min(22rem, calc(100vw - 2rem));
-        max-width: min(22rem, calc(100vw - 2rem));
-        height: fit-content;
-        max-height: min(80vh, calc(100dvh - 2rem));
-        margin: auto;
-        overflow-y: auto;
-    }
-</style>
+{% from "partials/climate_water_nav.html" import climate_water_tabs %}
 {% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline with context %}
-<div class="stock-page-shell sf-page" data-modal-single-pane>
-    <section class="stock-page-header">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-                <div class="stock-page-header-intro-inner">
-                    <h2 class="stock-page-card-title">Irrigação</h2>
-                    <p class="stock-page-card-subtitle">Registre aplicações de água com cálculo automático por setor e histórico no padrão visual atual do sistema.</p>
-                </div>
-            </div>
-            <div class="stock-header-actions stock-header-actions-top max-[899px]:mx-auto max-[899px]:w-full">
-                <details class="sf-menu" data-sf-dropdown>
-                    <summary class="sf-btn sf-btn-secondary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>Exportar<svg class="sf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
-                    <div class="sf-menu-panel">
-                        <a href="/irrigacao/exportar.pdf" class="stock-action-button stock-export-button stock-export-button-pdf" data-irrigation-export-link data-base-href="/irrigacao/exportar.pdf">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                        <path d="M7 3h7l5 5v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/>
-                        <path d="M14 3v6h6"/>
-                        <path d="M8 13h8"/>
-                        <path d="M8 17h6"/>
-                    </svg>
-                    <span class="stock-action-button-label">Exportar PDF</span>
-                </a>
-                        <a href="/irrigacao/exportar.xlsx" class="stock-action-button stock-export-button stock-export-button-xlsx" data-irrigation-export-link data-base-href="/irrigacao/exportar.xlsx">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                        <path d="M7 3h7l5 5v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/>
-                        <path d="M14 3v6h6"/>
-                        <path d="m10 12 4 6"/>
-                        <path d="m14 12-4 6"/>
-                    </svg>
-                    <span class="stock-action-button-label">Exportar Excel</span>
-                </a>
-                    </div>
-                </details>
-                <button type="button" class="stock-action-button stock-action-button-primary" data-irrigation-launch-open>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M12 5v14"/>
-                        <path d="M5 12h14"/>
-                    </svg>
-                    <span class="stock-action-button-label"><span class="sm:hidden">Nova</span><span class="hidden sm:inline">Registrar irrigação</span></span>
-                </button>
-            </div>
+{% block content %}
+{% set ctx = irr_ctx %}
+{% set k = ctx.kpi %}
+<div class="sf-page pd-page ft-page" data-irrigation-history-shell>
+    <header class="pd-head">
+        <div>
+            <h1 class="sf-page-title">Irrigação</h1>
+            <p class="sf-page-subtitle">Registre turnos de irrigação com cálculo automático de volume, lâmina em milímetros e integração com fertirrigação.</p>
         </div>
+        <div class="pd-head-actions">
+            <details class="sf-menu" data-sf-dropdown>
+                <summary class="sf-btn sf-btn-secondary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>
+                    Exportar
+                    <svg class="sf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </summary>
+                <div class="sf-menu-panel">
+                    <a href="/irrigacao/exportar.pdf" class="sf-menu-link" data-irrigation-export-link data-base-href="/irrigacao/exportar.pdf">Relatório em PDF</a>
+                    <a href="/irrigacao/exportar.xlsx" class="sf-menu-link" data-irrigation-export-link data-base-href="/irrigacao/exportar.xlsx">Planilha Excel (.xlsx)</a>
+                </div>
+            </details>
+            {% if can_write_page %}
+            <button type="button" class="sf-btn sf-btn-primary" data-irrigation-launch-open>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Registrar irrigação
+            </button>
+            {% endif %}
+        </div>
+    </header>
+
+    {{ climate_water_tabs('irrigation', k.total_count, cw_rainfall_count) }}
+
+    <section class="ft-kpis" aria-label="Indicadores de irrigação">
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Volume no período</span>
+            <div class="ft-kpi-val"><strong class="is-info">{{ k.total_m3|decimal_br(1) }}</strong><span>m³</span></div>
+            <p class="ft-kpi-sub">{{ k.total_liters|decimal_br(0) }} litros · {{ k.covered_plots }} talhão(ões)</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Lâmina média aplicada</span>
+            <div class="ft-kpi-val"><strong>{{ k.avg_mm|decimal_br(1) }}</strong><span>mm</span></div>
+            <p class="ft-kpi-sub">Equivalente comparável à chuva</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Tempo bombeado</span>
+            <div class="ft-kpi-val"><strong>{{ k.total_hours|decimal_br(1) }}</strong><span>horas</span></div>
+            <p class="ft-kpi-sub">{{ k.manual_count }} manual(is) · {{ k.from_fert_count }} via fertirrigação</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Contexto de chuva</span>
+            <div class="ft-kpi-val"><strong>{{ k.rain_7d_mm|decimal_br(1) }}</strong><span>mm (7d)</span></div>
+            <p class="ft-kpi-sub">Previsto próx. 3d: {{ k.forecast_3d_mm|decimal_br(1) }} mm</p>
+        </article>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel data-irrigation-history-shell>
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico operacional</p>
-                <h3 class="mt-2 text-2xl font-semibold">Últimas irrigações</h3>
+    <section class="pd-card ft-stage" aria-label="Histórico de irrigações">
+        <div class="ft-stage-top">
+            <div>
+                <h2>Histórico de irrigações</h2>
+                <p class="ft-stage-sub">Lâmina (mm) e volume por talhão. Registros de fertirrigação têm vínculo direto com Adubação.</p>
             </div>
         </div>
 
-        <div class="module-filter-toolbar mt-6">
+        <div class="module-filter-toolbar" style="margin-top:0;">
             <form method="get" action="/irrigacao" class="module-filter-toolbar-grid" data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
                 {% if edit_irrigation %}<input type="hidden" name="edit_id" value="{{ edit_irrigation.id }}">{% endif %}
                 <div class="module-filter-toolbar-main">
                     <div class="stock-search-field module-filter-search">
-                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                            <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                            <path d="M13 13l4 4"></path>
-                        </svg>
-                        <input type="search" name="search" value="{{ request.query_params.get('search', '') }}" placeholder="Buscar setor, data, volume ou observação" data-module-history-search>
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.75"></circle><path d="M13 13l4 4"></path></svg>
+                        <input type="search" name="search" value="{{ request.query_params.get('search', '') }}" placeholder="Buscar talhão, data, volume ou observação" data-module-history-search>
                     </div>
                     <div class="module-filter-date-field !gap-0 min-w-[11rem] flex-1">
                         <div class="module-filter-plot-select-wrap w-full max-w-full">
-                            <svg class="module-filter-plot-select-lead-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                                <path d="M12 21s-8-4.5-8-11a8 8 0 1 1 16 0c0 6.5-8 11-8 11Z"/>
-                                <circle cx="12" cy="10" r="2.5" fill="none"/>
-                            </svg>
-                            <select name="plot_id" class="module-filter-plot-select-control w-full min-w-0" aria-label="Filtrar por setor" data-irrigation-filter-plot>
-                                <option value="" {% if irrigation_plot_filter_hint %}selected{% endif %}>Filtre por setor</option>
+                            <select name="plot_id" class="module-filter-plot-select-control w-full min-w-0" aria-label="Filtrar por talhão" data-irrigation-filter-plot>
+                                <option value="" {% if irrigation_plot_filter_hint %}selected{% endif %}>Filtre por talhão</option>
                                 <option value="all" {% if selected_irrigation_plot_all %}selected{% endif %}>Todos</option>
                                 {% for plot in plots_for_irrigation_filter %}
                                 <option value="{{ plot.id }}" {% if selected_irrigation_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
@@ -99,548 +88,239 @@
                     </div>
                 </div>
                 <div class="module-filter-toolbar-actions">
-                    <button type="submit" class="module-filter-action border-0 bg-slate-900 text-white hover:bg-slate-800">Filtrar</button>
+                    <button type="submit" class="sf-btn sf-btn-secondary sf-btn-sm">Filtrar</button>
                     {% if irrigation_filters_active %}
-                    <a href="{{ irrigation_filter_clear_url }}" class="module-filter-action module-filter-action-secondary">Limpar</a>
+                    <a href="{{ irrigation_filter_clear_url }}" class="sf-btn sf-btn-ghost sf-btn-sm">Limpar</a>
                     {% endif %}
                 </div>
             </form>
         </div>
 
-        <div class="stock-table-shell mt-5 overflow-hidden rounded-[1.5rem] border border-slate-200">
-            <div class="overflow-x-auto">
-                <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
-                    <thead class="bg-slate-50 text-left text-slate-500">
-                        <tr>
-                            <th class="px-4 py-3 font-medium">Setor</th>
-                            <th class="px-4 py-3 font-medium">Data</th>
-                            <th class="px-4 py-3 font-medium">Volume</th>
-                            <th class="px-4 py-3 font-medium">Duração</th>
-                            <th class="px-4 py-3 font-medium">Origem</th>
-                            <th class="px-4 py-3 font-medium text-right">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 bg-white">
-                        {% for item in irrigations %}
-                        <tr data-irrigation-row data-irrigation-search-text="{{ item.plot.name if item.plot else '' }} {{ item.irrigation_date }} {{ item.volume_liters }} {{ item.duration_minutes }} {{ item.origin or '' }} {{ item.notes or '' }}">
-                            <td class="px-4 py-3 font-semibold text-slate-900">
-                                <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Irrigação" data-history-view-title="{{ item.plot.name if item.plot else 'Setor removido' }}" data-history-view-subtitle="{{ item.irrigation_date.strftime('%d-%m-%Y') if item.irrigation_date else '-' }}" data-history-view-source="irrigation-view-{{ item.id }}" data-history-view-edit-url="{{ irrigation_edit_urls[item.id] }}">{{ item.plot.name if item.plot else "Setor removido" }}</button>
-                                <template id="irrigation-view-{{ item.id }}">
-                                    <div class="grid gap-3 sm:grid-cols-2">
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "Setor removido" }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.irrigation_date.strftime('%d-%m-%Y') if item.irrigation_date else "-" }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Volume</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.volume_liters|decimal_br(0) }} L</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.duration_minutes }} min</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3 sm:col-span-2"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Origem</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.origin == 'fertilizacao' %}Fertilizacao{% else %}Manual{% endif %}</p></div>
-                                    </div>
-                                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
-                                        <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observações." }}</p>
-                                    </div>
-                                </template>
-                            </td>
-                            <td class="px-4 py-3 whitespace-nowrap">{{ item.irrigation_date.strftime('%d-%m-%Y') if item.irrigation_date else "-" }}</td>
-                            <td class="px-4 py-3 whitespace-nowrap">{{ item.volume_liters|decimal_br(0) }} L</td>
-                            <td class="px-4 py-3 whitespace-nowrap">{{ item.duration_minutes }} min</td>
-                            <td class="px-4 py-3 whitespace-nowrap">
-                                {% if item.origin == 'fertilizacao' %}
-                                <span class="stock-level-badge bg-brand-50 text-brand-700 ring-1 ring-brand-100">Fertilizacao</span>
-                                {% else %}
-                                <span class="stock-level-badge bg-slate-100 text-slate-700 ring-1 ring-slate-200">Manual</span>
-                                {% endif %}
-                            </td>
-                            <td class="px-4 py-3">
-                                <div class="flex items-center justify-end gap-2">
-                                    {% if item.origin == 'fertilizacao' %}
-                                    <button
-                                        type="button"
-                                        class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-600 transition-colors hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 cursor-pointer"
-                                        popovertarget="irrigation-origin-hint-{{ item.id }}"
-                                        title="Gerado via fertilização. Para alterar ou excluir, use o módulo de Fertilização."
-                                        aria-label="Abrir informações sobre registro gerado pela fertilização"
-                                        aria-haspopup="dialog"
-                                    >
-                                        <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5 pointer-events-none" aria-hidden="true">
-                                            <path fill-rule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-8.75-3a.75.75 0 0 1 1.5 0v3.25a.75.75 0 0 1-1.5 0V7Zm.75 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" />
-                                        </svg>
-                                    </button>
-                                    <div
-                                        id="irrigation-origin-hint-{{ item.id }}"
-                                        popover="auto"
-                                        class="app-hint-popover rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-600 shadow-2xl"
-                                    >
-                                        <p class="m-0 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Origem</p>
-                                        <p class="mt-2 mb-0 font-medium text-slate-900">Gerado via fertilização</p>
-                                        <p class="mt-2 mb-0">Para <span class="font-medium text-slate-800">alterar</span> ou <span class="font-medium text-slate-800">excluir</span> este registro, use o módulo de Fertilização.</p>
-                                        <p class="mt-3 mb-0 text-xs text-slate-400">Toque fora desta caixa para fechar.</p>
-                                    </div>
-                                    {% else %}
-                                    <a href="{{ irrigation_edit_urls[item.id] }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path d="M12 20h9"/>
-                                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-                                        </svg>
-                                    </a>
-                                    <details class="sf-menu" data-sf-dropdown>
-                                        <summary class="sf-icon-btn" aria-label="Mais ações" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
-                                        <div class="sf-menu-panel">
-                                            <form method="post" action="/irrigacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir este registro de irrigação?');">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                        <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
-                                        <button type="submit" class="sf-menu-danger">Excluir</button></form>
-                                        </div>
-                                    </details>
-                                    {% endif %}
+        <div class="ftw-table-scroll" style="margin-top:.5rem;">
+            <table class="ft-table stock-history-table">
+                <thead>
+                    <tr>
+                        <th>Talhão</th>
+                        <th>Data</th>
+                        <th class="is-r">Lâmina</th>
+                        <th class="is-r">Volume</th>
+                        <th class="is-r">Duração</th>
+                        <th>Origem</th>
+                        <th class="is-r">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in irrigations %}
+                    {% set mm_val = ctx.mm_by_id.get(item.id, 0) %}
+                    {% set lpp = ctx.l_per_plant_by_id.get(item.id) %}
+                    <tr data-irrigation-row data-irrigation-search-text="{{ item.plot.name if item.plot else '' }} {{ item.irrigation_date }} {{ item.volume_liters }} {{ item.duration_minutes }} {{ item.origin or '' }} {{ item.notes or '' }}">
+                        <td>
+                            <button type="button" class="lv-title-btn" data-history-view-trigger data-history-view-kicker="Irrigação" data-history-view-title="{{ item.plot.name if item.plot else 'Talhão removido' }}" data-history-view-subtitle="{{ item.irrigation_date.strftime('%d/%m/%Y') if item.irrigation_date else '-' }}" data-history-view-source="irrigation-view-{{ item.id }}" data-history-view-edit-url="{{ irrigation_edit_urls[item.id] }}"><strong>{{ item.plot.name if item.plot else "Talhão removido" }}</strong></button>
+                            {% if item.notes %}<small>{{ item.notes[:60] }}{% if item.notes|length > 60 %}…{% endif %}</small>{% endif %}
+                            <template id="irrigation-view-{{ item.id }}">
+                                <div class="grid gap-3 sm:grid-cols-2">
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Talhão</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "Talhão removido" }}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.irrigation_date.strftime('%d/%m/%Y') if item.irrigation_date else "-" }}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Lâmina / Volume</p><p class="mt-2 text-sm font-medium text-slate-800">{{ mm_val|decimal_br(1) }} mm · {{ item.volume_liters|decimal_br(0) }} L{% if lpp %} ({{ lpp|decimal_br(2) }} L/pé){% endif %}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.duration_minutes }} min</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3 sm:col-span-2"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Origem</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.origin == 'fertilizacao' %}Fertirrigação (Adubação){% else %}Manual{% endif %}</p></div>
                                 </div>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">Sem registros.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+                                <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
+                                    <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observações." }}</p>
+                                </div>
+                            </template>
+                        </td>
+                        <td class="whitespace-nowrap">{{ item.irrigation_date.strftime('%d/%m/%Y') if item.irrigation_date else "-" }}</td>
+                        <td class="is-r whitespace-nowrap"><strong style="color:#1F5FA8;">{{ mm_val|decimal_br(1) }} mm</strong></td>
+                        <td class="is-r whitespace-nowrap">{{ item.volume_liters|decimal_br(0) }} L{% if lpp %}<small>{{ lpp|decimal_br(1) }} L/pé</small>{% endif %}</td>
+                        <td class="is-r whitespace-nowrap">{{ item.duration_minutes }} min</td>
+                        <td>
+                            {% if item.origin == 'fertilizacao' %}
+                            <a href="{% if item.reference_id %}/fertilizacao/{{ item.reference_id }}/editar{% else %}/fertilizacao{% endif %}" class="pd-chip is-info" title="Abrir aplicação de origem em Adubação">Fertirrigação →</a>
+                            {% else %}
+                            <span class="pd-chip is-muted">Manual</span>
+                            {% endif %}
+                        </td>
+                        <td class="is-r">
+                            {% if item.origin == 'fertilizacao' %}
+                            <a href="{% if item.reference_id %}/fertilizacao/{{ item.reference_id }}/editar{% else %}/fertilizacao{% endif %}" class="sf-btn sf-btn-ghost sf-btn-sm">Ver aplicação</a>
+                            {% elif can_write_page %}
+                            <div style="display:inline-flex; align-items:center; gap:6px;">
+                                <a href="{{ irrigation_edit_urls[item.id] }}" class="sf-btn sf-btn-secondary sf-btn-sm">Editar</a>
+                                <details class="sf-menu" data-sf-dropdown>
+                                    <summary class="sf-icon-btn" aria-label="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
+                                    <div class="sf-menu-panel">
+                                        <form method="post" action="/irrigacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir este registro de irrigação?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                            <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
+                                            <button type="submit" class="sf-menu-danger">Excluir</button>
+                                        </form>
+                                    </div>
+                                </details>
+                            </div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7"><div class="pd-empty"><strong>Nenhuma irrigação neste período.</strong><span>Registre um turno manual ou conclua uma fertirrigação pela Agenda.</span></div></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
-        <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-irrigation-search-empty>Nenhum registro corresponde à busca digitada.</p>
+        <div class="pd-empty" data-irrigation-search-empty hidden><strong>Nenhum registro corresponde à busca digitada.</strong></div>
         {% with pagination=irrigations_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </section>
 </div>
 
-<dialog id="irrigation-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_irrigation %}Editar irrigação{% else %}Registrar irrigação{% endif %}</p>
-                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_irrigation %}Editar irrigação{% else %}Novo lançamento de irrigação{% endif %}</h3>
-                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Use o setor configurado para calcular o volume automaticamente sempre que houver dados suficientes.</p>
+<dialog id="irrigation-launch-modal" class="ft-dialog is-md">
+    <form method="post" action="{% if edit_irrigation %}/irrigacao/{{ edit_irrigation.id }}/editar{% else %}/irrigacao{% endif %}" class="ft-dialog-shell" id="irrigation-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if edit_irrigation %}<input type="hidden" name="redirect_to" value="{{ irrigation_after_edit_close_url }}">{% endif %}
+        <div class="ft-dialog-head">
+            <div>
+                <p class="pd-eyebrow is-brand">Clima e Água · Irrigação</p>
+                <h2>{% if edit_irrigation %}Editar irrigação{% else %}Registrar turno de irrigação{% endif %}</h2>
+                <p class="ft-dialog-sub">Chuva últimos 7d: <strong>{{ k.rain_7d_mm|decimal_br(1) }} mm</strong> · Previsto próx. 3d: <strong>{{ k.forecast_3d_mm|decimal_br(1) }} mm</strong>.</p>
             </div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-irrigation-launch-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
-            </button>
+            <button type="button" class="ft-x" data-irrigation-launch-close aria-label="Fechar">✕</button>
         </div>
 
-        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
-            <form method="post" action="{% if edit_irrigation %}/irrigacao/{{ edit_irrigation.id }}/editar{% else %}/irrigacao{% endif %}" class="grid gap-4" id="irrigation-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                {% if edit_irrigation %}<input type="hidden" name="redirect_to" value="{{ irrigation_after_edit_close_url }}">{% endif %}
-
-                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
-                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
-                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-irrigation-launch-close>Cancelar</button>
-                        <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_irrigation %}Salvar alterações{% else %}Salvar irrigação{% endif %}</button>
-                    </div>
-                </div>
-
-                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
-                        <div class="min-w-0">
-                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
-                            <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
-                        </div>
-                        <button type="button" class="stock-summary-toggle" data-irrigation-context-toggle aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                <path d="M5 12h14"/>
-                                <path d="M12 5v14" data-irrigation-context-toggle-plus></path>
-                            </svg>
-                            <span data-irrigation-context-toggle-label>Expandir</span>
-                        </button>
-                    </div>
-                    <div class="stock-summary-collapse" data-irrigation-context-collapse>
-                        <div class="stock-summary-collapse-inner">
-                            <div class="mt-4">
-                                {% include "partials/launch_context.html" %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {% if edit_irrigation %}
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Setor</span>
-                    <select name="plot_id" data-irrigation-plot class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        {% for plot in launch_plots %}
-                        <option value="{{ plot.id }}" {% if edit_irrigation and edit_irrigation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                {% else %}
-                <div>
-                    <span class="mb-2 block text-sm font-medium">Setores</span>
-                    <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-irrigation-plot-select>
-                        <option value="">Selecione um setor</option>
-                        {% for plot in launch_plots %}
-                        <option value="{{ plot.id }}" data-plot-name="{{ plot.name }}" data-plot-farm="{{ plot.farm.name if plot.farm else 'Sem fazenda vinculada' }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                    <div class="schedule-plot-selected mt-3" data-irrigation-plot-selected>
-                        <p class="schedule-plot-selected-empty text-sm text-slate-500" data-irrigation-plot-empty>Nenhum setor selecionado.</p>
-                    </div>
-                    <div data-irrigation-plot-hidden-inputs></div>
-                    <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
-                        <span class="block text-xs text-slate-500">Selecione um ou mais setores para registrar a mesma irrigação.</span>
-                        <span class="schedule-plot-picker-count text-xs font-medium text-slate-500" data-irrigation-plot-selection-count>Nenhum setor selecionado</span>
-                    </div>
-                </div>
-                {% endif %}
-                <div class="grid gap-4 md:grid-cols-2">
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Data</span>
-                        <input type="date" name="irrigation_date" value="{{ edit_irrigation.irrigation_date.isoformat() if edit_irrigation else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+        <div class="ft-dialog-body">
+            {% if edit_irrigation %}
+            <label class="ft-field">
+                <span>Talhão</span>
+                <select name="plot_id" data-irrigation-plot required>
+                    {% for plot in launch_plots %}
+                    <option value="{{ plot.id }}" {% if edit_irrigation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            {% else %}
+            <div class="ft-field">
+                <span>Talhões irrigados (selecione um ou mais)</span>
+                <div class="lv-plot-checks" data-irrigation-plot-checks>
+                    {% for plot in launch_plots %}
+                    <label class="lv-plot-check">
+                        <input type="checkbox" name="plot_id" value="{{ plot.id }}" data-irr-plot-chk {% if preselect_plot_id == plot.id %}checked{% endif %}>
+                        <span><strong>{{ plot.name }}</strong><small>{{ (plot.area_hectares or 0)|decimal_br(1) }} ha</small></span>
                     </label>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Duração (minutos)</span>
-                        <input type="number" name="duration_minutes" data-irrigation-duration value="{{ edit_irrigation.duration_minutes if edit_irrigation else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    </label>
+                    {% endfor %}
                 </div>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Volume (litros)</span>
-                    <input type="number" step="0.01" name="volume_liters" data-irrigation-volume value="{{ edit_irrigation.volume_liters if edit_irrigation else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Preenchimento manual quando não houver cálculo automático">
+            </div>
+            {% endif %}
+
+            <div class="lv-form-grid" style="margin-top: .85rem;">
+                <label class="ft-field">
+                    <span>Data</span>
+                    <input type="date" name="irrigation_date" value="{{ edit_irrigation.irrigation_date.isoformat() if edit_irrigation else today_iso }}" required>
                 </label>
-                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4 text-sm text-slate-600">
-                    <p class="font-semibold text-slate-900">Cálculo automático</p>
-                    <p class="mt-2" data-irrigation-help>Selecione um setor com configuração de irrigação para calcular o volume automaticamente.</p>
-                </div>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Observações</span>
-                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_irrigation.notes if edit_irrigation else '' }}</textarea>
+                <label class="ft-field">
+                    <span>Duração (minutos)</span>
+                    <input type="number" min="1" name="duration_minutes" data-irrigation-duration value="{{ edit_irrigation.duration_minutes if edit_irrigation else '' }}" placeholder="Ex.: 60" required>
                 </label>
-            </form>
+                <label class="ft-field is-span-2">
+                    <span>Volume em litros (calculado automaticamente se o talhão tiver gotejo/aspersor configurado)</span>
+                    <input type="number" step="0.01" min="0" name="volume_liters" data-irrigation-volume value="{{ edit_irrigation.volume_liters if edit_irrigation else '' }}" placeholder="Automático ou informe manualmente">
+                </label>
+            </div>
+
+            <div class="lv-calc-box" data-irrigation-help>Selecione o(s) talhão(ões) e informe a duração em minutos para ver a estimativa de volume e lâmina (mm).</div>
+
+            <label class="ft-field" style="margin-top: .85rem;">
+                <span>Observações (opcional)</span>
+                <textarea name="notes" rows="2" placeholder="Ex.: turno da manhã, pressão da bomba, setor norte...">{{ edit_irrigation.notes if edit_irrigation else '' }}</textarea>
+            </label>
         </div>
-    </div>
+
+        <div class="ft-dialog-foot">
+            <button type="button" class="sf-btn sf-btn-secondary" data-irrigation-launch-close>Cancelar</button>
+            <button type="submit" class="sf-btn sf-btn-primary">{% if edit_irrigation %}Salvar alterações{% else %}Salvar irrigação{% endif %}</button>
+        </div>
+    </form>
 </dialog>
 
 {% include "partials/history_view_modal.html" %}
 <script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=8"></script>
 <script>
-    (() => {
-        const launchModal = document.getElementById('irrigation-launch-modal');
-        const openButtons = Array.from(document.querySelectorAll('[data-irrigation-launch-open]'));
-        const closeButtons = Array.from(document.querySelectorAll('[data-irrigation-launch-close]'));
-        const historyShell = document.querySelector('[data-irrigation-history-shell]');
-        const searchInput = historyShell?.querySelector('[data-module-history-search]');
-        const filterPlotSelect = historyShell?.querySelector('[data-irrigation-filter-plot]');
-        const rows = Array.from(historyShell?.querySelectorAll('[data-irrigation-row]') || []);
-        const emptyState = document.querySelector('[data-irrigation-search-empty]');
-        const exportLinks = Array.from(document.querySelectorAll('[data-irrigation-export-link]'));
-        const afterEditCloseUrl = {{ irrigation_after_edit_close_url|tojson }};
+(() => {
+    const plotSpecs = {{ irrigation_plot_specs|tojson }};
+    const modal = document.getElementById('irrigation-launch-modal');
+    const isEditing = {{ 'true' if edit_irrigation else 'false' }};
+    const autoOpenNew = {{ 'true' if open_new_modal else 'false' }};
+    const afterEditCloseUrl = {{ irrigation_after_edit_close_url|tojson }};
+    const durInput = modal?.querySelector('[data-irrigation-duration]');
+    const volInput = modal?.querySelector('[data-irrigation-volume]');
+    const helpBox = modal?.querySelector('[data-irrigation-help]');
+    const editPlotSel = modal?.querySelector('[data-irrigation-plot]');
 
-        const syncIrrigationExportLinks = () => {
-            const filterStartInput = historyShell?.querySelector('[data-module-filter-start]');
-            const filterEndInput = historyShell?.querySelector('[data-module-filter-end]');
-            const rangeInput = historyShell?.querySelector('[data-module-range-input]');
-            exportLinks.forEach((link) => {
-                const baseHref = link.dataset.baseHref;
-                if (!baseHref) return;
-                const params = new URLSearchParams();
-                const query = (searchInput?.value || '').trim();
-                if (query) params.set('search', query);
-                const startDate = (filterStartInput?.value || '').trim();
-                if (startDate) params.set('start_date', startDate);
-                const endDate = (filterEndInput?.value || '').trim();
-                if (endDate) params.set('end_date', endDate);
-                const rangeValue = (rangeInput?.value || '').trim();
-                if (rangeValue) params.set('schedule_range', rangeValue);
-                const plotValue = (filterPlotSelect?.value || '').trim();
-                const plotNorm = plotValue.toLowerCase();
-                if (plotValue && !['all', 'todos', 'todas'].includes(plotNorm)) {
-                    params.set('plot_id', plotValue);
-                }
-                link.href = params.toString() ? `${baseHref}?${params.toString()}` : baseHref;
-            });
-        };
-        const stickyHeader = document.querySelector('.stock-page-header');
-        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
-        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
-        const isEditing = {{ 'true' if edit_irrigation else 'false' }};
+    const selectedPlotIds = () => {
+        if (isEditing) return editPlotSel?.value ? [Number(editPlotSel.value)] : [];
+        return Array.from(modal?.querySelectorAll('[data-irr-plot-chk]:checked') || []).map((c) => Number(c.value));
+    };
 
-        const closeModal = () => {
-            if (isEditing) {
-                window.location.href = afterEditCloseUrl;
-                return;
-            }
-            resetIrrigationCreateState();
-            launchModal?.close();
-        };
-
-        openButtons.forEach((button) => {
-            button.addEventListener('click', (event) => {
-                const editUrl = button.getAttribute('data-irrigation-edit-link');
-                if (editUrl) {
-                    event.preventDefault();
-                    window.location.href = editUrl;
-                    return;
-                }
-                resetIrrigationCreateState();
-                launchModal?.showModal();
-            });
-        });
-        closeButtons.forEach((button) => button.addEventListener('click', closeModal));
-        launchModal?.addEventListener('cancel', (event) => {
-            event.preventDefault();
-            closeModal();
-        });
-        if (isEditing) launchModal?.showModal();
-
-        const contextToggle = document.querySelector('[data-irrigation-context-toggle]');
-        const contextCollapse = document.querySelector('[data-irrigation-context-collapse]');
-        const contextToggleLabel = document.querySelector('[data-irrigation-context-toggle-label]');
-        const contextTogglePlus = document.querySelector('[data-irrigation-context-toggle-plus]');
-        const syncContextToggle = (expanded) => {
-            if (!contextCollapse || !contextToggle) return;
-            contextCollapse.classList.toggle('is-expanded', expanded);
-            contextToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-            if (contextToggleLabel) contextToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
-            if (contextTogglePlus) contextTogglePlus.classList.toggle('hidden', expanded);
-        };
-        syncContextToggle(false);
-        contextToggle?.addEventListener('click', () => {
-            const expanded = !contextCollapse?.classList.contains('is-expanded');
-            syncContextToggle(!!expanded);
-        });
-
-        const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-        const applyLocalSearch = () => {
-            syncIrrigationExportLinks();
-            const query = normalizeText(searchInput?.value || '');
-            let visible = 0;
-            rows.forEach((row) => {
-                const haystack = normalizeText(row.dataset.irrigationSearchText || row.textContent);
-                const matches = !query || haystack.includes(query);
-                row.classList.toggle('hidden', !matches);
-                if (matches) visible += 1;
-            });
-            emptyState?.classList.toggle('hidden', visible !== 0);
-        };
-        searchInput?.addEventListener('input', applyLocalSearch);
-        filterPlotSelect?.addEventListener('change', syncIrrigationExportLinks);
-        applyLocalSearch();
-
-        historyShell?.querySelectorAll('form[data-module-period-filter-root]').forEach((form) => {
-            window.ModulePeriodFilters?.bind(form, {
-                onSync: () => syncIrrigationExportLinks(),
-            });
-        });
-        syncIrrigationExportLinks();
-
-        const plotSelect = document.querySelector('[data-irrigation-plot]');
-        const multiPlotSelect = document.querySelector('[data-irrigation-plot-select]');
-        const plotSelected = document.querySelector('[data-irrigation-plot-selected]');
-        const plotHiddenInputs = document.querySelector('[data-irrigation-plot-hidden-inputs]');
-        const plotEmptyState = document.querySelector('[data-irrigation-plot-empty]');
-        const plotSelectionCount = document.querySelector('[data-irrigation-plot-selection-count]');
-        const initialMultiPlotOptionsHtml = multiPlotSelect?.innerHTML || '';
-        const help = document.querySelector('[data-irrigation-help]');
-        const durationField = document.querySelector('[data-irrigation-duration]');
-        const volumeField = document.querySelector('[data-irrigation-volume]');
-        const configs = {{ plot_irrigation_configs|tojson }};
-        const computeVolume = (config, minutes) => {
-            const duration = Number(minutes || 0);
-            if (!duration || !config) return null;
-            const hours = duration / 60;
-            if (config.type === 'gotejo' && config.line_count && config.line_length && config.drip_spacing_cm && config.drip_lph) {
-                return (((config.line_count * (config.line_length / (config.drip_spacing_cm / 100))) * config.drip_lph) * hours).toFixed(2);
-            }
-            if (config.type === 'aspersor' && config.sprinkler_count && config.sprinkler_lph) {
-                return ((config.sprinkler_count * config.sprinkler_lph) * hours).toFixed(2);
-            }
-            return null;
-        };
-        const selectedIrrigationPlotIds = () => {
-            if (plotSelect?.value) return [Number(plotSelect.value)];
-            return Array.from(plotHiddenInputs?.querySelectorAll('input[name="plot_id"]') || [])
-                .map((input) => Number(input.value || 0))
-                .filter(Boolean);
-        };
-        const updateHelp = () => {
-            const selectedIds = selectedIrrigationPlotIds();
-            const selectedId = selectedIds[0] || 0;
-            const config = configs.find((item) => item.id === selectedId);
-            if (!help) return;
-            if (!selectedIds.length) {
-                help.textContent = 'Selecione um ou mais setores com configuração de irrigação para calcular o volume automaticamente.';
-            } else if (selectedIds.length > 1) {
-                help.textContent = 'O sistema calculará o volume individualmente para cada setor configurado. Para setores sem configuração automática, será usado o volume manual informado.';
-            } else if (config?.type === 'gotejo') {
-                help.textContent = `Cálculo automático ativo: ${config.line_count || 0} linhas de ${config.line_length || 0} m, espaçamento ${config.drip_spacing_cm || 0} cm e ${config.drip_lph || 0} L/h por gotejo.`;
-            } else if (config?.type === 'aspersor') {
-                help.textContent = `Cálculo automático ativo: ${config.sprinkler_count || 0} aspersores com ${config.sprinkler_lph || 0} L/h por aspersor.`;
-            } else {
-                help.textContent = 'Este setor não possui configuração de irrigação automática. Nesse caso, informe o volume manual em litros.';
-            }
-            const automaticVolume = selectedIds.length === 1 ? computeVolume(config, durationField?.value) : null;
-            const hasAutomatic = automaticVolume !== null;
-            if (volumeField) {
-                volumeField.readOnly = hasAutomatic;
-                volumeField.classList.toggle('bg-slate-200', hasAutomatic);
-                volumeField.classList.toggle('text-slate-500', hasAutomatic);
-                if (hasAutomatic) volumeField.value = automaticVolume;
-                else if (volumeField.dataset.auto === '1') volumeField.value = '';
-                volumeField.dataset.auto = hasAutomatic ? '1' : '0';
-            }
-        };
-        const syncIrrigationPlotSelectionState = () => {
-            if (!plotHiddenInputs) return;
-            const selectedCount = plotHiddenInputs.querySelectorAll('input[name="plot_id"]').length;
-            if (multiPlotSelect) {
-                multiPlotSelect.setCustomValidity(selectedCount ? '' : 'Selecione ao menos um setor.');
-            }
-            plotEmptyState?.classList.toggle('hidden', selectedCount > 0);
-            if (plotSelectionCount) {
-                plotSelectionCount.textContent = selectedCount
-                    ? `${selectedCount} setor${selectedCount > 1 ? 'es' : ''} selecionado${selectedCount > 1 ? 's' : ''}`
-                    : 'Nenhum setor selecionado';
-            }
-            updateHelp();
-        };
-        const restoreIrrigationPlotOption = (plotId, plotName, plotFarm) => {
-            if (!multiPlotSelect || !plotId) return;
-            const option = document.createElement('option');
-            option.value = plotId;
-            option.dataset.plotName = plotName || '';
-            option.dataset.plotFarm = plotFarm || '';
-            option.textContent = plotFarm ? `${plotName} • ${plotFarm}` : plotName;
-            multiPlotSelect.appendChild(option);
-        };
-        const bindIrrigationPlotTagRemove = (chip) => {
-            chip.querySelector('[data-irrigation-plot-remove]')?.addEventListener('click', () => {
-                const plotId = chip.dataset.plotId || '';
-                const plotName = chip.dataset.plotName || '';
-                const plotFarm = chip.dataset.plotFarm || '';
-                plotHiddenInputs?.querySelector(`input[name="plot_id"][value="${CSS.escape(plotId)}"]`)?.remove();
-                restoreIrrigationPlotOption(plotId, plotName, plotFarm);
-                chip.remove();
-                syncIrrigationPlotSelectionState();
-            });
-        };
-        multiPlotSelect?.addEventListener('change', (event) => {
-            const select = event.currentTarget;
-            if (!(select instanceof HTMLSelectElement)) return;
-            const option = select.selectedOptions[0];
-            const plotId = option?.value || '';
-            if (!plotId || !plotSelected || !plotHiddenInputs) return;
-            const plotName = option.dataset.plotName || option.textContent.split(' • ')[0] || '';
-            const plotFarm = option.dataset.plotFarm || '';
-
-            const hiddenInput = document.createElement('input');
-            hiddenInput.type = 'hidden';
-            hiddenInput.name = 'plot_id';
-            hiddenInput.value = plotId;
-            plotHiddenInputs.appendChild(hiddenInput);
-
-            const chip = document.createElement('div');
-            chip.className = 'schedule-plot-chip';
-            chip.dataset.plotId = plotId;
-            chip.dataset.plotName = plotName;
-            chip.dataset.plotFarm = plotFarm;
-            chip.innerHTML = `
-                <div class="schedule-plot-chip-body">
-                    <span class="schedule-plot-chip-title">${plotName}</span>
-                    <span class="schedule-plot-chip-meta">${plotFarm || 'Sem fazenda vinculada'}</span>
-                </div>
-                <button type="button" class="schedule-plot-chip-remove" data-irrigation-plot-remove aria-label="Remover setor">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                        <path d="M18 6 6 18"/>
-                        <path d="m6 6 12 12"/>
-                    </svg>
-                </button>
-            `;
-            plotSelected.appendChild(chip);
-            bindIrrigationPlotTagRemove(chip);
-            option.remove();
-            select.value = '';
-            syncIrrigationPlotSelectionState();
-        });
-        const resetIrrigationCreateState = () => {
-            if (isEditing) return;
-            const form = document.getElementById('irrigation-form');
-            form?.reset();
-            if (multiPlotSelect) {
-                multiPlotSelect.innerHTML = initialMultiPlotOptionsHtml;
-                multiPlotSelect.value = '';
-                multiPlotSelect.setCustomValidity('');
-            }
-            plotSelected?.querySelectorAll('.schedule-plot-chip').forEach((chip) => chip.remove());
-            plotHiddenInputs?.replaceChildren();
-            syncIrrigationPlotSelectionState();
-        };
-        plotSelect?.addEventListener('change', updateHelp);
-        durationField?.addEventListener('input', updateHelp);
-        syncIrrigationPlotSelectionState();
-        updateHelp();
-
-        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
-        const parseStickyTopPx = (el) => {
-            const raw = getComputedStyle(el).top;
-            if (!raw || raw === 'auto') return 0;
-            const pxMatch = /^([\d.]+)px$/.exec(raw);
-            if (pxMatch) return parseFloat(pxMatch[1]);
-            const remMatch = /^([\d.]+)rem$/.exec(raw);
-            if (remMatch) {
-                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-                return parseFloat(remMatch[1]) * rootPx;
-            }
-            return 0;
-        };
-        let compactRaf = null;
-        const syncHeaderCompact = () => {
-            compactRaf = null;
-            if (!stickyHeader) return;
-            if (!mobileCompactMq.matches) {
-                stickyHeader.classList.remove('is-compact');
-                if (headerIntro) headerIntro.removeAttribute('aria-hidden');
-                return;
-            }
-            const topPx = parseStickyTopPx(stickyHeader);
-            const rect = stickyHeader.getBoundingClientRect();
-            const isCompact = stickyHeader.classList.contains('is-compact');
-            let nextCompact = isCompact;
-            if (rect.top <= topPx + 2) nextCompact = true;
-            else if (rect.top > topPx + 8) nextCompact = false;
-            stickyHeader.classList.toggle('is-compact', nextCompact);
-            if (headerIntro) headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
-        };
-        const scheduleHeaderCompact = () => {
-            if (compactRaf !== null) return;
-            compactRaf = window.requestAnimationFrame(syncHeaderCompact);
-        };
-        if (stickyHeader) {
-            window.addEventListener('scroll', scheduleHeaderCompact, { passive: true });
-            window.addEventListener('resize', scheduleHeaderCompact);
-            mobileCompactMq.addEventListener('change', scheduleHeaderCompact);
-            scheduleHeaderCompact();
+    const recalc = () => {
+        const ids = selectedPlotIds();
+        const mins = Number(durInput?.value || 0);
+        if (!ids.length || !mins) {
+            if (helpBox) helpBox.textContent = 'Selecione o(s) talhão(ões) e informe a duração em minutos para calcular volume e lâmina (mm).';
+            return;
         }
-        if (!stickyHeader || !fadingPanels.length) return;
-        let rafId = null;
-        const updateFadingPanels = () => {
-            rafId = null;
-            const stickyRect = stickyHeader.getBoundingClientRect();
-            const stickyBottom = stickyRect.bottom;
-            fadingPanels.forEach((panel) => {
-                const panelRect = panel.getBoundingClientRect();
-                const panelTop = panelRect.top;
-                const panelH = panelRect.height;
-                if (panelTop >= stickyBottom || panelH <= 1) {
-                    panel.style.setProperty('--stock-fade-cutoff', '0px');
-                    panel.style.setProperty('--stock-fade-feather-end', '0px');
-                    return;
-                }
-                const rawOverlap = Math.max(stickyBottom - panelTop, 0);
-                const overlap = Math.min(rawOverlap, panelH);
-                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
-                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
-                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
-            });
-        };
-        const scheduleFadeUpdate = () => {
-            if (rafId !== null) return;
-            rafId = window.requestAnimationFrame(updateFadingPanels);
-        };
-        window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
-        window.addEventListener('resize', scheduleFadeUpdate);
-        scheduleFadeUpdate();
-    })();
+        const summaries = [];
+        let singleVol = null;
+        ids.forEach((id) => {
+            const spec = plotSpecs[String(id)];
+            if (!spec) return;
+            const lph = Number(spec.liters_per_hour || 0);
+            if (lph > 0) {
+                const vol = Math.round((lph * mins) / 60);
+                const mm = spec.area_hectares > 0 ? (vol / (spec.area_hectares * 10000)).toFixed(1) : '0.0';
+                summaries.push(`${spec.name}: ~${vol.toLocaleString('pt-BR')} L (${mm} mm)`);
+                if (ids.length === 1) singleVol = vol;
+            } else {
+                summaries.push(`${spec.name}: sem vazão configurada (informe litros manualmente)`);
+            }
+        });
+        if (singleVol !== null && volInput && (!volInput.value || volInput.dataset.autoFilled === '1')) {
+            volInput.value = String(singleVol);
+            volInput.dataset.autoFilled = '1';
+        }
+        if (helpBox) helpBox.textContent = summaries.join(' · ') || 'Informe o volume em litros.';
+    };
+
+    volInput?.addEventListener('input', () => { volInput.dataset.autoFilled = '0'; });
+    durInput?.addEventListener('input', recalc);
+    editPlotSel?.addEventListener('change', recalc);
+    modal?.querySelectorAll('[data-irr-plot-chk]').forEach((c) => c.addEventListener('change', recalc));
+
+    const closeModal = () => {
+        if (isEditing) { window.location.href = afterEditCloseUrl; return; }
+        modal?.close();
+    };
+    document.querySelectorAll('[data-irrigation-launch-open]').forEach((b) => b.addEventListener('click', () => { recalc(); modal?.showModal(); }));
+    document.querySelectorAll('[data-irrigation-launch-close]').forEach((b) => b.addEventListener('click', closeModal));
+    modal?.addEventListener('cancel', (e) => { e.preventDefault(); closeModal(); });
+    if (isEditing || autoOpenNew) { recalc(); modal?.showModal(); }
+
+    const shell = document.querySelector('[data-irrigation-history-shell]');
+    const searchInput = shell?.querySelector('[data-module-history-search]');
+    const rows = Array.from(shell?.querySelectorAll('[data-irrigation-row]') || []);
+    const emptyEl = document.querySelector('[data-irrigation-search-empty]');
+    const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    searchInput?.addEventListener('input', () => {
+        const q = norm(searchInput.value);
+        let vis = 0;
+        rows.forEach((r) => {
+            const show = !q || norm(r.dataset.irrigationSearchText || r.textContent).includes(q);
+            r.hidden = !show;
+            if (show) vis += 1;
+        });
+        if (emptyEl) emptyEl.hidden = vis > 0 || rows.length === 0;
+    });
+
+    shell?.querySelectorAll('form[data-module-period-filter-root]').forEach((form) => {
+        window.ModulePeriodFilters?.bind(form, {});
+    });
+})();
 </script>
 {% endblock %}

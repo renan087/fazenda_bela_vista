@@ -1,559 +1,391 @@
 {% extends "base.html" %}
+{% from "partials/fertilization_nav.html" import fertilization_tabs %}
 {% block content %}
-{% macro render_recommendation_card(item) %}
-<article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-recommendation-row data-recommendation-search-text="{{ (item.application_name or '') ~ ' ' ~ (item.farm.name if item.farm else '') ~ ' ' ~ (item.plot.name if item.plot else '') ~ ' ' ~ (item.notes or '') }}{% for recommendation_item in item.items %} {{ recommendation_item.input_catalog.name if recommendation_item.input_catalog else (recommendation_item.purchased_input.name if recommendation_item.purchased_input else '') }} {{ recommendation_item.quantity }} {{ recommendation_item.unit }}{% endfor %}">
-    <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
-        <div class="min-w-0">
-            <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-history-view-trigger data-history-view-kicker="Recomendação" data-history-view-title="{{ item.application_name }}" data-history-view-subtitle="{{ item.farm.name if item.farm else 'Sem fazenda vinculada' }}{% if item.plot %} • {{ item.plot.name }}{% endif %}" data-history-view-source="recommendation-view-{{ item.id }}" data-history-view-edit-url="/insumos/recomendacao?edit_id={{ item.id }}">{{ item.application_name }}</button>
-            <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}{% if item.plot %} • {{ item.plot.name }}{% endif %}</p>
+{% set ctx = ft_recipes_ctx %}
+{% set k = ctx.kpi %}
+<div class="sf-page pd-page ft-page" data-ft-recipes-page data-can-write="{{ '1' if can_write_page else '0' }}">
+    <header class="pd-head">
+        <div>
+            <h1 class="sf-page-title">Receitas de adubação</h1>
+            <p class="sf-page-subtitle">Salve fórmulas reutilizáveis por hectare, por planta ou por talhão e lance na agenda ou no campo com um clique.</p>
         </div>
-        <div class="flex items-center gap-2 lg:gap-1.5">
-            <a href="/insumos/recomendacao?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 20h9"/>
-                    <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-                </svg>
-            </a>
-            <details class="sf-menu" data-sf-dropdown>
-                <summary class="sf-icon-btn" aria-label="Mais ações" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
-                <div class="sf-menu-panel">
-                    <form method="post" action="/insumos/recomendacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta recomendação?');">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="sf-menu-danger">Excluir</button></form>
-                </div>
-            </details>
-        </div>
-    </div>
-
-    <div class="mt-4">
-        <div class="hidden max-sm:flex max-sm:items-center max-sm:justify-end">
-            <button type="button" class="stock-summary-toggle sm:hidden" data-recommendation-items-toggle aria-expanded="false">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <path d="M5 12h14"/>
-                    <path d="M12 5v14" data-recommendation-items-toggle-plus></path>
-                </svg>
-                <span data-recommendation-items-toggle-label>Mostrar Insumos</span>
+        <div class="pd-head-actions">
+            {% if can_write_page %}
+            <button type="button" class="sf-btn sf-btn-primary" data-recipe-modal-open>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Nova receita
             </button>
+            {% endif %}
         </div>
-        <div class="stock-summary-collapse max-sm:mt-3" data-recommendation-items-collapse>
-            <div class="stock-summary-collapse-inner">
-                <div class="flex flex-wrap gap-2">
-                    {% for recommendation_item in item.items %}
-                    <div class="rounded-full bg-white px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200/80">
-                        <span class="font-medium">{{ recommendation_item.input_catalog.name if recommendation_item.input_catalog else (recommendation_item.purchased_input.name if recommendation_item.purchased_input else "Insumo removido") }}</span>
-                        <span class="text-slate-500"> • {{ recommendation_item.quantity }} {{ recommendation_item.unit }}</span>
+    </header>
+
+    {{ fertilization_tabs('recipes', ft_active_schedules_count, ft_fert_count, k.total) }}
+
+    <section class="ft-kpis" aria-label="Indicadores de receitas">
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Receitas cadastradas</span>
+            <div class="ft-kpi-val"><strong>{{ k.total }}</strong><span>fórmula{{ 's' if k.total != 1 }}</span></div>
+            <p class="ft-kpi-sub">{{ k.method_counts.fertirrigacao }} fertirrigação · {{ k.method_counts.adubacao_solida }} sólida · {{ k.method_counts.fertilizacao_foliar }} foliar</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Prontas para aplicar</span>
+            <div class="ft-kpi-val"><strong class="is-ok">{{ k.ready }}</strong><span>com estoque ok</span></div>
+            <p class="ft-kpi-sub">Todos os insumos com saldo disponível</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Precisam reposição</span>
+            <div class="ft-kpi-val"><strong class="{{ 'is-warn' if k.shortage else 'is-ok' }}">{{ k.shortage }}</strong><span>receita{{ 's' if k.shortage != 1 }}</span></div>
+            <p class="ft-kpi-sub">{% if k.shortage %}Algum insumo está sem saldo suficiente{% else %}Nenhuma receita com falta de estoque{% endif %}</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Custo médio por ha</span>
+            <div class="ft-kpi-val"><strong>{% if k.avg_cost_per_ha > 0 %}R$ {{ k.avg_cost_per_ha|decimal_br(2) }}{% else %}—{% endif %}</strong></div>
+            <p class="ft-kpi-sub">Estimativa FIFO das receitas por hectare</p>
+        </article>
+    </section>
+
+    <section class="pd-card ft-stage" aria-label="Lista de receitas cadastradas">
+        <div class="ft-stage-top">
+            <div>
+                <h2>Biblioteca de receitas</h2>
+                <p class="ft-stage-sub">Clique em <strong>Agendar</strong> ou <strong>Aplicar agora</strong> para abrir o assistente já preenchido com a receita.</p>
+            </div>
+            <label class="sl-search ft-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <span class="sr-only">Buscar receitas</span>
+                <input type="search" placeholder="Buscar receita, talhão ou insumo..." data-recipe-search>
+            </label>
+        </div>
+
+        <div class="ft-filters-row">
+            <div class="sl-chips" role="group" aria-label="Filtrar receitas">
+                <button type="button" class="sl-chip" aria-pressed="true" data-recipe-filter="all">Todas <span>{{ k.total }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-recipe-filter="fertirrigacao">Fertirrigação <span>{{ k.method_counts.fertirrigacao }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-recipe-filter="adubacao_solida">Sólida <span>{{ k.method_counts.adubacao_solida }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-recipe-filter="fertilizacao_foliar">Foliar <span>{{ k.method_counts.fertilizacao_foliar }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-recipe-filter="ready">Estoque OK <span>{{ k.ready }}</span></button>
+                <button type="button" class="sl-chip" aria-pressed="false" data-recipe-filter="shortage">Falta estoque <span>{{ k.shortage }}</span></button>
+            </div>
+        </div>
+
+        {% if ctx.rows %}
+        <div class="lv-rec-grid" data-recipe-list>
+            {% for r in ctx.rows %}
+            <article class="lv-rec-card"
+                data-recipe-card
+                data-method="{{ r.method }}"
+                data-shortage="{{ '1' if r.has_shortage else '0' }}"
+                data-search="{{ (r.name ~ ' ' ~ r.plot_name ~ ' ' ~ r.method_label ~ ' ' ~ r.notes ~ ' ' ~ (r['items']|map(attribute='name')|join(' ')))|lower }}">
+                <div class="lv-rec-head">
+                    <div class="min-w-0">
+                        <div class="lv-rec-badges">
+                            <span class="pd-chip is-{{ r.method_tone }}">{{ r.method_short }}</span>
+                            <span class="pd-chip is-muted">{{ r.dose_mode_label }}</span>
+                            {% if r.has_shortage %}
+                            <span class="pd-chip is-warn">Falta estoque</span>
+                            {% else %}
+                            <span class="pd-chip is-ok">Estoque OK</span>
+                            {% endif %}
+                        </div>
+                        <h3 class="lv-rec-title">{{ r.name }}</h3>
+                        <p class="lv-rec-meta">
+                            {% if r.plot_name %}{{ r.plot_name }}{% else %}Qualquer talhão da fazenda{% endif %}
+                            {% if r.est_cost > 0 %}
+                             · Est. <strong>R$ {{ r.est_cost|decimal_br(2) }}{% if r.dose_mode == 'per_ha' %}/ha{% endif %}</strong>
+                            {% endif %}
+                        </p>
+                    </div>
+                    {% if can_write_page %}
+                    <details class="sf-menu" data-sf-dropdown>
+                        <summary class="sf-icon-btn" aria-label="Mais ações" title="Mais ações">
+                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+                        </summary>
+                        <div class="sf-menu-panel">
+                            <a href="/fertilizacao/receitas?edit_id={{ r.id }}" class="sf-menu-link">Editar receita</a>
+                            <form method="post" action="/fertilizacao/receitas/{{ r.id }}/excluir" onsubmit="return confirm('Excluir a receita {{ r.name }}?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="sf-menu-danger">Excluir</button>
+                            </form>
+                        </div>
+                    </details>
+                    {% endif %}
+                </div>
+
+                <ul class="lv-rec-items">
+                    {% for it in r['items'] %}
+                    <li>
+                        <span class="lv-rec-it-name">{{ it.name }}</span>
+                        <span class="lv-rec-it-dose">
+                            <strong>{{ it.quantity|decimal_br }} {{ it.unit }}{% if r.dose_mode == 'per_ha' %}/ha{% elif r.dose_mode == 'per_plant' %} g/pé{% endif %}</strong>
+                            <small class="{{ 'is-ok' if it.in_stock else 'is-err' }}">({{ it.available|decimal_br }} {{ it.stock_unit }} disp.)</small>
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+
+                {% if r.notes %}
+                <p class="lv-rec-notes">{{ r.notes }}</p>
+                {% endif %}
+
+                {% if can_write_page %}
+                <div class="lv-rec-actions">
+                    <a class="sf-btn sf-btn-secondary sf-btn-sm" href="/fertilizacao/agendamentos/novo?recipe_id={{ r.id }}">Agendar</a>
+                    <a class="sf-btn sf-btn-primary sf-btn-sm" href="/fertilizacao/nova?recipe_id={{ r.id }}">Aplicar agora</a>
+                </div>
+                {% endif %}
+            </article>
+            {% endfor %}
+        </div>
+        <div class="pd-empty" data-recipe-search-empty hidden>
+            <strong>Nenhuma receita encontrada neste filtro.</strong>
+            <span>Tente outro termo de busca ou limpe o filtro selecionado.</span>
+        </div>
+        {% else %}
+        <div class="pd-empty">
+            <strong>Nenhuma receita cadastrada ainda.</strong>
+            <span>Crie fórmulas de adubação por hectare para reutilizar em múltiplos talhões sem redigitar insumos e doses.</span>
+            {% if can_write_page %}
+            <button type="button" class="sf-btn sf-btn-primary" data-recipe-modal-open>Criar primeira receita</button>
+            {% endif %}
+        </div>
+        {% endif %}
+    </section>
+</div>
+
+{# Modal de criar / editar receita #}
+<dialog id="recipe-modal" class="ft-dialog is-lg">
+    <form method="post" action="{% if edit_recommendation %}/fertilizacao/receitas/{{ edit_recommendation.id }}/editar{% else %}/fertilizacao/receitas{% endif %}" class="ft-dialog-shell" id="recipe-form" data-recipe-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ft-dialog-head">
+            <div>
+                <p class="pd-eyebrow is-brand">Ciclo de adubação · Receitas</p>
+                <h2>{% if edit_recommendation %}Editar receita{% else %}Nova receita de adubação{% endif %}</h2>
+                <p class="ft-dialog-sub">Defina os insumos e como a dose será aplicada — o assistente calcula o total exato para cada talhão.</p>
+            </div>
+            <button type="button" class="ft-x" data-recipe-modal-close aria-label="Fechar">✕</button>
+        </div>
+
+        <div class="ft-dialog-body">
+            <div class="lv-form-grid">
+                <label class="ft-field is-span-2">
+                    <span>Nome da receita</span>
+                    <input type="text" name="application_name" value="{{ edit_recommendation.application_name if edit_recommendation else '' }}" placeholder="Ex.: Fertirrigação de Pegamento · NPK + Boro" required>
+                </label>
+
+                <label class="ft-field">
+                    <span>Método padrão</span>
+                    {% set cur_method = (edit_recommendation.application_method if edit_recommendation and edit_recommendation.application_method else 'fertirrigacao') %}
+                    <select name="application_method">
+                        <option value="fertirrigacao" {% if cur_method == 'fertirrigacao' %}selected{% endif %}>Fertirrigação</option>
+                        <option value="adubacao_solida" {% if cur_method == 'adubacao_solida' %}selected{% endif %}>Adubação sólida</option>
+                        <option value="fertilizacao_foliar" {% if cur_method == 'fertilizacao_foliar' %}selected{% endif %}>Fertilização foliar</option>
+                    </select>
+                </label>
+
+                <label class="ft-field">
+                    <span>Modo de dosagem</span>
+                    {% set cur_mode = (edit_recommendation.dose_mode if edit_recommendation and edit_recommendation.dose_mode else 'per_ha') %}
+                    <select name="dose_mode" data-recipe-dose-mode>
+                        <option value="per_ha" {% if cur_mode == 'per_ha' %}selected{% endif %}>Por hectare (kg/ha ou L/ha) — Recomendado</option>
+                        <option value="per_plant" {% if cur_mode == 'per_plant' %}selected{% endif %}>Por pé de café (g/planta)</option>
+                        <option value="fixed_plot" {% if cur_mode == 'fixed_plot' %}selected{% endif %}>Total fixo por talhão</option>
+                    </select>
+                </label>
+
+                <label class="ft-field is-span-2">
+                    <span>Talhão específico (opcional)</span>
+                    <select name="plot_id">
+                        <option value="">Qualquer talhão da fazenda</option>
+                        {% for plot in launch_plots %}
+                        <option value="{{ plot.id }}" {% if edit_recommendation and edit_recommendation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.area_hectares %} ({{ plot.area_hectares|decimal_br(1) }} ha){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+
+            <div class="lv-items-box">
+                <div class="lv-items-head">
+                    <div>
+                        <strong>Insumos da receita</strong>
+                        <small data-recipe-dose-hint>Informe a dose por hectare de cada produto.</small>
+                    </div>
+                    <button type="button" class="sf-btn sf-btn-secondary sf-btn-sm" data-add-recipe-item>+ Adicionar insumo</button>
+                </div>
+                <div class="lv-items-list" data-recipe-items>
+                    {% set initial_items = edit_recommendation.items if edit_recommendation and edit_recommendation.items else [None] %}
+                    {% for rec_item in initial_items %}
+                    <div class="lv-item-row" data-recipe-item>
+                        <label class="ft-field">
+                            <span>Insumo</span>
+                            <select name="input_id" data-recipe-item-input required>
+                                <option value="">Selecione</option>
+                                {% for item in inputs_catalog %}
+                                {% set availability = input_stock.get(item.id, {}).get('available', 0) %}
+                                <option value="{{ item.id }}" data-default-unit="{{ item.default_unit }}" {% if rec_item and rec_item.input_id == item.id %}selected{% endif %}>{{ item.name }} · {{ availability|decimal_br }} {{ item.default_unit }} disp.</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label class="ft-field">
+                            <span data-recipe-qty-label>Dose</span>
+                            <input type="number" step="0.01" min="0.01" name="quantity" value="{{ rec_item.quantity if rec_item else '' }}" placeholder="0,00" required>
+                        </label>
+                        <label class="ft-field">
+                            <span>Unidade</span>
+                            <input type="text" value="{{ rec_item.unit if rec_item else '' }}" data-recipe-item-unit-display readonly tabindex="-1">
+                            <input type="hidden" name="unit" value="{{ rec_item.unit if rec_item else '' }}" data-recipe-item-unit>
+                        </label>
+                        <button type="button" class="ftw-del-btn" data-remove-recipe-item aria-label="Remover insumo" title="Remover">✕</button>
                     </div>
                     {% endfor %}
                 </div>
             </div>
-        </div>
-    </div>
 
-    {% if item.notes %}
-    <p class="mt-3 text-sm text-slate-500">{{ item.notes }}</p>
-    {% endif %}
-
-    <template id="recommendation-view-{{ item.id }}">
-        <div class="grid gap-3 sm:grid-cols-2">
-            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}</p></div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "-" }}</p></div>
-        </div>
-        <div class="rounded-2xl bg-slate-50 px-4 py-4">
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Itens recomendados</p>
-            <div class="mt-3 space-y-2">
-                {% for recommendation_item in item.items %}
-                <div class="rounded-xl bg-white px-3 py-3 text-sm text-slate-700">
-                    <span class="font-medium">{{ recommendation_item.input_catalog.name if recommendation_item.input_catalog else (recommendation_item.purchased_input.name if recommendation_item.purchased_input else "Insumo removido") }}</span>
-                    <span class="text-slate-500"> • {{ recommendation_item.quantity }} {{ recommendation_item.unit }}</span>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        <div class="rounded-2xl bg-slate-50 px-4 py-4">
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
-            <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observações." }}</p>
-        </div>
-    </template>
-</article>
-{% endmacro %}
-
-<div class="stock-page-shell sf-page" data-modal-single-pane>
-    <section class="stock-page-header">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-                <div class="stock-page-header-intro-inner">
-                    <h2 class="stock-page-card-title">Recomendação de Insumos</h2>
-                    <p class="stock-page-card-subtitle">Monte recomendações por setor e reutilize combinações de insumos.</p>
-                </div>
-            </div>
-            <div class="stock-header-actions stock-header-actions-top stock-actions-row-mobile-adaptive max-[899px]:w-full">
-                <button type="button" class="stock-action-button stock-action-button-primary" data-recommendation-launch-open>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M12 5v14"/>
-                        <path d="M5 12h14"/>
-                    </svg>
-                    <span class="stock-action-button-label"><span class="sm:hidden">Nova</span><span class="hidden sm:inline">Nova recomendação</span></span>
-                </button>
-            </div>
-        </div>
-    </section>
-
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico</p>
-                <h3 class="mt-2 text-2xl font-semibold">Recomendações cadastradas</h3>
-            </div>
-            <div class="stock-search-field">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                    <path d="M13 13l4 4"></path>
-                </svg>
-                <input type="search" placeholder="Buscar aplicação, fazenda, setor, insumo ou observação" data-recommendation-search>
-            </div>
+            <label class="ft-field" style="margin-top: 1rem;">
+                <span>Observações técnicas (opcional)</span>
+                <textarea name="notes" rows="2" placeholder="Ex.: ordem de mistura no tanque, recomendação de pH da calda ou época ideal...">{{ edit_recommendation.notes if edit_recommendation else '' }}</textarea>
+            </label>
         </div>
 
-        <div class="mt-5 space-y-4" data-recommendation-history-list>
-            {% for item in recommendations %}
-            {{ render_recommendation_card(item) }}
-            {% else %}
-            <p class="text-sm text-slate-500">Nenhuma recomendação cadastrada.</p>
-            {% endfor %}
+        <div class="ft-dialog-foot">
+            <button type="button" class="sf-btn sf-btn-secondary" data-recipe-modal-close>Cancelar</button>
+            <button type="submit" class="sf-btn sf-btn-primary">{% if edit_recommendation %}Salvar alterações{% else %}Salvar receita{% endif %}</button>
         </div>
-        <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-recommendation-search-empty>Nenhuma recomendação corresponde à busca digitada.</p>
-        {% with pagination=recommendations_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
-    </section>
-</div>
-
-<dialog id="recommendation-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_recommendation %}Editar recomendação{% else %}Nova recomendação{% endif %}</p>
-                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_recommendation %}Editar recomendação de aplicação{% else %}Nova recomendação de aplicação{% endif %}</h3>
-                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Cadastre combinações de insumos por setor e reutilize essas recomendações nos lançamentos futuros.</p>
-            </div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-recommendation-launch-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
-            </button>
-        </div>
-
-        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
-            <form id="recommendation-form" method="post" action="{% if edit_recommendation %}/insumos/recomendacao/{{ edit_recommendation.id }}/editar{% else %}/insumos/recomendacao{% endif %}" class="grid gap-4" data-recommendation-form>
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-
-                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
-                        <div class="min-w-0">
-                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
-                            <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
-                        </div>
-                        <button type="button" class="stock-summary-toggle" data-recommendation-context-toggle aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                <path d="M5 12h14"/>
-                                <path d="M12 5v14" data-recommendation-context-toggle-plus></path>
-                            </svg>
-                            <span data-recommendation-context-toggle-label>Expandir</span>
-                        </button>
-                    </div>
-                    <div class="stock-summary-collapse" data-recommendation-context-collapse>
-                        <div class="stock-summary-collapse-inner">
-                            <div class="mt-4">
-                                {% include "partials/launch_context.html" %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
-                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
-                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-recommendation-launch-close>Cancelar</button>
-                        <button form="recommendation-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_recommendation %}Salvar alterações{% else %}Salvar recomendação{% endif %}</button>
-                    </div>
-                </div>
-
-                <div class="grid gap-4 md:grid-cols-2">
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Setor</span>
-                        <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                            <option value="">Sem setor específico</option>
-                            {% for plot in launch_plots %}
-                            <option value="{{ plot.id }}" {% if edit_recommendation and edit_recommendation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                </div>
-
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Nome da aplicação</span>
-                    <input name="application_name" value="{{ edit_recommendation.application_name if edit_recommendation else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Fertilização de Base" required>
-                </label>
-
-                <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Insumos da recomendação</p>
-                            <p class="mt-1 text-sm text-slate-600">Monte a recomendação por setor, sem divisão automática por área.</p>
-                        </div>
-                        <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" data-add-recommendation-item>Adicionar insumo</button>
-                    </div>
-                    <div class="mt-4 space-y-4" data-recommendation-items>
-                        {% set initial_items = edit_recommendation.items if edit_recommendation and edit_recommendation.items else [None] %}
-                        {% for recommendation_item in initial_items %}
-                        <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_auto]" data-recommendation-item>
-                            <label>
-                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-                                <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" data-recommendation-item-input required>
-                                    <option value="">Selecione</option>
-                                    {% for item in inputs_catalog %}
-                                    {% set availability = input_stock.get(item.id, {}).get('available', 0) %}
-                                    <option value="{{ item.id }}" data-default-unit="{{ item.default_unit }}" {% if recommendation_item and recommendation_item.input_id == item.id %}selected{% endif %}>{{ item.name }} • disponível: {{ availability }} {{ item.default_unit }}</option>
-                                    {% endfor %}
-                                </select>
-                            </label>
-                            <label>
-                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-                                <input type="text" value="{{ recommendation_item.unit if recommendation_item else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-200 px-3 text-slate-500 cursor-not-allowed" data-recommendation-item-unit-display readonly disabled tabindex="-1">
-                                <input type="hidden" name="unit" value="{{ recommendation_item.unit if recommendation_item else '' }}" data-recommendation-item-unit>
-                            </label>
-                            <label>
-                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
-                                <input type="number" step="0.01" min="0" name="quantity" value="{{ recommendation_item.quantity if recommendation_item else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
-                            </label>
-                            <div class="flex items-end">
-                                <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-recommendation-item>Remover</button>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Observações</span>
-                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_recommendation.notes if edit_recommendation else '' }}</textarea>
-                </label>
-            </form>
-        </div>
-    </div>
+    </form>
 </dialog>
 
-{% include "partials/history_view_modal.html" %}
-
-<template id="recommendation-item-template">
-    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_auto]" data-recommendation-item>
-        <label>
-            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-            <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" data-recommendation-item-input required>
+<template id="recipe-item-template">
+    <div class="lv-item-row" data-recipe-item>
+        <label class="ft-field">
+            <span>Insumo</span>
+            <select name="input_id" data-recipe-item-input required>
                 <option value="">Selecione</option>
                 {% for item in inputs_catalog %}
                 {% set availability = input_stock.get(item.id, {}).get('available', 0) %}
-                <option value="{{ item.id }}" data-default-unit="{{ item.default_unit }}">{{ item.name }} • disponível: {{ availability }} {{ item.default_unit }}</option>
+                <option value="{{ item.id }}" data-default-unit="{{ item.default_unit }}">{{ item.name }} · {{ availability|decimal_br }} {{ item.default_unit }} disp.</option>
                 {% endfor %}
             </select>
         </label>
-        <label>
-            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-            <input type="text" value="" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-200 px-3 text-slate-500 cursor-not-allowed" data-recommendation-item-unit-display readonly disabled tabindex="-1">
-            <input type="hidden" name="unit" value="" data-recommendation-item-unit>
+        <label class="ft-field">
+            <span data-recipe-qty-label>Dose</span>
+            <input type="number" step="0.01" min="0.01" name="quantity" placeholder="0,00" required>
         </label>
-        <label>
-            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
-            <input type="number" step="0.01" min="0" name="quantity" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+        <label class="ft-field">
+            <span>Unidade</span>
+            <input type="text" value="" data-recipe-item-unit-display readonly tabindex="-1">
+            <input type="hidden" name="unit" value="" data-recipe-item-unit>
         </label>
-        <div class="flex items-end">
-            <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-recommendation-item>Remover</button>
-        </div>
+        <button type="button" class="ftw-del-btn" data-remove-recipe-item aria-label="Remover insumo" title="Remover">✕</button>
     </div>
 </template>
 
 <script>
-    (() => {
-        const launchModal = document.getElementById('recommendation-launch-modal');
-        const openButtons = Array.from(document.querySelectorAll('[data-recommendation-launch-open]'));
-        const closeButtons = Array.from(document.querySelectorAll('[data-recommendation-launch-close]'));
-        const searchInput = document.querySelector('[data-recommendation-search]');
-        const rows = Array.from(document.querySelectorAll('[data-recommendation-row]'));
-        const emptyState = document.querySelector('[data-recommendation-search-empty]');
-        const wrapper = document.querySelector('[data-recommendation-items]');
-        const addButton = document.querySelector('[data-add-recommendation-item]');
-        const template = document.getElementById('recommendation-item-template');
-        const form = document.querySelector('[data-recommendation-form]');
-        const stickyHeader = document.querySelector('.stock-page-header');
-        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
-        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
-        const isEditing = {{ 'true' if edit_recommendation else 'false' }};
-        const recommendationItemsMobileMq = window.matchMedia('(max-width: 639px)');
+(() => {
+    const modal = document.getElementById('recipe-modal');
+    const form = document.getElementById('recipe-form');
+    const itemsWrap = document.querySelector('[data-recipe-items]');
+    const tpl = document.getElementById('recipe-item-template');
+    const doseModeSel = document.querySelector('[data-recipe-dose-mode]');
+    const doseHint = document.querySelector('[data-recipe-dose-hint]');
+    const searchInput = document.querySelector('[data-recipe-search]');
+    const filterBtns = Array.from(document.querySelectorAll('[data-recipe-filter]'));
+    const cards = Array.from(document.querySelectorAll('[data-recipe-card]'));
+    const emptyEl = document.querySelector('[data-recipe-search-empty]');
+    const isEditing = {{ 'true' if edit_recommendation else 'false' }};
+    let activeFilter = 'all';
 
-        const closeModal = () => {
-            if (isEditing) {
-                window.location.href = '/insumos/recomendacao';
+    const HINTS = {
+        per_ha: 'Informe a dose por hectare de cada produto (ex.: kg/ha ou L/ha).',
+        per_plant: 'Informe a dose em gramas por pé de café (g/planta).',
+        fixed_plot: 'Informe a quantidade total fixa que será usada no talhão.',
+    };
+
+    const syncDoseHint = () => {
+        const mode = doseModeSel?.value || 'per_ha';
+        if (doseHint) doseHint.textContent = HINTS[mode] || HINTS.per_ha;
+    };
+    doseModeSel?.addEventListener('change', syncDoseHint);
+    syncDoseHint();
+
+    const syncUnit = (row) => {
+        const sel = row.querySelector('[data-recipe-item-input]');
+        const disp = row.querySelector('[data-recipe-item-unit-display]');
+        const hid = row.querySelector('[data-recipe-item-unit]');
+        if (!sel || !disp || !hid) return;
+        const unit = sel.options[sel.selectedIndex]?.dataset.defaultUnit || '';
+        disp.value = unit;
+        hid.value = unit;
+    };
+
+    const bindRow = (row) => {
+        row.querySelector('[data-recipe-item-input]')?.addEventListener('change', () => syncUnit(row));
+        row.querySelector('[data-remove-recipe-item]')?.addEventListener('click', () => {
+            if (itemsWrap.querySelectorAll('[data-recipe-item]').length <= 1) {
+                const sel = row.querySelector('[data-recipe-item-input]');
+                if (sel) sel.selectedIndex = 0;
+                const qty = row.querySelector('input[name="quantity"]');
+                if (qty) qty.value = '';
+                syncUnit(row);
                 return;
             }
-            resetRecommendationForm();
-            launchModal?.close();
-        };
-
-        const syncRecommendationItemUnit = (row) => {
-            if (!row) return;
-            const inputSelect = row.querySelector('[data-recommendation-item-input]');
-            const unitDisplay = row.querySelector('[data-recommendation-item-unit-display]');
-            const unitInput = row.querySelector('[data-recommendation-item-unit]');
-            if (!inputSelect || !unitDisplay || !unitInput) return;
-            const selectedOption = inputSelect.options[inputSelect.selectedIndex];
-            const defaultUnit = selectedOption?.dataset.defaultUnit || '';
-            unitDisplay.value = defaultUnit;
-            unitInput.value = defaultUnit;
-        };
-
-        const buildRecommendationItemRow = () => {
-            if (!template) return null;
-            const fragment = template.content.cloneNode(true);
-            const row = fragment.firstElementChild;
-            if (!row) return null;
-            bindRemove(row);
-            bindRecommendationItem(row);
-            return row;
-        };
-
-        const resetRecommendationForm = () => {
-            if (isEditing || !form || !wrapper) return;
-            form.reset();
-            wrapper.innerHTML = '';
-            const row = buildRecommendationItemRow();
-            if (row) wrapper.appendChild(row);
-            syncRecommendationContext(false);
-        };
-
-        const syncRecommendationContext = (expanded) => {
-            document.querySelectorAll('[data-recommendation-context-toggle]').forEach((toggle) => {
-                const container = toggle.closest('.border-brand-100');
-                const collapse = container?.querySelector('[data-recommendation-context-collapse]');
-                const label = toggle.querySelector('[data-recommendation-context-toggle-label]');
-                const plus = toggle.querySelector('[data-recommendation-context-toggle-plus]');
-                if (!collapse || !label) return;
-                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                collapse.classList.toggle('is-expanded', expanded);
-                label.textContent = expanded ? 'Recolher' : 'Expandir';
-                if (plus) plus.style.display = expanded ? 'none' : '';
-            });
-        };
-
-        openButtons.forEach((button) => {
-            button.addEventListener('click', (event) => {
-                const editUrl = button.getAttribute('data-edit-url');
-                if (editUrl) {
-                    event.preventDefault();
-                    window.location.href = editUrl;
-                    return;
-                }
-                resetRecommendationForm();
-                launchModal?.showModal();
-            });
+            row.remove();
         });
+        syncUnit(row);
+    };
 
-        closeButtons.forEach((button) => {
-            button.addEventListener('click', () => closeModal());
-        });
+    itemsWrap?.querySelectorAll('[data-recipe-item]').forEach(bindRow);
 
-        launchModal?.addEventListener('cancel', (event) => {
-            event.preventDefault();
-            closeModal();
-        });
+    document.querySelector('[data-add-recipe-item]')?.addEventListener('click', () => {
+        if (!tpl || !itemsWrap) return;
+        const row = tpl.content.cloneNode(true).firstElementChild;
+        bindRow(row);
+        itemsWrap.appendChild(row);
+    });
 
+    const closeModal = () => {
         if (isEditing) {
-            launchModal?.showModal();
+            window.location.href = '/fertilizacao/receitas';
+            return;
         }
+        modal?.close();
+    };
 
-        document.querySelectorAll('[data-recommendation-context-toggle]').forEach((toggle) => {
-            toggle.addEventListener('click', () => {
-                const expanded = toggle.getAttribute('aria-expanded') === 'true';
-                syncRecommendationContext(!expanded);
-            });
+    document.querySelectorAll('[data-recipe-modal-open]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            if (!isEditing && form) form.reset();
+            syncDoseHint();
+            modal?.showModal();
         });
-        syncRecommendationContext(false);
+    });
+    document.querySelectorAll('[data-recipe-modal-close]').forEach((btn) => btn.addEventListener('click', closeModal));
+    modal?.addEventListener('cancel', (e) => { e.preventDefault(); closeModal(); });
+    modal?.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    if (isEditing) modal?.showModal();
 
-        const normalizeText = (value) => (value || '')
-            .toString()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase()
-            .trim();
-
-        const applySearch = () => {
-            const query = normalizeText(searchInput?.value || '');
-            let visible = 0;
-            rows.forEach((row) => {
-                const haystack = normalizeText(row.dataset.recommendationSearchText || row.textContent);
-                const matches = !query || haystack.includes(query);
-                row.classList.toggle('hidden', !matches);
-                if (matches) visible += 1;
-            });
-            emptyState?.classList.toggle('hidden', visible !== 0);
-        };
-
-        searchInput?.addEventListener('input', applySearch);
-        applySearch();
-
-        const bindRecommendationItemsCollapse = (card) => {
-            const toggle = card.querySelector('[data-recommendation-items-toggle]');
-            const collapse = card.querySelector('[data-recommendation-items-collapse]');
-            const label = card.querySelector('[data-recommendation-items-toggle-label]');
-            const plus = card.querySelector('[data-recommendation-items-toggle-plus]');
-            if (!toggle || !collapse || !label) return;
-
-            const sync = (expanded) => {
-                const desktopExpanded = !recommendationItemsMobileMq.matches;
-                const nextExpanded = desktopExpanded ? true : expanded;
-                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                collapse.classList.toggle('is-expanded', nextExpanded);
-                label.textContent = nextExpanded ? 'Esconder Insumos' : 'Mostrar Insumos';
-                if (plus) plus.style.display = nextExpanded ? 'none' : '';
-            };
-
-            sync(false);
-            toggle.addEventListener('click', () => {
-                if (!recommendationItemsMobileMq.matches) return;
-                const expanded = toggle.getAttribute('aria-expanded') === 'true';
-                sync(!expanded);
-            });
-            recommendationItemsMobileMq.addEventListener('change', () => {
-                const expanded = toggle.getAttribute('aria-expanded') === 'true';
-                sync(expanded);
-            });
-        };
-
-        rows.forEach(bindRecommendationItemsCollapse);
-
-        const bindRemove = (row) => {
-            row.querySelector('[data-remove-recommendation-item]')?.addEventListener('click', () => {
-                if (wrapper.querySelectorAll('[data-recommendation-item]').length === 1) {
-                    row.querySelectorAll('input, select').forEach((field) => {
-                        if (field.matches('[data-recommendation-item-unit]')) return;
-                        if (field.matches('[data-recommendation-item-unit-display]')) {
-                            field.value = '';
-                            return;
-                        }
-                        if (field.tagName === 'SELECT') {
-                            field.selectedIndex = 0;
-                            syncRecommendationItemUnit(row);
-                            return;
-                        }
-                        field.value = '';
-                    });
-                    return;
-                }
-                row.remove();
-            });
-        };
-
-        const bindRecommendationItem = (row) => {
-            const inputSelect = row.querySelector('[data-recommendation-item-input]');
-            if (!inputSelect) return;
-            inputSelect.addEventListener('change', () => syncRecommendationItemUnit(row));
-            syncRecommendationItemUnit(row);
-        };
-
-        if (wrapper && addButton && template) {
-            wrapper.querySelectorAll('[data-recommendation-item]').forEach((row) => {
-                bindRemove(row);
-                bindRecommendationItem(row);
-            });
-            addButton.addEventListener('click', () => {
-                const row = buildRecommendationItemRow();
-                if (row) wrapper.appendChild(row);
-            });
-        }
-
-        form?.addEventListener('submit', () => {
-            if (!isEditing) {
-                window.setTimeout(() => {
-                    resetRecommendationForm();
-                    launchModal?.close();
-                }, 0);
-            }
+    const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const applyFilter = () => {
+        const q = norm(searchInput?.value || '');
+        let visible = 0;
+        cards.forEach((c) => {
+            const matchesQ = !q || norm(c.dataset.search).includes(q);
+            const matchesF = activeFilter === 'all'
+                || (activeFilter === 'ready' && c.dataset.shortage === '0')
+                || (activeFilter === 'shortage' && c.dataset.shortage === '1')
+                || c.dataset.method === activeFilter;
+            const show = matchesQ && matchesF;
+            c.hidden = !show;
+            if (show) visible += 1;
         });
+        if (emptyEl) emptyEl.hidden = visible > 0 || cards.length === 0;
+    };
 
-        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
-        const parseStickyTopPx = (el) => {
-            const raw = getComputedStyle(el).top;
-            if (!raw || raw === 'auto') return 0;
-            const pxMatch = /^([\d.]+)px$/.exec(raw);
-            if (pxMatch) return parseFloat(pxMatch[1]);
-            const remMatch = /^([\d.]+)rem$/.exec(raw);
-            if (remMatch) {
-                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-                return parseFloat(remMatch[1]) * rootPx;
-            }
-            return 0;
-        };
-
-        let compactRaf = null;
-        const syncHeaderCompact = () => {
-            compactRaf = null;
-            if (!stickyHeader) return;
-            if (!mobileCompactMq.matches) {
-                stickyHeader.classList.remove('is-compact');
-                if (headerIntro) headerIntro.removeAttribute('aria-hidden');
-                return;
-            }
-            const topPx = parseStickyTopPx(stickyHeader);
-            const rect = stickyHeader.getBoundingClientRect();
-            const isCompact = stickyHeader.classList.contains('is-compact');
-            let nextCompact = isCompact;
-            if (rect.top <= topPx + 2) nextCompact = true;
-            else if (rect.top > topPx + 8) nextCompact = false;
-            stickyHeader.classList.toggle('is-compact', nextCompact);
-            if (headerIntro) headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
-        };
-
-        const scheduleHeaderCompact = () => {
-            if (compactRaf !== null) return;
-            compactRaf = window.requestAnimationFrame(syncHeaderCompact);
-        };
-
-        if (stickyHeader) {
-            window.addEventListener('scroll', scheduleHeaderCompact, { passive: true });
-            window.addEventListener('resize', scheduleHeaderCompact);
-            mobileCompactMq.addEventListener('change', scheduleHeaderCompact);
-            scheduleHeaderCompact();
-        }
-
-        if (!stickyHeader || !fadingPanels.length) return;
-
-        let rafId = null;
-        const updateFadingPanels = () => {
-            rafId = null;
-            const stickyRect = stickyHeader.getBoundingClientRect();
-            const stickyBottom = stickyRect.bottom;
-            fadingPanels.forEach((panel) => {
-                const panelRect = panel.getBoundingClientRect();
-                const panelTop = panelRect.top;
-                const panelH = panelRect.height;
-                if (panelTop >= stickyBottom || panelH <= 1) {
-                    panel.style.setProperty('--stock-fade-cutoff', '0px');
-                    panel.style.setProperty('--stock-fade-feather-end', '0px');
-                    return;
-                }
-
-                const rawOverlap = Math.max(stickyBottom - panelTop, 0);
-                const overlap = Math.min(rawOverlap, panelH);
-                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
-                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
-                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
-            });
-        };
-
-        const scheduleFadeUpdate = () => {
-            if (rafId !== null) return;
-            rafId = window.requestAnimationFrame(updateFadingPanels);
-        };
-
-        window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
-        window.addEventListener('resize', scheduleFadeUpdate);
-        scheduleFadeUpdate();
-    })();
+    filterBtns.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            activeFilter = btn.dataset.recipeFilter || 'all';
+            filterBtns.forEach((b) => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+            applyFilter();
+        });
+    });
+    searchInput?.addEventListener('input', applyFilter);
+})();
 </script>
 {% endblock %}

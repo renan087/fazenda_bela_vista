@@ -1,275 +1,596 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="stock-page-shell sf-page">
-    <section class="stock-page-header">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-                <div class="stock-page-header-intro-inner">
-                    <p class="text-xs uppercase tracking-[.35em] text-slate-400">Execução no campo</p>
-                    <h2 class="stock-page-card-title mt-2">Operações agrícolas</h2>
-                    <p class="stock-page-card-subtitle">Registre o trabalho realizado por setor e mantenha o histórico operacional da safra.</p>
-                </div>
-            </div>
-            <button type="button" class="stock-action-button stock-action-button-primary" data-operation-open {% if not active_farm_id or not active_season_id %}disabled{% endif %}><span>+ Nova operação</span></button>
+{% set ctx = op_ctx %}
+{% set k = ctx.kpi %}
+{% set edit_finance = edit_operation.finance_transaction if edit_operation and edit_operation.finance_transaction else none %}
+{% set has_paid_installments = edit_finance and (edit_finance.installments|selectattr('status', 'equalto', 'pago')|list|length > 0) %}
+<div class="sf-page pd-page ft-page" data-operations-page data-can-write="{{ '1' if can_write_page else '0' }}">
+    <header class="pd-head">
+        <div>
+            <h1 class="sf-page-title">Operações e pulverizações</h1>
+            <p class="sf-page-subtitle">Registre pulverizações com baixa FIFO de defensivos, tratos culturais, máquinas usadas, carência pré-colheita e despesas por talhão.</p>
         </div>
+        <div class="pd-head-actions">
+            {% if can_write_page %}
+            <button type="button" class="sf-btn sf-btn-primary" data-operation-open {% if not active_farm_id or not active_season_id %}disabled{% endif %}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Nova operação
+            </button>
+            {% endif %}
+        </div>
+    </header>
+
+    <section class="ft-kpis" aria-label="Indicadores de operações">
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Realizadas na safra</span>
+            <div class="ft-kpi-val"><strong>{{ k.total_realized }}</strong><span>operaç{{ 'ão' if k.total_realized == 1 else 'ões' }}</span></div>
+            <p class="ft-kpi-sub">{{ k.total_planned }} planejada(s) · {{ k.total_area|decimal_br(1) }} ha trabalhados</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Custo total (serviços + insumos)</span>
+            <div class="ft-kpi-val"><strong>R$ {{ k.total_cost|decimal_br(0) }}</strong></div>
+            <p class="ft-kpi-sub">Serviços R$ {{ k.service_cost|decimal_br(0) }} · Insumos FIFO R$ {{ k.inputs_cost|decimal_br(0) }}</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Uso de máquinas</span>
+            <div class="ft-kpi-val"><strong>{{ k.machine_hours|decimal_br(1) }}</strong><span>horas</span></div>
+            <p class="ft-kpi-sub">Sincronizado com horímetro em Máquinas</p>
+        </article>
+        <article class="pd-card ft-kpi">
+            <span class="pd-eyebrow">Carência de defensivo ativa</span>
+            <div class="ft-kpi-val"><strong class="{{ 'is-warn' if k.active_withdrawals else 'is-ok' }}">{{ k.active_withdrawals }}</strong><span>talh{{ 'ão' if k.active_withdrawals == 1 else 'ões' }}</span></div>
+            <p class="ft-kpi-sub">{% if k.active_withdrawals %}Bloqueio preventivo alertado na Colheita{% else %}Nenhum talhão em período de carência{% endif %}</p>
+        </article>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <div class="mb-5"><p class="text-xs uppercase tracking-[.35em] text-slate-400">Histórico</p><h3 class="mt-2 text-2xl font-semibold text-slate-900">Operações registradas</h3></div>
-        <form method="get" class="mb-5 grid gap-3 rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4 md:grid-cols-5">
-            <label><span class="mb-1 block text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Setor</span><select name="plot_id_filter" class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-white text-sm"><option value="">Todos</option>{% for plot in plots %}<option value="{{ plot.id }}" {% if selected_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}</select></label>
-            <label><span class="mb-1 block text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Operação</span><select name="operation_type_filter" class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-white text-sm"><option value="">Todas</option>{% for key, label, category in operation_types %}<option value="{{ label }}" {% if selected_operation_type == label %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-            <label><span class="mb-1 block text-xs font-semibold uppercase tracking-[.16em] text-slate-500">De</span><input type="date" name="start_date" value="{{ selected_start_date.isoformat() if selected_start_date else '' }}" class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-white text-sm"></label>
-            <label><span class="mb-1 block text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Até</span><input type="date" name="end_date" value="{{ selected_end_date.isoformat() if selected_end_date else '' }}" class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-white text-sm"></label>
-            <div class="flex items-end gap-2"><button class="min-h-[2.75rem] flex-1 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>{% if selected_plot_id or selected_operation_type or selected_start_date or selected_end_date %}<a href="/operacoes" class="inline-flex min-h-[2.75rem] items-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600">Limpar</a>{% endif %}</div>
+    <section class="pd-card ft-stage" aria-label="Lista de operações">
+        <div class="ft-stage-top">
+            <div class="ft-view-switch" role="tablist" aria-label="Status da operação">
+                <button type="button" role="tab" class="ft-view-btn is-active" aria-selected="true" data-op-tab="realizada">Realizadas ({{ k.total_realized }})</button>
+                <button type="button" role="tab" class="ft-view-btn" aria-selected="false" data-op-tab="planejada">Planejadas ({{ k.total_planned }})</button>
+                <button type="button" role="tab" class="ft-view-btn" aria-selected="false" data-op-tab="all">Todas ({{ k.total_realized + k.total_planned }})</button>
+            </div>
+            <label class="sl-search ft-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <span class="sr-only">Buscar operações</span>
+                <input type="search" placeholder="Buscar operação, talhão, executor ou alvo..." data-op-search>
+            </label>
+        </div>
+
+        <form method="get" class="lv-filter-bar">
+            <label class="ft-field">
+                <span>Talhão</span>
+                <select name="plot_id_filter">
+                    <option value="">Todos</option>
+                    {% for plot in plots %}<option value="{{ plot.id }}" {% if selected_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}
+                </select>
+            </label>
+            <label class="ft-field">
+                <span>Tipo</span>
+                <select name="operation_type_filter">
+                    <option value="">Todos</option>
+                    {% for key, label, category in operation_types %}<option value="{{ label }}" {% if selected_operation_type == label %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+            </label>
+            <label class="ft-field">
+                <span>De</span>
+                <input type="date" name="start_date" value="{{ selected_start_date.isoformat() if selected_start_date else '' }}">
+            </label>
+            <label class="ft-field">
+                <span>Até</span>
+                <input type="date" name="end_date" value="{{ selected_end_date.isoformat() if selected_end_date else '' }}">
+            </label>
+            <div class="lv-filter-actions">
+                <button type="submit" class="sf-btn sf-btn-secondary sf-btn-sm">Filtrar</button>
+                {% if selected_plot_id or selected_operation_type or selected_start_date or selected_end_date %}
+                <a href="/operacoes" class="sf-btn sf-btn-ghost sf-btn-sm">Limpar</a>
+                {% endif %}
+            </div>
         </form>
-        <div class="overflow-x-auto">
-            <table class="min-w-[820px] w-full text-left text-sm">
-                <thead class="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-[.18em] text-slate-500"><tr><th class="px-4 py-4">Data</th><th class="px-4 py-4">Operação</th><th class="px-4 py-4">Setor</th><th class="px-4 py-4">Responsável</th><th class="px-4 py-4">Financeiro</th><th class="px-4 py-4">Observações</th><th class="px-4 py-4">Ações</th></tr></thead>
-                <tbody class="divide-y divide-slate-100">
-                    {% for item in operations %}
+
+        <div class="ftw-table-scroll" style="margin-top:.5rem;">
+            <table class="ft-table stock-history-table">
+                <thead>
                     <tr>
-                        <td class="px-4 py-4 font-semibold"><button type="button" class="text-left hover:text-brand-700" data-operation-view="{{ item.id }}">{{ item.operation_date.strftime('%d/%m/%Y') }}</button></td><td class="px-4 py-4"><button type="button" class="text-left font-semibold hover:text-brand-700" data-operation-view="{{ item.id }}">{{ item.operation_type }}</button></td><td class="px-4 py-4">{{ item.plot.name if item.plot else '-' }}</td><td class="px-4 py-4">{{ item.responsible_name }}</td>
-                        <td class="px-4 py-4">{% if item.finance_transaction and item.finance_transaction.is_reversed %}<span class="stock-level-badge bg-amber-50 text-amber-700">Estornada</span>{% elif item.finance_transaction and item.finance_transaction.installments %}<a href="/gestao-financeira/contas?finance_tab=payables&amp;payables_status=all&amp;payables_transaction_id={{ item.finance_transaction.id }}" class="stock-level-badge bg-emerald-50 text-emerald-700" title="Ver parcelas em Contas">R$ {{ item.finance_transaction.amount|decimal_br }}</a>{% elif item.finance_transaction %}<span class="stock-level-badge bg-emerald-50 text-emerald-700">R$ {{ item.finance_transaction.amount|decimal_br }}</span>{% else %}<span class="text-slate-400">Sem despesa</span>{% endif %}</td>
-                        <td class="max-w-[260px] truncate px-4 py-4 text-slate-500">{{ item.notes or '-' }}</td>
-                        <td class="px-4 py-4">{% set paid_installments = item.finance_transaction.installments|selectattr('status', 'equalto', 'pago')|list if item.finance_transaction else [] %}<div class="flex items-center justify-end gap-2"><a href="/operacoes?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg></a>{% if item.finance_transaction and item.finance_transaction.is_reversed %}<form method="post" action="/operacoes/{{ item.id }}/reativar-despesa"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-200 text-emerald-700 hover:bg-emerald-50" title="Reativar despesa"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4"/></svg></button></form>{% elif paid_installments %}<button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-amber-200 text-amber-700 hover:bg-amber-50" title="Estornar pagamento" data-operation-payment-reversal-open data-operation-id="{{ item.id }}" data-operation-label="{{ item.operation_type }} · {{ item.plot.name if item.plot else 'Setor' }}" data-paid-installments="{{ paid_installments|length }}"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-1"/></svg></button>{% endif %}<details class="sf-menu" data-sf-dropdown>
-    <summary class="sf-icon-btn" aria-label="Mais ações" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
-    <div class="sf-menu-panel">
-        <form method="post" action="/operacoes/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta operação{% if item.finance_transaction and not item.finance_transaction.is_reversed %} e a despesa financeira vinculada{% endif %}?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="sf-menu-danger">Excluir</button></form>
-    </div>
-</details></div></td>
+                        <th>Data</th>
+                        <th>Operação / Alvo</th>
+                        <th>Talhão</th>
+                        <th>Executor &amp; Máquina</th>
+                        <th>Insumos / Financeiro</th>
+                        <th class="is-r">Ações</th>
                     </tr>
-                    {% else %}<tr><td colspan="7" class="px-4 py-10 text-center text-slate-500">Nenhuma operação registrada para o contexto atual.</td></tr>{% endfor %}
+                </thead>
+                <tbody>
+                    {% for item in operations %}
+                    {% set info = ctx.enriched.get(item.id, {}) %}
+                    {% set paid_installments = item.finance_transaction.installments|selectattr('status', 'equalto', 'pago')|list if item.finance_transaction else [] %}
+                    <tr data-op-row
+                        data-status="{{ 'planejada' if info.is_planned else 'realizada' }}"
+                        data-search="{{ (item.operation_type ~ ' ' ~ (item.plot.name if item.plot else '') ~ ' ' ~ (item.responsible_name or '') ~ ' ' ~ (item.target_pest or '') ~ ' ' ~ (item.notes or ''))|lower }}">
+                        <td class="whitespace-nowrap">
+                            <strong>{{ item.operation_date.strftime('%d/%m/%Y') }}</strong>
+                            {% if info.is_planned %}<span class="pd-chip is-info" style="display:inline-flex; margin-top:4px;">Planejada</span>{% endif %}
+                        </td>
+                        <td>
+                            <button type="button" class="lv-title-btn" data-operation-view="{{ item.id }}"><strong>{{ item.operation_type }}</strong></button>
+                            {% if item.pruning_subtype %}<small>Poda: {{ item.pruning_subtype }}</small>{% endif %}
+                            {% if item.target_pest %}<small>Alvo: {{ item.target_pest }}</small>{% endif %}
+                            {% if info.withdrawal_active %}
+                            <span class="pd-chip is-warn" style="margin-top:4px;">Carência até {{ info.safe_date_br }} ({{ info.withdrawal_days_left }}d)</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ item.plot.name if item.plot else '—' }}</td>
+                        <td>
+                            <span>{{ item.responsible_name }}</span>
+                            {% if item.equipment_asset %}
+                            <small>{{ item.equipment_asset.name }}{% if item.equipment_hours %} · {{ item.equipment_hours|decimal_br(1) }} h{% endif %}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if info.outputs %}
+                            <div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:4px;">
+                                {% for out in info.outputs %}
+                                <span class="pd-chip is-ok">{{ out.input_catalog.name if out.input_catalog else 'Insumo' }} · {{ out.quantity|decimal_br }} {{ out.unit }}</span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            {% if item.finance_transaction and item.finance_transaction.is_reversed %}
+                            <span class="pd-chip is-warn">Despesa estornada</span>
+                            {% elif item.finance_transaction %}
+                            <a href="/gestao-financeira/contas?finance_tab=payables&amp;payables_status=all&amp;payables_transaction_id={{ item.finance_transaction.id }}" class="pd-chip is-muted">Serviço R$ {{ item.finance_transaction.amount|decimal_br(2) }}</a>
+                            {% elif not info.outputs %}
+                            <span class="lv-muted">Sem custo direto</span>
+                            {% endif %}
+                        </td>
+                        <td class="is-r">
+                            <div style="display:inline-flex; align-items:center; gap:6px;">
+                                {% if info.is_planned and can_write_page %}
+                                <form method="post" action="/operacoes/{{ item.id }}/concluir" style="margin:0;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="sf-btn sf-btn-primary sf-btn-sm">Concluir</button>
+                                </form>
+                                {% endif %}
+                                {% if can_write_page %}
+                                <a href="/operacoes?edit_id={{ item.id }}" class="sf-btn sf-btn-secondary sf-btn-sm">Editar</a>
+                                <details class="sf-menu" data-sf-dropdown>
+                                    <summary class="sf-icon-btn" aria-label="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
+                                    <div class="sf-menu-panel">
+                                        {% if item.finance_transaction and item.finance_transaction.is_reversed %}
+                                        <form method="post" action="/operacoes/{{ item.id }}/reativar-despesa"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="sf-menu-link">Reativar despesa</button></form>
+                                        {% elif paid_installments %}
+                                        <button type="button" class="sf-menu-link" data-operation-payment-reversal-open data-operation-id="{{ item.id }}" data-operation-label="{{ item.operation_type }} · {{ item.plot.name if item.plot else 'Talhão' }}">Estornar pagamento</button>
+                                        {% endif %}
+                                        <form method="post" action="/operacoes/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta operação{% if info.outputs %} (os insumos serão devolvidos ao estoque){% endif %}{% if item.finance_transaction and not item.finance_transaction.is_reversed %} e a despesa financeira vinculada{% endif %}?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                            <button type="submit" class="sf-menu-danger">Excluir</button>
+                                        </form>
+                                    </div>
+                                </details>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6"><div class="pd-empty"><strong>Nenhuma operação registrada nesta safra.</strong><span>Registre pulverizações, roçagens, podas, calagens ou serviços terceirizados.</span></div></td></tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
     </section>
 </div>
 
+{# Modais de visualização rápida #}
 {% for item in operations %}
-<dialog id="operation-view-{{ item.id }}" class="app-modal w-full max-w-2xl rounded-[2rem] p-0 shadow-2xl">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div><p class="text-xs uppercase tracking-[.3em] text-slate-400">Operação agrícola</p><h3 class="mt-2 text-2xl font-semibold text-slate-900">{{ item.operation_type }}</h3></div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-operation-view-close>×</button>
+{% set info = ctx.enriched.get(item.id, {}) %}
+<dialog id="operation-view-{{ item.id }}" class="ft-dialog is-md">
+    <div class="ft-dialog-shell">
+        <div class="ft-dialog-head">
+            <div>
+                <p class="pd-eyebrow is-brand">{{ 'Operação planejada' if info.is_planned else 'Operação realizada' }}</p>
+                <h2>{{ item.operation_type }}</h2>
+                <p class="ft-dialog-sub">{{ item.plot.name if item.plot else '—' }} · {{ item.operation_date.strftime('%d/%m/%Y') }}</p>
+            </div>
+            <button type="button" class="ft-x" data-operation-view-close aria-label="Fechar">✕</button>
         </div>
-        <dl class="mt-6 grid gap-4 sm:grid-cols-2">
-            <div><dt class="text-xs font-semibold uppercase tracking-[.16em] text-slate-400">Data</dt><dd class="mt-1 text-sm text-slate-900">{{ item.operation_date.strftime('%d/%m/%Y') }}</dd></div>
-            <div><dt class="text-xs font-semibold uppercase tracking-[.16em] text-slate-400">Setor</dt><dd class="mt-1 text-sm text-slate-900">{{ item.plot.name if item.plot else '-' }}</dd></div>
-            <div><dt class="text-xs font-semibold uppercase tracking-[.16em] text-slate-400">Responsável</dt><dd class="mt-1 text-sm text-slate-900">{{ item.responsible_name }}</dd></div>
-            <div><dt class="text-xs font-semibold uppercase tracking-[.16em] text-slate-400">Financeiro</dt><dd class="mt-1 text-sm text-slate-900">{% if item.finance_transaction %}R$ {{ item.finance_transaction.amount|decimal_br }}{% if item.finance_transaction.is_reversed %} · Estornada{% endif %}{% else %}Sem despesa{% endif %}</dd></div>
-            <div class="sm:col-span-2"><dt class="text-xs font-semibold uppercase tracking-[.16em] text-slate-400">Observações</dt><dd class="mt-1 whitespace-pre-wrap break-words text-sm text-slate-900">{{ item.notes or '-' }}</dd></div>
-        </dl>
-        <div class="mt-6 flex justify-end gap-3"><button type="button" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700" data-operation-view-close>Fechar</button><a href="/operacoes?edit_id={{ item.id }}" class="rounded-2xl bg-brand-500 px-5 py-3 font-semibold text-white hover:bg-brand-700">Editar</a></div>
+        <div class="ft-dialog-body">
+            <div class="lv-kv-grid">
+                <div><span>Executor</span><strong>{{ item.responsible_name }}</strong></div>
+                <div><span>Máquina</span><strong>{{ item.equipment_asset.name if item.equipment_asset else '—' }}{% if item.equipment_hours %} ({{ item.equipment_hours|decimal_br(1) }} h){% endif %}</strong></div>
+                <div><span>Alvo / Calda</span><strong>{{ item.target_pest or '—' }}{% if item.spray_volume_liters %} · {{ item.spray_volume_liters|decimal_br(0) }} L{% endif %}</strong></div>
+                <div><span>Carência</span><strong>{% if item.withdrawal_days %}{{ item.withdrawal_days }} dias (até {{ info.safe_date_br }}){% else %}Não informada{% endif %}</strong></div>
+                <div><span>Custo total</span><strong>R$ {{ info.total_cost|decimal_br(2) }}</strong></div>
+                <div><span>Financeiro</span><strong>{% if item.finance_transaction %}R$ {{ item.finance_transaction.amount|decimal_br(2) }}{% if item.finance_transaction.is_reversed %} · Estornada{% endif %}{% else %}Sem despesa de serviço{% endif %}</strong></div>
+            </div>
+            {% if info.outputs %}
+            <div class="lv-items-box" style="margin-top:1rem;">
+                <strong>Insumos baixados do estoque (FIFO)</strong>
+                <ul class="lv-rec-items" style="margin-top:.5rem;">
+                    {% for out in info.outputs %}
+                    <li><span>{{ out.input_catalog.name if out.input_catalog else 'Insumo' }}</span><strong>{{ out.quantity|decimal_br }} {{ out.unit }} · R$ {{ (out.total_cost or 0)|decimal_br(2) }}</strong></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            {% if item.notes %}<p style="margin-top:1rem; font-size:14px; color:#5B6660; white-space:pre-wrap;">{{ item.notes }}</p>{% endif %}
+        </div>
+        <div class="ft-dialog-foot">
+            <button type="button" class="sf-btn sf-btn-secondary" data-operation-view-close>Fechar</button>
+            {% if can_write_page %}<a href="/operacoes?edit_id={{ item.id }}" class="sf-btn sf-btn-primary">Editar</a>{% endif %}
+        </div>
     </div>
 </dialog>
 {% endfor %}
 
-{% set edit_finance = edit_operation.finance_transaction if edit_operation and edit_operation.finance_transaction else none %}
-{% set has_paid_installments = edit_finance and (edit_finance.installments|selectattr('status', 'equalto', 'pago')|list|length > 0) %}
-<dialog id="operation-modal" class="app-modal w-full max-w-4xl rounded-[2rem] p-0 shadow-2xl">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div><p class="text-xs uppercase tracking-[.3em] text-slate-400">{% if edit_operation %}Editar operação{% else %}Nova operação{% endif %}</p><h3 class="mt-2 text-2xl font-semibold">{% if edit_operation %}Atualizar operação agrícola{% else %}Registrar operação agrícola{% endif %}</h3><p class="mt-2 text-sm text-slate-500">Registre a execução no setor e, quando aplicável, configure a despesa financeira.</p></div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-operation-close>×</button>
+{# Modal criar / editar operação #}
+<dialog id="operation-modal" class="ft-dialog is-lg">
+    <form method="post" action="{% if edit_operation %}/operacoes/{{ edit_operation.id }}/editar{% else %}/operacoes{% endif %}" class="ft-dialog-shell" data-operation-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ft-dialog-head">
+            <div>
+                <p class="pd-eyebrow is-brand">Lavoura · Execução no campo</p>
+                <h2>{% if edit_operation %}Editar operação{% else %}Registrar operação ou pulverização{% endif %}</h2>
+                <p class="ft-dialog-sub">Selecione um ou mais talhões, baixe defensivos/insumos do estoque e vincule máquina ou despesa financeira.</p>
+            </div>
+            <button type="button" class="ft-x" data-operation-close aria-label="Fechar">✕</button>
         </div>
-        <div class="mt-6 max-h-[70vh] overflow-y-auto pr-1" data-modal-scroll>
-            <form method="post" action="{% if edit_operation %}/operacoes/{{ edit_operation.id }}/editar{% else %}/operacoes{% endif %}" class="grid gap-4" data-operation-form>
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/45 p-4 text-sm text-slate-600">Fazenda e safra serão usadas a partir do contexto ativo. O responsável é preenchido automaticamente com o usuário logado.</div>
-                <div class="grid gap-4 md:grid-cols-3">
-                    <label><span class="mb-2 block text-sm font-medium">Data</span>{% if has_paid_installments %}<input type="hidden" name="operation_date" value="{{ edit_operation.operation_date.isoformat() }}">{% endif %}<input type="date" {% if not has_paid_installments %}name="operation_date"{% else %}disabled{% endif %} value="{{ edit_operation.operation_date.isoformat() if edit_operation else today.isoformat() }}" required class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-500"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Tipo de operação</span>{% if has_paid_installments %}{% for key, label, category in operation_types %}{% if edit_operation.operation_type == label %}<input type="hidden" name="operation_type" value="{{ key }}">{% endif %}{% endfor %}{% endif %}<select {% if not has_paid_installments %}name="operation_type"{% else %}disabled{% endif %} required class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-500">{% for key, label, category in operation_types %}<option value="{{ key }}" {% if edit_operation and edit_operation.operation_type == label %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-                    <label><span class="mb-2 block text-sm font-medium">Setor</span>{% if has_paid_installments %}<input type="hidden" name="plot_id" value="{{ edit_operation.plot_id }}">{% endif %}<select {% if not has_paid_installments %}name="plot_id"{% else %}disabled{% endif %} required class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-500"><option value="">Selecione</option>{% for plot in plots %}<option value="{{ plot.id }}" {% if edit_operation and edit_operation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}</select></label>
+
+        <div class="ft-dialog-body">
+            <div class="lv-form-grid">
+                <label class="ft-field">
+                    <span>Data</span>
+                    {% if has_paid_installments %}<input type="hidden" name="operation_date" value="{{ edit_operation.operation_date.isoformat() }}">{% endif %}
+                    <input type="date" {% if not has_paid_installments %}name="operation_date"{% else %}disabled{% endif %} value="{{ edit_operation.operation_date.isoformat() if edit_operation else today.isoformat() }}" required>
+                </label>
+
+                <label class="ft-field">
+                    <span>Status</span>
+                    {% set cur_status = (edit_operation.status if edit_operation and edit_operation.status else 'realizada') %}
+                    <select name="status">
+                        <option value="realizada" {% if cur_status != 'planejada' %}selected{% endif %}>Realizada (baixa estoque agora)</option>
+                        <option value="planejada" {% if cur_status == 'planejada' %}selected{% endif %}>Planejada (agendar para depois)</option>
+                    </select>
+                </label>
+
+                <label class="ft-field">
+                    <span>Tipo de operação</span>
+                    {% if has_paid_installments %}{% for key, label, category in operation_types %}{% if edit_operation.operation_type == label %}<input type="hidden" name="operation_type" value="{{ key }}">{% endif %}{% endfor %}{% endif %}
+                    <select {% if not has_paid_installments %}name="operation_type"{% else %}disabled{% endif %} data-op-type-select required>
+                        {% for key, label, category in operation_types %}
+                        <option value="{{ key }}" {% if (edit_operation and edit_operation.operation_type == label) or (not edit_operation and preselect_op_type == key) %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                <label class="ft-field">
+                    <span>Responsável / Equipe / Prestador</span>
+                    <input type="text" name="responsible_name" value="{{ edit_operation.responsible_name if edit_operation else default_responsible_name }}" placeholder="Ex.: João (tratorista) ou Turma da roçagem" required>
+                </label>
+            </div>
+
+            {# Seleção de talhões #}
+            <div class="ft-field" style="margin-top:.85rem;">
+                {% if edit_operation %}
+                <span>Talhão</span>
+                {% if has_paid_installments %}<input type="hidden" name="plot_id" value="{{ edit_operation.plot_id }}">{% endif %}
+                <select {% if not has_paid_installments %}name="plot_id"{% else %}disabled{% endif %} required>
+                    {% for plot in plots %}<option value="{{ plot.id }}" {% if edit_operation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}
+                </select>
+                {% else %}
+                <span>Talhões atendidos (selecione um ou mais — custos e insumos são rateados pela área)</span>
+                <div class="lv-plot-checks">
+                    {% for plot in plots %}
+                    <label class="lv-plot-check">
+                        <input type="checkbox" name="plot_id" value="{{ plot.id }}" {% if preselect_plot_id == plot.id or (not preselect_plot_id and plots|length == 1) %}checked{% endif %}>
+                        <span><strong>{{ plot.name }}</strong><small>{{ (plot.area_hectares or 0)|decimal_br(1) }} ha</small></span>
+                    </label>
+                    {% endfor %}
                 </div>
-                {% if has_paid_installments %}<p class="text-xs text-amber-700">Data, tipo e setor estão bloqueados porque há parcela paga. Estorne os pagamentos para alterá-los.</p>{% endif %}
-                <label><span class="mb-2 block text-sm font-medium">Observações</span><textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Detalhes da operação, equipe ou serviço executado.">{{ edit_operation.notes if edit_operation else '' }}</textarea></label>
+                {% endif %}
+            </div>
 
-                <section class="rounded-[1.5rem] border border-sky-100 bg-sky-50/60 p-4">
-                    <label class="flex cursor-pointer items-start gap-3 font-semibold text-slate-700">{% if edit_finance %}<input type="hidden" name="generate_expense" value="true"><input type="checkbox" checked disabled class="mt-1 rounded border-slate-300 text-brand-500" data-operation-expense-toggle>{% else %}<input type="checkbox" name="generate_expense" value="true" class="mt-1 rounded border-slate-300 text-brand-500" data-operation-expense-toggle>{% endif %}<span><span class="block">Gerar despesa financeira para esta operação</span><span class="mt-1 block text-xs font-normal leading-5 text-slate-600">A despesa ficará vinculada ao setor e será gerenciada em Contas, com as mesmas opções de pagamento usadas nas compras.{% if edit_finance %} Para remover ou estornar o lançamento, use o módulo Contas.{% endif %}</span></span></label>
-                    {% if has_paid_installments %}<p class="mt-3 text-sm text-amber-700">Dados financeiros bloqueados porque há parcela paga. Estorne todos os pagamentos para alterá-los.</p>{% endif %}
-                    <fieldset {% if has_paid_installments %}disabled{% endif %} class="mt-5 hidden grid gap-4 disabled:opacity-60" data-operation-expense-fields>
-                        <div class="grid gap-4 md:grid-cols-2">
-                            <label><span class="mb-2 block text-sm font-medium">Valor da despesa</span><input type="hidden" name="expense_amount" value="{{ edit_finance.amount if edit_finance else '0' }}" data-operation-expense-amount data-currency-raw disabled><input type="text" inputmode="numeric" placeholder="R$ 0,00" data-currency-display data-operation-expense-display disabled class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"></label>
-                            <label><span class="mb-2 block text-sm font-medium">Conta de pagamento</span><select name="finance_account_id" data-operation-finance-input disabled class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"><option value="">Selecione a conta</option>{% for account in finance_accounts %}<option value="{{ account.id }}" {% if edit_finance and edit_finance.finance_account_id == account.id or (not edit_finance and finance_account_default and account.id == finance_account_default.id) %}selected{% endif %}>{{ account.account_name }}{% if account.bank_name %} · {{ account.bank_name }}{% endif %}</option>{% endfor %}</select></label>
+            {# Subtipo de poda (exibido quando tipo = poda) #}
+            <div class="lv-form-grid" data-op-pruning-wrap style="margin-top:.85rem;" hidden>
+                <label class="ft-field is-span-2">
+                    <span>Tipo de poda (atualiza o histórico agronômico da fazenda)</span>
+                    {% set cur_prun = edit_operation.pruning_subtype if edit_operation else '' %}
+                    <select name="pruning_subtype">
+                        <option value="">Selecione</option>
+                        {% for opt in ['Esqueletamento', 'Decote', 'Recepa', 'Desbrota', 'Poda de limpeza'] %}
+                        <option value="{{ opt }}" {% if cur_prun == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+
+            {# Bloco de Pulverização / Defensivos & Insumos FIFO #}
+            <div class="lv-items-box" style="margin-top:.85rem;" data-op-spray-box>
+                <div class="lv-items-head">
+                    <div>
+                        <strong>Defensivos / Insumos utilizados (baixa automática FIFO no estoque)</strong>
+                        <small>Use em pulverizações, herbicidas, calagem ou qualquer operação com consumo de produto.</small>
+                    </div>
+                    {% if not edit_operation %}
+                    <button type="button" class="sf-btn sf-btn-secondary sf-btn-sm" data-add-op-item>+ Adicionar insumo</button>
+                    {% endif %}
+                </div>
+
+                <div class="lv-form-grid" style="margin-top:.65rem;">
+                    <label class="ft-field">
+                        <span>Alvo (praga, doença ou mato)</span>
+                        <input type="text" name="target_pest" value="{{ edit_operation.target_pest if edit_operation else (preselect_pest.name if preselect_pest else '') }}" placeholder="Ex.: Ferrugem, Bicho-mineiro, Mato">
+                    </label>
+                    <label class="ft-field">
+                        <span>Vincular a ocorrência aberta (opcional)</span>
+                        <select name="pest_incident_id">
+                            <option value="">Nenhuma ocorrência vinculada</option>
+                            {% for p in open_pests %}
+                            <option value="{{ p.id }}" {% if (edit_operation and edit_operation.pest_incident_id == p.id) or (not edit_operation and preselect_pest and preselect_pest.id == p.id) %}selected{% endif %}>{{ p.name }} · {{ p.plot.name if p.plot else '' }} ({{ p.occurrence_date.strftime('%d/%m') }})</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="ft-field">
+                        <span>Volume de calda (litros totais)</span>
+                        <input type="number" step="1" min="0" name="spray_volume_liters" value="{{ edit_operation.spray_volume_liters if edit_operation and edit_operation.spray_volume_liters is not none else '' }}" placeholder="Ex.: 400">
+                    </label>
+                    <label class="ft-field">
+                        <span>Período de carência (dias até colheita)</span>
+                        <input type="number" step="1" min="0" max="365" name="withdrawal_days" value="{{ edit_operation.withdrawal_days if edit_operation and edit_operation.withdrawal_days is not none else '' }}" placeholder="Ex.: 30">
+                    </label>
+                </div>
+
+                {% if not edit_operation %}
+                <div class="lv-items-list" data-op-items style="margin-top:.65rem;"></div>
+                {% endif %}
+            </div>
+
+            {# Máquina e Horímetro #}
+            <div class="lv-form-grid" style="margin-top:.85rem;">
+                <label class="ft-field">
+                    <span>Máquina / Implemento usado (opcional)</span>
+                    <select name="equipment_asset_id">
+                        <option value="">Nenhuma máquina selecionada</option>
+                        {% for eq in equipment_assets %}
+                        <option value="{{ eq.id }}" {% if edit_operation and edit_operation.equipment_asset_id == eq.id %}selected{% endif %}>{{ eq.name }}{% if eq.measurement_value %} ({{ eq.measurement_value|decimal_br(0) }} {{ eq.measurement_unit or 'h' }}){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="ft-field">
+                    <span>Horas trabalhadas da máquina (atualiza horímetro)</span>
+                    <input type="number" step="0.1" min="0" name="equipment_hours" value="{{ edit_operation.equipment_hours if edit_operation and edit_operation.equipment_hours is not none else '' }}" placeholder="Ex.: 3,5">
+                </label>
+            </div>
+
+            <label class="ft-field" style="margin-top:.85rem;">
+                <span>Observações</span>
+                <textarea name="notes" rows="2" placeholder="Detalhes do serviço, clima na hora da aplicação, equipe...">{{ edit_operation.notes if edit_operation else '' }}</textarea>
+            </label>
+
+            {# Bloco financeiro preservado #}
+            <section style="margin-top:1rem; padding:1rem; border-radius:14px; border:1px solid #D8E6F5; background:#F4F8FD;">
+                <label style="display:flex; align-items:flex-start; gap:.6rem; cursor:pointer; font-weight:600; color:#16201A;">
+                    {% if edit_finance %}
+                    <input type="hidden" name="generate_expense" value="true">
+                    <input type="checkbox" checked disabled data-operation-expense-toggle style="margin-top:3px; width:1.05rem; height:1.05rem; accent-color:#446A36;">
+                    {% else %}
+                    <input type="checkbox" name="generate_expense" value="true" data-operation-expense-toggle style="margin-top:3px; width:1.05rem; height:1.05rem; accent-color:#446A36;">
+                    {% endif %}
+                    <span>
+                        <span style="display:block;">Gerar despesa financeira (serviço, diárias ou terceirizado)</span>
+                        <small style="display:block; font-weight:400; color:#5B6660; margin-top:2px;">Fica vinculada ao talhão (rateada pela área quando houver múltiplos talhões) e gerenciada em Contas.</small>
+                    </span>
+                </label>
+                <fieldset {% if has_paid_installments %}disabled{% endif %} class="hidden" data-operation-expense-fields style="border:0; padding:0; margin-top:1rem; display:grid; gap:.85rem;">
+                    <div class="lv-form-grid">
+                        <label class="ft-field">
+                            <span>Valor total da despesa</span>
+                            <input type="hidden" name="expense_amount" value="{{ edit_finance.amount if edit_finance else '0' }}" data-operation-expense-amount data-currency-raw disabled>
+                            <input type="text" inputmode="numeric" placeholder="R$ 0,00" data-currency-display data-operation-expense-display disabled>
+                        </label>
+                        <label class="ft-field">
+                            <span>Conta de pagamento</span>
+                            <select name="finance_account_id" data-operation-finance-input disabled>
+                                <option value="">Selecione a conta</option>
+                                {% for account in finance_accounts %}<option value="{{ account.id }}" {% if edit_finance and edit_finance.finance_account_id == account.id or (not edit_finance and finance_account_default and account.id == finance_account_default.id) %}selected{% endif %}>{{ account.account_name }}</option>{% endfor %}
+                            </select>
+                        </label>
+                        <label class="ft-field">
+                            <span>Condição</span>
+                            <select name="payment_condition" data-operation-finance-input data-operation-payment-condition disabled>
+                                <option value="a_vista" {% if not edit_finance or edit_finance.payment_condition != 'a_prazo' %}selected{% endif %}>À vista</option>
+                                <option value="a_prazo" {% if edit_finance and edit_finance.payment_condition == 'a_prazo' %}selected{% endif %}>À prazo</option>
+                            </select>
+                        </label>
+                        <label class="ft-field">
+                            <span>Forma de pagamento</span>
+                            <select name="payment_method" data-operation-finance-input data-operation-payment-method disabled>
+                                {% for option in finance_payment_methods %}<option value="{{ option }}" {% if edit_finance and edit_finance.payment_method == option or (not edit_finance and option == 'PIX') %}selected{% endif %}>{{ option }}</option>{% endfor %}
+                            </select>
+                        </label>
+                    </div>
+                    <div class="hidden" data-operation-credit-card-wrap>
+                        <label class="ft-field">
+                            <span>Cartão utilizado</span>
+                            <select name="credit_card_id" data-operation-finance-input data-operation-credit-card disabled>
+                                <option value="">Selecione o cartão</option>
+                                {% for card in finance_credit_cards %}<option value="{{ card.id }}" {% if edit_finance and edit_finance.credit_card_id == card.id or (not edit_finance and finance_credit_card_default and card.id == finance_credit_card_default.id) %}selected{% endif %}>{{ card.card_name }} · {{ card.issuer }}</option>{% endfor %}
+                            </select>
+                        </label>
+                    </div>
+                    <div class="hidden" data-operation-installment-wrap>
+                        <div class="lv-form-grid" style="grid-template-columns:repeat(3, minmax(0, 1fr));">
+                            <label class="ft-field"><span>Parcelas</span><input type="number" min="1" max="999" name="installment_count" value="{{ edit_finance.installment_count if edit_finance and edit_finance.payment_condition == 'a_prazo' else 2 }}" data-operation-finance-input data-operation-installment-count disabled></label>
+                            <label class="ft-field"><span>Periodicidade</span><select name="installment_frequency" data-operation-finance-input data-operation-installment-frequency disabled><option value="mensal">Mensal</option><option value="anual" {% if edit_finance and edit_finance.installment_frequency == 'anual' %}selected{% endif %}>Anual</option></select></label>
+                            <label class="ft-field"><span>1ª parcela</span><input type="date" name="first_installment_date" value="{{ edit_finance.first_installment_date.isoformat() if edit_finance and edit_finance.first_installment_date else '' }}" data-operation-finance-input data-operation-first-installment disabled></label>
                         </div>
-                        <div class="grid gap-4 md:grid-cols-2">
-                            <label><span class="mb-2 block text-sm font-medium">Condição de pagamento</span><select name="payment_condition" data-operation-finance-input data-operation-payment-condition disabled class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"><option value="a_vista" {% if not edit_finance or edit_finance.payment_condition != 'a_prazo' %}selected{% endif %}>À vista</option><option value="a_prazo" {% if edit_finance and edit_finance.payment_condition == 'a_prazo' %}selected{% endif %}>À prazo</option></select></label>
-                            <label><span class="mb-2 block text-sm font-medium">Forma de pagamento</span><select name="payment_method" data-operation-finance-input data-operation-payment-method disabled class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white">{% for option in finance_payment_methods %}<option value="{{ option }}" {% if edit_finance and edit_finance.payment_method == option or (not edit_finance and option == 'PIX') %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                        </div>
-                        <div class="hidden" data-operation-credit-card-wrap><label><span class="mb-2 block text-sm font-medium">Cartão utilizado</span><select name="credit_card_id" data-operation-finance-input data-operation-credit-card disabled class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"><option value="">{% if finance_credit_cards %}Selecione o cartão{% else %}Cadastre um cartão em Contas{% endif %}</option>{% for card in finance_credit_cards %}<option value="{{ card.id }}" {% if edit_finance and edit_finance.credit_card_id == card.id or (not edit_finance and finance_credit_card_default and card.id == finance_credit_card_default.id) %}selected{% endif %}>{{ card.card_name }} · {{ card.issuer }}{% if card.brand %} · {{ card.brand }}{% endif %}</option>{% endfor %}</select></label></div>
-                        <div class="hidden rounded-[1.5rem] border border-slate-200 bg-white/70 p-4" data-operation-installment-wrap>
-                            <div class="grid gap-4 md:grid-cols-3">
-                                <label><span class="mb-2 block text-sm font-medium">Quantidade de parcelas</span>{% if has_paid_installments %}<input type="hidden" name="installment_count" value="{{ edit_finance.installment_count }}">{% endif %}<input type="number" min="1" max="999" step="1" {% if not has_paid_installments %}name="installment_count"{% endif %} value="{{ edit_finance.installment_count if edit_finance and edit_finance.payment_condition == 'a_prazo' else 2 }}" data-operation-finance-input data-operation-installment-count {% if has_paid_installments %}data-paid-locked="true"{% endif %} disabled class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white disabled:bg-slate-100 disabled:text-slate-500"></label>
-                                <label><span class="mb-2 block text-sm font-medium">Periodicidade</span><select name="installment_frequency" data-operation-finance-input data-operation-installment-frequency disabled class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"><option value="mensal" {% if not edit_finance or edit_finance.installment_frequency != 'anual' %}selected{% endif %}>Mensal</option><option value="anual" {% if edit_finance and edit_finance.installment_frequency == 'anual' %}selected{% endif %}>Anual</option></select></label>
-                                <label><span class="mb-2 block text-sm font-medium">Data da primeira parcela</span><input type="date" name="first_installment_date" value="{{ edit_finance.first_installment_date.isoformat() if edit_finance and edit_finance.first_installment_date else '' }}" data-operation-finance-input data-operation-first-installment disabled class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"></label>
-                            </div>
-                            <div class="mt-4"><p class="text-xs font-semibold uppercase tracking-[.22em] text-slate-400">Prévia das parcelas</p><div class="mt-3 grid gap-2 sm:grid-cols-2" data-operation-installment-preview></div></div>
-                        </div>
-                    </fieldset>
-                </section>
-                <div class="sticky bottom-0 flex justify-end gap-3 bg-white/95 pt-3 backdrop-blur"><button type="button" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-operation-close>Cancelar</button><button class="rounded-2xl bg-brand-500 px-5 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_operation %}Salvar alterações{% else %}Salvar operação{% endif %}</button></div>
-            </form>
+                    </div>
+                </fieldset>
+            </section>
         </div>
-    </div>
+
+        <div class="ft-dialog-foot">
+            <button type="button" class="sf-btn sf-btn-secondary" data-operation-close>Cancelar</button>
+            <button type="submit" class="sf-btn sf-btn-primary">{% if edit_operation %}Salvar alterações{% else %}Salvar operação{% endif %}</button>
+        </div>
+    </form>
 </dialog>
 
-<dialog id="operation-payment-reversal-modal" class="app-modal w-full max-w-lg rounded-[2rem] p-0 shadow-2xl">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div><p class="text-xs uppercase tracking-[.3em] text-amber-600">Pagamento</p><h3 class="mt-2 text-2xl font-semibold text-slate-900">Estornar pagamento?</h3></div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-operation-payment-reversal-close>×</button>
-        </div>
-        <p class="mt-5 text-sm leading-6 text-slate-600">O pagamento de <strong class="text-slate-900" data-operation-payment-reversal-label></strong> será cancelado. As parcelas quitadas voltarão para pendente em Contas, sem excluir a despesa nem a operação.</p>
-        <form method="post" class="mt-6 flex justify-end gap-3" data-operation-payment-reversal-form>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="button" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-operation-payment-reversal-close>Cancelar</button>
-            <button class="rounded-2xl bg-amber-600 px-5 py-3 font-semibold text-white hover:bg-amber-700">Estornar pagamento</button>
-        </form>
+<template id="op-item-template">
+    <div class="lv-item-row" data-op-item>
+        <label class="ft-field">
+            <span>Defensivo / Insumo</span>
+            <select name="op_input_id" data-op-input-sel required>
+                <option value="">Selecione</option>
+                {% for inp in op_inputs_catalog %}
+                <option value="{{ inp.id }}" data-unit="{{ inp.default_unit }}">{{ inp.name }} · {{ op_input_stock.get(inp.id, 0)|decimal_br }} {{ inp.default_unit }} disp.</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="ft-field">
+            <span>Qtd. total</span>
+            <input type="number" step="0.01" min="0.01" name="op_input_qty" placeholder="0,00" required>
+        </label>
+        <label class="ft-field">
+            <span>Unidade</span>
+            <input type="text" data-op-input-unit readonly tabindex="-1">
+        </label>
+        <button type="button" class="ftw-del-btn" data-remove-op-item aria-label="Remover">✕</button>
     </div>
+</template>
+
+<dialog id="operation-payment-reversal-modal" class="ft-dialog is-sm">
+    <form method="post" class="ft-dialog-shell" data-operation-payment-reversal-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ft-dialog-body ft-confirm-body" role="alert">
+            <span class="pd-chip is-warn">Estorno de pagamento</span>
+            <h2>Estornar pagamento?</h2>
+            <p>O pagamento de <strong data-operation-payment-reversal-label></strong> voltará para pendente em Contas.</p>
+        </div>
+        <div class="ft-dialog-foot">
+            <button type="button" class="sf-btn sf-btn-secondary" data-operation-payment-reversal-close>Cancelar</button>
+            <button type="submit" class="sf-btn sf-btn-danger">Estornar pagamento</button>
+        </div>
+    </form>
 </dialog>
 
-<script>
-(() => {
-    document.querySelectorAll('[data-operation-view]').forEach((button) => button.addEventListener('click', () => {
-        document.getElementById(`operation-view-${button.dataset.operationView}`)?.showModal();
-    }));
-    document.querySelectorAll('[data-operation-view-close]').forEach((button) => button.addEventListener('click', () => button.closest('dialog')?.close()));
-})();
-</script>
 <script>
 (() => {
     const modal = document.getElementById('operation-modal');
     const form = modal?.querySelector('[data-operation-form]');
-    const openButton = document.querySelector('[data-operation-open]');
-    const closeButtons = document.querySelectorAll('[data-operation-close]');
+    const editing = {{ 'true' if edit_operation else 'false' }};
+    const autoOpenNew = {{ 'true' if open_new_modal else 'false' }};
+
+    // Abas + busca
+    let activeTab = 'realizada';
+    const tabBtns = Array.from(document.querySelectorAll('[data-op-tab]'));
+    const rows = Array.from(document.querySelectorAll('[data-op-row]'));
+    const searchInput = document.querySelector('[data-op-search]');
+    const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const filterRows = () => {
+        const q = norm(searchInput?.value || '');
+        rows.forEach((r) => {
+            const matchTab = activeTab === 'all' || r.dataset.status === activeTab;
+            const matchQ = !q || norm(r.dataset.search).includes(q);
+            r.hidden = !(matchTab && matchQ);
+        });
+    };
+    tabBtns.forEach((b) => b.addEventListener('click', () => {
+        activeTab = b.dataset.opTab || 'realizada';
+        tabBtns.forEach((x) => { x.classList.toggle('is-active', x === b); x.setAttribute('aria-selected', x === b ? 'true' : 'false'); });
+        filterRows();
+    }));
+    searchInput?.addEventListener('input', filterRows);
+    filterRows();
+
+    // Detalhe
+    document.querySelectorAll('[data-operation-view]').forEach((b) => b.addEventListener('click', () => {
+        document.getElementById(`operation-view-${b.dataset.operationView}`)?.showModal();
+    }));
+    document.querySelectorAll('[data-operation-view-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog')?.close()));
+
+    // Tipo de operação -> subtipo poda
+    const typeSel = form?.querySelector('[data-op-type-select]');
+    const pruningWrap = form?.querySelector('[data-op-pruning-wrap]');
+    const syncTypeExtras = () => {
+        if (pruningWrap) pruningWrap.hidden = (typeSel?.value !== 'poda');
+    };
+    typeSel?.addEventListener('change', syncTypeExtras);
+    syncTypeExtras();
+
+    // Itens de insumo/defensivo
+    const itemsWrap = form?.querySelector('[data-op-items]');
+    const itemTpl = document.getElementById('op-item-template');
+    const bindItemRow = (row) => {
+        const sel = row.querySelector('[data-op-input-sel]');
+        const unit = row.querySelector('[data-op-input-unit]');
+        sel?.addEventListener('change', () => {
+            if (unit) unit.value = sel.options[sel.selectedIndex]?.dataset.unit || '';
+        });
+        row.querySelector('[data-remove-op-item]')?.addEventListener('click', () => row.remove());
+    };
+    form?.querySelector('[data-add-op-item]')?.addEventListener('click', () => {
+        if (!itemsWrap || !itemTpl) return;
+        const row = itemTpl.content.cloneNode(true).firstElementChild;
+        bindItemRow(row);
+        itemsWrap.appendChild(row);
+    });
+
+    // Financeiro
     const expenseToggle = form?.querySelector('[data-operation-expense-toggle]');
     const expenseFields = form?.querySelector('[data-operation-expense-fields]');
     const financeInputs = form ? Array.from(form.querySelectorAll('[data-operation-finance-input], [data-operation-expense-amount], [data-operation-expense-display]')) : [];
-    const amountRaw = form?.querySelector('[data-operation-expense-amount]');
     const condition = form?.querySelector('[data-operation-payment-condition]');
     const method = form?.querySelector('[data-operation-payment-method]');
     const cardWrap = form?.querySelector('[data-operation-credit-card-wrap]');
     const cardSelect = form?.querySelector('[data-operation-credit-card]');
     const installmentWrap = form?.querySelector('[data-operation-installment-wrap]');
-    const installmentCount = form?.querySelector('[data-operation-installment-count]');
-    const installmentFrequency = form?.querySelector('[data-operation-installment-frequency]');
-    const firstInstallment = form?.querySelector('[data-operation-first-installment]');
-    const installmentPreview = form?.querySelector('[data-operation-installment-preview]');
-    const currency = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    const addMonths = (base, months) => { const target = new Date(base.getFullYear(), base.getMonth() + months, 1); target.setDate(Math.min(base.getDate(), new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate())); return target; };
-    const syncCreditCard = () => { const isCard = method?.value === 'Cartão de crédito'; cardWrap?.classList.toggle('hidden', !isCard); if (cardSelect) cardSelect.disabled = !expenseToggle?.checked || !isCard; };
-    const renderInstallmentPreview = () => {
-        if (!installmentPreview) return;
-        installmentPreview.replaceChildren();
-        if (!expenseToggle?.checked || condition?.value !== 'a_prazo') return;
-        const count = Math.max(1, Math.min(999, Number.parseInt(installmentCount?.value || '', 10) || 0));
-        const dateValue = firstInstallment?.value;
-        const amount = Number.parseFloat(amountRaw?.value || '0') || 0;
-        if (!dateValue || amount <= 0) return;
-        const firstDate = new Date(`${dateValue}T12:00:00`);
-        const totalCents = Math.round(amount * 100);
-        const baseCents = Math.floor(totalCents / count);
-        const remainder = totalCents % count;
-        const visibleCount = Math.min(count, 12);
-        for (let index = 0; index < visibleCount; index += 1) {
-            const dueDate = installmentFrequency?.value === 'anual' ? new Date(firstDate.getFullYear() + index, firstDate.getMonth(), firstDate.getDate()) : addMonths(firstDate, index);
-            const value = (baseCents + (index < remainder ? 1 : 0)) / 100;
-            const item = document.createElement('div');
-            item.className = 'rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600';
-            item.textContent = `${index + 1}/${count} · ${dueDate.toLocaleDateString('pt-BR')} · ${currency(value)}`;
-            installmentPreview.appendChild(item);
-        }
-        if (count > visibleCount) { const more = document.createElement('p'); more.className = 'text-xs text-slate-500'; more.textContent = `Mais ${count - visibleCount} parcela(s) serão geradas.`; installmentPreview.appendChild(more); }
+    const installmentFields = [
+        form?.querySelector('[data-operation-installment-count]'),
+        form?.querySelector('[data-operation-installment-frequency]'),
+        form?.querySelector('[data-operation-first-installment]'),
+    ];
+    const syncCreditCard = () => {
+        const isCard = method?.value === 'Cartão de crédito';
+        cardWrap?.classList.toggle('hidden', !isCard);
+        if (cardSelect) cardSelect.disabled = !expenseToggle?.checked || !isCard;
     };
-    const syncInstallments = () => { const enabled = Boolean(expenseToggle?.checked); const isInstallment = condition?.value === 'a_prazo'; installmentWrap?.classList.toggle('hidden', !isInstallment); [installmentCount, installmentFrequency, firstInstallment].forEach((field) => { if (field) field.disabled = !enabled || !isInstallment || field.dataset.paidLocked === 'true'; }); if (firstInstallment) firstInstallment.required = enabled && isInstallment; renderInstallmentPreview(); };
-    const syncExpense = () => { const enabled = Boolean(expenseToggle?.checked); expenseFields?.classList.toggle('hidden', !enabled); financeInputs.forEach((field) => { field.disabled = !enabled; }); syncCreditCard(); syncInstallments(); };
-    const editing = {{ 'true' if edit_operation else 'false' }};
-    const resetForm = () => { form?.reset(); window.SisfarmCurrencyMask?.boot(form); syncExpense(); };
-    const closeModal = () => { if (editing) { window.location.href = '/operacoes'; return; } resetForm(); modal?.close(); };
-    openButton?.addEventListener('click', () => { resetForm(); modal?.showModal(); });
-    closeButtons.forEach((button) => button.addEventListener('click', closeModal));
-    modal?.addEventListener('cancel', (event) => { event.preventDefault(); closeModal(); });
+    const syncInstallments = () => {
+        const enabled = Boolean(expenseToggle?.checked);
+        const isInst = condition?.value === 'a_prazo';
+        installmentWrap?.classList.toggle('hidden', !isInst);
+        installmentFields.forEach((f) => { if (f) f.disabled = !enabled || !isInst; });
+    };
+    const syncExpense = () => {
+        const enabled = Boolean(expenseToggle?.checked);
+        expenseFields?.classList.toggle('hidden', !enabled);
+        financeInputs.forEach((f) => { f.disabled = !enabled; });
+        syncCreditCard();
+        syncInstallments();
+    };
     expenseToggle?.addEventListener('change', syncExpense);
     condition?.addEventListener('change', syncInstallments);
     method?.addEventListener('change', syncCreditCard);
-    [installmentCount, installmentFrequency, firstInstallment].forEach((field) => field?.addEventListener('input', renderInstallmentPreview));
-    form?.querySelector('[data-operation-expense-display]')?.addEventListener('input', () => window.requestAnimationFrame(renderInstallmentPreview));
     window.SisfarmCurrencyMask?.boot(form);
     syncExpense();
-    if (editing) modal?.showModal();
-})();
-</script>
-<script>
-(() => {
-    const modal = document.getElementById('operation-payment-reversal-modal');
-    const form = modal?.querySelector('[data-operation-payment-reversal-form]');
-    const label = modal?.querySelector('[data-operation-payment-reversal-label]');
-    document.querySelectorAll('[data-operation-payment-reversal-open]').forEach((button) => {
-        button.addEventListener('click', () => {
-            if (!form || !button.dataset.operationId) return;
-            form.action = `/operacoes/${button.dataset.operationId}/cancelar-pagamento`;
-            if (label) label.textContent = button.dataset.operationLabel || 'operação selecionada';
-            modal?.showModal();
-        });
-    });
-    document.querySelectorAll('[data-operation-payment-reversal-close]').forEach((button) => button.addEventListener('click', () => modal?.close()));
-    modal?.addEventListener('cancel', (event) => { event.preventDefault(); modal.close(); });
-})();
-</script>
-<script>
-(() => {
-    const stickyHeader = document.querySelector('.stock-page-header');
-    const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
-    const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
-    const mobileCompactMq = window.matchMedia('(max-width: 899px)');
-    const stickyTop = () => parseFloat(getComputedStyle(stickyHeader).top) || 0;
-    let compactRaf = null;
-    let fadeRaf = null;
 
-    const syncHeader = () => {
-        compactRaf = null;
-        if (!stickyHeader) return;
-        if (!mobileCompactMq.matches) {
-            stickyHeader.classList.remove('is-compact');
-            headerIntro?.removeAttribute('aria-hidden');
-            return;
-        }
-        const rect = stickyHeader.getBoundingClientRect();
-        const isCompact = stickyHeader.classList.contains('is-compact');
-        const shouldCompact = rect.top <= stickyTop() + 2 ? true : rect.top > stickyTop() + 8 ? false : isCompact;
-        stickyHeader.classList.toggle('is-compact', shouldCompact);
-        headerIntro?.setAttribute('aria-hidden', shouldCompact ? 'true' : 'false');
+    const closeModal = () => {
+        if (editing) { window.location.href = '/operacoes'; return; }
+        modal?.close();
     };
-    const syncFadingPanels = () => {
-        fadeRaf = null;
-        if (!stickyHeader) return;
-        const headerBottom = stickyHeader.getBoundingClientRect().bottom;
-        fadingPanels.forEach((panel) => {
-            const rect = panel.getBoundingClientRect();
-            const overlap = Math.min(Math.max(headerBottom - rect.top, 0), rect.height);
-            const feather = Math.min(80, Math.max(22, overlap * 0.45 + 16));
-            panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
-            panel.style.setProperty('--stock-fade-feather-end', `${(overlap + feather).toFixed(2)}px`);
-            panel.classList.toggle('stock-panel-under-header', mobileCompactMq.matches && overlap > 0.02);
-        });
-    };
-    const scheduleHeader = () => {
-        if (compactRaf === null) compactRaf = window.requestAnimationFrame(syncHeader);
-    };
-    const scheduleFadingPanels = () => {
-        if (fadeRaf === null) fadeRaf = window.requestAnimationFrame(syncFadingPanels);
-    };
+    document.querySelectorAll('[data-operation-open]').forEach((b) => b.addEventListener('click', () => { syncTypeExtras(); modal?.showModal(); }));
+    document.querySelectorAll('[data-operation-close]').forEach((b) => b.addEventListener('click', closeModal));
+    modal?.addEventListener('cancel', (e) => { e.preventDefault(); closeModal(); });
+    if (editing || autoOpenNew) modal?.showModal();
 
-    if (!stickyHeader) return;
-    window.addEventListener('scroll', scheduleHeader, { passive: true });
-    window.addEventListener('scroll', scheduleFadingPanels, { passive: true });
-    window.addEventListener('resize', scheduleHeader);
-    window.addEventListener('resize', scheduleFadingPanels);
-    mobileCompactMq.addEventListener?.('change', scheduleHeader);
-    mobileCompactMq.addEventListener?.('change', scheduleFadingPanels);
-    syncHeader();
-    syncFadingPanels();
+    // Reversal modal
+    const revModal = document.getElementById('operation-payment-reversal-modal');
+    const revForm = revModal?.querySelector('[data-operation-payment-reversal-form]');
+    const revLbl = revModal?.querySelector('[data-operation-payment-reversal-label]');
+    document.querySelectorAll('[data-operation-payment-reversal-open]').forEach((b) => b.addEventListener('click', () => {
+        if (revForm) revForm.action = `/operacoes/${b.dataset.operationId}/cancelar-pagamento`;
+        if (revLbl) revLbl.textContent = b.dataset.operationLabel || 'operação';
+        revModal?.showModal();
+    }));
+    document.querySelectorAll('[data-operation-payment-reversal-close]').forEach((b) => b.addEventListener('click', () => revModal?.close()));
 })();
 </script>
 {% endblock %}

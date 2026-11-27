@@ -618,6 +618,7 @@ def create_rainfall(repository: FarmRepository, form: dict) -> RainfallRecord:
     return repository.create(
         RainfallRecord(
             farm_id=form["farm_id"],
+            plot_id=form.get("plot_id"),
             rainfall_date=date.fromisoformat(form["rainfall_date"]),
             millimeters=form["millimeters"],
             source=form.get("source"),
@@ -631,6 +632,7 @@ def update_rainfall(repository: FarmRepository, rainfall: RainfallRecord, form: 
         rainfall,
         {
             "farm_id": form["farm_id"],
+            "plot_id": form.get("plot_id"),
             "rainfall_date": date.fromisoformat(form["rainfall_date"]),
             "millimeters": form["millimeters"],
             "source": form.get("source"),
@@ -1858,11 +1860,23 @@ def delete_manual_stock_output(repository: FarmRepository, output: StockOutput) 
     repository.db.commit()
 
 
+def _normalize_recipe_dose_mode(value: str | None) -> str:
+    mode = (value or "per_ha").strip().lower()
+    return mode if mode in {"per_ha", "per_plant", "fixed_plot"} else "per_ha"
+
+
+def _normalize_recipe_method(value: str | None) -> str:
+    method = (value or "fertirrigacao").strip().lower()
+    return method if method in {"fertirrigacao", "adubacao_solida", "fertilizacao_foliar"} else "fertirrigacao"
+
+
 def create_input_recommendation(repository: FarmRepository, form: dict) -> InputRecommendation:
     recommendation = InputRecommendation(
         farm_id=form.get("farm_id"),
         plot_id=form.get("plot_id"),
         application_name=form["application_name"],
+        dose_mode=_normalize_recipe_dose_mode(form.get("dose_mode")),
+        application_method=_normalize_recipe_method(form.get("application_method")),
         notes=form.get("notes"),
     )
     repository.db.add(recommendation)
@@ -1893,6 +1907,10 @@ def update_input_recommendation(repository: FarmRepository, recommendation: Inpu
     recommendation.farm_id = form.get("farm_id")
     recommendation.plot_id = form.get("plot_id")
     recommendation.application_name = form["application_name"]
+    if "dose_mode" in form and form.get("dose_mode"):
+        recommendation.dose_mode = _normalize_recipe_dose_mode(form.get("dose_mode"))
+    if "application_method" in form and form.get("application_method"):
+        recommendation.application_method = _normalize_recipe_method(form.get("application_method"))
     recommendation.notes = form.get("notes")
     recommendation.items.clear()
     repository.db.flush()
@@ -2360,32 +2378,57 @@ def update_harvest(
 
 
 def create_pest_incident(repository: FarmRepository, form: dict) -> PestIncident:
+    status_val = (form.get("status") or "ativa").strip().lower()
+    if status_val not in {"ativa", "em_tratamento", "monitoramento", "controlada"}:
+        status_val = "ativa"
+    occ_date = date.fromisoformat(form["occurrence_date"])
+    resolved_date = form.get("resolved_date")
+    if status_val == "controlada" and not resolved_date:
+        resolved_date = occ_date
     return repository.create(
         PestIncident(
             plot_id=form["plot_id"],
-            occurrence_date=date.fromisoformat(form["occurrence_date"]),
+            occurrence_date=occ_date,
             category=form["category"],
             name=form["name"],
             severity=form["severity"],
+            status=status_val,
+            incidence_pct=form.get("incidence_pct"),
+            reinspection_date=form.get("reinspection_date"),
+            resolved_date=resolved_date,
             treatment=form.get("treatment"),
             notes=form.get("notes"),
+            photo_filename=form.get("photo_filename"),
+            photo_content_type=form.get("photo_content_type"),
+            photo_data=form.get("photo_data"),
         )
     )
 
 
 def update_pest_incident(repository: FarmRepository, incident: PestIncident, form: dict) -> PestIncident:
-    return repository.update(
-        incident,
-        {
-            "plot_id": form["plot_id"],
-            "occurrence_date": date.fromisoformat(form["occurrence_date"]),
-            "category": form["category"],
-            "name": form["name"],
-            "severity": form["severity"],
-            "treatment": form.get("treatment"),
-            "notes": form.get("notes"),
-        },
-    )
+    status_val = (form.get("status") or incident.status or "ativa").strip().lower()
+    if status_val not in {"ativa", "em_tratamento", "monitoramento", "controlada"}:
+        status_val = "ativa"
+    payload = {
+        "plot_id": form["plot_id"],
+        "occurrence_date": date.fromisoformat(form["occurrence_date"]),
+        "category": form["category"],
+        "name": form["name"],
+        "severity": form["severity"],
+        "status": status_val,
+        "incidence_pct": form.get("incidence_pct"),
+        "treatment": form.get("treatment"),
+        "notes": form.get("notes"),
+    }
+    if status_val == "controlada" and not incident.resolved_date:
+        payload["resolved_date"] = form.get("resolved_date") or date.today()
+    elif status_val != "controlada":
+        payload["resolved_date"] = None
+    if form.get("photo_data") is not None:
+        payload["photo_filename"] = form.get("photo_filename")
+        payload["photo_content_type"] = form.get("photo_content_type")
+        payload["photo_data"] = form.get("photo_data")
+    return repository.update(incident, payload)
 
 
 def create_agronomic_profile(repository: FarmRepository, form: dict) -> AgronomicProfile:
