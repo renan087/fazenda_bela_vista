@@ -211,3 +211,27 @@ def test_many_farms_and_seasons_scale(env, client):
     assert len(seasons) == 21 and seasons[0]["current"] and seasons[1]["name"] == "Safra 2025/2026"
     with env.sessions() as db:
         assert routes._boundary_path(db.get(Farm, first).boundary_geojson) in page  # contorno real da fazenda no cartão
+
+
+def test_season_opens_without_plots_only_when_farm_has_none(env, client):
+    from app.models import Plot
+    farm_id = env.farm("Imovel rural - Planalto, BA")
+    csrf = client.post("/test-session").json()
+    client.get("/dashboard")  # fazenda única: já fica ativa
+    form = {**csrf, "start_date": "2026-07-01", "end_date": "2027-06-30", "culture": "Café", "area_unit": "ha", "make_active": "1"}
+    done = client.post("/safras", data=form)
+    assert done.status_code == 303
+    with env.sessions() as db:
+        season = db.query(CropSeason).filter(CropSeason.farm_id == farm_id).one()
+        assert float(season.cultivated_area) == 120.5 and not season.plots
+        db.add(Plot(farm_id=farm_id, name="Talhão 1", area_hectares=18.4, plant_count=0))
+        db.commit()
+        repo = routes._repository(db)
+        plot = db.query(Plot).one()
+        joined = routes._include_plot_in_active_season(repo, {"active_season_id": season.id}, plot)
+        assert joined and float(db.get(CropSeason, season.id).cultivated_area) == 18.4
+    # Com setores na fazenda, escolher ao menos um continua obrigatório.
+    blocked = client.post("/safras", data={**form, "start_date": "2027-07-01", "end_date": "2028-06-30"})
+    assert blocked.status_code == 303
+    with env.sessions() as db:
+        assert db.query(CropSeason).filter(CropSeason.farm_id == farm_id).count() == 1

@@ -13567,3 +13567,5 @@ a.obt-seg{cursor:pointer}a.obt-seg:hover{background:#E3ECDF}
 @keyframes obt-rb-ring{0%{box-shadow:0 0 0 0 rgba(68,106,54,.45)}80%,100%{box-shadow:0 0 0 8px rgba(68,106,54,0)}}
 @media (max-width:639px){.obt-modal.is-back{grid-template-columns:minmax(0,1fr)}.obt-rb-hero{height:170px;padding-top:12px}.obt-rb-pz img{height:160px}.obt-rb-hi{top:4px}.obt-rb-body{padding:22px}.obt-modal.is-back h2{font-size:22px}.obt-rb-acts .obt-mbtn{flex:1}}
 @media (prefers-reduced-motion:reduce){.obt-rb-pz,.obt-rb-hi,.obt-rb-li,.obt-rb-li.cur .obt-rb-num{animation:none}}
+.szw-noplots { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; border-radius: 14px; background: #e8f1fb; color: #1f5fa8; font-size: 13.5px; line-height: 1.45; }
+.szw-noplots strong { font-size: 14px; color: #174a85; }

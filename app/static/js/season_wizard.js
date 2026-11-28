@@ -208,6 +208,7 @@
                 <small class="szw-plot-foot">${foot}</small>
             </button>`;
         });
+        if (!plots.length) cards.unshift(`<div class="szw-noplots" role="note"><strong>Esta fazenda ainda não tem setores.</strong><span>Pode continuar sem eles: os setores que você cadastrar depois entram nesta safra, e a área dela passa a ser a soma deles.</span></div>`);
         cards.push(`<a class="szw-newcard" href="/setores?novo=1&amp;voltar=${backTo}" data-szw-new-plot>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
             <span>Cadastrar novo setor</span><small>Volta para cá depois de salvar</small></a>`);
@@ -311,7 +312,7 @@
             if (end < start) return [false, 'O fim precisa ser depois do início'];
             if (!cultureInput.value.trim()) return [false, 'Informe a cultura'];
         }
-        if (step === 1 && !state.sel.size) return [false, 'Escolha pelo menos um setor'];
+        if (step === 1 && !state.sel.size && plots.length) return [false, 'Escolha pelo menos um setor'];
         return [true, ''];
     };
     const updateChrome = (c) => {

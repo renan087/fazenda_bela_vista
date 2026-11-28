@@ -9469,6 +9469,9 @@ def _include_plot_in_active_season(repo: FarmRepository, scope: dict, plot):
         return None
     if plot not in season.plots:
         season.plots.append(plot)
+        area = _season_area_from_plots(season.plots, season.area_unit or "ha")
+        if area > 0:  # a área da safra é a soma dos setores dela
+            season.cultivated_area = area
         repo.db.commit()
         link_season_plantings(repo, season)
     return season
@@ -20415,9 +20418,15 @@ def create_crop_season_action(
         area_unit = "ha"
     if plot_ids:
         parsed_cultivated_area = _season_area_from_plots([available_plots[plot_id] for plot_id in dict.fromkeys(plot_ids)], area_unit)
-    else:
+    elif available_plots:
         _flash(request, "error", "Selecione ao menos um setor da safra; a área cultivada é a soma dos setores.")
         return _redirect("/safras")
+    else:
+        # Fazenda ainda sem setores (ex.: primeiros passos): a safra abre com a área da fazenda e
+        # passa a somar os setores quando o primeiro entrar nela.
+        season_farm = repo.get_farm(scope["active_farm_id"])
+        parsed_cultivated_area = float(season_farm.total_area or 0) if season_farm else 0
+        area_unit = "ha"
     if parsed_cultivated_area <= 0:
         _flash(request, "error", "A area cultivada deve ser maior que zero.")
         return _redirect("/safras")
