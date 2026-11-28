@@ -38,7 +38,55 @@
 }
 
 /* Header & Tabs */
-.ds-head { margin-bottom: 0; }
+.ds-head {
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 1rem;
+}
+.ds-head > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ds-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.625rem;
+  flex: 0 0 auto;
+  margin-left: auto;
+  flex-wrap: nowrap;
+}
+.ds-head-more {
+  position: relative;
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+.ds-head-more-btn {
+  width: 2.625rem;
+  height: 2.625rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--ds-line-strong);
+  background: var(--ds-surface);
+  color: var(--ds-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.ds-head-more-btn:hover {
+  background: var(--ds-soft);
+  border-color: #BFC9BD;
+}
+.ds-head-more .nx-menu {
+  right: 0;
+  left: auto;
+  top: calc(100% + 0.45rem);
+  width: 13.5rem;
+  min-width: 196px;
+}
 .ds-tabs { margin-bottom: 0; }
 .ds-tab-btn {
   position: relative;
@@ -1453,8 +1501,11 @@ input[type="checkbox"].ds-switch-input:checked::after {
   .ds-only-mobile-flex { display: flex !important; }
   .ds-who-grid, .ds-form-grid-2, .ds-signer-item-grid { grid-template-columns: 1fr !important; }
 
-  .ds-head { align-items: center; }
+  .ds-head { align-items: center; flex-wrap: nowrap; gap: 0.75rem; }
   .ds-head .sf-page-title { font-size: 1.375rem; }
+  .ds-head .ds-head-actions { width: auto; flex: 0 0 auto; margin-left: auto; gap: 0.5rem; }
+  .ds-head .ds-head-actions .sf-btn { flex: 0 0 auto; }
+  .ds-head-more-btn { width: 2.75rem; height: 2.75rem; }
   .ds-tabs { gap: 0.1rem; }
   .ds-tabs a, .ds-tab-btn { padding: 0.6rem 0.65rem; font-size: 0.8125rem; }
 

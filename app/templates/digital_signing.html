@@ -1,22 +1,27 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, doc_chip, module_tabs, dropzone %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=11">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=16">{% endblock %}
 {% block content %}
 {% set c = doc_counts %}
 <main class="sf-page pd-page ds-page" data-ds-home data-csrf="{{ csrf_token }}" data-active-tab="{{ active_tab }}">
   <header class="pd-head ds-head">
-    <div>
+    <div class="ds-head-copy">
       <h1 class="sf-page-title">Documentos</h1>
       <p class="sf-page-subtitle ds-hide-mobile">Contratos, recibos e termos{% if farm %} da {{ farm.name }}{% endif %} — assine eletronicamente pelo SiSFarm ou com certificado ICP-Brasil A1.</p>
     </div>
     <div class="pd-head-actions ds-head-actions">
-      <a class="sf-btn sf-btn-secondary ds-hide-mobile" href="/validar">{{ icon('qr', 16) }} Validar código</a>
-      <a class="sf-btn sf-btn-secondary ds-hide-mobile" href="/assinatura-digital?aba=validar" data-ds-tab-validate>{{ icon('shield', 16) }} Validar PDF</a>
       {% if farm and can_write_page %}
       <a class="sf-btn sf-btn-primary" href="/assinatura-digital/novo">
         {{ icon('plus', 16) }} <span class="ds-hide-mobile">Novo documento</span><span class="ds-only-mobile">Novo</span>
       </a>
       {% endif %}
+      <div class="nx-more ds-head-more" data-nx-more>
+        <button type="button" class="sf-icon-btn ds-head-more-btn" data-nx-more-btn aria-label="Mais ações" aria-haspopup="menu" aria-expanded="false">{{ icon('dots', 18) }}</button>
+        <div class="nx-menu" role="menu" aria-label="Mais ações" hidden>
+          <a class="nx-mi" role="menuitem" href="/validar">{{ icon('qr', 15) }}<span>Validar código</span></a>
+          <a class="nx-mi" role="menuitem" href="/assinatura-digital?aba=validar" data-ds-tab-validate>{{ icon('shield', 15) }}<span>Validar PDF</span></a>
+        </div>
+      </div>
     </div>
   </header>
 
