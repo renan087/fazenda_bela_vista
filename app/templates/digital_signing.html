@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, doc_chip, module_tabs, dropzone %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=10">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=11">{% endblock %}
 {% block content %}
 {% set c = doc_counts %}
 <main class="sf-page pd-page ds-page" data-ds-home data-csrf="{{ csrf_token }}" data-active-tab="{{ active_tab }}">
@@ -166,19 +166,21 @@
         <div class="ds-list-top">
           <h2 id="ds-docs-title">Documentos <span class="ds-count-muted ds-tabular">({{ pagination.total_items }})</span></h2>
           {% if c.total %}
-          <form class="ds-list-tools" method="get" action="/assinatura-digital#ds-docs-title">
+          <form class="ds-list-tools" method="get" action="/assinatura-digital#ds-docs-title" role="search">
             <input type="hidden" name="por" value="{{ per_page }}">
             {% if status_filter != 'todos' %}<input type="hidden" name="situacao" value="{{ status_filter }}">{% endif %}
             <select class="ds-select-compact ds-hide-mobile" name="categoria" data-ds-submit-on-change aria-label="Filtrar por categoria">
               <option value="">Todas as categorias</option>
               {% for cat in categories %}<option value="{{ cat }}"{% if cat == category_filter %} selected{% endif %}>{{ cat }}</option>{% endfor %}
             </select>
-            <label class="ds-search-box">
-              {{ icon('search', 16) }}
-              <span class="sr-only">Buscar documento</span>
-              <input type="search" name="q" value="{{ search_query }}" placeholder="Buscar contrato ou arquivo...">
-            </label>
-            <button type="submit" class="sf-btn sf-btn-secondary">Buscar</button>
+            <div class="ds-search-box">
+              <button type="submit" class="ds-search-submit" aria-label="Buscar documentos">{{ icon('search', 16) }}</button>
+              <label for="ds-search-input" class="sr-only">Buscar documento</label>
+              <input id="ds-search-input" type="search" name="q" value="{{ search_query }}" placeholder="Buscar contrato ou arquivo...">
+              {% if search_query %}
+              <a class="ds-search-clear" href="{{ filter_urls[status_filter] }}{% if category_filter %}{{ '&' if '?' in filter_urls[status_filter] else '?' }}categoria={{ category_filter|urlencode }}{% endif %}#ds-docs-title" aria-label="Limpar busca" title="Limpar busca">×</a>
+              {% endif %}
+            </div>
           </form>
           {% endif %}
         </div>
@@ -284,21 +286,54 @@
         {% endfor %}
       </ul>
       <nav class="ds-pagination" aria-label="Paginação de documentos">
-        <div class="ds-pagination-nav">
-          {% if pagination.has_prev %}<a class="sf-btn sf-btn-secondary" href="{{ pagination.prev_url }}#ds-docs-title" rel="prev">Anterior</a>{% endif %}
-          <span>Página {{ pagination.page }} de {{ pagination.total_pages }}</span>
-          {% if pagination.has_next %}<a class="sf-btn sf-btn-secondary" href="{{ pagination.next_url }}#ds-docs-title" rel="next">Próxima</a>{% endif %}
+        <div class="ds-pg-meta">
+          <span class="ds-pg-range ds-tabular">
+            Mostrando <strong>{{ pagination.start_item }}–{{ pagination.end_item }}</strong> de <strong>{{ pagination.total_items }}</strong>
+          </span>
+          <span class="ds-pg-sep ds-hide-mobile" aria-hidden="true">·</span>
+          <form class="ds-pagination-size" method="get" action="/assinatura-digital#ds-docs-title">
+            {% if status_filter != 'todos' %}<input type="hidden" name="situacao" value="{{ status_filter }}">{% endif %}
+            {% if category_filter %}<input type="hidden" name="categoria" value="{{ category_filter }}">{% endif %}
+            {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
+            <label for="ds-page-size">Exibir</label>
+            <select id="ds-page-size" class="ds-pg-select ds-tabular" name="por" data-ds-submit-on-change aria-label="Documentos por página">
+              {% for size in page_sizes %}<option value="{{ size }}"{% if size == per_page %} selected{% endif %}>{{ size }}</option>{% endfor %}
+            </select>
+            <span class="ds-hide-mobile">por página</span>
+            <noscript><button type="submit" class="ds-pg-btn">Aplicar</button></noscript>
+          </form>
         </div>
-        <form class="ds-pagination-size" method="get" action="/assinatura-digital#ds-docs-title">
-          {% if status_filter != 'todos' %}<input type="hidden" name="situacao" value="{{ status_filter }}">{% endif %}
-          {% if category_filter %}<input type="hidden" name="categoria" value="{{ category_filter }}">{% endif %}
-          {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
-          <label for="ds-page-size">Documentos por página</label>
-          <select id="ds-page-size" class="ds-select-compact" name="por" data-ds-submit-on-change>
-            {% for size in page_sizes %}<option value="{{ size }}"{% if size == per_page %} selected{% endif %}>{{ size }}</option>{% endfor %}
-          </select>
-          <noscript><button type="submit" class="sf-btn sf-btn-secondary">Aplicar</button></noscript>
-        </form>
+
+        <div class="ds-pagination-nav">
+          <span class="ds-pg-indicator ds-tabular">Página {{ pagination.page }} de {{ pagination.total_pages }}</span>
+          <div class="ds-pg-controls">
+            {% if pagination.has_prev %}
+            <a class="ds-pg-btn" href="{{ pagination.prev_url }}#ds-docs-title" rel="prev" aria-label="Página anterior">‹ <span>Anterior</span></a>
+            {% else %}
+            <span class="ds-pg-btn is-disabled" aria-disabled="true">‹ <span>Anterior</span></span>
+            {% endif %}
+
+            {% if pagination.page_links %}
+            <div class="ds-pg-numbers ds-hide-mobile" aria-label="Ir para página">
+              {% for p in pagination.page_links %}
+                {% if p.ellipsis %}
+                <span class="ds-pg-ellipsis" aria-hidden="true">…</span>
+                {% elif p.current %}
+                <span class="ds-pg-num is-current ds-tabular" aria-current="page">{{ p.num }}</span>
+                {% else %}
+                <a class="ds-pg-num ds-tabular" href="{{ p.url }}#ds-docs-title">{{ p.num }}</a>
+                {% endif %}
+              {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if pagination.has_next %}
+            <a class="ds-pg-btn" href="{{ pagination.next_url }}#ds-docs-title" rel="next" aria-label="Próxima página"><span>Próxima</span> ›</a>
+            {% else %}
+            <span class="ds-pg-btn is-disabled" aria-disabled="true"><span>Próxima</span> ›</span>
+            {% endif %}
+          </div>
+        </div>
       </nav>
       {% elif c.total %}
       <div class="ds-empty">

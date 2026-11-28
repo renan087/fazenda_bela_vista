@@ -344,6 +344,10 @@ def signing_home(request: Request, db: Session = Depends(get_db), user: User = D
         and (not search or search in _normalize_document_search(f"{item['title']} {item['filename']} {item['category']}"))
     ]
     pagination = _paginate_collection(request, matches, "pagina", per_page)
+    total_items = pagination["total_items"]
+    pagination["start_item"] = ((pagination["page"] - 1) * per_page + 1) if total_items else 0
+    pagination["end_item"] = min(pagination["page"] * per_page, total_items)
+    pagination["page_links"] = _build_document_page_links(request, pagination["page"], pagination["total_pages"])
     filter_urls = {
         key: _url_with_query(request, aba=None, pagina=None, situacao=None if key == "todos" else key)
         for key in DOCUMENT_FILTERS
@@ -369,6 +373,35 @@ def signing_home(request: Request, db: Session = Depends(get_db), user: User = D
         categories=workflow.DOCUMENT_CATEGORIES, org_colleagues=org_colleagues,
         active_tab=active_tab, mode=signing_mode(farm.id if farm else None),
     )
+
+
+def _build_document_page_links(request: Request, current_page: int, total_pages: int) -> list[dict]:
+    if total_pages <= 1:
+        return []
+    visible: set[int] = {1, total_pages}
+    for n in range(max(1, current_page - 1), min(total_pages, current_page + 1) + 1):
+        visible.add(n)
+    if current_page <= 3:
+        visible.update(range(1, min(total_pages, 4) + 1))
+    if current_page >= total_pages - 2:
+        visible.update(range(max(1, total_pages - 3), total_pages + 1))
+
+    ordered = sorted(visible)
+    links: list[dict] = []
+    prev_num = None
+    for num in ordered:
+        if prev_num is not None and num - prev_num > 1:
+            links.append({"ellipsis": True})
+        links.append(
+            {
+                "ellipsis": False,
+                "num": num,
+                "current": num == current_page,
+                "url": _url_with_query(request, aba=None, pagina=None if num == 1 else num),
+            }
+        )
+        prev_num = num
+    return links
 
 
 def _normalize_document_search(value: str) -> str:
