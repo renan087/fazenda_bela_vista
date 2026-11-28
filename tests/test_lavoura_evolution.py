@@ -249,7 +249,7 @@ def test_climate_water_module_and_lavoura_overview_and_rainfall_without_season(e
     assert "Chuva e Alertas" in pluv_html and "Configurar alertas" in pluv_html
 
     lav_html = r.lavoura_overview_page(env.request("/lavoura"), db=env.db, user=env.user, csrf_token="x").body.decode()
-    assert "Lavoura" in lav_html and "Radar dos talhões" in lav_html
+    assert "Lavoura" in lav_html and "lv-summary" in lav_html and "Registrar no campo" in lav_html
 
 
 def test_operations_multitplot_stock_fifo_hourmeter_pest_withdrawal_and_revert(env):

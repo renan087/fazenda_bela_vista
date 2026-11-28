@@ -1,194 +1,200 @@
 {% extends "base.html" %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/lavoura.css?v=1">{% endblock %}
+{% macro lv_icon(key, size=18) -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if key == 'nutri' %}<path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/><path d="M12 14c0-3-2.5-5.5-7-5.5 0 4 2.5 6.5 7 5.5z"/>
+{%- elif key == 'san' or key == 'praga' %}<ellipse cx="12" cy="14" rx="4" ry="6"/><path d="M12 8V6M9 5l1.5 2M15 5l-1.5 2M8 12H4M8 16H4M16 12h4M16 16h4M12 8v12"/>
+{%- elif key == 'agua' or key == 'irr' %}<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5"/>
+{%- elif key == 'solo' %}<path d="M3 8c3-2 6-2 9 0s6 2 9 0"/><path d="M3 13c3-2 6-2 9 0s6 2 9 0"/><path d="M3 18c3-2 6-2 9 0s6 2 9 0"/>
+{%- elif key == 'adub' %}<path d="M6 8h12l-1.5 12h-9z"/><path d="M8 8c0-2 1.5-4 4-4s4 2 4 4"/><path d="M12 12v4M10 14h4"/>
+{%- elif key == 'pulv' %}<rect x="7" y="9" width="8" height="12" rx="2"/><path d="M9 9V6h4v3M13 6h3l2-2M18 8h.01M20 6h.01M20 10h.01"/>
+{%- elif key == 'analise' %}<path d="M9 3h6M10 3v6L5 18a2 2 0 0 0 1.8 3h10.4A2 2 0 0 0 19 18l-5-9V3"/><path d="M7.5 14h9"/>
+{%- elif key == 'trato' %}<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/>
+{%- endif %}
+</svg>
+{%- endmacro %}
 {% block content %}
 {% set ctx = lv_ctx %}
 {% set k = ctx.kpi %}
-{% set sw = ctx.climate.spray_window %}
-<div class="sf-page pd-page ft-page" data-lavoura-overview>
-    <header class="pd-head">
-        <div>
+{% set b = ctx.board %}
+{% set P = b.pillars %}
+{% set total = k.total_plots %}
+{% set first = b.rows[0] if b.rows else none %}
+<div class="sf-page lv-page" data-lv-page data-selected="{{ first.id if first else '' }}">
+    <header class="sf-page-header lv-head">
+        <div class="min-w-0">
             <h1 class="sf-page-title">Lavoura</h1>
-            <p class="sf-page-subtitle">Painel tático de campo{% if active_farm %} · {{ active_farm.name }}{% endif %}{% if active_season %} · {{ active_season.name }}{% endif %} — acompanhe manejo, sanidade, água e nutrição de cada talhão.</p>
+            <p class="lv-context">
+                <span>{% if active_season %}{{ active_season.name }} · {% endif %}{{ total }} {{ 'talhão' if total == 1 else 'talhões' }} · {{ ctx.total_area|decimal_br(1) }} ha</span>
+                <a href="/clima-agua" class="lv-ctx-rain">{{ ctx.climate.kpi.rain_7d_mm|decimal_br(0) }} mm de chuva nos últimos 7 dias</a>
+                {% if k.invested_total %}<span>R$ {{ k.invested_total|decimal_br(0) }} investidos{% if k.cost_per_ha %} · R$ {{ k.cost_per_ha|decimal_br(0) }}/ha{% endif %}</span>{% endif %}
+            </p>
         </div>
-        <div class="pd-head-actions">
-            {% if can_write_page %}
-            <a class="sf-btn sf-btn-secondary" href="/pragas?novo=1">Registrar praga</a>
-            <a class="sf-btn sf-btn-secondary" href="/pragas/pulverizacoes?novo=1">Pulverizar</a>
-            <a class="sf-btn sf-btn-primary" href="/fertilizacao/nova">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                Nova adubação
+        <div class="lv-head-actions">
+            <a href="/fertilizacao/agendamentos" class="sf-btn sf-btn-secondary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+                Agenda
+                {% if k.late_schedules %}<span class="lv-badge is-err">{{ k.late_schedules }} {{ 'atrasada' if k.late_schedules == 1 else 'atrasadas' }}</span>
+                {% elif ctx.next7_count %}<span class="lv-badge is-warn">{{ ctx.next7_count }} na semana</span>{% endif %}
             </a>
+            {% if b.rows %}
+            <div class="lv-menu-wrap">
+                <button type="button" class="sf-btn sf-btn-primary" aria-haspopup="menu" aria-expanded="false" data-lv-menu-btn>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    Registrar no campo
+                    <svg class="lv-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div class="lv-menu" role="menu" aria-label="Registrar no campo" hidden data-lv-menu>
+                    <span class="lv-menu-head">Em <strong data-lv-menu-plot>{{ first.name }}</strong></span>
+                    {% set opts = [
+                        ('adub', 'adub', 'Adubação', 'Adubo no solo ou foliar', 'nutri'),
+                        ('pulv', 'pulv', 'Pulverização', 'Defensivo, fungicida ou foliar', 'san'),
+                        ('irr', 'irr', 'Irrigação', 'Lâmina aplicada', 'agua'),
+                        ('praga', 'praga', 'Praga ou doença', 'Apontar um foco, com foto', 'warn'),
+                        ('solo', 'analise', 'Análise de solo', 'Laudo do laboratório', 'solo'),
+                    ] %}
+                    {% for link_key, icon_key, label, hint, tone in opts %}
+                    <a role="menuitem" class="lv-menu-item" href="{{ first.links[link_key] }}" data-lv-reg="{{ link_key }}">
+                        <span class="lv-ic lv-ic--{{ tone }}">{{ lv_icon(icon_key) }}</span>
+                        <span class="lv-menu-txt"><strong>{{ label }}</strong><small>{{ hint }}</small></span>
+                    </a>
+                    {% endfor %}
+                    <span class="lv-menu-sep" role="separator"></span>
+                    <a role="menuitem" class="lv-menu-item" href="{{ first.links.trato }}" data-lv-reg="trato">
+                        <span class="lv-ic lv-ic--muted">{{ lv_icon('trato') }}</span>
+                        <span class="lv-menu-txt"><strong>Trato cultural</strong><small>Poda, roçada, capina</small></span>
+                    </a>
+                </div>
+            </div>
             {% endif %}
         </div>
     </header>
 
-    {# Atalhos rápidos de campo #}
-    <nav class="lv-quick-grid" aria-label="Ações rápidas de campo">
-        <a class="lv-qa" href="/fertilizacao/nova">
-            <span class="lv-qa-ic is-green" aria-hidden="true">🌱</span>
-            <span><strong>Adubação</strong><small>Aplicar com baixa FIFO</small></span>
-        </a>
-        <a class="lv-qa" href="/pragas/pulverizacoes?novo=1">
-            <span class="lv-qa-ic is-green" aria-hidden="true">🚜</span>
-            <span><strong>Pulverização</strong><small>Defensivos, calda e carência</small></span>
-        </a>
-        <a class="lv-qa" href="/pragas?novo=1">
-            <span class="lv-qa-ic is-warn" aria-hidden="true">🪲</span>
-            <span><strong>Praga ou doença</strong><small>Monitorar com fotos</small></span>
-        </a>
-        <a class="lv-qa" href="/clima-agua">
-            <span class="lv-qa-ic is-info" aria-hidden="true">💧</span>
-            <span><strong>Clima e Água</strong><small>Previsão, chuva e irrigação</small></span>
-        </a>
-        <a class="lv-qa" href="/mobile/assistente">
-            <span class="lv-qa-ic is-green" aria-hidden="true">🎙️</span>
-            <span><strong>Falar com o Pezinho</strong><small>Lançar por voz ou texto</small></span>
-        </a>
-    </nav>
-
-    {# Condição climática resumida #}
-    <section class="pd-card lv-weather-banner" aria-label="Janela climática">
-        <div class="lv-weather-banner-left">
-            <span class="pd-chip is-{{ sw.tone }}">{{ sw.title }}</span>
-            <span>{{ sw.detail }}</span>
-        </div>
-        <div class="lv-weather-banner-right">
-            <span>Chuva 7d: <strong>{{ ctx.climate.kpi.rain_7d_mm|decimal_br(1) }} mm</strong></span>
-            <span>Próx. 3d: <strong>{{ ctx.climate.kpi.forecast_3d_mm|decimal_br(1) }} mm</strong></span>
-            <a class="ft-link-btn is-brand" href="/clima-agua">Ver previsão completa →</a>
-        </div>
-    </section>
-
-    {# KPIs da Lavoura #}
-    <section class="ft-kpis" aria-label="Indicadores da lavoura">
-        <article class="pd-card ft-kpi">
-            <span class="pd-eyebrow">Investido nos talhões</span>
-            <div class="ft-kpi-val"><strong>R$ {{ k.invested_total|decimal_br(0) }}</strong></div>
-            <p class="ft-kpi-sub">{% if k.cost_per_ha > 0 %}Média de <strong>R$ {{ k.cost_per_ha|decimal_br(2) }}/ha</strong> na safra{% else %}Sem custos alocados na safra{% endif %}</p>
-        </article>
-        <a class="pd-card ft-kpi is-interactive" href="/fertilizacao/agendamentos">
-            <span class="pd-eyebrow">Agenda da semana</span>
-            <div class="ft-kpi-val"><strong class="{{ 'is-err' if k.late_schedules else '' }}">{{ k.week_schedules }}</strong><span>programada{{ 's' if k.week_schedules != 1 }}</span></div>
-            <p class="ft-kpi-sub {{ 'is-err' if k.late_schedules else '' }}">{% if k.late_schedules %}{{ k.late_schedules }} atrasada(s) aguardando ação →{% else %}{{ k.operations_count }} operações registradas na safra{% endif %}</p>
-        </a>
-        <a class="pd-card ft-kpi is-interactive" href="/pragas">
-            <span class="pd-eyebrow">Sanidade da lavoura</span>
-            <div class="ft-kpi-val"><strong class="{{ 'is-err' if k.critical_incidents else ('is-warn' if k.active_incidents else 'is-ok') }}">{{ k.active_incidents }}</strong><span>foco{{ 's' if k.active_incidents != 1 }} ativo{{ 's' if k.active_incidents != 1 }}</span></div>
-            <p class="ft-kpi-sub">{% if k.critical_incidents %}{{ k.critical_incidents }} crítico(s) (nível 4–5){% elif k.active_incidents %}Em monitoramento / tratamento{% else %}Lavoura sem focos ativos{% endif %}</p>
-        </a>
-        <article class="pd-card ft-kpi">
-            <span class="pd-eyebrow">Cobertura técnica</span>
-            <div class="ft-kpi-val"><strong>{{ k.fertilized_plots }} <small>de {{ k.total_plots }}</small></strong><span>adubados</span></div>
-            <p class="ft-kpi-sub">{{ k.soil_covered_plots }} de {{ k.total_plots }} com análise de solo vigente</p>
-        </article>
-    </section>
-
-    {# Precisa de atenção agora #}
-    <section class="pd-card" aria-label="Pendências da lavoura">
-        <div class="ft-card-head">
-            <div>
-                <h2>Precisa de atenção agora</h2>
-                <p>Prioridades operacionais consolidadas de todos os módulos de campo.</p>
-            </div>
-        </div>
-        {% if ctx.attention %}
-        <div class="ft-att-list">
-            {% for item in ctx.attention %}
-            <a class="ft-att is-{{ item.tone }}" href="{{ item.href }}">
-                <span style="flex:1; min-width:0;">
-                    <strong>{{ item.title }}</strong>
-                    <small>{{ item.detail }}</small>
+    {% if b.rows %}
+    <section class="lv-summary" aria-label="Como está a lavoura">
+        {% for p in b.pillar_list %}
+        <div class="lv-seg" data-lv-seg="{{ p.key }}">
+            <button type="button" class="lv-seg-btn" aria-pressed="false" data-lv-filter="{{ p.key }}">
+                <span class="lv-seg-top">
+                    <span class="lv-ic lv-ic--{{ p.key }}">{{ lv_icon(p.key) }}</span>
+                    <strong>{{ p.name }}</strong>
+                    <span class="lv-badge is-{{ p.tone if p.count else 'ok' }}">{% if p.count %}{{ p.count }} {{ 'talhão' if p.count == 1 else 'talhões' }}{% else %}em dia{% endif %}</span>
                 </span>
-                <span class="sf-btn sf-btn-secondary sf-btn-sm">{{ item.action }} →</span>
-            </a>
-            {% endfor %}
+                <span class="lv-seg-num">
+                    {% if p.key == 'nutri' %}<strong>{{ p.ok_count }} de {{ total }}</strong> <span>com adubação em dia</span>
+                    {% elif p.key == 'san' %}<strong>{{ k.active_incidents }}</strong> <span>{{ 'foco ativo' if k.active_incidents == 1 else 'focos ativos' }}</span>
+                    {% elif p.key == 'agua' %}<strong>{{ ctx.climate.kpi.rain_7d_mm|decimal_br(0) }} mm</strong> <span>de chuva em 7 dias</span>
+                    {% else %}<strong>{{ k.soil_covered_plots }} de {{ total }}</strong> <span>com laudo em dia</span>{% endif %}
+                </span>
+                <span class="lv-seg-line is-{{ p.tone }}">{{ p.line }}</span>
+            </button>
+            <a href="{{ p.href }}" class="lv-seg-link">Abrir {{ p.module }} →</a>
         </div>
-        {% else %}
-        <p class="ft-calm">Tudo em dia na lavoura. Nenhuma adubação atrasada, foco ativo de praga ou atraso hídrico.</p>
-        {% endif %}
+        {% endfor %}
     </section>
 
-    {# Radar dos Talhões #}
-    <section class="pd-card ft-stage" aria-label="Radar dos talhões">
-        <div class="ft-stage-top">
-            <div>
-                <h2>Radar dos talhões</h2>
-                <p class="ft-stage-sub">Acompanhe lado a lado adubação, água, sanidade, fertilidade do solo e custo por hectare.</p>
+    <div class="lv-body">
+        <section class="lv-list" aria-labelledby="lv-t-list">
+            <div class="lv-list-head">
+                <div>
+                    <h2 id="lv-t-list">Talhões</h2>
+                    <p class="lv-muted" data-lv-list-sub data-default="{% if b.attention_count %}{{ b.attention_count }} de {{ total }} pedem atenção. Os mais urgentes vêm primeiro.{% else %}Todos em dia.{% endif %}">{% if b.attention_count %}{{ b.attention_count }} de {{ total }} pedem atenção. Os mais urgentes vêm primeiro.{% else %}Todos em dia.{% endif %}</p>
+                </div>
+                <div class="lv-chips" role="group" aria-label="Mostrar">
+                    <button type="button" class="lv-chip is-on" aria-pressed="true" data-lv-filter="">Todos</button>
+                    {% for p in b.pillar_list %}
+                    <button type="button" class="lv-chip" aria-pressed="false" data-lv-filter="{{ p.key }}">{{ p.name }}{% if p.count %} <span class="lv-num">{{ p.count }}</span>{% endif %}</button>
+                    {% endfor %}
+                </div>
             </div>
-            <label class="sl-search ft-search">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                <span class="sr-only">Buscar talhão</span>
-                <input type="search" placeholder="Buscar talhão ou variedade..." data-lv-radar-search>
-            </label>
-        </div>
+            <div class="lv-row lv-row-head" aria-hidden="true">
+                <span>Talhão</span>
+                {% for p in b.pillar_list %}<span class="lv-col" data-lv-col="{{ p.key }}">{{ p.name }}</span>{% endfor %}
+                <span class="lv-col-cost">Custo/ha</span>
+            </div>
+            <div data-lv-rows>
+                {% for r in b.rows %}
+                <button type="button" class="lv-row" data-lv-item="{{ r.id }}" data-lv-name="{{ r.name }}" data-lv-attn="{{ r.attention|join(' ') }}" aria-pressed="false" aria-controls="lv-detail">
+                    <span class="lv-row-name"><strong>{{ r.name }}</strong><small>{% if r.variety %}{{ r.variety }} · {% endif %}{{ r.area|decimal_br(1) }} ha</small></span>
+                    {% for key in ['nutri', 'san', 'agua', 'solo'] %}
+                    {% set st = r.status[key] %}
+                    <span class="lv-col lv-cell is-{{ st.tone }}" data-lv-col="{{ key }}"><span class="lv-dot" aria-hidden="true"></span><span>{{ st.label }}</span></span>
+                    {% endfor %}
+                    <span class="lv-col-cost lv-num">{% if r.cost_per_ha %}R$ {{ r.cost_per_ha|decimal_br(0) }}{% else %}—{% endif %}</span>
+                </button>
+                {% endfor %}
+            </div>
+            <div class="sf-empty hidden" data-lv-empty><p>Nenhum talhão precisa de atenção neste assunto.</p></div>
+            <div class="lv-list-foot">
+                <span><span class="lv-dot is-ok"></span> Em dia</span>
+                <span><span class="lv-dot is-warn"></span> Atenção</span>
+                <span><span class="lv-dot is-err"></span> Agir agora</span>
+                <span><span class="lv-dot is-muted"></span> Sem dado</span>
+                <a href="/mapa">Ver no mapa →</a>
+            </div>
+        </section>
 
-        {% if ctx.plot_radar %}
-        <div class="lv-radar-list">
-            {% for r in ctx.plot_radar %}
-            <article class="lv-radar-row" data-lv-radar-row data-search="{{ (r.plot_name ~ ' ' ~ r.variety)|lower }}">
-                <div class="lv-radar-id">
-                    <strong>{{ r.plot_name }}</strong>
-                    <small>{{ r.area|decimal_br(1) }} ha{% if r.variety %} · {{ r.variety }}{% endif %}</small>
+        <div class="lv-backdrop" data-lv-close></div>
+        <aside class="lv-detail" id="lv-detail" aria-label="Talhão selecionado" data-lv-detail>
+            {% for r in b.rows %}
+            <section class="lv-panel" data-lv-panel="{{ r.id }}" hidden>
+                <div class="lv-grab" aria-hidden="true"></div>
+                <div class="lv-panel-head">
+                    <div class="min-w-0">
+                        <h2>{{ r.name }}</h2>
+                        <p class="lv-muted">{% if r.variety %}{{ r.variety }} · {% endif %}{{ r.area|decimal_br(1) }} ha{% if r.cost_per_ha %} · R$ {{ r.cost_per_ha|decimal_br(0) }}/ha{% endif %}</p>
+                    </div>
+                    <a href="/setores?edit_id={{ r.id }}" class="lv-link">Ficha do setor →</a>
+                    <button type="button" class="sf-icon-btn lv-close" aria-label="Fechar" data-lv-close><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
                 </div>
-                <div class="lv-radar-cells">
-                    <div class="lv-radar-cell">
-                        <span>Últ. adubação</span>
-                        <strong>{{ r.last_fert_br }}</strong>
-                    </div>
-                    <div class="lv-radar-cell">
-                        <span>Água (15d)</span>
-                        <strong>{{ r.water_15d_mm|decimal_br(1) }} mm <em class="lv-dot-lbl is-{{ r.water_status }}">· {{ r.water_label }}</em></strong>
-                    </div>
-                    <div class="lv-radar-cell">
-                        <span>Sanidade</span>
-                        <span class="pd-chip is-{{ r.pest_tone }}">{{ r.pest_label }}</span>
-                    </div>
-                    <div class="lv-radar-cell">
-                        <span>Solo (V%)</span>
-                        <span class="pd-chip is-{{ r.v_tone }}">{% if r.v_pct is not none %}{{ r.v_pct|decimal_br(0) }}%{% else %}Sem laudo{% endif %}</span>
-                    </div>
-                    <div class="lv-radar-cell">
-                        <span>Custo/ha</span>
-                        <strong>R$ {{ r.cost_per_ha|decimal_br(0) }}</strong>
-                    </div>
+                {% if r.need %}
+                <div class="lv-need is-{{ r.need.tone }}">
+                    <span class="lv-need-tag">Precisa agora</span>
+                    <strong>{{ r.need.pillar }}: {{ r.need.label }}</strong>
+                    {% if r.need.why %}<span class="lv-muted">{{ r.need.why }}</span>{% endif %}
+                    <a href="{{ r.need.href }}" class="sf-btn sf-btn-primary">{{ r.need.action }}</a>
                 </div>
-                {% if can_write_page %}
-                <div class="lv-radar-actions">
-                    <a class="sf-btn sf-btn-secondary sf-btn-sm" href="/fertilizacao/nova?plot_id={{ r.plot_id }}">Adubar</a>
-                    <details class="sf-menu" data-sf-dropdown>
-                        <summary class="sf-icon-btn" aria-label="Ações para {{ r.plot_name }}">
-                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
-                        </summary>
-                        <div class="sf-menu-panel">
-                            <a href="/pragas/pulverizacoes?novo=1&plot_id={{ r.plot_id }}" class="sf-menu-link">Registrar pulverização</a>
-                            <a href="/pragas/tratos?novo=1&plot_id={{ r.plot_id }}" class="sf-menu-link">Registrar trato cultural</a>
-                            <a href="/irrigacao?novo=1&plot_id={{ r.plot_id }}" class="sf-menu-link">Registrar irrigação</a>
-                            <a href="/pragas?novo=1&plot_id={{ r.plot_id }}" class="sf-menu-link">Apontar praga/doença</a>
-                            <a href="/analise-solo?plot_id={{ r.plot_id }}" class="sf-menu-link">Análises de solo</a>
-                        </div>
-                    </details>
-                </div>
+                {% else %}
+                <div class="lv-allok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>Tudo em dia neste talhão</div>
                 {% endif %}
-            </article>
+                <div class="lv-stat-grid">
+                    {% for p in b.pillar_list %}
+                    {% set st = r.status[p.key] %}
+                    <div class="lv-stat"><small>{{ p.name }}</small><span class="lv-cell is-{{ st.tone }}"><span class="lv-dot" aria-hidden="true"></span><span>{{ st.label }}</span></span></div>
+                    {% endfor %}
+                </div>
+                <div>
+                    <span class="lv-sub">Registrar neste talhão</span>
+                    <div class="lv-acts">
+                        <a href="{{ r.links.adub }}" class="lv-act"><span class="lv-ic lv-ic--nutri lv-ic--sm">{{ lv_icon('adub', 15) }}</span>Adubar</a>
+                        <a href="{{ r.links.pulv }}" class="lv-act"><span class="lv-ic lv-ic--san lv-ic--sm">{{ lv_icon('pulv', 15) }}</span>Pulverizar</a>
+                        <a href="{{ r.links.irr }}" class="lv-act"><span class="lv-ic lv-ic--agua lv-ic--sm">{{ lv_icon('irr', 15) }}</span>Irrigar</a>
+                        <a href="{{ r.links.praga }}" class="lv-act"><span class="lv-ic lv-ic--warn lv-ic--sm">{{ lv_icon('praga', 15) }}</span>Apontar praga</a>
+                    </div>
+                </div>
+                <div class="lv-timeline">
+                    <span class="lv-sub">Últimos registros</span>
+                    {% if r.timeline %}
+                    <ol>
+                        {% for e in r.timeline %}
+                        <li><span class="lv-ic lv-ic--{{ e.key }} lv-ic--sm">{{ lv_icon(e.key, 14) }}</span><span class="min-w-0"><strong>{{ e.title }}</strong><small>{{ e.date }} · {{ e.module }}</small></span></li>
+                        {% endfor %}
+                    </ol>
+                    {% else %}
+                    <p class="lv-muted">Nada registrado neste talhão ainda. Use os botões acima para começar.</p>
+                    {% endif %}
+                </div>
+            </section>
             {% endfor %}
-        </div>
-        {% else %}
-        <div class="pd-empty">
-            <strong>Nenhum talhão vinculado à safra ativa.</strong>
-            <span>Cadastre ou vincule seus talhões para acompanhar a lavoura aqui.</span>
-            <a class="sf-btn sf-btn-primary" href="/setores">Ir para Setores</a>
-        </div>
-        {% endif %}
-    </section>
+        </aside>
+    </div>
+    {% else %}
+    <div class="sf-empty">
+        <p class="font-semibold text-slate-900">Nenhum talhão nesta safra</p>
+        <p>Cadastre os setores da fazenda para acompanhar nutrição, sanidade, água e solo aqui.</p>
+        <a class="sf-btn sf-btn-primary" href="/setores">Ir para Setores</a>
+    </div>
+    {% endif %}
 </div>
-<script>
-(() => {
-    const input = document.querySelector('[data-lv-radar-search]');
-    const rows = Array.from(document.querySelectorAll('[data-lv-radar-row]'));
-    const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    input?.addEventListener('input', () => {
-        const q = norm(input.value);
-        rows.forEach((r) => { r.hidden = Boolean(q && !norm(r.dataset.search).includes(q)); });
-    });
-})();
-</script>
+<script src="/static/js/lavoura.js?v=1" defer></script>
 {% endblock %}

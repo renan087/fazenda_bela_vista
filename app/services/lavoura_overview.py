@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from app.services.climate_water import build_climate_water_context
+from app.services.lavoura_board import build_lavoura_board
 from app.services.fertilization_views import build_input_stock_metrics, compute_schedule_demand
 from app.services.sector_costs import build_sector_cost_context
 from app.services.soil_schedule_bridge import build_soil_page_context
@@ -204,6 +205,19 @@ def build_lavoura_overview_context(
 
     total_area = sum(float(p.area_hectares or 0) for p in plots)
     invested_total = cost_ctx["allocated_total"]
+    board = build_lavoura_board(
+        plots=plots,
+        today=today,
+        fertilizations=fertilizations,
+        active_schedules=active_schedules,
+        operations=operations,
+        active_incidents=active_incidents,
+        irrigations=irrigations,
+        soil_analyses=soil_analyses,
+        water_rows=climate_ctx["plot_water_rows"],
+        soil_rows=soil_ctx["plot_coverage"],
+        cost_by_plot={pid: {"cost_per_hectare": r.get("cost_per_hectare", 0.0)} for pid, r in cost_by_plot.items()},
+    )
     return {
         "climate": climate_ctx,
         "kpi": {
@@ -219,5 +233,8 @@ def build_lavoura_overview_context(
             "operations_count": len(operations),
         },
         "attention": attention,
+        "board": board,
+        "total_area": total_area,
+        "next7_count": len(next7_schedules),
         "plot_radar": plot_radar,
     }
