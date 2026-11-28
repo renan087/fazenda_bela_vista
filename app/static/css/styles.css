@@ -13585,3 +13585,7 @@ a.obt-seg{cursor:pointer}a.obt-seg:hover{background:#E3ECDF}
 .obt-dend{border:0;background:none;min-height:36px;padding:0 8px;color:#5B6660;font:600 13px Inter,system-ui,sans-serif;cursor:pointer;border-radius:8px;white-space:nowrap}
 .obt-dend:hover{background:#F6F8F5;color:#16201A}
 @media (max-width:639px){.obt-mrow.obt-nowrap{flex-wrap:wrap}.obt-mrow.obt-nowrap .obt-mbtn.pri{flex:1 1 100%;justify-content:center}}
+
+.obt-quit{display:block;width:fit-content;margin:8px auto 0;padding:3px 10px;border-radius:999px;background:rgba(15,21,19,.55);font:500 12.5px Inter,system-ui,sans-serif;color:#fff;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.obt-quit:hover{background:rgba(15,21,19,.75)}
+.obt-coach.is-light .obt-quit{display:none}

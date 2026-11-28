@@ -45,7 +45,7 @@
     layer.className = 'obt';
     layer.innerHTML = '<div class="obt-hole" hidden></div>'
         + '<div class="obt-coach" hidden role="status" aria-live="polite"><span class="obt-arrow" aria-hidden="true"><svg viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 28V5"/><path d="M6 13l9-9 9 9"/></svg></span>'
-        + '<div class="obt-card"><span class="obt-face"><img src="' + esc(IMG.head) + '" alt=""></span><div class="obt-ct"><span class="obt-lbl"></span><b class="obt-tt"></b><span class="obt-sb"></span><span class="obt-meta" hidden></span><div class="obt-acts"></div></div></div></div>'
+        + '<div class="obt-card"><span class="obt-face"><img src="' + esc(IMG.head) + '" alt=""></span><div class="obt-ct"><span class="obt-lbl"></span><b class="obt-tt"></b><span class="obt-sb"></span><span class="obt-meta" hidden></span><div class="obt-acts"></div></div></div><a href="#" class="obt-quit" role="button" data-obt-quit>Encerrar tutorial</a></div>'
         + '<div class="obt-dock" role="region" aria-label="Progresso dos primeiros passos" hidden></div>'
         + '<button type="button" class="obt-chip" hidden></button>'
         + '<div class="obt-modals"></div>';
@@ -440,7 +440,7 @@
         let right;
         if (reviewing && asking) right = '<span class="obt-dask">Descartar as alterações?</span><button type="button" class="obt-dbtn" data-obt="discard">Descartar</button><button type="button" class="obt-dbtn pri" data-obt="keep">Continuar editando</button>';
         else if (reviewing) right = '<button type="button" class="obt-dbtn pri" data-obt="back">Voltar para onde parei</button>';
-        else right = '<button type="button" class="obt-dbtn" data-obt="pause">Pausar</button><button type="button" class="obt-dend" data-obt="end" aria-label="Encerrar o tutorial">Encerrar</button>';
+        else right = '<button type="button" class="obt-dbtn" data-obt="pause">Pausar</button>';
         dock.classList.toggle('is-ask', !!asking);
         dock.innerHTML = face + title + '<div class="obt-segs">' + segsHtml() + '</div>' + right;
         dock.hidden = false;
@@ -465,6 +465,7 @@
     });
     const goBack = () => { const url = backUrl || CONTINUE; set('sf-ob-review', null); set('sf-ob-back', null); location.href = url; };
     coach.addEventListener('mousedown', (e) => { if (e.target.closest('button, a')) e.preventDefault(); });
+    coach.addEventListener('click', (e) => { if (e.target.closest('[data-obt-quit]')) { e.preventDefault(); openEnd(); } });
     chip.addEventListener('click', () => openResume());
 
     /* ---------- Janelas: comemoração, retomar, conclusão ---------- */
