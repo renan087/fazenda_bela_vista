@@ -13575,3 +13575,13 @@ a.obt-seg{cursor:pointer}a.obt-seg:hover{background:#E3ECDF}
 .cg-card[data-cg-season] .cg-conf dd { text-align: left; }
 .cg-card[data-cg-season] .cg-foot p { flex-basis: 100%; }
 @media (max-width: 639px) { .cg-card[data-cg-season] .cg-conf div { grid-template-columns: 1fr; gap: 2px; } }
+/* Vamos continuar / Encerrar o tutorial */
+.obt-modal.is-resume{max-width:500px;padding:28px 28px 22px}
+.obt-modal.is-resume p{margin:14px 0 4px;line-height:1.5}
+.obt-mrow.obt-nowrap{flex-wrap:nowrap;justify-content:flex-start}
+.obt-mrow.obt-nowrap .obt-mbtn{white-space:nowrap}
+.obt-modal .obt-mfoot{margin:22px 0 0;font-size:12.5px;color:#7A857E}
+.obt-mlink{border:0;background:none;padding:0;min-height:32px;color:#446A36;font:600 12.5px Inter,system-ui,sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.obt-dend{border:0;background:none;min-height:36px;padding:0 8px;color:#5B6660;font:600 13px Inter,system-ui,sans-serif;cursor:pointer;border-radius:8px;white-space:nowrap}
+.obt-dend:hover{background:#F6F8F5;color:#16201A}
+@media (max-width:639px){.obt-mrow.obt-nowrap{flex-wrap:wrap}.obt-mrow.obt-nowrap .obt-mbtn.pri{flex:1 1 100%;justify-content:center}}

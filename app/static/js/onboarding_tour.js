@@ -440,7 +440,7 @@
         let right;
         if (reviewing && asking) right = '<span class="obt-dask">Descartar as alterações?</span><button type="button" class="obt-dbtn" data-obt="discard">Descartar</button><button type="button" class="obt-dbtn pri" data-obt="keep">Continuar editando</button>';
         else if (reviewing) right = '<button type="button" class="obt-dbtn pri" data-obt="back">Voltar para onde parei</button>';
-        else right = '<button type="button" class="obt-dbtn" data-obt="pause">Pausar</button>';
+        else right = '<button type="button" class="obt-dbtn" data-obt="pause">Pausar</button><button type="button" class="obt-dend" data-obt="end" aria-label="Encerrar o tutorial">Encerrar</button>';
         dock.classList.toggle('is-ask', !!asking);
         dock.innerHTML = face + title + '<div class="obt-segs">' + segsHtml() + '</div>' + right;
         dock.hidden = false;
@@ -458,6 +458,7 @@
         if (!b) return;
         const what = b.dataset.obt;
         if (what === 'pause') { state = 'paused'; await post('pause'); refresh(); }
+        if (what === 'end') openEnd();
         if (what === 'back') { if (dirty) { asking = true; renderDock(); position(); } else goBack(); }
         if (what === 'discard') goBack();
         if (what === 'keep') { asking = false; renderDock(); }
@@ -502,8 +503,14 @@
             + '<div><span class="obt-kick">Primeiros passos · ' + doneCount + ' de 3</span><h2 id="obt-mt" style="margin:2px 0 0">Vamos continuar?</h2></div></div>'
             + '<p style="margin-top:14px">Você parou em <b style="color:#16201A">' + where + '</b>. O que já foi cadastrado está salvo.</p>'
             + '<div class="obt-bar"><i style="width:' + Math.round(doneCount / 3 * 100) + '%"></i></div>'
-            + '<div class="obt-mrow"><button type="button" class="obt-mbtn pri" data-obt-m="resume">Continuar de onde parei</button><button type="button" class="obt-mbtn ghost" data-obt-m="end">Encerrar tutorial</button><button type="button" class="obt-mbtn ghost" data-obt-m="close">Agora não</button></div>'
-            + '<p style="margin:14px 0 0;font-size:12.5px">Se encerrar, você pode fazer os cadastros pelo menu quando quiser.</p>', 'is-left');
+            + '<div class="obt-mrow obt-nowrap"><button type="button" class="obt-mbtn pri" data-obt-m="resume">Continuar de onde parei</button><button type="button" class="obt-mbtn ghost" data-obt-m="close">Agora não</button></div>'
+            + '<p class="obt-mfoot">Prefere seguir sozinho? <button type="button" class="obt-mlink" data-obt-m="ask-end">Encerrar tutorial</button></p>', 'is-left is-resume');
+    };
+    const openEnd = () => {
+        openModal('<div style="display:flex;align-items:center;gap:12px"><span class="obt-dface" style="width:52px;height:52px" aria-hidden="true"><img src="' + esc(IMG.head) + '" alt="" style="width:46px;height:46px"></span>'
+            + '<div><span class="obt-kick">Primeiros passos · ' + doneCount + ' de 3</span><h2 id="obt-mt" style="margin:2px 0 0">Encerrar o tutorial?</h2></div></div>'
+            + '<p style="margin-top:14px">O que você já cadastrou fica salvo. Os passos que faltam continuam no painel, em Primeiros passos, e dá para fazer pelo menu quando quiser.</p>'
+            + '<div class="obt-mrow obt-nowrap"><button type="button" class="obt-mbtn pri" data-obt-m="end">Encerrar tutorial</button><button type="button" class="obt-mbtn ghost" data-obt-m="keep-going">Continuar com o Pezinho</button></div>', 'is-left is-resume');
     };
     const conclusion = () => {
         const rec = (title, sub) => '<div class="obt-rec"><span class="obt-rnum">' + CHECK + '</span><div><b>' + esc(title) + '</b><span>' + esc(sub) + '</span></div></div>';
@@ -524,6 +531,8 @@
         if (!b) return;
         const what = b.dataset.obtM;
         if (what === 'close') closeModal();
+        if (what === 'ask-end') openEnd();
+        if (what === 'keep-going') closeModal();
         if (what === 'back-go') { b.disabled = true; backGo(); }
         if (what === 'pause') { state = 'paused'; closeModal(); await post('pause'); }
         if (what === 'resume') { b.disabled = true; await post('resume'); location.href = get('sf-ob-last', true) || CONTINUE; }
