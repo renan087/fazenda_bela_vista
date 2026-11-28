@@ -13569,3 +13569,9 @@ a.obt-seg{cursor:pointer}a.obt-seg:hover{background:#E3ECDF}
 @media (prefers-reduced-motion:reduce){.obt-rb-pz,.obt-rb-hi,.obt-rb-li,.obt-rb-li.cur .obt-rb-num{animation:none}}
 .szw-noplots { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; border-radius: 14px; background: #e8f1fb; color: #1f5fa8; font-size: 13.5px; line-height: 1.45; }
 .szw-noplots strong { font-size: 14px; color: #174a85; }
+/* Fazenda sem safra: cartão mais estreito e resumo com rótulo e valor próximos */
+.cg-card[data-cg-season] { max-width: 640px; margin-left: auto; margin-right: auto; }
+.cg-card[data-cg-season] .cg-conf div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: baseline; }
+.cg-card[data-cg-season] .cg-conf dd { text-align: left; }
+.cg-card[data-cg-season] .cg-foot p { flex-basis: 100%; }
+@media (max-width: 639px) { .cg-card[data-cg-season] .cg-conf div { grid-template-columns: 1fr; gap: 2px; } }
