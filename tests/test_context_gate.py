@@ -235,3 +235,14 @@ def test_season_opens_without_plots_only_when_farm_has_none(env, client):
     assert blocked.status_code == 303
     with env.sessions() as db:
         assert db.query(CropSeason).filter(CropSeason.farm_id == farm_id).count() == 1
+
+
+def test_tour_does_not_hide_season_question_once_account_has_a_season(env, client):
+    env.farm("Fazenda Com Safra", [RUNNING])
+    sem = env.farm("Fazenda Sem Safra")
+    env.org(onboarding_tour="paused", created_at=datetime.now(timezone.utc))
+    csrf = client.post("/test-session").json()
+    client.post("/contexto", data={**csrf, "farm_id": sem, "redirect_to": "/dashboard"})
+    page = client.get("/insumos/comprados/nova")
+    assert page.status_code == 200
+    assert "Fazenda Sem Safra ainda não tem safra aberta" in page.text and 'class="cg-ghost' in page.text

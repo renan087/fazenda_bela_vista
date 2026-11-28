@@ -1213,8 +1213,10 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
             "plan_upgrade",
             "subscribe",
         }
-        # Durante os primeiros passos quem conduz é o Pezinho: nenhuma página pede fazenda e safra.
-        if _tour_live(user):
+        # Durante os primeiros passos quem conduz é o Pezinho: nenhuma página pede fazenda e safra,
+        # mas só até existir a primeira safra da conta. Depois disso vale a regra normal (ex.: escolher
+        # uma segunda fazenda sem safra pede a safra na própria página).
+        if _tour_live(user) and not _org_has_season(db_session, user.organization_id):
             context["context_lock_exempt"] = True
         gate = _context_gate(scope_context) if scope_context["context_selection_required"] and not context["context_lock_exempt"] and not modal_mode else None
         context["context_selection_blocking"] = bool(gate)
@@ -4595,6 +4597,12 @@ def _tour_eligible(organization) -> bool:
         return False
     created = organization.created_at.date() if organization.created_at else None
     return not (created and (today_in_app_timezone() - created).days > ONBOARDING_WINDOW_DAYS)
+
+
+def _org_has_season(db: Session, organization_id: int | None) -> bool:
+    if not organization_id:
+        return False
+    return db.query(CropSeason.id).join(Farm, Farm.id == CropSeason.farm_id).filter(Farm.organization_id == organization_id).first() is not None
 
 
 def _tour_live(user) -> bool:
