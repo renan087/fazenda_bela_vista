@@ -2503,193 +2503,445 @@ function initWorkspace(root) {
     btn.addEventListener("click", () => runRevalidate(btn));
   }
 
-  // Share with organization colleagues
-  const share = find("[data-ds-share]");
-  const shareStatus = find("[data-ds-share-status]");
-  const colleaguePick = find("[data-ds-colleague-pick]");
-  colleaguePick?.addEventListener("change", () => {
-    if (colleaguePick.value && share) share.elements.email.value = colleaguePick.value;
-  });
-  share?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const button = share.querySelector('button[type="submit"]');
-    button.disabled = true;
-    try {
-      await request(root, endpoint + "/participantes", {
-        json: {email: share.elements.email.value, consent: share.elements.consent.checked},
-      });
-      location.reload();
-    } catch (error) {
-      feedback(shareStatus, error.message, true);
-    } finally {
-      button.disabled = false;
+  // ===== Aba "Assinaturas e histórico" =====
+  const ddFind = (selector) => root.querySelector(selector) || document.querySelector(selector);
+  for (const btn of document.querySelectorAll("[data-dd-go-sign]")) {
+    btn.addEventListener("click", () => { switchWsTab("assinar"); window.scrollTo({top: 0, behavior: "smooth"}); });
+  }
+
+  // Comprovante de cada pessoa
+  for (const btn of document.querySelectorAll("[data-dd-toggle-proof]")) {
+    btn.addEventListener("click", () => {
+      const panel = document.getElementById(btn.getAttribute("aria-controls"));
+      const open = btn.getAttribute("aria-expanded") !== "true";
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      btn.classList.toggle("is-open", open);
+      btn.closest("[data-dd-person]")?.classList.toggle("is-expanded", open);
+      if (panel) panel.hidden = !open;
+    });
+  }
+
+  // Menus de três pontinhos: fecham ao clicar fora e com Esc
+  const closeMenus = (except) => {
+    for (const wrap of root.querySelectorAll(".dd-menu-wrap")) {
+      if (wrap === except) continue;
+      const menu = wrap.querySelector(".dd-menu");
+      const trigger = wrap.querySelector("[data-dd-menu-btn]");
+      if (menu && !menu.hidden) {
+        menu.hidden = true;
+        trigger?.setAttribute("aria-expanded", "false");
+      }
     }
+  };
+  for (const trigger of document.querySelectorAll("[data-dd-menu-btn]")) {
+    trigger.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const wrap = trigger.closest(".dd-menu-wrap");
+      const menu = wrap.querySelector(".dd-menu");
+      closeMenus(wrap);
+      const open = menu.hidden;
+      menu.hidden = !open;
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) menu.querySelector("[role=menuitem]")?.focus();
+    });
+  }
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".dd-menu-wrap")) closeMenus();
   });
-  for (const control of root.querySelectorAll("[data-ds-remove]")) {
-    control.addEventListener("click", async () => {
-      if (!window.confirm("Remover o acesso deste participante ao documento?")) return;
-      control.disabled = true;
+  root.addEventListener("click", (event) => {
+    if (event.target.closest(".dd-menu [role=menuitem]")) closeMenus();
+  });
+
+  // Camadas flutuantes vão para o <body> para não ficarem presas no layout da página
+  for (const layer of document.querySelectorAll("[data-dd-drawer-backdrop], [data-dd-drawer], [data-dd-channel-backdrop], [data-dd-channel-modal], [data-dd-toast]")) {
+    layer.classList.add("dd-layer");
+    document.body.append(layer);
+  }
+
+  // Aviso rápido (toast)
+  const toast = ddFind("[data-dd-toast]");
+  const toastText = ddFind("[data-dd-toast-text]");
+  const toastLink = ddFind("[data-dd-toast-link]");
+  let toastTimer = null;
+  const showToast = (text, {error = false, waUrl = ""} = {}) => {
+    if (!toast) return;
+    toastText.textContent = text;
+    toast.classList.toggle("is-error", error);
+    if (toastLink) {
+      toastLink.hidden = !waUrl;
+      toastLink.href = waUrl || "#";
+    }
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.hidden = true; }, waUrl || error ? 12000 : 5000);
+  };
+  ddFind("[data-dd-toast-close]")?.addEventListener("click", () => { toast.hidden = true; });
+
+  const reloadDetails = () => {
+    const url = new URL(location.href);
+    url.searchParams.set("aba", "detalhes");
+    url.searchParams.delete("fluxo");
+    location.href = url.toString();
+  };
+
+  // Lembrar quem ainda não assinou
+  for (const btn of document.querySelectorAll("[data-dd-remind]")) {
+    btn.addEventListener("click", async () => {
+      const name = btn.dataset.ddName || "a pessoa";
+      const isExternal = btn.dataset.ddRemind === "external";
+      const path = isExternal
+        ? `${endpoint}/externos/${btn.dataset.ddId}/reenviar`
+        : `${endpoint}/participantes/${btn.dataset.ddId}/lembrar`;
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = "Enviando…";
       try {
-        await request(root, endpoint + "/participantes/" + control.dataset.dsRemove, {method: "DELETE"});
-        location.reload();
+        const res = await request(root, path, {method: "POST"});
+        if (res.notification_sent) {
+          showToast(`Lembrete enviado para ${name}.`);
+          btn.textContent = "Lembrado ✓";
+          return;
+        }
+        showToast(res.notification_error || `Não conseguimos enviar o lembrete para ${name}.`, {error: true, waUrl: res.whatsapp_share_url || ""});
       } catch (error) {
-        feedback(shareStatus, error.message, true);
+        showToast(error.message, {error: true});
       } finally {
-        control.disabled = false;
+        if (btn.textContent === "Enviando…") btn.textContent = orig;
+        btn.disabled = false;
       }
     });
   }
 
-  // External signers management in Details tab
-  const extForm = find("[data-ds-add-external]");
-  const extWsChannel = find("[data-ds-ws-ext-channel]");
-  const extWsPhoneWrap = find("[data-ds-ws-ext-phone-wrap]");
-  const extWsEmailWrap = find("[data-ds-ws-ext-email-wrap]");
-  const extWsShowStamp = find("[data-ds-ws-ext-show-stamp]");
-  const extWsStampSummary = find("[data-ds-ws-ext-stamp-summary]");
-  const extWsStampActions = find("[data-ds-ws-ext-stamp-actions]");
-  const extWsOpenPlacer = find("[data-ds-ws-ext-open-placer]");
-  const extWsStatus = find("[data-ds-ext-ws-status]");
-  const extLinkBox = find("[data-ds-ext-link-box]");
-  const extLinkTitle = find("[data-ds-ext-link-title]");
-  const extLinkNote = find("[data-ds-ext-link-note]");
-  const extLinkInput = find("[data-ds-ext-link-input]");
-  const extWaBtn = find("[data-ds-ext-wa-btn]");
-  const copyExtLinkBtn = find("[data-ds-copy-ext-link]");
-  const wsPlacer = createStampPlacer(root.querySelector("[data-ds-placer-dialog]"));
-  let wsExtAppearance = { visible: true, style: "full" };
+  // Copiar link de assinatura (gera link novo sem reenviar mensagem)
+  for (const btn of document.querySelectorAll("[data-dd-copy-link]")) {
+    btn.addEventListener("click", async () => {
+      try {
+        const res = await request(root, `${endpoint}/externos/${btn.dataset.ddCopyLink}/reenviar?somente_link=1`, {method: "POST"});
+        try {
+          await navigator.clipboard.writeText(res.sign_url);
+          showToast("Link copiado. O link enviado antes deixou de funcionar.");
+        } catch {
+          window.prompt("Copie o link de assinatura:", res.sign_url);
+        }
+      } catch (error) {
+        showToast(error.message, {error: true});
+      }
+    });
+  }
 
-  const syncWsExtStampUI = () => {
-    const show = Boolean(extWsShowStamp?.checked);
-    if (!show) wsExtAppearance = { visible: false };
-    else if (!wsExtAppearance.visible) wsExtAppearance = { visible: true, style: "full" };
-    if (extWsStampActions) extWsStampActions.hidden = !show;
-    if (extWsStampSummary) extWsStampSummary.textContent = describeStampConfig(wsExtAppearance);
+  // Cancelar convite / tirar pessoa da equipe
+  for (const btn of document.querySelectorAll("[data-dd-cancel-external]")) {
+    btn.addEventListener("click", async () => {
+      if (!window.confirm(`Cancelar o convite de ${btn.dataset.ddName}? O link dela deixa de funcionar.`)) return;
+      try {
+        await request(root, `${endpoint}/externos/${btn.dataset.ddCancelExternal}`, {method: "DELETE"});
+        reloadDetails();
+      } catch (error) {
+        showToast(error.message, {error: true});
+      }
+    });
+  }
+  for (const btn of document.querySelectorAll("[data-dd-remove-team]")) {
+    btn.addEventListener("click", async () => {
+      if (!window.confirm(`Tirar ${btn.dataset.ddName} do documento? A pessoa perde o acesso ao PDF.`)) return;
+      try {
+        await request(root, `${endpoint}/participantes/${btn.dataset.ddRemoveTeam}`, {method: "DELETE"});
+        reloadDetails();
+      } catch (error) {
+        showToast(error.message, {error: true});
+      }
+    });
+  }
+
+  // Trocar canal do convite (WhatsApp ↔ e-mail)
+  const chModal = ddFind("[data-dd-channel-modal]");
+  const chBackdrop = ddFind("[data-dd-channel-backdrop]");
+  const chInput = ddFind("[data-dd-channel-input]");
+  const chStatus = ddFind("[data-dd-channel-status]");
+  const chConfirm = ddFind("[data-dd-channel-confirm]");
+  let chState = null;
+  const closeChannel = () => {
+    if (!chModal) return;
+    chModal.hidden = true;
+    chBackdrop.hidden = true;
+    chState?.trigger?.focus();
+    chState = null;
   };
-  extWsShowStamp?.addEventListener("change", syncWsExtStampUI);
-  extWsOpenPlacer?.addEventListener("click", () => {
+  for (const btn of document.querySelectorAll("[data-dd-change-channel]")) {
+    btn.addEventListener("click", () => {
+      const to = btn.dataset.ddTo;
+      chState = {id: btn.dataset.ddChangeChannel, to, trigger: btn.closest(".dd-menu-wrap")?.querySelector("[data-dd-menu-btn]")};
+      ddFind("[data-dd-channel-title]").textContent = to === "email" ? "Trocar para e-mail" : "Trocar para WhatsApp";
+      ddFind("[data-dd-channel-note]").textContent = `${btn.dataset.ddName} vai receber um convite novo por ${to === "email" ? "e-mail" : "WhatsApp"}. O link enviado antes deixa de funcionar.`;
+      ddFind("[data-dd-channel-label]").textContent = to === "email" ? "E-mail" : "WhatsApp com DDD";
+      chInput.type = to === "email" ? "email" : "tel";
+      chInput.placeholder = to === "email" ? "pessoa@exemplo.com.br" : "(35) 99999-0000";
+      chInput.value = to === "email" ? (btn.dataset.ddEmail || "") : maskPhone(btn.dataset.ddPhone || "");
+      chInput.oninput = to === "email" ? null : () => { chInput.value = maskPhone(chInput.value); };
+      feedback(chStatus);
+      chModal.hidden = false;
+      chBackdrop.hidden = false;
+      chInput.focus();
+    });
+  }
+  ddFind("[data-dd-channel-cancel]")?.addEventListener("click", closeChannel);
+  chBackdrop?.addEventListener("click", closeChannel);
+  chConfirm?.addEventListener("click", async () => {
+    if (!chState) return;
+    const value = chInput.value.trim();
+    if (!value) {
+      feedback(chStatus, chState.to === "email" ? "Informe o e-mail." : "Informe o WhatsApp com DDD.", true);
+      chInput.focus();
+      return;
+    }
+    chConfirm.disabled = true;
+    try {
+      const res = await request(root, `${endpoint}/externos/${chState.id}/canal`, {
+        json: {channel: chState.to, email: chState.to === "email" ? value : "", phone: chState.to === "whatsapp" ? value : ""},
+      });
+      if (!res.notification_sent) {
+        feedback(chStatus, res.notification_error || "Canal trocado, mas o envio falhou. Copie o link pelo menu da pessoa.", true);
+        setTimeout(reloadDetails, 2500);
+        return;
+      }
+      reloadDetails();
+    } catch (error) {
+      feedback(chStatus, error.message, true);
+    } finally {
+      chConfirm.disabled = false;
+    }
+  });
+
+  // Gaveta "Adicionar pessoa"
+  const drawer = ddFind("[data-dd-drawer]");
+  const drawerBackdrop = ddFind("[data-dd-drawer-backdrop]");
+  const submitBtn = ddFind("[data-dd-submit]");
+  const teamForm = ddFind("[data-dd-team-form]");
+  const extForm = ddFind("[data-dd-ext-form]");
+  const donePanel = ddFind("[data-dd-done]");
+  let addTab = "team";
+  let drawerTrigger = null;
+  let extAppearance = {visible: true, style: "full"};
+  let extRole = "Comprador";
+  let extChannel = "whatsapp";
+  let drawerChanged = false;
+
+  const openDrawer = (trigger) => {
+    if (!drawer) return;
+    drawerTrigger = trigger || null;
+    drawer.hidden = false;
+    drawerBackdrop.hidden = false;
+    document.body.classList.add("dd-no-scroll");
+    requestAnimationFrame(() => drawer.classList.add("is-open"));
+    (drawer.querySelector("[data-dd-add-panel]:not([hidden]) input") || drawer.querySelector("[data-dd-close-drawer]"))?.focus();
+  };
+  const closeDrawer = () => {
+    if (!drawer || drawer.hidden) return;
+    if (drawerChanged) { reloadDetails(); return; }
+    drawer.classList.remove("is-open");
+    drawer.hidden = true;
+    drawerBackdrop.hidden = true;
+    document.body.classList.remove("dd-no-scroll");
+    drawerTrigger?.focus();
+  };
+  for (const btn of document.querySelectorAll("[data-dd-open-add]")) btn.addEventListener("click", () => openDrawer(btn));
+  for (const btn of document.querySelectorAll("[data-dd-close-drawer]")) btn.addEventListener("click", closeDrawer);
+  drawerBackdrop?.addEventListener("click", closeDrawer);
+  ddFind("[data-dd-finish]")?.addEventListener("click", reloadDetails);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (chModal && !chModal.hidden) { closeChannel(); return; }
+    if (root.querySelector(".dd-menu:not([hidden])")) { closeMenus(); return; }
+    if (drawer && !drawer.hidden && !find("[data-ds-placer-dialog]")?.open) closeDrawer();
+  });
+
+  const teamChecks = [...document.querySelectorAll("[data-dd-team-check]")];
+  const selectedTeam = () => teamChecks.filter((c) => c.checked);
+  const names = (list) => list.length <= 1 ? list.join("") : `${list.slice(0, -1).join(", ")} e ${list[list.length - 1]}`;
+
+  function extValues() {
+    if (!extForm) return null;
+    const roleOther = (extForm.elements.role_other?.value || "").trim();
+    return {
+      name: extForm.elements.name.value.trim(),
+      cpf: maskCpf(extForm.elements.cpf.value || ""),
+      role_label: (extRole || roleOther || "Signatário").slice(0, 60),
+      channel: extChannel,
+      phone: extChannel === "whatsapp" ? extForm.elements.phone.value.trim() : "",
+      email: extChannel === "email" ? extForm.elements.email.value.trim() : "",
+    };
+  }
+  function extProblem(v) {
+    if (v.name.length < 2) return "Informe o nome completo.";
+    if (!isValidCpf(v.cpf)) return "Informe um CPF válido.";
+    if (!extRole && !(extForm.elements.role_other.value || "").trim()) return "Escreva qual é o papel da pessoa.";
+    if (v.channel === "whatsapp" && v.phone.replace(/\D/g, "").length < 10) return "Informe o WhatsApp com DDD.";
+    if (v.channel === "email" && !/^\S+@\S+\.\S+$/.test(v.email)) return "Informe um e-mail válido.";
+    return "";
+  }
+
+  function syncDrawer() {
+    if (!drawer) return;
+    const total = document.querySelectorAll("[data-dd-person]").length;
+    if (addTab === "team") {
+      const picked = selectedTeam();
+      const summary = ddFind("[data-dd-team-summary]");
+      if (summary) {
+        summary.hidden = picked.length === 0;
+        ddFind("[data-dd-team-summary-text]").textContent = picked.length
+          ? `${names(picked.map((c) => c.dataset.ddName))} ${picked.length === 1 ? "vai" : "vão"} poder ver este PDF e todas as versões, e ${picked.length === 1 ? "recebe" : "recebem"} um aviso para assinar. O documento passa a ter ${total + picked.length} pessoas para assinar.`
+          : "";
+      }
+      submitBtn.disabled = picked.length === 0;
+      submitBtn.textContent = picked.length ? `Adicionar ${picked.length} ${picked.length === 1 ? "pessoa" : "pessoas"}` : "Adicionar";
+      return;
+    }
+    const v = extValues();
+    const problem = extProblem(v);
+    const summary = ddFind("[data-dd-ext-summary]");
+    const list = ddFind("[data-dd-ext-summary-list]");
+    summary.hidden = Boolean(problem);
+    list.replaceChildren();
+    if (!problem) {
+      const dest = v.channel === "whatsapp" ? `no WhatsApp ${v.phone}` : `no e-mail ${v.email}`;
+      list.append(
+        element("li", `${v.name} (${v.role_label.toLowerCase()}) vai receber o convite ${dest}.`),
+        element("li", `O documento passa a ter ${total + 1} pessoas para assinar.`),
+      );
+    }
+    submitBtn.disabled = Boolean(problem);
+    submitBtn.textContent = "Enviar convite";
+  }
+
+  for (const tab of document.querySelectorAll("[data-dd-add-tab]")) {
+    tab.addEventListener("click", () => {
+      addTab = tab.dataset.ddAddTab;
+      for (const t of document.querySelectorAll("[data-dd-add-tab]")) t.setAttribute("aria-selected", t === tab ? "true" : "false");
+      for (const panel of document.querySelectorAll("[data-dd-add-panel]")) panel.hidden = panel.dataset.ddAddPanel !== addTab;
+      syncDrawer();
+    });
+  }
+  for (const c of teamChecks) c.addEventListener("change", syncDrawer);
+  ddFind("[data-dd-team-search]")?.addEventListener("input", (event) => {
+    const q = event.target.value.trim().toLowerCase();
+    let shown = 0;
+    for (const item of document.querySelectorAll("[data-dd-team-item]")) {
+      const match = !q || item.dataset.ddSearchText.includes(q);
+      item.hidden = !match;
+      if (match) shown += 1;
+    }
+    const empty = ddFind("[data-dd-team-empty]");
+    if (empty) empty.hidden = shown > 0;
+  });
+
+  for (const chip of document.querySelectorAll("[data-dd-role]")) {
+    chip.addEventListener("click", () => {
+      extRole = chip.dataset.ddRole;
+      for (const c of document.querySelectorAll("[data-dd-role]")) {
+        const on = c === chip;
+        c.classList.toggle("is-on", on);
+        c.setAttribute("aria-pressed", on ? "true" : "false");
+      }
+      const other = ddFind("[data-dd-role-other]");
+      other.hidden = Boolean(extRole);
+      if (!extRole) other.querySelector("input").focus();
+      syncDrawer();
+    });
+  }
+  for (const btn of document.querySelectorAll("[data-dd-channel]")) {
+    btn.addEventListener("click", () => {
+      extChannel = btn.dataset.ddChannel;
+      for (const b of document.querySelectorAll("[data-dd-channel]")) b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+      ddFind("[data-dd-phone-wrap]").hidden = extChannel !== "whatsapp";
+      ddFind("[data-dd-email-wrap]").hidden = extChannel !== "email";
+      syncDrawer();
+    });
+  }
+  extForm?.addEventListener("input", syncDrawer);
+
+  const wsPlacer = createStampPlacer(root.querySelector("[data-ds-placer-dialog]"));
+  ddFind("[data-dd-open-placer]")?.addEventListener("click", () => {
     wsPlacer.open({
       pdfUrl: root.dataset.pdfUrl,
       signerName: (extForm?.elements.name?.value || "").trim() || "Signatário externo",
       cpf: (extForm?.elements.cpf?.value || "").trim(),
-      appearance: wsExtAppearance,
+      appearance: extAppearance,
       onSave: (res) => {
-        wsExtAppearance = res;
-        if (extWsShowStamp) extWsShowStamp.checked = Boolean(res.visible);
-        syncWsExtStampUI();
+        extAppearance = res;
+        ddFind("[data-dd-stamp-summary]").textContent = describeStampConfig(extAppearance);
       },
     });
   });
 
-  function showExternalLinkBox(res) {
-    if (!extLinkBox || !extLinkInput) return;
-    extLinkBox.hidden = false;
-    extLinkInput.value = res.sign_url || "";
-    if (extLinkTitle) {
-      extLinkTitle.textContent = res.notification_sent
-        ? `Convite enviado para ${res.signer_name || "o signatário"}!`
-        : `Link exclusivo pronto para ${res.signer_name || "o signatário"}`;
-    }
-    if (extLinkNote) {
-      extLinkNote.textContent = res.notification_sent
-        ? "Convite disparado automaticamente! Se quiser, você também pode copiar o link ou enviar pelo seu WhatsApp."
-        : (res.notification_error || "Link gerado com sucesso! Clique abaixo para enviar pelo seu WhatsApp ou copie o link.");
-    }
-    if (extWaBtn) {
-      if (res.whatsapp_share_url) {
-        extWaBtn.href = res.whatsapp_share_url;
-        extWaBtn.hidden = false;
-      } else {
-        extWaBtn.hidden = true;
-      }
-    }
-    extLinkBox.scrollIntoView({behavior: "smooth", block: "nearest"});
+  function showDone({title, note, link = "", waUrl = ""}) {
+    drawerChanged = true;
+    for (const panel of document.querySelectorAll("[data-dd-add-panel], .dd-seg[role=tablist]")) panel.hidden = true;
+    donePanel.hidden = false;
+    ddFind("[data-dd-done-title]").textContent = title;
+    ddFind("[data-dd-done-note]").textContent = note;
+    ddFind("[data-dd-done-link-row]").hidden = !link;
+    ddFind("[data-dd-done-link]").value = link;
+    const wa = ddFind("[data-dd-done-wa]");
+    wa.hidden = !waUrl;
+    wa.href = waUrl || "#";
+    ddFind("[data-dd-drawer-foot]").hidden = true;
+    ddFind("[data-dd-done-foot]").hidden = false;
+    ddFind("[data-dd-finish]").focus();
   }
-
-  extWsChannel?.addEventListener("change", () => {
-    const isWa = extWsChannel.value === "whatsapp";
-    if (extWsPhoneWrap) extWsPhoneWrap.hidden = !isWa;
-    if (extWsEmailWrap) extWsEmailWrap.hidden = isWa;
+  ddFind("[data-dd-copy-done-link]")?.addEventListener("click", async () => {
+    const input = ddFind("[data-dd-done-link]");
+    try { await navigator.clipboard.writeText(input.value); showToast("Link copiado."); } catch { input.select(); }
   });
 
-  copyExtLinkBtn?.addEventListener("click", async () => {
-    const url = extLinkInput?.value || "";
-    if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      copyExtLinkBtn.textContent = "✓ Link copiado";
-      setTimeout(() => { copyExtLinkBtn.textContent = "Copiar link"; }, 2000);
-    } catch {
-      extLinkInput?.select();
-    }
-  });
-
-  extForm?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const cpfVal = maskCpf(extForm.elements.cpf?.value || "");
-    if (!isValidCpf(cpfVal)) {
-      feedback(extWsStatus, "Informe um CPF válido para o signatário externo.", true);
-      extForm.elements.cpf?.focus();
+  submitBtn?.addEventListener("click", async () => {
+    submitBtn.disabled = true;
+    if (addTab === "team") {
+      const status = ddFind("[data-dd-team-status]");
+      const picked = selectedTeam();
+      const failed = [];
+      feedback(status, "Adicionando…");
+      for (const c of picked) {
+        try {
+          const res = await request(root, endpoint + "/participantes", {json: {email: c.value, consent: true}});
+          drawerChanged = true;
+          if (!res.notification_sent) failed.push(c.dataset.ddName);
+        } catch (error) {
+          feedback(status, `${c.dataset.ddName}: ${error.message}`, true);
+          submitBtn.disabled = false;
+          return;
+        }
+      }
+      feedback(status);
+      showDone({
+        title: picked.length === 1 ? `${picked[0].dataset.ddName} foi adicionado(a)` : `${picked.length} pessoas adicionadas`,
+        note: failed.length
+          ? `Não conseguimos avisar ${names(failed)}. Use “Lembrar” na lista para tentar de novo.`
+          : "Cada pessoa recebeu um aviso para assinar.",
+      });
       return;
     }
-    const button = extForm.querySelector('button[type="submit"]');
-    button.disabled = true;
-    feedback(extWsStatus, "Gerando link exclusivo e enviando convite…");
+    const status = ddFind("[data-dd-ext-status]");
+    const v = extValues();
+    const problem = extProblem(v);
+    if (problem) { feedback(status, problem, true); submitBtn.disabled = false; return; }
+    feedback(status, "Enviando convite…");
     try {
-      const channel = extForm.elements.channel.value || "whatsapp";
-      const res = await request(root, endpoint + "/externos", {
-        json: {
-          name: extForm.elements.name.value.trim(),
-          cpf: cpfVal,
-          role_label: (extForm.elements.role_label.value || "Signatário").trim(),
-          channel,
-          phone: channel === "whatsapp" ? extForm.elements.phone.value.trim() : "",
-          email: channel === "email" ? extForm.elements.email.value.trim() : "",
-          appearance: { ...wsExtAppearance },
-        },
+      const res = await request(root, endpoint + "/externos", {json: {...v, appearance: {...extAppearance}}});
+      feedback(status);
+      showDone({
+        title: res.notification_sent ? `Convite enviado para ${res.signer_name}` : `Link pronto para ${res.signer_name}`,
+        note: res.notification_sent
+          ? "Se quiser, copie o link e mande também por outro meio."
+          : (res.notification_error || "Não conseguimos enviar automaticamente. Copie o link ou envie pelo seu WhatsApp."),
+        link: res.sign_url || "",
+        waUrl: res.whatsapp_share_url || "",
       });
-      extForm.reset();
-      if (extWsPhoneWrap) extWsPhoneWrap.hidden = false;
-      if (extWsEmailWrap) extWsEmailWrap.hidden = true;
-      feedback(extWsStatus);
-      showExternalLinkBox(res);
     } catch (error) {
-      feedback(extWsStatus, error.message, true);
-    } finally {
-      button.disabled = false;
+      feedback(status, error.message, true);
+      submitBtn.disabled = false;
     }
   });
-
-  for (const control of root.querySelectorAll("[data-ds-resend-external]")) {
-    control.addEventListener("click", async () => {
-      control.disabled = true;
-      feedback(extWsStatus, "Gerando novo link e reenviando convite…");
-      try {
-        const res = await request(root, `${endpoint}/externos/${control.dataset.dsResendExternal}/reenviar`, {method: "POST"});
-        feedback(extWsStatus);
-        showExternalLinkBox(res);
-      } catch (error) {
-        feedback(extWsStatus, error.message, true);
-      } finally {
-        control.disabled = false;
-      }
-    });
-  }
-
-  for (const control of root.querySelectorAll("[data-ds-remove-external]")) {
-    control.addEventListener("click", async () => {
-      if (!window.confirm("Revogar o link exclusivo deste signatário externo?")) return;
-      control.disabled = true;
-      try {
-        await request(root, endpoint + "/externos/" + control.dataset.dsRemoveExternal, {method: "DELETE"});
-        location.reload();
-      } catch (error) {
-        feedback(extWsStatus, error.message, true);
-      } finally {
-        control.disabled = false;
-      }
-    });
-  }
+  syncDrawer();
 
   const ceremonyGrid = find("[data-ds-ceremony-grid]");
   const viewerSection = find("[data-ds-viewer-section]");

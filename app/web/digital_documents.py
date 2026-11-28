@@ -35,7 +35,7 @@ from app.models.signed_document import (
 from app.models.whatsapp import WhatsAppLink
 from app.services import digital_certificates as certificates, login_throttle
 from app.services.audit_log_service import client_ip
-from app.services.document_signing import electronic, workflow
+from app.services.document_signing import electronic, workflow, workspace_view
 from app.services.document_signing.pdf import MAX_PDF_BYTES, MAX_UPLOAD_BYTES, read_pdf, signing_options, validate_pdf
 from app.services.document_signing.policy import signing_mode
 from app.services.document_signing.receipt_pdf import build_validation_receipt_pdf
@@ -542,6 +542,22 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
     user_initials = _user_initials(user.display_name or user.name)
     verification_code = electronic.ensure_document_verification_code(db, doc)
     db.commit()
+    owner_user = db.get(User, doc.owner_id) if doc.owner_id else None
+    granted = {
+        row.user_id: row.granted_at
+        for row in db.scalars(select(SigningParticipant).filter_by(document_id=doc.id))
+    }
+    signer_rows = workspace_view.build_signers(
+        doc=doc, owner=owner_user, current_user=user, participants=all_participants,
+        external_signers=external_signers, evidences=evidences, revisions=revisions,
+    )
+    history = workspace_view.build_history(
+        doc=doc, owner=owner_user, participants=all_participants, external_signers=external_signers,
+        evidences=evidences, revisions=revisions, granted=granted,
+    )
+    integrity = workspace_view.integrity_summary(doc.validation, sig_count)
+    signed_rows = sum(1 for r in signer_rows if r["status"] == "signed")
+    signing_rows = [r for r in signer_rows if r["status"] != "viewer"]
     active_view = "detalhes" if request.query_params.get("aba") == "detalhes" else "assinar"
     wizard_flow = request.query_params.get("fluxo") or ""
     notice = (request.query_params.get("aviso") or "").strip()[:260]
@@ -561,6 +577,9 @@ def document_workspace(document_id: str, request: Request, db: Session = Depends
         default_sign_mode=default_sign_mode, user_whatsapp_phone=user_whatsapp_phone,
         user_initials=user_initials,
         verification_code=verification_code,
+        signer_rows=signer_rows, history=history, integrity=integrity,
+        signed_rows=signed_rows, total_rows=len(signing_rows), owner_user=owner_user,
+        is_doc_owner=doc.owner_id == user.id,
         notice=notice,
         active_view=active_view, wizard_flow=wizard_flow, mode=signing_mode(farm.id),
     )
@@ -787,7 +806,47 @@ async def resend_external_signer_invite(document_id: str, signer_id: str, reques
             sender=user,
             signer=row,
             base_url=_public_base_url(request),
+            notify=request.query_params.get("somente_link") != "1",
         )
+        return _json({
+            "ok": True,
+            "signer_id": row.id,
+            "signer_name": row.name,
+            "sign_url": sign_url,
+            "whatsapp_share_url": wa_share_url,
+            "channel": row.channel,
+            "notification_sent": sent,
+            "notification_error": err,
+        })
+    except (ValueError, PermissionError, IntegrityError) as exc:
+        db.rollback()
+        return _error(exc)
+
+
+@router.post("/assinatura-digital/documentos/{document_id}/externos/{signer_id}/canal")
+async def change_external_signer_channel(document_id: str, signer_id: str, request: Request, db: Session = Depends(get_db),
+                                         user: User = Depends(get_current_user_web)):
+    farm = _farm(request, db, user)
+    data = await _payload(request)
+    doc = _doc(db, user, farm, document_id, owner=True, lock=True)
+    row = db.scalar(select(SigningExternalSigner).filter_by(id=signer_id, document_id=doc.id))
+    if row is None or row.status == "revoked":
+        raise HTTPException(404, "Signatário externo não encontrado.")
+    try:
+        sign_url, sent, err, wa_share_url = await run_in_threadpool(
+            electronic.change_external_signer_channel,
+            db,
+            doc=doc,
+            farm=farm,
+            sender=user,
+            signer=row,
+            channel=str(data.get("channel") or ""),
+            email=str(data.get("email") or "") or None,
+            phone=str(data.get("phone") or "") or None,
+            base_url=_public_base_url(request),
+        )
+        workflow.audit(db, user, "trocar_canal_externo", document_id=doc.id, farm_id=farm.id, signer_id=row.id, channel=row.channel)
+        db.commit()
         return _json({
             "ok": True,
             "signer_id": row.id,
@@ -885,6 +944,33 @@ async def add_participant(document_id: str, request: Request, db: Session = Depe
     sent, err = await run_in_threadpool(
         _notify_participant, db, doc=doc, farm=farm, sender=user, collaborator=collaborator, channel=channel, doc_url=doc_url, phone_override=phone_override
     )
+    return _json({"ok": True, "channel": channel, "notification_sent": sent, "notification_error": err})
+
+
+@router.post("/assinatura-digital/documentos/{document_id}/participantes/{participant_id}/lembrar")
+async def remind_participant(document_id: str, participant_id: int, request: Request, db: Session = Depends(get_db),
+                             user: User = Depends(get_current_user_web)):
+    _csrf(request)
+    farm = _farm(request, db, user)
+    doc = _doc(db, user, farm, document_id, owner=True)
+    if db.get(SigningParticipant, (doc.id, participant_id)) is None:
+        raise HTTPException(404, "Esta pessoa não está mais neste documento.")
+    collaborator = db.get(User, participant_id)
+    if collaborator is None or not collaborator.is_active:
+        raise HTTPException(404, "Esta conta não está mais ativa.")
+    if any(ev.user_id == participant_id for ev in db.scalars(select(SigningEvidence).filter_by(document_id=doc.id))) or any(
+        rev.user_id == participant_id and rev.signature for rev in db.scalars(select(SigningRevision).filter_by(document_id=doc.id))
+    ):
+        raise HTTPException(409, "Esta pessoa já assinou o documento.")
+    has_wa = db.scalar(select(WhatsAppLink).where(WhatsAppLink.user_id == collaborator.id, WhatsAppLink.wa_id.is_not(None))) is not None
+    channel = "whatsapp" if has_wa and whatsapp_is_configured() else "email"
+    doc_url = _public_base_url(request) + f"/assinatura-digital/documentos/{doc.id}"
+    sent, err = await run_in_threadpool(
+        _notify_participant, db, doc=doc, farm=farm, sender=user, collaborator=collaborator, channel=channel, doc_url=doc_url
+    )
+    if sent:
+        workflow.audit(db, user, "lembrar_participante", document_id=doc.id, farm_id=farm.id, participant_id=participant_id)
+        db.commit()
     return _json({"ok": True, "channel": channel, "notification_sent": sent, "notification_error": err})
 
 

@@ -1095,12 +1095,14 @@ def resend_external_signer(
     sender: User,
     signer: SigningExternalSigner,
     base_url: str = "",
+    notify: bool = True,
 ) -> tuple[str, bool, str | None, str]:
     if signer.status == "signed":
         raise ValueError("Este signatário já assinou o documento.")
     now = datetime.now(timezone.utc)
     if (
-        signer.channel == "whatsapp"
+        notify
+        and signer.channel == "whatsapp"
         and signer.whatsapp_status in {"sent", "delivered", "read"}
         and signer.whatsapp_sent_at is not None
         and (now - utc(signer.whatsapp_sent_at)).total_seconds() < 30
@@ -1115,10 +1117,43 @@ def resend_external_signer(
     signer.whatsapp_error = None
     db.commit()
     sign_url = f"{base_url.rstrip('/')}/assinar/{raw_token}"
+    if not notify:
+        return sign_url, False, None, ""
     sent, err, whatsapp_share_url = _dispatch_external_invite(
         db, doc=doc, farm=farm, sender=sender, signer=signer, sign_url=sign_url, raw_token=raw_token,
     )
     return sign_url, sent, err, whatsapp_share_url
+
+
+def change_external_signer_channel(
+    db,
+    *,
+    doc: SigningDocument,
+    farm: Farm,
+    sender: User,
+    signer: SigningExternalSigner,
+    channel: str,
+    email: str | None = None,
+    phone: str | None = None,
+    base_url: str = "",
+) -> tuple[str, bool, str | None, str]:
+    """Troca o canal do convite (WhatsApp ↔ e-mail) e reenvia com um link novo."""
+    if signer.status == "signed":
+        raise ValueError("Este signatário já assinou o documento.")
+    chan = "whatsapp" if (channel or "").strip().lower() == "whatsapp" else "email"
+    if chan == "whatsapp":
+        clean_phone = (phone or "").strip()[:40]
+        if not normalize_br_whatsapp(clean_phone):
+            raise ValueError("Informe o número de WhatsApp com DDD.")
+        signer.phone = clean_phone
+    else:
+        clean_email = (email or "").strip().lower()[:180]
+        if not clean_email or "@" not in clean_email:
+            raise ValueError("Informe um e-mail válido.")
+        signer.email = clean_email
+    signer.channel = chan
+    signer.whatsapp_sent_at = None
+    return resend_external_signer(db, doc=doc, farm=farm, sender=sender, signer=signer, base_url=base_url)
 
 
 _WA_STATUS_RANK = {"sent": 1, "delivered": 2, "read": 3}

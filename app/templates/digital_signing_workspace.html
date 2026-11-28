@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, status %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=13">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=14">{% endblock %}
 {% block content %}
 {% set endpoint = '/assinatura-digital/documentos/' ~ doc.id %}
 {% set pdf_url = endpoint ~ '/revisoes/' ~ doc.current_revision ~ '/pdf' %}
@@ -29,15 +29,14 @@
     <div class="ds-ws-title-block">
       <h1 class="sf-page-title ds-truncate-line" title="{{ display_title }}">{{ display_title }}</h1>
       <div class="ds-ws-meta-bar">
+        {% if all_signed %}
+        <span class="ds-pill ds-pill--done">{{ icon('check', 13) }} Assinado por todos</span>
+        {% elif pending_count %}
+        <span class="ds-pill ds-pill--warn">Aguardando {{ pending_count }} {{ 'assinatura' if pending_count == 1 else 'assinaturas' }}</span>
+        {% else %}
         {{ status(doc.validation.state) }}
-        {% if doc.category %}<span class="ds-pill ds-pill--muted">{{ doc.category }}</span>{% endif %}
-        <span class="ds-ws-meta-item ds-tabular">{{ sig_count }} de {{ expected_count }} {{ 'assinou' if expected_count == 1 else 'assinaram' }}</span>
-        <span class="ds-ws-dot" aria-hidden="true">·</span>
-        <span class="ds-ws-meta-item ds-tabular">{{ options.pages }} {{ 'página' if options.pages == 1 else 'páginas' }}</span>
-        {% if show_filename_sub %}
-        <span class="ds-ws-dot ds-hide-mobile" aria-hidden="true">·</span>
-        <span class="ds-ws-meta-item ds-hide-mobile ds-truncate-line" title="{{ doc.filename }}">{{ doc.filename }}</span>
         {% endif %}
+        <span class="ds-ws-meta-item">{% if doc.category %}{{ doc.category }} · {% endif %}<span class="ds-tabular">{{ options.pages }}</span> {{ 'página' if options.pages == 1 else 'páginas' }}<span class="ds-hide-mobile"> · enviado por {{ 'você' if is_doc_owner else ((owner_user.display_name or owner_user.name) if owner_user else 'equipe') }} em {{ doc.created_at|datetime_sp('%d/%m') }}</span></span>
       </div>
     </div>
 
@@ -51,15 +50,21 @@
     {% else %}
     <div class="pd-head-actions ds-head-actions">
       <a class="sf-btn sf-btn-secondary" href="{{ pdf_url }}">{{ icon('download', 16) }} Baixar PDF</a>
-      <a class="sf-btn sf-btn-secondary ds-hide-mobile" href="/validar/{{ verification_code }}" target="_blank" rel="noopener">{{ icon('qr', 16) }} Validar</a>
-      <button type="button" class="sf-btn sf-btn-secondary ds-hide-mobile" data-ds-revalidate>{{ icon('shield', 16) }} Revalidar</button>
+      <div class="dd-menu-wrap">
+        <button type="button" class="dd-icon-btn" data-dd-menu-btn aria-haspopup="menu" aria-expanded="false" aria-label="Mais ações">{{ icon('dots', 18) }}</button>
+        <div class="dd-menu" role="menu" hidden>
+          <a role="menuitem" href="/validar/{{ verification_code }}" target="_blank" rel="noopener">{{ icon('qr', 16) }} Abrir página de conferência</a>
+          <button type="button" role="menuitem" data-ds-revalidate>{{ icon('shield', 16) }} Conferir o PDF de novo</button>
+          <button type="button" role="menuitem" data-ds-copy-text="{{ verification_code }}">{{ icon('copy', 16) }} Copiar código de conferência</button>
+        </div>
+      </div>
     </div>
     {% endif %}
   </header>
 
   <nav class="pd-tabs ds-tabs" aria-label="Visões do documento">
     <button type="button" class="ds-tab-btn" data-ds-ws-tab="assinar" aria-current="{{ 'page' if active_view == 'assinar' else 'false' }}">{{ 'Assinar documento' if show_signing_form else 'Visualizar documento' }}</button>
-    <button type="button" class="ds-tab-btn" data-ds-ws-tab="detalhes" aria-current="{{ 'page' if active_view == 'detalhes' else 'false' }}">Detalhes, participantes e versões</button>
+    <button type="button" class="ds-tab-btn" data-ds-ws-tab="detalhes" aria-current="{{ 'page' if active_view == 'detalhes' else 'false' }}">Assinaturas e histórico</button>
   </nav>
 
   {% if mode == 'blocked' and allow_icp %}<div class="ds-banner is-warn" role="status">{{ icon('clock', 17) }}<span>Assinatura qualificada ICP-Brasil em homologação no VALIDAR do ITI. {% if allow_electronic %}Você pode assinar normalmente com <strong>Assinatura Eletrônica SiSFarm</strong>.{% endif %}</span></div>{% endif %}
@@ -380,293 +385,288 @@
   </div>
 
   <!-- PAINEL 2: DETALHES, PARTICIPANTES, EVIDÊNCIAS E VERSÕES -->
-  <div class="ds-details-grid" data-ds-ws-panel="detalhes" {% if active_view != 'detalhes' %}hidden{% endif %}>
-    <div class="ds-details-main">
-      <!-- Cartão de Código de Verificação Pública -->
-      <section class="pd-card ds-panel-pad ds-ver-card">
-        <div class="ds-ver-card-row">
-          <div class="ds-ver-card-info">
-            <span class="ds-tile">{{ icon('qr', 18) }}</span>
-            <div>
-              <h2>Código de verificação pública</h2>
-              <p>Qualquer pessoa com este código pode conferir a autenticidade e a integridade do documento em <strong>/validar</strong>.</p>
+  {% set policy_labels = {'flexible': 'Certificado ou eletrônica', 'icp_brasil': 'Só certificado ICP-Brasil', 'electronic': 'Só assinatura eletrônica'} %}
+  <div class="dd-grid" data-ds-ws-panel="detalhes" {% if active_view != 'detalhes' %}hidden{% endif %}>
+    <div class="dd-main">
+      <section class="pd-card dd-card" aria-labelledby="dd-t-ass">
+        <header class="dd-ass-head">
+          <div class="dd-ass-progress">
+            <div class="dd-ass-title">
+              <h2 id="dd-t-ass">Assinaturas</h2>
+              {% if total_rows %}<span><strong class="ds-tabular">{{ signed_rows }} de {{ total_rows }}</strong> {{ 'assinou' if signed_rows <= 1 else 'assinaram' }}</span>{% endif %}
             </div>
-          </div>
-          <div class="ds-ver-card-actions">
-            <code class="ds-ver-code-box">{{ verification_code }}</code>
-            <button type="button" class="sf-btn sf-btn-secondary ds-btn-sm" data-ds-copy-text="{{ verification_code }}">{{ icon('copy', 14) }} Copiar</button>
-            <a class="sf-btn sf-btn-soft ds-btn-sm" href="/validar/{{ verification_code }}" target="_blank" rel="noopener">Abrir validação →</a>
-          </div>
-        </div>
-        {% if doc.seal_mode %}
-        <div class="ds-seal-strip">
-          {{ icon('shield', 15) }}
-          <span>
-            {% if doc.seal_mode == 'institutional_ecnpj' %}
-            <strong>Selado com e-CNPJ A1 Institucional SiSFarm</strong> · Manifesto anexado automaticamente em {{ doc.sealed_at|datetime_sp }}.
-            {% else %}
-            <strong>Selado com Selo Criptográfico Interno SiSFarm</strong> · Manifesto anexado automaticamente em {{ doc.sealed_at|datetime_sp }}.
+            {% if total_rows %}
+            <div class="dd-bar" style="--dd-segs: {{ total_rows if total_rows <= 12 else 12 }}" aria-hidden="true">
+              {% for i in range(total_rows if total_rows <= 12 else 12) %}<span {% if i < (signed_rows if total_rows <= 12 else (signed_rows * 12 // total_rows)) %}class="is-on"{% endif %}></span>{% endfor %}
+            </div>
             {% endif %}
-          </span>
-        </div>
-        {% endif %}
-      </section>
-
-      <!-- Trilha de Evidências Registradas (distinção clara Eletrônica vs ICP-Brasil) -->
-      {% if evidences %}
-      <section class="pd-card ds-panel-pad">
-        <header class="ds-card-heading">
-          <span class="ds-tile">{{ icon('award', 18) }}</span>
-          <div>
-            <h2>Assinaturas e evidências registradas ({{ evidences|length }})</h2>
-            <p>Dados pessoais protegidos conforme a LGPD. Modalidade identificada individualmente para cada signatário.</p>
+            {% if all_signed %}<p class="dd-hint">Todos assinaram. Não é mais possível adicionar pessoas.</p>{% endif %}
           </div>
+          {% if is_doc_owner and not all_signed %}
+          <button type="button" class="sf-btn sf-btn-secondary" data-dd-open-add>{{ icon('plus', 16) }} Adicionar pessoa</button>
+          {% endif %}
         </header>
-        <div class="ds-ev-list">
-          {% for ev in evidences %}
-          {% set is_icp = ev.modality == 'qualified_icp_brasil' %}
-          <article class="ds-ev-item">
-            <div class="ds-ev-head">
-              <div>
-                <strong>{{ ev.signer_name }}</strong>
-                {% if ev.role_label %}<small> · {{ ev.role_label }}</small>{% endif %}
-              </div>
-              {% if is_icp %}
-              <span class="ds-pill ds-pill--done">Qualificada ICP-Brasil</span>
-              {% else %}
-              <span class="ds-pill ds-pill--info">Eletrônica SiSFarm (Avançada)</span>
-              {% endif %}
-            </div>
-            <div class="ds-ev-meta">
-              <span>CPF: <strong>{{ ev.cpf_masked or 'Conforme certificado' }}</strong></span>
-              <span>Data/hora: <strong>{{ ev.signed_at|datetime_sp }}</strong></span>
-              {% if is_icp %}
-              <span>Certificado: <strong>{{ ev.cert_issuer or 'ICP-Brasil A1' }}</strong></span>
-              {% else %}
-              <span>Canal: <strong>{{ 'WhatsApp' if 'whatsapp' in (ev.auth_channel or '') else 'E-mail' }} ({{ ev.auth_destination_masked }})</strong></span>
-              <span>IP (LGPD): <strong>{{ ev.ip_masked }}</strong></span>
-              <span>Dispositivo: <strong>{{ ev.device_summary }}</strong></span>
-              {% endif %}
-              <span>Registro: <code>{{ ev.evidence_code }}</code></span>
-            </div>
-          </article>
-          {% endfor %}
-        </div>
-      </section>
-      {% endif %}
 
-      <section class="pd-card ds-panel-pad">
-        <header class="ds-card-heading">
-          <span class="ds-tile ds-tile--blue">{{ icon('shield', 18) }}</span>
-          <div>
-            <h2>Validação criptográfica (PAdES / ICP-Brasil)</h2>
-            <p data-ds-overview></p>
-          </div>
-        </header>
-        <div data-ds-result></div>
-        <button type="button" class="sf-btn sf-btn-secondary" data-ds-revalidate-secondary>{{ icon('shield', 15) }} Revalidar PDF</button>
-      </section>
-
-      <section class="pd-card ds-list-card">
-        <div class="ds-list-head">
-          <h2>Versões arquivadas</h2>
-          <p class="ds-hint">Acompanhe quem assinou cada versão e baixe o PDF quando precisar.</p>
-        </div>
-        <ul class="ds-rev-list">
-          {% for revision in revisions %}
-          <li>
-            <a href="{{ endpoint }}/revisoes/{{ revision.number }}/pdf">
-              <span class="ds-doc-ic ds-doc-ic--{{ 'done' if revision.signature else 'muted' }}">{{ icon('file', 17) }}</span>
-              <span class="ds-doc-title-wrap">
-                <strong>{{ 'Original importado' if revision.number == 1 else 'Versão ' ~ revision.number }}{% if revision.number == doc.current_revision %} · atual{% endif %}</strong>
-                <small>
-                  {{ revision.created_at|datetime_sp }}
-                  {% if revision.signature %}
-                    {% if revision.signature.modality == 'sisfarm_manifesto_seal' %}
-                      · Manifesto e Selo de Integridade SiSFarm
-                    {% elif revision.signature.modality == 'electronic_sisfarm' %}
-                      · Assinatura Eletrônica por {{ revision.signature.holder }}
-                    {% else %}
-                      · Assinado por {{ revision.signature.holder }}
-                    {% endif %}
+        {% if signer_rows %}
+        <ul class="dd-people">
+          {% for p in signer_rows %}
+          {% set rid = p.kind ~ '-' ~ p.id %}
+          <li class="dd-person is-{{ p.status }}" data-dd-person="{{ rid }}">
+            <div class="dd-person-row">
+              <span class="dd-av dd-av--{{ 'ok' if p.status == 'signed' else ('warn' if p.status == 'pending' else 'muted') }}" aria-hidden="true">{{ p.initials }}</span>
+              <div class="dd-person-info">
+                <div class="dd-person-name">
+                  <strong>{{ p.name }}</strong>{% if p.is_me %}<span class="dd-muted">(você)</span>{% endif %}
+                  <span class="dd-tag">{{ p.role }}</span>
+                </div>
+                <div class="dd-person-sub">
+                  {% if p.status == 'signed' %}
+                    {% if p.signed_at %}Assinou em {{ p.signed_at|datetime_sp('%d/%m às %H:%M') }} · {% endif %}{{ p.modality }}
+                  {% elif p.status == 'viewer' %}
+                    Só acompanha, não precisa assinar
+                  {% else %}
+                    <span class="{{ 'dd-fail' if p.tracking_failed else '' }}">{{ p.tracking }}{% if p.tracking_at %} · {{ p.tracking_at|datetime_sp('%d/%m às %H:%M') }}{% endif %}</span>
                   {% endif %}
-                </small>
-              </span>
-              <span class="ds-rev-dl">{{ icon('download', 16) }} <span class="ds-hide-mobile">Baixar</span></span>
-            </a>
+                  {% if p.contact %}<span class="dd-contact">{{ p.contact }}</span>{% endif %}
+                </div>
+              </div>
+              <div class="dd-person-actions">
+                {% if p.status == 'signed' %}
+                <span class="ds-pill ds-pill--done">{{ icon('check', 13) }} Assinou</span>
+                {% if p.evidence %}
+                <button type="button" class="dd-ghost" data-dd-toggle-proof aria-expanded="false" aria-controls="dd-proof-{{ loop.index }}" aria-label="Ver comprovante de {{ p.name }}">{{ icon('chevron', 18) }}</button>
+                {% endif %}
+                {% elif p.status == 'pending' %}
+                <span class="ds-pill ds-pill--warn">Pendente</span>
+                {% if p.is_me and show_signing_form %}
+                <button type="button" class="sf-btn sf-btn-primary dd-btn-sm" data-dd-go-sign>Assinar agora</button>
+                {% elif p.can_manage %}
+                <button type="button" class="sf-btn sf-btn-secondary dd-btn-sm" data-dd-remind="{{ p.kind }}" data-dd-id="{{ p.id }}" data-dd-name="{{ p.name }}">Lembrar</button>
+                {% endif %}
+                {% endif %}
+                {% if p.can_manage %}
+                <div class="dd-menu-wrap">
+                  <button type="button" class="dd-ghost" data-dd-menu-btn aria-haspopup="menu" aria-expanded="false" aria-label="Opções de {{ p.name }}">{{ icon('dots', 18) }}</button>
+                  <div class="dd-menu" role="menu" hidden>
+                    {% if p.kind == 'external' %}
+                    <button type="button" role="menuitem" data-dd-copy-link="{{ p.id }}">{{ icon('copy', 16) }} Copiar link de assinatura</button>
+                    <button type="button" role="menuitem" data-dd-change-channel="{{ p.id }}" data-dd-name="{{ p.name }}" data-dd-to="{{ 'email' if p.channel == 'whatsapp' else 'whatsapp' }}" data-dd-email="{{ p.email }}" data-dd-phone="{{ p.phone }}">{{ icon('mail' if p.channel == 'whatsapp' else 'whatsapp', 16) }} {{ 'Trocar para e-mail' if p.channel == 'whatsapp' else 'Trocar para WhatsApp' }}</button>
+                    <span class="dd-menu-sep" role="separator"></span>
+                    <button type="button" role="menuitem" class="is-danger" data-dd-cancel-external="{{ p.id }}" data-dd-name="{{ p.name }}">{{ icon('close', 16) }} Cancelar convite</button>
+                    {% else %}
+                    <button type="button" role="menuitem" class="is-danger" data-dd-remove-team="{{ p.id }}" data-dd-name="{{ p.name }}">{{ icon('close', 16) }} Tirar do documento</button>
+                    {% endif %}
+                  </div>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+            {% if p.evidence %}
+            <div class="dd-proof" id="dd-proof-{{ loop.index }}" hidden>
+              <div class="dd-proof-box">
+                <div class="dd-proof-head"><strong>Comprovante da assinatura</strong><span class="dd-muted">Dados protegidos (LGPD)</span></div>
+                <dl class="dd-kv">
+                  {% for label, value in p.evidence.fields %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}
+                  <div><dt>Nº do registro</dt><dd class="dd-mono">{{ p.evidence.code }}</dd></div>
+                </dl>
+              </div>
+            </div>
+            {% endif %}
           </li>
           {% endfor %}
         </ul>
+        {% else %}
+        <div class="dd-empty">
+          <p><strong>Ninguém foi indicado para assinar ainda.</strong></p>
+          <p class="dd-hint">{% if is_doc_owner %}Use “Adicionar pessoa” para chamar alguém da equipe ou convidar uma pessoa de fora.{% else %}Quem enviou o documento ainda não indicou os assinantes.{% endif %}</p>
+        </div>
+        {% endif %}
+      </section>
+
+      <section class="pd-card dd-card dd-pad" aria-labelledby="dd-t-hist">
+        <header class="dd-hist-head">
+          <h2 id="dd-t-hist">Histórico</h2>
+          <span class="dd-muted">Cada assinatura gera uma nova versão do PDF</span>
+        </header>
+        <ol class="dd-tl">
+          {% for ev in history %}
+          <li class="dd-tl-item">
+            <span class="dd-tl-dot dd-tl-dot--{{ ev.tone }}" aria-hidden="true">{{ icon(ev.icon, 14) }}</span>
+            <div class="dd-tl-body">
+              <div>
+                <div>{% if ev.who %}<strong>{{ ev.who }}</strong> {% endif %}{{ ev.text }}</div>
+                <div class="dd-muted">{{ ev.at|datetime_sp('%d/%m/%Y, %H:%M') }}</div>
+              </div>
+              {% if ev.version %}
+              <a class="dd-version {{ 'is-current' if ev.version.current else '' }}" href="{{ endpoint }}/revisoes/{{ ev.version.number }}/pdf" aria-label="Baixar {{ ev.version.label }}{{ ' (atual)' if ev.version.current else '' }}">
+                {{ icon('file', 16) }}<span><strong>{{ ev.version.label }}</strong>{% if ev.version.current %} · atual{% endif %}</span>{{ icon('download', 15) }}
+              </a>
+              {% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ol>
       </section>
     </div>
 
-    {% if doc.owner_id == user.id %}
-    <aside class="ds-participants-stack">
-      {% if allow_electronic %}
-      <section class="pd-card ds-panel-pad ds-participants-card">
-        <header class="ds-card-heading">
-          <span class="ds-tile">{{ icon('link', 18) }}</span>
+    <aside class="dd-side">
+      <section class="pd-card dd-card dd-pad dd-auth" aria-labelledby="dd-t-aut">
+        <h2 id="dd-t-aut">Autenticidade</h2>
+        <div class="dd-integrity dd-integrity--{{ integrity.tone }}">
+          {{ icon('alert' if integrity.tone in ('error', 'warn') else 'shield', 22) }}
           <div>
-            <h2>Signatários externos</h2>
-            <p>Pessoas sem conta no SiSFarm convidadas por link único.</p>
+            <strong>{{ integrity.title }}</strong>
+            <p>{{ integrity.text }}{% if integrity.checked_at and integrity.tone != 'muted' %} Conferido em {{ integrity.checked_at|datetime_sp('%d/%m às %H:%M') }}.{% endif %}</p>
           </div>
-        </header>
-
-        {% if external_signers %}
-        <div class="ds-people-list">
-          {% for ext in external_signers %}
-          <div class="ds-person-row">
-            <div>
-              <strong>{{ ext.name }} <small>({{ ext.role_label }})</small></strong>
-              <small>{{ 'WhatsApp' if ext.channel == 'whatsapp' else 'E-mail' }} · {{ ext.phone or ext.email }}</small>
-              {% if ext.whatsapp_status or ext.first_accessed_at %}
-              <small class="ds-ext-tracking-meta">
-                {% if ext.whatsapp_status == 'read' %}WhatsApp: lido ({{ ext.whatsapp_read_at|datetime_sp }})
-                {% elif ext.whatsapp_status == 'delivered' %}WhatsApp: entregue ({{ ext.whatsapp_delivered_at|datetime_sp }})
-                {% elif ext.whatsapp_status == 'sent' %}WhatsApp: enviado ({{ ext.whatsapp_sent_at|datetime_sp }})
-                {% elif ext.whatsapp_status == 'failed' %}WhatsApp: falha no envio{% if ext.whatsapp_error %} · {{ ext.whatsapp_error }}{% endif %}
-                {% endif %}
-                {% if ext.first_accessed_at %}
-                  {% if ext.whatsapp_status %} · {% endif %}
-                  1º acesso: {{ ext.first_accessed_at|datetime_sp }}{% if ext.last_accessed_at and ext.access_count > 1 %} · Último: {{ ext.last_accessed_at|datetime_sp }} ({{ ext.access_count }}x){% endif %}
-                {% endif %}
-              </small>
-              {% endif %}
-            </div>
-            <div class="ds-person-row-right">
-              {% if ext.status == 'signed' %}
-              <span class="ds-pill ds-pill--done">Assinado</span>
-              {% elif ext.status == 'revoked' %}
-              <span class="ds-pill ds-pill--muted">Revogado</span>
-              {% else %}
-              <span class="ds-pill ds-pill--warn">Pendente</span>
-              <button type="button" class="ds-inline-action" data-ds-resend-external="{{ ext.id }}">Reenviar / Link</button>
-              <button type="button" class="ds-inline-action is-danger" data-ds-remove-external="{{ ext.id }}">Revogar</button>
-              {% endif %}
-            </div>
-          </div>
-          {% endfor %}
         </div>
-        {% else %}
-        <p class="ds-hint">Nenhum signatário externo convidado neste documento.</p>
+        <div class="dd-code-block">
+          <span class="dd-label">Código para conferir</span>
+          <div class="dd-code-row">
+            <code class="dd-code">{{ verification_code }}</code>
+            <button type="button" class="dd-icon-btn" data-ds-copy-text="{{ verification_code }}" aria-label="Copiar código">{{ icon('copy', 17) }}</button>
+          </div>
+          <span class="dd-muted">Qualquer pessoa pode usar este código para confirmar que o PDF é verdadeiro.</span>
+        </div>
+        <a class="dd-link" href="/validar/{{ verification_code }}" target="_blank" rel="noopener">Abrir página de conferência {{ icon('arrow', 14) }}</a>
+        {% if doc.seal_mode %}
+        <p class="dd-muted dd-seal">{{ icon('shield', 14) }} Selo {{ 'e-CNPJ institucional' if doc.seal_mode == 'institutional_ecnpj' else 'de integridade' }} SiSFarm aplicado em {{ doc.sealed_at|datetime_sp('%d/%m/%Y') }}</p>
         {% endif %}
-
-        <div class="ds-ext-link-box" data-ds-ext-link-box hidden>
-          <strong data-ds-ext-link-title>Link exclusivo gerado!</strong>
-          <p data-ds-ext-link-note></p>
-          <div class="ds-ext-link-row">
-            <input type="text" readonly data-ds-ext-link-input>
-            <button type="button" class="sf-btn sf-btn-secondary ds-btn-sm" data-ds-copy-ext-link>{{ icon('copy', 14) }} Copiar link</button>
-          </div>
-          <a class="sf-btn sf-btn-primary ds-btn-sm" href="#" target="_blank" rel="noopener" data-ds-ext-wa-btn hidden>{{ icon('whatsapp', 15) }} Enviar pelo meu WhatsApp</a>
+        <details class="dd-tech">
+          <summary>{{ icon('chevron', 15) }} Detalhes técnicos</summary>
+          <p class="dd-muted" data-ds-overview></p>
+          <div data-ds-result></div>
+        </details>
+        <div class="dd-auth-foot">
+          <button type="button" class="dd-text-btn" data-ds-revalidate-secondary>Conferir de novo</button>
         </div>
-
-        <form class="ds-share-form" data-ds-add-external>
-          <div class="ds-form-grid-2">
-            <label class="ds-field">
-              <span>Nome completo</span>
-              <input name="name" type="text" required maxlength="160" placeholder="Ex.: Maria Souza">
-            </label>
-            <label class="ds-field">
-              <span>CPF do signatário</span>
-              <input name="cpf" type="text" inputmode="numeric" required maxlength="14" placeholder="000.000.000-00" data-ds-cpf-mask>
-            </label>
-          </div>
-          <div class="ds-form-grid-2">
-            <label class="ds-field">
-              <span>Papel</span>
-              <input name="role_label" type="text" maxlength="60" value="Signatário">
-            </label>
-            <label class="ds-field">
-              <span>Canal do link e código</span>
-              <select name="channel" data-ds-ws-ext-channel>
-                <option value="whatsapp" selected>WhatsApp</option>
-                <option value="email">E-mail</option>
-              </select>
-            </label>
-          </div>
-          <label class="ds-field" data-ds-ws-ext-phone-wrap>
-            <span>WhatsApp (com DDD)</span>
-            <input name="phone" type="tel" maxlength="20" placeholder="(35) 99999-0000" data-ds-phone-mask>
-          </label>
-          <label class="ds-field" data-ds-ws-ext-email-wrap hidden>
-            <span>E-mail</span>
-            <input name="email" type="email" maxlength="160" placeholder="pessoa@exemplo.com.br">
-          </label>
-          <div class="ds-ext-stamp-cfg">
-            <label class="ds-switch-row">
-              <span>
-                <strong>Mostrar selo visual no PDF</strong>
-                <small data-ds-ws-ext-stamp-summary>Selo Completo · posição padrão</small>
-              </span>
-              <input type="checkbox" class="ds-switch-input" role="switch" name="show_stamp" data-ds-ws-ext-show-stamp checked>
-            </label>
-            <div class="ds-ext-stamp-actions" data-ds-ws-ext-stamp-actions>
-              <button type="button" class="sf-btn sf-btn-secondary ds-btn-sm" data-ds-ws-ext-open-placer>{{ icon('pen', 14) }} Posicionar selo no PDF</button>
-            </div>
-          </div>
-          <button class="sf-btn sf-btn-secondary ds-full" type="submit">{{ icon('link', 15) }} Gerar e enviar convite</button>
-          <p class="ds-feedback" data-ds-ext-ws-status role="status" hidden></p>
-        </form>
       </section>
-      {% endif %}
 
-      <section class="pd-card ds-panel-pad ds-participants-card">
-        <header class="ds-card-heading">
-          <span class="ds-tile">{{ icon('users', 18) }}</span>
-          <div>
-            <h2>Participantes da organização</h2>
-            <p>Colegas com conta no SiSFarm autorizados a acessar e assinar este PDF.</p>
-          </div>
-        </header>
-
-        {% if participants %}
-        <div class="ds-people-list">
-          {% for person in participants %}
-          <div class="ds-person-row">
-            <div>
-              <strong>{{ person.display_name or person.name }}</strong>
-              <small>{{ person.email }}</small>
-            </div>
-            <button type="button" class="ds-inline-action is-danger" data-ds-remove="{{ person.id }}">Remover</button>
-          </div>
-          {% endfor %}
-        </div>
-        {% else %}
-        <p class="ds-hint">Nenhum outro usuário da organização adicionado.</p>
-        {% endif %}
-
-        <form class="ds-share-form" data-ds-share>
-          <label class="ds-field">
-            <span>Selecionar usuário da fazenda</span>
-            {% if available_colleagues %}
-            <select name="colleague_pick" data-ds-colleague-pick>
-              <option value="">Escolher usuário cadastrado</option>
-              {% for colleague in available_colleagues %}
-              <option value="{{ colleague.email }}">{{ colleague.display_name or colleague.name }} · {{ colleague.email }}</option>
-              {% endfor %}
-            </select>
-            {% else %}
-            <select class="ds-input-readonly" disabled>
-              <option>Nenhum usuário cadastrado disponível</option>
-            </select>
-            {% endif %}
-          </label>
-          <label class="ds-field">
-            <span>E-mail da conta no SiSFarm</span>
-            <input id="ds-collaborator" name="email" type="email" required maxlength="120" placeholder="nome@fazenda.com.br" {% if not available_colleagues %}disabled class="ds-input-readonly"{% endif %}>
-          </label>
-          <label class="ds-check">
-            <span class="dt-chk"><input name="consent" type="checkbox" class="dt-check" required {% if not available_colleagues %}disabled{% endif %}></span>
-            <span>Autorizo o acesso deste participante ao PDF e às suas versões.</span>
-          </label>
-          <button class="sf-btn sf-btn-secondary ds-full" type="submit" {% if not available_colleagues %}disabled{% endif %}>Conceder acesso</button>
-          <p class="ds-feedback" data-ds-share-status role="status" hidden></p>
-        </form>
+      <section class="pd-card dd-card dd-pad" aria-labelledby="dd-t-sobre">
+        <h2 id="dd-t-sobre">Sobre o documento</h2>
+        <dl class="dd-about">
+          {% if doc.category %}<div><dt>Tipo</dt><dd>{{ doc.category }}</dd></div>{% endif %}
+          <div><dt>Forma de assinar</dt><dd>{{ policy_labels.get(signing_policy, 'Certificado ou eletrônica') }}</dd></div>
+          <div><dt>Enviado por</dt><dd>{{ (owner_user.display_name or owner_user.name) if owner_user else '—' }} · {{ doc.created_at|datetime_sp('%d/%m/%Y') }}</dd></div>
+          <div><dt>Páginas</dt><dd class="ds-tabular">{{ options.pages }}</dd></div>
+          {% if show_filename_sub %}<div><dt>Arquivo</dt><dd class="dd-ellipsis" title="{{ doc.filename }}">{{ doc.filename }}</dd></div>{% endif %}
+        </dl>
       </section>
     </aside>
-    {% endif %}
   </div>
+
+  {% if is_doc_owner and not all_signed %}
+  <div class="dd-drawer-backdrop" data-dd-drawer-backdrop hidden></div>
+  <div class="dd-drawer" role="dialog" aria-modal="true" aria-labelledby="dd-drawer-title" data-dd-drawer hidden>
+    <header class="dd-drawer-head">
+      <h2 id="dd-drawer-title">Adicionar pessoa para assinar</h2>
+      <button type="button" class="dd-ghost" data-dd-close-drawer aria-label="Fechar">{{ icon('close', 18) }}</button>
+    </header>
+    <div class="dd-drawer-body" data-dd-drawer-body>
+      {% if allow_electronic %}
+      <div class="dd-seg" role="tablist" aria-label="Quem vai assinar">
+        <button type="button" role="tab" aria-selected="true" data-dd-add-tab="team">{{ icon('users', 16) }} Da equipe</button>
+        <button type="button" role="tab" aria-selected="false" data-dd-add-tab="external">{{ icon('link', 16) }} Convidar de fora</button>
+      </div>
+      {% endif %}
+
+      <form class="dd-form" data-dd-team-form data-dd-add-panel="team">
+        {% if available_colleagues %}
+        <label class="dd-search">
+          <span class="dd-sr-only">Buscar pessoa da equipe</span>
+          {{ icon('search', 17) }}
+          <input type="search" placeholder="Buscar por nome" data-dd-team-search autocomplete="off">
+        </label>
+        <ul class="dd-pick-list">
+          {% for c in available_colleagues %}
+          <li data-dd-team-item data-dd-search-text="{{ ((c.display_name or c.name) ~ ' ' ~ c.email)|lower }}">
+            <label class="dd-pick">
+              <span class="dt-chk"><input type="checkbox" class="dt-check" value="{{ c.email }}" data-dd-team-check data-dd-name="{{ c.display_name or c.name }}"></span>
+              <span class="dd-av dd-av--muted dd-av--sm" aria-hidden="true">{{ ((c.display_name or c.name or '?')[:1] ~ ((c.display_name or c.name or '').split()[-1][:1] if (c.display_name or c.name or '').split()|length > 1 else ''))|upper }}</span>
+              <span class="dd-pick-text"><strong>{{ c.display_name or c.name }}</strong><small>{{ c.email }}</small></span>
+            </label>
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="dd-muted" data-dd-team-empty hidden>Ninguém encontrado com esse nome.</p>
+        {% else %}
+        <div class="dd-empty"><p><strong>Toda a equipe já está no documento.</strong></p><p class="dd-hint">Só aparecem pessoas com acesso ao SiSFarm desta organização.{% if allow_electronic %} Para quem é de fora, use “Convidar de fora”.{% endif %}</p></div>
+        {% endif %}
+        <div class="dd-summary dd-summary--info" data-dd-team-summary hidden>
+          {{ icon('alert', 18) }}<span data-dd-team-summary-text></span>
+        </div>
+        <p class="ds-feedback" data-dd-team-status role="status" hidden></p>
+      </form>
+
+      {% if allow_electronic %}
+      <form class="dd-form" data-dd-ext-form data-dd-add-panel="external" hidden novalidate>
+        <p class="dd-hint">A pessoa recebe um link exclusivo e um código para assinar. Não precisa ter conta no SiSFarm.</p>
+        <label class="dd-field">Nome completo<input name="name" type="text" required maxlength="160" autocomplete="off"></label>
+        <label class="dd-field">CPF<input name="cpf" type="text" inputmode="numeric" required maxlength="14" placeholder="000.000.000-00" data-ds-cpf-mask></label>
+        <fieldset class="dd-fieldset">
+          <legend>Assina como</legend>
+          <div class="dd-chips">
+            {% for r in ['Comprador', 'Vendedor', 'Testemunha'] %}
+            <button type="button" class="dd-chip {{ 'is-on' if loop.first else '' }}" aria-pressed="{{ 'true' if loop.first else 'false' }}" data-dd-role="{{ r }}">{{ r }}</button>
+            {% endfor %}
+            <button type="button" class="dd-chip" aria-pressed="false" data-dd-role="">Outro…</button>
+          </div>
+          <label class="dd-field" data-dd-role-other hidden>Qual papel?<input name="role_other" type="text" maxlength="60" placeholder="Ex.: Arrendatário"></label>
+        </fieldset>
+        <fieldset class="dd-fieldset">
+          <legend>Enviar o convite por</legend>
+          <div class="dd-seg dd-seg--small">
+            <button type="button" aria-pressed="true" data-dd-channel="whatsapp">WhatsApp</button>
+            <button type="button" aria-pressed="false" data-dd-channel="email">E-mail</button>
+          </div>
+          <label class="dd-field" data-dd-phone-wrap>WhatsApp com DDD<input name="phone" type="tel" maxlength="20" placeholder="(35) 99999-0000" data-ds-phone-mask></label>
+          <label class="dd-field" data-dd-email-wrap hidden>E-mail<input name="email" type="email" maxlength="160" placeholder="pessoa@exemplo.com.br"></label>
+        </fieldset>
+        <div class="dd-stamp-row">
+          {{ icon('file', 20) }}
+          <div><strong>Selo da assinatura no PDF</strong><small data-dd-stamp-summary>Selo completo · posição padrão</small></div>
+          <button type="button" class="sf-btn sf-btn-secondary dd-btn-sm" data-dd-open-placer>Ajustar</button>
+        </div>
+        <div class="dd-summary" data-dd-ext-summary hidden>
+          <strong>Confira antes de enviar</strong>
+          <ul data-dd-ext-summary-list></ul>
+        </div>
+        <p class="ds-feedback" data-dd-ext-status role="status" hidden></p>
+      </form>
+      {% endif %}
+
+      <div class="dd-done" data-dd-done hidden>
+        <span class="dd-done-ic" aria-hidden="true">{{ icon('check', 26) }}</span>
+        <h3 data-dd-done-title>Convite enviado</h3>
+        <p class="dd-hint" data-dd-done-note></p>
+        <div class="dd-code-row" data-dd-done-link-row hidden>
+          <input type="text" readonly class="dd-link-input" data-dd-done-link aria-label="Link de assinatura">
+          <button type="button" class="dd-icon-btn" data-dd-copy-done-link aria-label="Copiar link">{{ icon('copy', 17) }}</button>
+        </div>
+        <a class="sf-btn sf-btn-secondary ds-full" href="#" target="_blank" rel="noopener" data-dd-done-wa hidden>{{ icon('whatsapp', 16) }} Enviar pelo meu WhatsApp</a>
+      </div>
+    </div>
+    <footer class="dd-drawer-foot" data-dd-drawer-foot>
+      <button type="button" class="sf-btn sf-btn-secondary" data-dd-close-drawer>Cancelar</button>
+      <button type="button" class="sf-btn sf-btn-primary" data-dd-submit disabled>Adicionar</button>
+    </footer>
+    <footer class="dd-drawer-foot" data-dd-done-foot hidden>
+      <button type="button" class="sf-btn sf-btn-primary" data-dd-finish>Concluir</button>
+    </footer>
+  </div>
+
+  <div class="dd-drawer-backdrop" data-dd-channel-backdrop hidden></div>
+  <div class="dd-modal" role="dialog" aria-modal="true" aria-labelledby="dd-channel-title" data-dd-channel-modal hidden>
+    <h2 id="dd-channel-title" data-dd-channel-title>Trocar para e-mail</h2>
+    <p class="dd-hint" data-dd-channel-note></p>
+    <label class="dd-field" data-dd-channel-field><span data-dd-channel-label>E-mail</span><input type="email" data-dd-channel-input maxlength="160"></label>
+    <p class="ds-feedback" data-dd-channel-status role="status" hidden></p>
+    <div class="dd-modal-foot">
+      <button type="button" class="sf-btn sf-btn-secondary" data-dd-channel-cancel>Cancelar</button>
+      <button type="button" class="sf-btn sf-btn-primary" data-dd-channel-confirm>Trocar e reenviar</button>
+    </div>
+  </div>
+  {% endif %}
+  <div class="dd-toast" data-dd-toast role="status" aria-live="polite" hidden><span data-dd-toast-text></span><a href="#" target="_blank" rel="noopener" data-dd-toast-link hidden>Enviar pelo meu WhatsApp</a><button type="button" class="dd-ghost" data-dd-toast-close aria-label="Fechar aviso">{{ icon('close', 16) }}</button></div>
   <!-- MODAL INTERATIVO: POSICIONAR SELO DE ASSINATURA NO PDF (EMITENTE) -->
   <dialog class="ds-dialog ds-placer-dialog" data-ds-placer-dialog aria-label="Posicionar selo de assinatura no PDF">
     <header class="ds-dialog-head">
@@ -715,5 +715,5 @@
     </footer>
   </dialog>
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=17"></script>
+<script type="module" src="/static/js/digital_signing.js?v=18"></script>
 {% endblock %}

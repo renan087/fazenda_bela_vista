@@ -653,8 +653,9 @@ def test_sign_with_email_code_only_and_delete_certificate_preserves_signed_docum
     assert "Contrato Terceiro" in home_after
     assert "Aguardando outros" in home_after
     ws_others = client.get(others_url).text
-    assert "0 de 1 assinou" in ws_others
-    assert "0 de 2 assinou" not in ws_others
+    assert "0 de 1</strong> assinou" in ws_others
+    assert "0 de 2</strong>" not in ws_others
+    assert "Aguardando 1 assinatura" in ws_others
     assert "Aguardando assinaturas" in ws_others
     assert "data-ds-authorize" not in ws_others
 
@@ -1520,3 +1521,74 @@ def test_whatsapp_invite_webhook_statuses_bot_filtering_and_duplicate_prevention
         assert row.first_accessed_at is not None
         assert row.last_accessed_at is not None
         assert row.access_count == 2
+
+
+def test_workspace_signers_tab_remind_change_channel_and_copy_link(web_db, monkeypatch):
+    from app.services.document_signing import electronic
+    from app.web import digital_documents as dd_web
+
+    sessions, _settings = web_db
+    ext_emails, team_emails = [], []
+    monkeypatch.setattr(electronic, "send_plain_email", lambda *args: ext_emails.append(args))
+    monkeypatch.setattr(dd_web, "send_plain_email", lambda *args: team_emails.append(args))
+    monkeypatch.setattr(electronic, "whatsapp_is_configured", lambda: False)
+
+    client = LocalTestClient(_make_signing_app(sessions))
+    headers = {"X-CSRF-Token": client.get("/test-login", params={"user_id": 1, "farm_id": 1}).json()["csrf"]}
+    created = client.post("/assinatura-digital/documentos", content=_original(), headers={
+        **headers, "Content-Type": "application/pdf", "X-Document-Name": "contrato_cafe.pdf",
+        "X-Document-Owner-Signs": "0", "X-Document-Signing-Policy": "electronic",
+    })
+    assert created.status_code == 201, created.text
+    endpoint = created.json()["url"]
+
+    assert client.post(endpoint + "/participantes", headers=headers, json={
+        "email": "conta2@example.test", "consent": True,
+    }).status_code == 200
+    ext = client.post(endpoint + "/externos", headers=headers, json={
+        "name": "João Batista", "role_label": "Comprador", "channel": "email", "email": "joao@comprador.test",
+    })
+    assert ext.status_code == 201, ext.text
+    signer_id = ext.json()["signer_id"]
+    first_url = ext.json()["sign_url"]
+
+    page = client.get(endpoint + "?aba=detalhes").text
+    assert "Assinaturas e histórico" in page
+    assert "0 de 2</strong> assinou" in page
+    assert "João Batista" in page and "Comprador · de fora" in page
+    assert "Trocar para WhatsApp" in page
+    assert "data-dd-remind=\"team\"" in page and "data-dd-remind=\"external\"" in page
+    assert "Convite enviado para João Batista por e-mail" in page
+    assert "Detalhes, participantes e versões" not in page
+
+    # Lembrar alguém da equipe
+    team_emails.clear()
+    remind = client.post(endpoint + "/participantes/2/lembrar", headers=headers)
+    assert remind.status_code == 200, remind.text
+    assert remind.json()["notification_sent"] is True
+    assert team_emails and team_emails[0][0] == "conta2@example.test"
+    assert client.post(endpoint + "/participantes/99/lembrar", headers=headers).status_code == 404
+
+    # Copiar link: gera link novo sem mandar mensagem
+    ext_emails.clear()
+    only_link = client.post(f"{endpoint}/externos/{signer_id}/reenviar?somente_link=1", headers=headers)
+    assert only_link.status_code == 200, only_link.text
+    assert only_link.json()["notification_sent"] is False
+    assert "/assinar/" in only_link.json()["sign_url"] and only_link.json()["sign_url"] != first_url
+    assert ext_emails == []
+
+    # Trocar canal: exige dado válido e reenvia pelo novo canal
+    bad = client.post(f"{endpoint}/externos/{signer_id}/canal", headers=headers, json={"channel": "email", "email": "x"})
+    assert bad.status_code == 400 or bad.status_code == 422
+    changed = client.post(f"{endpoint}/externos/{signer_id}/canal", headers=headers, json={
+        "channel": "email", "email": "Novo@Comprador.test",
+    })
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["notification_sent"] is True
+    assert ext_emails[-1][0] == "novo@comprador.test"
+
+    # Quem não é dono não consegue lembrar nem trocar canal
+    headers2 = {"X-CSRF-Token": client.get("/test-login", params={"user_id": 2, "farm_id": 1}).json()["csrf"]}
+    assert client.post(endpoint + "/participantes/2/lembrar", headers=headers2).status_code in (403, 404)
+    other_view = client.get(endpoint + "?aba=detalhes").text
+    assert "data-dd-remind" not in other_view and "data-dd-open-add" not in other_view
