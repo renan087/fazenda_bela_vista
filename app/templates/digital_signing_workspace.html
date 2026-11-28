@@ -356,13 +356,13 @@
             <span><strong data-ds-confirm-holder></strong></span>
           </div>
 
-          <label class="ds-field">
-            <span class="ds-otp-field-head">
-              <span>Código de confirmação (8 dígitos)</span>
+          <div class="ds-field">
+            <div class="ds-otp-field-head">
+              <label for="ds-code">Código de confirmação (8 dígitos)</label>
               <button type="button" class="ds-otp-paste-btn" data-ds-otp-paste>{{ icon('copy', 13) }} Colar código</button>
-            </span>
+            </div>
             <input id="ds-code" name="code" class="ds-otp-input" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" enterkeyhint="done" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="00000000" required>
-          </label>
+          </div>
 
           <p class="ds-feedback" data-ds-confirm-status role="status" aria-live="polite" hidden></p>
 

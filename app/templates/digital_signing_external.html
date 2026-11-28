@@ -60,16 +60,20 @@
     <script type="application/json" data-ds-active-challenge>{{ active_challenge|tojson }}</script>
 
     {% if not already_signed %}
-    <section class="pd-card ds-iab-card" data-ds-iab-gate {% if not (iab_info and iab_info.is_in_app and not active_challenge) %}hidden{% endif %} aria-label="Recomendação para abrir no navegador externo">
+    <section class="pd-card ds-iab-card" data-ds-iab-gate data-opened-external="{{ 'yes' if opened_external else 'no' }}" {% if not show_iab_gate %}hidden{% endif %} aria-label="Recomendação para abrir no navegador externo">
       <div class="ds-iab-top">
         <span class="ds-iab-ic" aria-hidden="true">{{ icon('link', 20) }}</span>
         <div class="ds-iab-copy">
           <span class="ds-iab-eyebrow">Recomendado para celular</span>
-          <h2>Abra este link no seu navegador</h2>
+          <h2>Abra este link no {% if iab_info and iab_info.os == 'ios' %}Safari{% elif iab_info and iab_info.os == 'android' %}Chrome{% else %}seu navegador{% endif %}</h2>
           <p data-ds-iab-desc>
+            {% if iab_info and iab_info.is_in_app %}
             Você abriu este documento dentro do <strong>{{ iab_info.app_name or 'aplicativo' }}</strong>.
-            Abrir no {% if iab_info and iab_info.os == 'ios' %}<strong>Safari</strong>{% elif iab_info and iab_info.os == 'android' %}<strong>Chrome</strong>{% else %}<strong>navegador do celular</strong>{% endif %}
-            evita fechar esta tela quando você for consultar o código no WhatsApp.
+            {% else %}
+            Se você abriu este link pelo <strong>WhatsApp</strong>, recomendamos abrir no navegador do celular.
+            {% endif %}
+            Abrir no {% if iab_info and iab_info.os == 'ios' %}<strong>Safari</strong>{% elif iab_info and iab_info.os == 'android' %}<strong>Chrome</strong>{% else %}<strong>navegador externo</strong>{% endif %}
+            evita perder esta tela quando você for consultar o código de verificação no WhatsApp.
           </p>
         </div>
       </div>
@@ -92,7 +96,7 @@
         <strong>Como abrir manualmente:</strong>
         <p data-ds-iab-guide-text>
           {% if iab_info and iab_info.os == 'ios' %}
-          Toque no ícone de bússola (Safari) ou nos três pontinhos (⋯) no canto da tela e escolha <strong>Abrir no navegador</strong>. Se preferir, toque em <strong>Copiar link de assinatura</strong> e cole no Safari.
+          Toque no ícone de bússola (Safari) no canto inferior direito desta tela (ou nos três pontinhos ⋯ e escolha <strong>Abrir no navegador</strong>). Se preferir, toque em <strong>Copiar link de assinatura</strong> e cole no Safari.
           {% else %}
           Toque nos três pontinhos (⋮) no canto superior direito e escolha <strong>Abrir no navegador</strong>. Se preferir, toque em <strong>Copiar link de assinatura</strong> e cole no Chrome.
           {% endif %}
@@ -277,13 +281,16 @@
               <span>Assinatura eletrônica de <strong>{{ signer.name }}</strong></span>
             </div>
 
-            <label class="ds-field">
-              <span class="ds-otp-field-head">
-                <span>Código de confirmação (8 dígitos)</span>
+            <div class="ds-field">
+              <div class="ds-otp-field-head">
+                <label for="ds-ext-code">Código de confirmação (8 dígitos)</label>
                 <button type="button" class="ds-otp-paste-btn" data-ds-otp-paste>{{ icon('copy', 13) }} Colar código</button>
-              </span>
+              </div>
               <input id="ds-ext-code" name="code" class="ds-otp-input" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" enterkeyhint="done" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="00000000" required>
-            </label>
+              {% if locked_channel == 'whatsapp' %}
+              <small class="ds-cpf-hint">No WhatsApp, toque em <strong>Copiar código</strong> e depois em <strong>Colar código</strong> acima.</small>
+              {% endif %}
+            </div>
 
             <p class="ds-feedback" data-ds-confirm-status role="status" aria-live="polite" hidden></p>
 
@@ -338,6 +345,6 @@
   <footer class="ds-pub-footer">
     <p>SiSFarm · Assinatura Eletrônica conforme MP 2.200-2/2001 (art. 10 §2º), Lei 14.063/2020 (art. 4º II) e LGPD (Lei 13.709/2018).</p>
   </footer>
-  <script type="module" src="/static/js/digital_signing.js?v=20"></script>
+  <script type="module" src="/static/js/digital_signing.js?v=21"></script>
 </body>
 </html>

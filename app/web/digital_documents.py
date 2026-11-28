@@ -1265,18 +1265,34 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
     has_fallback_email = bool(locked_channel == "whatsapp" and signer.email and "@" in signer.email)
     preset_appearance = signer.appearance if isinstance(signer.appearance, dict) else {"visible": False}
     user_agent = request.headers.get("user-agent")
-    iab_info = electronic.detect_in_app_browser(user_agent)
+    req_headers = dict(request.headers)
+    iab_info = electronic.detect_in_app_browser(user_agent, req_headers)
     active_challenge = (
         None
         if signer.status == "signed"
         else electronic.get_active_external_challenge(db, signer=signer, revision=revision)
+    )
+    opened_external = (request.query_params.get("ext") or "").strip() == "1"
+    # No iOS (SFSafariViewController) e no Android (Chrome Custom Tabs), o WhatsApp
+    # envia o mesmo User-Agent do Safari/Chrome comum. Para convites de WhatsApp abertos
+    # no celular sem ?ext=1, exibimos o cartão recomendando abrir no navegador externo.
+    is_mobile_whatsapp_invite = bool(
+        iab_info["os"] in ("ios", "android")
+        and locked_channel == "whatsapp"
+        and not opened_external
+    )
+    show_iab_gate = bool(
+        signer.status != "signed"
+        and not active_challenge
+        and not opened_external
+        and (iab_info["is_in_app"] or is_mobile_whatsapp_invite)
     )
     electronic.record_real_external_access(
         db,
         signer,
         method=request.method,
         user_agent=user_agent,
-        headers=dict(request.headers),
+        headers=req_headers,
     )
     db.commit()
     return templates.TemplateResponse(
@@ -1304,6 +1320,8 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
             "has_fallback_email": has_fallback_email,
             "preset_appearance": preset_appearance,
             "iab_info": iab_info,
+            "show_iab_gate": show_iab_gate,
+            "opened_external": opened_external,
             "active_challenge": active_challenge,
             "phone_masked": electronic.mask_phone(signer.phone) if signer.phone else "",
             "email_masked": electronic.mask_email(signer.email) if signer.email else "",

@@ -1272,16 +1272,27 @@ def record_real_external_access(db, signer: SigningExternalSigner, *, method: st
     return True
 
 
-def detect_in_app_browser(user_agent: str | None) -> dict:
+def detect_in_app_browser(user_agent: str | None, headers: dict | None = None) -> dict:
     """Detecta acessos vindos de navegadores internos (WhatsApp, Instagram, WebViews Android/iOS)."""
     ua = (user_agent or "").strip()
     ua_low = ua.lower()
+    hdrs = {str(k).lower(): str(v) for k, v in (headers or {}).items()}
+    req_with = hdrs.get("x-requested-with", "").lower()
+    referer = hdrs.get("referer", "").lower()
+
     if any(k in ua_low for k in ("iphone", "ipad", "ipod")):
         os_name = "ios"
     elif "android" in ua_low:
         os_name = "android"
     else:
         os_name = "other"
+
+    if "com.whatsapp" in req_with or "android-app://com.whatsapp" in referer:
+        return {"is_in_app": True, "app_name": "WhatsApp", "os": os_name}
+    if "com.instagram" in req_with or "android-app://com.instagram" in referer:
+        return {"is_in_app": True, "app_name": "Instagram", "os": os_name}
+    if "com.facebook" in req_with or "android-app://com.facebook" in referer:
+        return {"is_in_app": True, "app_name": "Facebook", "os": os_name}
 
     if not ua:
         return {"is_in_app": False, "app_name": "", "os": os_name}
@@ -1848,7 +1859,8 @@ def confirm_electronic_signature(
         raise ValueError("O documento foi atualizado. Confira a nova versão e solicite um novo código.")
 
     challenge.attempts += 1
-    if not hmac.compare_digest(challenge.code_hash, hash_verification_code(challenge.id + (code or "").strip())):
+    clean_code = re.sub(r"\D", "", code or "")
+    if not hmac.compare_digest(challenge.code_hash, hash_verification_code(challenge.id + clean_code)):
         remaining = max(0, MAX_ATTEMPTS - challenge.attempts)
         if challenge.attempts >= MAX_ATTEMPTS:
             challenge.consumed_at = now

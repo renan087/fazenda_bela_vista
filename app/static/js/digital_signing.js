@@ -3821,13 +3821,26 @@ function initExternalSigning(root) {
   const iabGate = find("[data-ds-iab-gate]");
   if (iabGate) {
     const iab = detectClientInAppBrowser(serverIabInfo);
+    const openedExternal = iabGate.dataset.openedExternal === "yes";
     const tabKey = "sisfarm_ext_iab_dismissed";
     let dismissed = false;
     try { dismissed = window.sessionStorage?.getItem(tabKey) === "1"; } catch {}
 
-    if (iab.isInApp && !activeChallenge && !dismissed) {
+    if (dismissed || openedExternal || activeChallenge) {
+      iabGate.hidden = true;
+    } else if (iab.isInApp) {
       iabGate.hidden = false;
     }
+
+    const externalTargetUrl = () => {
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.set("ext", "1");
+        return u.toString();
+      } catch {
+        return window.location.href;
+      }
+    };
 
     const iabOpenBtn = find("[data-ds-iab-open]");
     const iabCopyBtn = find("[data-ds-iab-copy]");
@@ -3836,8 +3849,15 @@ function initExternalSigning(root) {
     const iabGuide = find("[data-ds-iab-guide]");
 
     iabOpenBtn?.addEventListener("click", () => {
-      const currentUrl = window.location.href;
-      const hostPath = `${window.location.host}${window.location.pathname}${window.location.search}`;
+      const targetUrl = externalTargetUrl();
+      let hostPath = `${window.location.host}${window.location.pathname}${window.location.search}`;
+      let scheme = window.location.protocol.replace(":", "") || "https";
+      try {
+        const u = new URL(targetUrl);
+        hostPath = `${u.host}${u.pathname}${u.search}`;
+        scheme = u.protocol.replace(":", "") || "https";
+      } catch {}
+
       const revealGuideIfStillHere = () => {
         if (document.visibilityState !== "hidden" && iabGuide) {
           iabGuide.hidden = false;
@@ -3846,21 +3866,21 @@ function initExternalSigning(root) {
       };
 
       if (iab.os === "android") {
-        const intentUrl = `intent://${hostPath}#Intent;scheme=${window.location.protocol.replace(":", "") || "https"};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end`;
+        const intentUrl = `intent://${hostPath}#Intent;scheme=${scheme};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end`;
         window.location.href = intentUrl;
         window.setTimeout(revealGuideIfStillHere, 1100);
       } else if (iab.os === "ios") {
-        const safariUrl = `x-safari-${currentUrl}`;
+        const safariUrl = `x-safari-${targetUrl}`;
         window.location.href = safariUrl;
         window.setTimeout(revealGuideIfStillHere, 900);
       } else {
-        const opened = window.open(currentUrl, "_blank", "noopener");
+        const opened = window.open(targetUrl, "_blank", "noopener");
         if (!opened) revealGuideIfStillHere();
       }
     });
 
     iabCopyBtn?.addEventListener("click", async () => {
-      const url = window.location.href;
+      const url = externalTargetUrl();
       let copied = false;
       try {
         if (navigator.clipboard?.writeText) {
