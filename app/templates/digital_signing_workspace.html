@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, status %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=14">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=15">{% endblock %}
 {% block content %}
 {% set endpoint = '/assinatura-digital/documentos/' ~ doc.id %}
 {% set pdf_url = endpoint ~ '/revisoes/' ~ doc.current_revision ~ '/pdf' %}
@@ -338,6 +338,19 @@
             <p data-ds-step2-sub>Enviamos um código de 8 dígitos para <strong>{{ user.email }}</strong>.</p>
           </div>
 
+          <div class="ds-otp-sent-banner" data-ds-otp-sent-banner role="status" aria-live="polite">
+            <span class="ds-otp-sent-ic" aria-hidden="true">{{ icon('check', 15) }}</span>
+            <div class="ds-otp-sent-copy">
+              <strong data-ds-otp-sent-title>Código enviado</strong>
+              <span class="ds-tabular" data-ds-otp-dest>{{ user.email }}</span>
+            </div>
+          </div>
+
+          <div class="ds-otp-meta-bar">
+            <span>Validade do código</span>
+            <strong class="ds-otp-expiry ds-tabular" data-ds-otp-expiry>10:00</strong>
+          </div>
+
           <div class="ds-cert-confirm-chip">
             {{ icon('shield', 16) }}
             <span><strong data-ds-confirm-holder></strong></span>
@@ -350,10 +363,17 @@
 
           <p class="ds-feedback" data-ds-confirm-status role="status" aria-live="polite" hidden></p>
 
-          <button type="submit" class="sf-btn sf-btn-primary ds-full">
+          <button type="submit" class="sf-btn sf-btn-primary ds-full" data-ds-otp-submit>
             {{ icon('shield', 16) }} Assinar documento agora
           </button>
-          <p class="ds-hint ds-center-hint">Válido por 10 minutos para esta versão do PDF.</p>
+
+          <div class="ds-otp-resend-row">
+            <button type="button" class="ds-otp-resend-btn" data-ds-otp-resend disabled>Reenviar código em 60s</button>
+            <button type="button" class="ds-otp-fallback-btn" data-ds-otp-fallback-email hidden>
+              Prefere receber por e-mail?
+            </button>
+          </div>
+          <p class="ds-hint ds-center-hint">Ao reenviar, o código anterior é invalidado automaticamente.</p>
         </form>
 
         <!-- ETAPA 3: SUCESSO IMEDIATO -->
@@ -715,5 +735,5 @@
     </footer>
   </dialog>
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=18"></script>
+<script type="module" src="/static/js/digital_signing.js?v=19"></script>
 {% endblock %}

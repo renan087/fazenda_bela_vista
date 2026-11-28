@@ -4351,3 +4351,130 @@ body.dd-no-scroll { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .dd-drawer, .dd-ghost svg, .dd-tech summary svg { transition: none; }
 }
+
+/* ==========================================================================
+   Verificação OTP: confirmação de envio, validade regressiva e reenvio
+   ========================================================================== */
+.ds-otp-sent-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.72rem 0.9rem;
+  border-radius: 0.85rem;
+  background: #E6F4E2;
+  border: 1px solid #C6E3BE;
+  color: #1F7A3A;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+.ds-otp-sent-ic {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: #1F7A3A;
+  color: #FFFFFF;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.ds-otp-sent-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.ds-otp-sent-copy strong {
+  font-weight: 700;
+  color: #164A25;
+}
+.ds-otp-sent-copy span {
+  color: #1F7A3A;
+  word-break: break-word;
+}
+
+.ds-otp-meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.75rem;
+  background: #F6F8F5;
+  border: 1px solid #E3E8E2;
+  font-size: 0.8rem;
+  color: #5B6660;
+}
+.ds-otp-expiry {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #16201A;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #FFFFFF;
+  border: 1px solid #E3E8E2;
+}
+.ds-otp-expiry.is-warn {
+  color: #7A4F00;
+  background: #FFF6E5;
+  border-color: #F0D9A6;
+}
+.ds-otp-expiry.is-expired {
+  color: #B42318;
+  background: #FDECEA;
+  border-color: #F5C2BE;
+}
+
+.ds-otp-resend-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+}
+.ds-otp-resend-btn,
+.ds-otp-fallback-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid #D6DDD5;
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.95rem;
+  min-height: 2.5rem;
+  width: 100%;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #446A36;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.ds-otp-resend-btn:hover:not(:disabled),
+.ds-otp-fallback-btn:hover:not(:disabled) {
+  background: #EEF3EB;
+  border-color: #446A36;
+}
+.ds-otp-resend-btn:disabled,
+.ds-otp-fallback-btn:disabled {
+  color: #7A857E;
+  background: #F6F8F5;
+  border-color: #E3E8E2;
+  cursor: not-allowed;
+}
+.ds-otp-fallback-btn {
+  border-style: dashed;
+  color: #1F5FA8;
+  border-color: #C8DCF6;
+  background: #F6FAFF;
+}
+.ds-otp-fallback-btn:hover:not(:disabled) {
+  background: #E8F1FB;
+  border-color: #1F5FA8;
+}
+.ds-otp-fallback-box {
+  margin-top: 0.25rem;
+}
+@media (max-width: 639px) {
+  .ds-otp-resend-btn,
+  .ds-otp-fallback-btn {
+    min-height: 2.75rem;
+  }
+}

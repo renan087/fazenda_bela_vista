@@ -1655,3 +1655,214 @@ def test_workspace_signers_tab_remind_change_channel_and_copy_link(web_db, monke
     assert client.post(endpoint + "/participantes/2/lembrar", headers=headers2).status_code in (403, 404)
     other_view = client.get(endpoint + "?aba=detalhes").text
     assert "data-dd-remind" not in other_view and "data-dd-open-add" not in other_view
+
+
+def test_whatsapp_otp_auth_template_countdown_resend_invalidation_abuse_and_fallback(web_db, monkeypatch, caplog):
+    import logging
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import update
+    from app.models.signed_document import SigningElectronicChallenge
+    from app.services import whatsapp as wa_svc
+    from app.services.document_signing import electronic
+
+    sessions, _settings = web_db
+    emails = []
+    sent_payloads = []
+    fail_whatsapp = {"value": False}
+
+    monkeypatch.setattr(electronic, "send_plain_email", lambda *args: emails.append(args))
+    monkeypatch.setattr(electronic, "whatsapp_is_configured", lambda: True)
+
+    def _fake_post(self, payload):
+        if fail_whatsapp["value"]:
+            raise wa_svc.WhatsAppError("Meta temporary error", code=131000)
+        sent_payloads.append(payload)
+        return {"messages": [{"id": f"wamid.otp.{len(sent_payloads)}"}]}
+
+    monkeypatch.setattr(wa_svc.WhatsAppClient, "_post", _fake_post)
+
+    client = LocalTestClient(_make_signing_app(sessions))
+    headers = {"X-CSRF-Token": client.get("/test-login", params={"user_id": 1, "farm_id": 1}).json()["csrf"]}
+
+    created = client.post("/assinatura-digital/documentos", content=_original(), headers={
+        **headers,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "termo_otp_wa.pdf",
+        "X-Document-Owner-Signs": "0",
+        "X-Document-Signing-Policy": "electronic",
+    })
+    assert created.status_code == 201, created.text
+    endpoint = created.json()["url"]
+
+    # Cria signatário externo via WhatsApp (sem janela 24h) com e-mail cadastrado como alternativa
+    ext = client.post(endpoint + "/externos", headers=headers, json={
+        "name": "Carlos Produtor",
+        "role_label": "Produtor",
+        "channel": "whatsapp",
+        "phone": "(35) 99222-3344",
+        "email": "carlos@produtor.test",
+        "cpf": "529.982.247-25",
+    })
+    assert ext.status_code == 201, ext.text
+    token = ext.json()["sign_url"].rsplit("/assinar/", 1)[1]
+
+    # 1) Página pública NÃO exibe mais instrução de enviar "Oi" e exibe controles de validade/reenvio
+    pub_client = LocalTestClient(_make_signing_app(sessions))
+    page = pub_client.get(f"/assinar/{token}")
+    assert page.status_code == 200
+    assert 'envie primeiro um "Oi"' not in page.text
+    assert "Abrir WhatsApp do SiSFarm" not in page.text
+    assert "data-ds-otp-expiry" in page.text
+    assert "data-ds-otp-resend" in page.text
+    assert "data-ds-otp-sent-banner" in page.text
+    assert "(35) 9****-3344" in page.text
+    pub_csrf = re.search(r'data-csrf="([^"]+)"', page.text).group(1)
+    pub_headers = {"X-CSRF-Token": pub_csrf}
+
+    # 2) Dispara OTP via template oficial Authentication (sisfarm_codigo_assinatura) fora da janela 24h
+    sent_payloads.clear()
+    with caplog.at_level(logging.DEBUG):
+        auth1 = pub_client.post(f"/assinar/{token}/autorizar", headers=pub_headers, json={"consent": True})
+    assert auth1.status_code == 201, auth1.text
+    a1 = auth1.json()
+    assert a1["channel"] == "whatsapp"
+    assert a1["destination_masked"] == "(35) 9****-3344"
+    assert a1["expires_minutes"] == 10
+    assert a1["expires_seconds"] == 600
+    assert a1["resend_after_seconds"] == 60
+    assert a1["fallback_email_available"] is True
+    assert len(sent_payloads) == 1
+    tpl = sent_payloads[0]["template"]
+    assert tpl["name"] == "sisfarm_codigo_assinatura"
+    assert tpl["language"] == {"code": "pt_BR"}
+    assert len(tpl["components"]) == 2
+    assert tpl["components"][0]["type"] == "body"
+    code1 = tpl["components"][0]["parameters"][0]["text"]
+    assert re.fullmatch(r"\d{8}", code1)
+    assert tpl["components"][1] == {
+        "type": "button",
+        "sub_type": "url",
+        "index": "0",
+        "parameters": [{"type": "text", "text": code1}],
+    }
+    # Garante que o código NUNCA aparece nos logs
+    assert code1 not in caplog.text
+
+    # 3) Reenvio antes de 60s é bloqueado e NÃO invalida o código ativo
+    too_soon = pub_client.post(f"/assinar/{token}/autorizar", headers=pub_headers, json={"consent": True})
+    assert too_soon.status_code == 422
+    assert "segundos" in too_soon.json()["detail"]
+
+    # 4) Após 60s, reenvio funciona e INVALIDA o código anterior
+    with sessions() as db:
+        db.execute(
+            update(SigningElectronicChallenge)
+            .where(SigningElectronicChallenge.id == a1["challenge_id"])
+            .values(created_at=datetime.now(timezone.utc) - timedelta(seconds=65))
+        )
+        db.commit()
+
+    auth2 = pub_client.post(f"/assinar/{token}/autorizar", headers=pub_headers, json={"consent": True})
+    assert auth2.status_code == 201, auth2.text
+    a2 = auth2.json()
+    code2 = sent_payloads[-1]["template"]["components"][0]["parameters"][0]["text"]
+    assert code2 != code1 or a2["challenge_id"] != a1["challenge_id"]
+
+    # Código anterior está invalidado
+    old_try = pub_client.post(f"/assinar/{token}/assinar", headers=pub_headers, json={
+        "consent": True, "challenge_id": a1["challenge_id"], "code": code1,
+    })
+    assert old_try.status_code == 422
+
+    # 5) Limite de tentativas incorretas (5 tentativas) bloqueia o challenge
+    for attempt in range(5):
+        wrong = pub_client.post(f"/assinar/{token}/assinar", headers=pub_headers, json={
+            "consent": True, "challenge_id": a2["challenge_id"], "code": "00000000" if code2 != "00000000" else "99999999",
+        })
+        assert wrong.status_code == 403
+        if attempt < 4:
+            assert "tentativa" in wrong.json()["detail"]
+        else:
+            assert "Limite de tentativas" in wrong.json()["detail"]
+
+    # Mesmo com código correto depois de 5 erros, não aceita mais
+    after_lock = pub_client.post(f"/assinar/{token}/assinar", headers=pub_headers, json={
+        "consent": True, "challenge_id": a2["challenge_id"], "code": code2,
+    })
+    assert after_lock.status_code == 422
+
+    # 6) Falha de entrega no WhatsApp -> mensagem amigável sem vazar código + fallback por e-mail funciona!
+    with sessions() as db:
+        db.execute(
+            update(SigningElectronicChallenge)
+            .where(SigningElectronicChallenge.id == a2["challenge_id"])
+            .values(created_at=datetime.now(timezone.utc) - timedelta(seconds=65))
+        )
+        db.commit()
+
+    fail_whatsapp["value"] = True
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        failed_wa = pub_client.post(f"/assinar/{token}/autorizar", headers=pub_headers, json={"consent": True})
+    assert failed_wa.status_code == 422
+    assert "e-mail" in failed_wa.json()["detail"].lower()
+    assert "Meta temporary error" not in failed_wa.json()["detail"]
+
+    # Avança cooldown e usa alternativa de e-mail
+    with sessions() as db:
+        db.execute(
+            update(SigningElectronicChallenge)
+            .values(created_at=datetime.now(timezone.utc) - timedelta(seconds=65))
+        )
+        db.commit()
+
+    emails.clear()
+    fallback = pub_client.post(f"/assinar/{token}/autorizar", headers=pub_headers, json={"consent": True, "channel": "email"})
+    assert fallback.status_code == 201, fallback.text
+    assert fallback.json()["channel"] == "email"
+    assert len(emails) == 1
+    email_code = re.search(r"Código de autorização: (\d{8})", emails[0][2]).group(1)
+
+    # 7) Proteção contra envios abusivos por hora (MAX_CHALLENGES_PER_HOUR = 6)
+    with sessions() as db:
+        now_utc = datetime.now(timezone.utc)
+        db.execute(
+            update(SigningElectronicChallenge)
+            .values(created_at=now_utc - timedelta(minutes=2))
+        )
+        # Completa até 6 challenges na última hora
+        existing_cnt = len(db.scalars(select(SigningElectronicChallenge.id)).all())
+        base_ch = db.scalar(select(SigningElectronicChallenge).limit(1))
+        for i in range(max(0, electronic.MAX_CHALLENGES_PER_HOUR - existing_cnt)):
+            db.add(SigningElectronicChallenge(
+                id=f"abuse-ch-{i}",
+                document_id=base_ch.document_id,
+                revision_id=base_ch.revision_id,
+                revision_sha256=base_ch.revision_sha256,
+                external_signer_id=base_ch.external_signer_id,
+                signer_name=base_ch.signer_name,
+                cpf_masked=base_ch.cpf_masked,
+                cpf_encrypted=base_ch.cpf_encrypted,
+                cpf_sha256=base_ch.cpf_sha256,
+                auth_channel="whatsapp",
+                auth_destination_masked="(35) 9****-3344",
+                appearance={"visible": False},
+                consent_version="v1",
+                consent_text_sha256=base_ch.consent_text_sha256,
+                code_hash=base_ch.code_hash,
+                expires_at=now_utc + timedelta(minutes=10),
+                created_at=now_utc - timedelta(minutes=5),
+                consumed_at=now_utc - timedelta(minutes=4),
+            ))
+        db.commit()
+
+    abuse_blocked = pub_client.post(f"/assinar/{token}/autorizar", headers=pub_headers, json={"consent": True, "channel": "email"})
+    assert abuse_blocked.status_code == 422
+    assert "Limite de envios" in abuse_blocked.json()["detail"]
+
+    # 8) Conclui assinatura com o código válido recebido via fallback por e-mail
+    signed = pub_client.post(f"/assinar/{token}/assinar", headers=pub_headers, json={
+        "consent": True, "challenge_id": fallback.json()["challenge_id"], "code": email_code,
+    })
+    assert signed.status_code == 200, signed.text
+    assert signed.json()["sealed"] is True

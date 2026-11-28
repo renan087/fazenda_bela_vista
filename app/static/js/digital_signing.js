@@ -17,6 +17,134 @@ function feedback(node, text = "", error = false) {
   node.classList.toggle("is-error", error);
 }
 
+function formatMmSs(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${String(m).padStart(2, "0")}:${String(rem).padStart(2, "0")}`;
+}
+
+function createOtpController(root, { onResend, onFallbackEmail }) {
+  const sentTitle = root.querySelector("[data-ds-otp-sent-title]");
+  const destEl = root.querySelector("[data-ds-otp-dest]");
+  const expiryEl = root.querySelector("[data-ds-otp-expiry]");
+  const resendBtn = root.querySelector("[data-ds-otp-resend]");
+  const fallbackBtn = root.querySelector("[data-ds-otp-fallback-email]");
+  const submitBtn = root.querySelector("[data-ds-otp-submit]");
+
+  let timerId = null;
+  let expiresAtMs = 0;
+  let resendAtMs = 0;
+  let currentChannel = "email";
+  let isExpired = false;
+  let sending = false;
+
+  function stop() {
+    if (timerId !== null) {
+      window.clearInterval(timerId);
+      timerId = null;
+    }
+  }
+
+  function tick() {
+    const now = Date.now();
+    const expRem = Math.max(0, Math.ceil((expiresAtMs - now) / 1000));
+    const resRem = Math.max(0, Math.ceil((resendAtMs - now) / 1000));
+
+    isExpired = expRem <= 0;
+    if (expiryEl) {
+      expiryEl.textContent = isExpired ? "Expirado" : formatMmSs(expRem);
+      expiryEl.classList.toggle("is-warn", !isExpired && expRem <= 60);
+      expiryEl.classList.toggle("is-expired", isExpired);
+    }
+    if (submitBtn && !sending) {
+      submitBtn.disabled = isExpired;
+    }
+    if (resendBtn) {
+      if (sending) {
+        resendBtn.disabled = true;
+        resendBtn.textContent = "Reenviando código…";
+      } else if (resRem > 0) {
+        resendBtn.disabled = true;
+        resendBtn.textContent = `Reenviar código em ${resRem}s`;
+      } else {
+        resendBtn.disabled = false;
+        resendBtn.textContent = "Reenviar código";
+      }
+    }
+    if (fallbackBtn && !fallbackBtn.hidden) {
+      fallbackBtn.disabled = sending || resRem > 0;
+    }
+    if (isExpired && resRem <= 0) {
+      stop();
+    }
+  }
+
+  function start({
+    channel = "email",
+    destinationMasked = "",
+    expiresSeconds = 600,
+    resendAfterSeconds = 60,
+    fallbackEmailAvailable = false,
+    fallbackEmailMasked = "",
+    resent = false,
+  } = {}) {
+    stop();
+    currentChannel = channel;
+    const now = Date.now();
+    expiresAtMs = now + Math.max(10, Number(expiresSeconds) || 600) * 1000;
+    resendAtMs = now + Math.max(0, Number(resendAfterSeconds) || 60) * 1000;
+    isExpired = false;
+
+    const chanLabel = channel === "whatsapp" ? "WhatsApp" : "E-mail";
+    if (sentTitle) {
+      sentTitle.textContent = resent
+        ? `Novo código enviado via ${chanLabel}`
+        : `Código enviado via ${chanLabel}`;
+    }
+    if (destEl) {
+      destEl.textContent = destinationMasked ? `${chanLabel} · ${destinationMasked}` : chanLabel;
+    }
+    if (fallbackBtn) {
+      const showFallback = Boolean(channel === "whatsapp" && fallbackEmailAvailable);
+      fallbackBtn.hidden = !showFallback;
+      if (showFallback) {
+        fallbackBtn.textContent = fallbackEmailMasked
+          ? `Prefere receber por e-mail (${fallbackEmailMasked})?`
+          : "Prefere receber por e-mail?";
+      }
+    }
+    tick();
+    timerId = window.setInterval(tick, 1000);
+  }
+
+  resendBtn?.addEventListener("click", async () => {
+    if (sending || resendBtn.disabled) return;
+    sending = true;
+    tick();
+    try {
+      await onResend?.(currentChannel);
+    } finally {
+      sending = false;
+      tick();
+    }
+  });
+
+  fallbackBtn?.addEventListener("click", async () => {
+    if (sending || fallbackBtn.disabled) return;
+    sending = true;
+    tick();
+    try {
+      await onFallbackEmail?.();
+    } finally {
+      sending = false;
+      tick();
+    }
+  });
+
+  return { start, stop, isExpired: () => isExpired };
+}
+
 function formatted(value, formatter) {
   const date = new Date(value);
   return value && Number.isFinite(date.getTime()) ? formatter.format(date) : "";
@@ -2334,8 +2462,7 @@ function initWorkspace(root) {
   });
   consent?.addEventListener("change", syncAuthorization);
 
-  // Step 1 -> Step 2 (request authorization code — Electronic SiSFarm OR ICP-Brasil A1)
-  authorize?.addEventListener("click", async () => {
+  async function dispatchWorkspaceAuthorize(overrideChannel = null, isResend = false) {
     const isEl = activeMode === "electronic";
     const field = isEl ? null : selectedField();
     const appearance = field
@@ -2345,8 +2472,9 @@ function initWorkspace(root) {
       : {visible: false};
     busy = true;
     syncAuthorization();
-    const channel = isEl ? (elChannelSelect?.value || "email") : "email";
-    feedback(status, channel === "whatsapp" ? "Enviando código de confirmação por WhatsApp…" : "Enviando código de confirmação por e-mail…");
+    const channel = overrideChannel || (isEl ? (elChannelSelect?.value || "email") : "email");
+    const targetFeedback = isResend ? dialogStatus : status;
+    feedback(targetFeedback, channel === "whatsapp" ? "Enviando código de confirmação por WhatsApp…" : "Enviando código de confirmação por e-mail…");
     try {
       let data;
       if (isEl) {
@@ -2377,20 +2505,38 @@ function initWorkspace(root) {
         if (step2Sub) step2Sub.textContent = `Enviamos um código de 8 dígitos para ${root.dataset.userEmail}. Não é necessário informar a senha do certificado.`;
         find("[data-ds-confirm-holder]").textContent = `ICP-Brasil A1 · ${certificate.selectedOptions[0]?.dataset.holder || data.holder}`;
       }
+      wsOtp.start({
+        channel,
+        destinationMasked: data.destination_masked || root.dataset.userEmail || "",
+        expiresSeconds: data.expires_seconds || (data.expires_minutes ? data.expires_minutes * 60 : 600),
+        resendAfterSeconds: data.resend_after_seconds || 60,
+        fallbackEmailAvailable: Boolean(isEl && data.fallback_email_available),
+        fallbackEmailMasked: data.fallback_email_masked || "",
+        resent: isResend,
+      });
       feedback(status);
-      feedback(dialogStatus);
+      feedback(dialogStatus, isResend ? "Novo código enviado! O código anterior foi invalidado." : "");
       confirmForm.reset();
       setCeremonyStep(2);
       confirmForm.elements.code.focus();
     } catch (error) {
-      feedback(status, error.message, true);
+      feedback(targetFeedback, error.message, true);
     } finally {
       busy = false;
       syncAuthorization();
     }
+  }
+
+  const wsOtp = createOtpController(root, {
+    onResend: (ch) => dispatchWorkspaceAuthorize(ch, true),
+    onFallbackEmail: () => dispatchWorkspaceAuthorize("email", true),
   });
 
+  // Step 1 -> Step 2 (request authorization code — Electronic SiSFarm OR ICP-Brasil A1)
+  authorize?.addEventListener("click", () => dispatchWorkspaceAuthorize(null, false));
+
   find("[data-ds-back-step1]")?.addEventListener("click", () => {
+    wsOtp.stop();
     feedback(dialogStatus);
     setCeremonyStep(1);
   });
@@ -2398,6 +2544,10 @@ function initWorkspace(root) {
   // Step 2 -> Sign with 8-digit OTP
   confirmForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (wsOtp.isExpired()) {
+      feedback(dialogStatus, "Este código expirou. Clique em \"Reenviar código\" para receber um novo.", true);
+      return;
+    }
     const isEl = activeMode === "electronic";
     const button = confirmForm.querySelector("[type=submit]");
     button.disabled = true;
@@ -3472,44 +3622,84 @@ function initExternalSigning(root) {
   elCpfInput?.addEventListener("input", syncAuthorization);
   consent?.addEventListener("change", syncAuthorization);
 
-  async function triggerAuthorize() {
+  const step1FallbackBox = find("[data-ds-step1-fallback-email]");
+  const step1FallbackBtn = find("[data-ds-step1-fallback-btn]");
+  const hasFallbackEmail = root.dataset.hasFallbackEmail === "yes";
+
+  async function triggerAuthorize(overrideChannel = null, isResend = false) {
     if (busy || !consent?.checked) return;
     busy = true;
     syncAuthorization();
-    feedback(status, lockedChannel === "whatsapp" ? "Enviando código por WhatsApp…" : "Enviando código por e-mail…");
+    const targetChannel = overrideChannel || lockedChannel;
+    const targetFeedback = isResend ? dialogStatus : status;
+    if (step1FallbackBox && !isResend) step1FallbackBox.hidden = true;
+    feedback(targetFeedback, targetChannel === "whatsapp" ? "Enviando código por WhatsApp…" : "Enviando código por e-mail…");
     try {
       const payload = { consent: true };
       if (!hasPresetCpf && elCpfInput) payload.cpf = elCpfInput.value.trim();
+      if (overrideChannel) payload.channel = overrideChannel;
       const data = await request(root, `/assinar/${token}/autorizar`, { json: payload });
       challengeId = data.challenge_id;
+      const actualChannel = data.channel || targetChannel;
+      const step2Title = find("[data-ds-step2-title]");
       const step2Sub = find("[data-ds-step2-sub]");
-      if (step2Sub) step2Sub.textContent = `Enviamos um código de 8 dígitos para ${data.destination_masked || "seu contato"}.`;
+      if (step2Title) {
+        step2Title.textContent = actualChannel === "whatsapp"
+          ? "Digite o código enviado no WhatsApp"
+          : "Digite o código enviado ao seu e-mail";
+      }
+      if (step2Sub) {
+        step2Sub.textContent = `Enviamos um código de 8 dígitos para ${data.destination_masked || "seu contato"}.`;
+      }
+      extOtp.start({
+        channel: actualChannel,
+        destinationMasked: data.destination_masked || "",
+        expiresSeconds: data.expires_seconds || (data.expires_minutes ? data.expires_minutes * 60 : 600),
+        resendAfterSeconds: data.resend_after_seconds || 60,
+        fallbackEmailAvailable: Boolean(data.fallback_email_available),
+        fallbackEmailMasked: data.fallback_email_masked || root.dataset.emailMasked || "",
+        resent: isResend,
+      });
       feedback(status);
-      feedback(dialogStatus);
+      feedback(dialogStatus, isResend ? "Novo código enviado! O código anterior foi invalidado." : "");
       confirmForm?.reset();
       setStep(2);
       confirmForm?.elements.code?.focus();
     } catch (error) {
-      feedback(status, error.message, true);
+      feedback(targetFeedback, error.message, true);
+      if (!isResend && targetChannel === "whatsapp" && hasFallbackEmail && step1FallbackBox) {
+        step1FallbackBox.hidden = false;
+      }
     } finally {
       busy = false;
       syncAuthorization();
     }
   }
 
-  authorize?.addEventListener("click", triggerAuthorize);
+  const extOtp = createOtpController(root, {
+    onResend: (ch) => triggerAuthorize(ch, true),
+    onFallbackEmail: () => triggerAuthorize("email", true),
+  });
+
+  authorize?.addEventListener("click", () => triggerAuthorize(null, false));
+  step1FallbackBtn?.addEventListener("click", () => triggerAuthorize("email", false));
   mobCta?.addEventListener("click", () => {
-    if (currentStep === 1) triggerAuthorize();
+    if (currentStep === 1) triggerAuthorize(null, false);
     else if (currentStep === 2) confirmForm?.requestSubmit();
   });
 
   find("[data-ds-back-step1]")?.addEventListener("click", () => {
+    extOtp.stop();
     feedback(dialogStatus);
     setStep(1);
   });
 
   confirmForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (extOtp.isExpired()) {
+      feedback(dialogStatus, "Este código expirou. Clique em \"Reenviar código\" para receber um novo.", true);
+      return;
+    }
     const button = confirmForm.querySelector("[type=submit]");
     if (button) button.disabled = true;
     busy = true;
@@ -3519,6 +3709,7 @@ function initExternalSigning(root) {
       const result = await request(root, `/assinar/${token}/assinar`, {
         json: { consent: true, challenge_id: challengeId, code: confirmForm.elements.code.value.trim() },
       });
+      extOtp.stop();
       const successMsg = find("[data-ds-success-msg]");
       if (successMsg && result.sealed) {
         successMsg.textContent = "Todas as assinaturas foram concluídas! O Manifesto de Assinaturas e o selo de integridade foram aplicados ao documento.";
@@ -3528,7 +3719,7 @@ function initExternalSigning(root) {
       feedback(dialogStatus, error.message, true);
     } finally {
       busy = false;
-      if (button) button.disabled = false;
+      if (button && !extOtp.isExpired()) button.disabled = false;
       syncAuthorization();
     }
   });

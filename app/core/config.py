@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     whatsapp_graph_version: str = "v23.0"
     whatsapp_display_number: str | None = None
     whatsapp_signing_invite_template: str | None = "sisfarm_convite_assinatura"
-    whatsapp_signing_otp_template: str | None = None
+    whatsapp_signing_otp_template: str | None = "sisfarm_codigo_assinatura"
     whatsapp_template_language: str = "pt_BR"
     whatsapp_idle_minutes: int = 30
     whatsapp_closing_minutes: int = 10

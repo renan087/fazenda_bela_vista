@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/styles.css?v=20261123ex8">
-  <link rel="stylesheet" href="/static/css/digital_signing.css?v=13">
+  <link rel="stylesheet" href="/static/css/digital_signing.css?v=15">
 </head>
 <body class="ds-pub-body ds-ext-pub-body">
   <header class="ds-pub-topbar">
@@ -51,7 +51,9 @@
         data-verification-code="{{ verification_code }}"
         data-doc-title="{{ display_title }}"
         data-locked-channel="{{ locked_channel }}"
-        data-has-preset-cpf="{{ 'yes' if has_preset_cpf else 'no' }}">
+        data-has-preset-cpf="{{ 'yes' if has_preset_cpf else 'no' }}"
+        data-has-fallback-email="{{ 'yes' if has_fallback_email else 'no' }}"
+        data-email-masked="{{ email_masked }}">
     <script type="application/json" data-ds-options>{{ options|tojson }}</script>
     <script type="application/json" data-ds-preset-appearance>{{ preset_appearance|tojson }}</script>
 
@@ -182,16 +184,6 @@
             </label>
             {% endif %}
 
-            {% if locked_channel == 'whatsapp' and not whatsapp_ready and whatsapp_bot_url %}
-            <div class="ds-banner is-info ds-banner--sm">
-              {{ icon('whatsapp', 16) }}
-              <span>
-                Para receber o código pelo WhatsApp oficial do SiSFarm, envie primeiro um "Oi" no nosso número:
-                <a href="{{ whatsapp_bot_url }}" target="_blank" rel="noopener"><strong>Abrir WhatsApp do SiSFarm →</strong></a>
-              </span>
-            </div>
-            {% endif %}
-
             <label class="ds-consent-box" data-ds-consent-box>
               <span class="dt-chk"><input type="checkbox" class="dt-check" data-ds-consent></span>
               <span>Li o documento <strong>{{ display_title }}</strong>, conferi meus dados acima e concordo expressamente em assiná-lo de forma eletrônica pelo SiSFarm (MP 2.200-2/2001, Lei 14.063/2020 e LGPD).</span>
@@ -201,6 +193,13 @@
               {% if locked_channel == 'whatsapp' %}Enviar código no WhatsApp{% else %}Enviar código por e-mail{% endif %} {{ icon('arrow', 16) }}
             </button>
             <p class="ds-feedback" data-ds-status role="status" aria-live="polite" hidden></p>
+            {% if has_fallback_email %}
+            <div class="ds-otp-fallback-box" data-ds-step1-fallback-email hidden>
+              <button type="button" class="sf-btn sf-btn-secondary ds-full" data-ds-step1-fallback-btn>
+                {{ icon('mail', 15) }} Enviar código por e-mail ({{ email_masked }})
+              </button>
+            </div>
+            {% endif %}
             <p class="ds-hint ds-center-hint">Algum dado está incorreto? Avise {{ farm.name }} antes de concluir a assinatura.</p>
           </div>
 
@@ -208,8 +207,21 @@
           <form class="ds-step-pane" data-ds-step-pane="2" data-ds-ext-confirm-form hidden>
             <button type="button" class="ds-inline-action ds-back-step" data-ds-back-step1>{{ icon('back', 15) }} Voltar para revisão</button>
             <div class="ds-step-title">
-              <h2>Digite o código de 8 dígitos</h2>
+              <h2 data-ds-step2-title>Digite o código de 8 dígitos</h2>
               <p data-ds-step2-sub>Enviamos seu código para {% if locked_channel == 'whatsapp' %}WhatsApp · {{ locked_contact_display }}{% else %}E-mail · {{ locked_contact_display }}{% endif %}.</p>
+            </div>
+
+            <div class="ds-otp-sent-banner" data-ds-otp-sent-banner role="status" aria-live="polite">
+              <span class="ds-otp-sent-ic" aria-hidden="true">{{ icon('check', 15) }}</span>
+              <div class="ds-otp-sent-copy">
+                <strong data-ds-otp-sent-title>Código enviado</strong>
+                <span class="ds-tabular" data-ds-otp-dest>{% if locked_channel == 'whatsapp' %}WhatsApp · {{ locked_contact_display }}{% else %}E-mail · {{ locked_contact_display }}{% endif %}</span>
+              </div>
+            </div>
+
+            <div class="ds-otp-meta-bar">
+              <span>Validade do código</span>
+              <strong class="ds-otp-expiry ds-tabular" data-ds-otp-expiry>10:00</strong>
             </div>
 
             <div class="ds-cert-confirm-chip">
@@ -224,10 +236,19 @@
 
             <p class="ds-feedback" data-ds-confirm-status role="status" aria-live="polite" hidden></p>
 
-            <button type="submit" class="sf-btn sf-btn-primary ds-full">
+            <button type="submit" class="sf-btn sf-btn-primary ds-full" data-ds-otp-submit>
               {{ icon('shield', 16) }} Concluir assinatura agora
             </button>
-            <p class="ds-hint ds-center-hint">O código vale por 10 minutos para esta versão do documento.</p>
+
+            <div class="ds-otp-resend-row">
+              <button type="button" class="ds-otp-resend-btn" data-ds-otp-resend disabled>Reenviar código em 60s</button>
+              {% if has_fallback_email %}
+              <button type="button" class="ds-otp-fallback-btn" data-ds-otp-fallback-email hidden>
+                Prefere receber por e-mail ({{ email_masked }})?
+              </button>
+              {% endif %}
+            </div>
+            <p class="ds-hint ds-center-hint">Ao reenviar, o código anterior é invalidado automaticamente.</p>
           </form>
 
           <!-- PASSO 3: CONCLUÍDO -->
@@ -266,6 +287,6 @@
   <footer class="ds-pub-footer">
     <p>SiSFarm · Assinatura Eletrônica conforme MP 2.200-2/2001 (art. 10 §2º), Lei 14.063/2020 (art. 4º II) e LGPD (Lei 13.709/2018).</p>
   </footer>
-  <script type="module" src="/static/js/digital_signing.js?v=17"></script>
+  <script type="module" src="/static/js/digital_signing.js?v=19"></script>
 </body>
 </html>

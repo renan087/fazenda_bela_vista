@@ -61,7 +61,9 @@ logger = logging.getLogger("uvicorn.error.electronic_signing")
 
 CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 CONSENT_VERSION = "v1"
-CHALLENGE_MINUTES = 5
+CHALLENGE_MINUTES = 10
+RESEND_COOLDOWN_SECONDS = 60
+MAX_CHALLENGES_PER_HOUR = 6
 MAX_ATTEMPTS = 5
 EXTERNAL_TOKEN_DAYS = 15
 SP_TZ = ZoneInfo("America/Sao_Paulo")
@@ -1349,17 +1351,20 @@ def issue_electronic_challenge(
     settings = get_settings()
     otp_template = (getattr(settings, "whatsapp_signing_otp_template", None) or "").strip()
     otp_lang = (getattr(settings, "whatsapp_template_language", None) or "pt_BR").strip()
+    fallback_email_available = bool(dest_email and "@" in dest_email)
 
     if chan == "whatsapp":
         wa_target = normalize_br_whatsapp(dest_phone)
         if not wa_target:
             raise ValueError("Não há número de WhatsApp cadastrado para receber o código. Escolha E-mail.")
         if not whatsapp_is_configured():
-            raise ValueError("O envio de código por WhatsApp não está disponível no momento. Escolha receber por E-mail.")
+            if fallback_email_available:
+                raise ValueError("O envio de código por WhatsApp não está disponível no momento. Você pode receber o código por E-mail.")
+            raise ValueError("O envio de código por WhatsApp não está disponível no momento. Tente novamente em instantes.")
         if not otp_template and not has_active_whatsapp_window(db, wa_target):
-            raise ValueError(
-                "Para receber o código pelo WhatsApp do SiSFarm, envie primeiro um 'Oi' no nosso WhatsApp ou escolha receber o código por E-mail."
-            )
+            if fallback_email_available:
+                raise ValueError("O envio automático por WhatsApp não está disponível no momento. Escolha receber o código por E-mail.")
+            raise ValueError("O envio automático por WhatsApp não está disponível no momento. Avise quem enviou o documento.")
         dest_masked = mask_phone(wa_target)
     else:
         if not dest_email or "@" not in dest_email:
@@ -1382,7 +1387,8 @@ def issue_electronic_challenge(
         approved = {"visible": False, "style": "compact" if appearance.get("style") == "compact" else "full"}
 
     now = datetime.now(timezone.utc)
-    # Rate limit de 30s por signatário
+    hour_ago = now - timedelta(hours=1)
+    # Verifica cooldown de 60s e limite horário ANTES de invalidar o código anterior
     if external_signer is not None:
         latest = db.scalar(
             select(SigningElectronicChallenge.created_at)
@@ -1390,10 +1396,13 @@ def issue_electronic_challenge(
             .order_by(SigningElectronicChallenge.created_at.desc())
             .limit(1)
         )
-        db.execute(
-            update(SigningElectronicChallenge)
-            .where(SigningElectronicChallenge.external_signer_id == external_signer.id, SigningElectronicChallenge.consumed_at.is_(None))
-            .values(consumed_at=now)
+        recent_count = len(
+            db.scalars(
+                select(SigningElectronicChallenge.id).where(
+                    SigningElectronicChallenge.external_signer_id == external_signer.id,
+                    SigningElectronicChallenge.created_at >= hour_ago,
+                )
+            ).all()
         )
     else:
         latest = db.scalar(
@@ -1402,13 +1411,35 @@ def issue_electronic_challenge(
             .order_by(SigningElectronicChallenge.created_at.desc())
             .limit(1)
         )
+        recent_count = len(
+            db.scalars(
+                select(SigningElectronicChallenge.id).where(
+                    SigningElectronicChallenge.user_id == user.id,
+                    SigningElectronicChallenge.created_at >= hour_ago,
+                )
+            ).all()
+        )
+    if latest:
+        elapsed = (now - utc(latest)).total_seconds()
+        if elapsed < RESEND_COOLDOWN_SECONDS:
+            wait_s = max(1, int(RESEND_COOLDOWN_SECONDS - elapsed + 0.999))
+            raise ValueError(f"Aguarde {wait_s} segundos antes de solicitar outro código.")
+    if recent_count >= MAX_CHALLENGES_PER_HOUR:
+        raise ValueError("Limite de envios de código atingido. Aguarde alguns minutos antes de tentar novamente.")
+
+    # Invalida qualquer código anterior ainda ativo antes de emitir o novo
+    if external_signer is not None:
+        db.execute(
+            update(SigningElectronicChallenge)
+            .where(SigningElectronicChallenge.external_signer_id == external_signer.id, SigningElectronicChallenge.consumed_at.is_(None))
+            .values(consumed_at=now)
+        )
+    else:
         db.execute(
             update(SigningElectronicChallenge)
             .where(SigningElectronicChallenge.user_id == user.id, SigningElectronicChallenge.consumed_at.is_(None))
             .values(consumed_at=now)
         )
-    if latest and now - utc(latest) < timedelta(seconds=30):
-        raise ValueError("Aguarde 30 segundos antes de solicitar outro código.")
 
     code = f"{secrets.randbelow(100_000_000):08d}"
     challenge_id = uuid4().hex
@@ -1445,11 +1476,15 @@ def issue_electronic_challenge(
     try:
         if chan == "whatsapp":
             if otp_template:
+                # Template oficial de Autenticação da Meta (ex.: sisfarm_codigo_assinatura):
+                # exige o mesmo código tanto no corpo ({{1}}) quanto no botão "Copiar código" (índice 0).
                 WhatsAppClient().send_template(
                     wa_target,
                     otp_template,
                     language=otp_lang,
-                    body_params=[code, doc_title],
+                    body_params=[code],
+                    button_url_param=code,
+                    button_index="0",
                 )
             else:
                 WhatsAppClient().send_text(
@@ -1480,13 +1515,36 @@ def issue_electronic_challenge(
     except (RuntimeError, WhatsAppError) as exc:
         db.execute(update(SigningElectronicChallenge).filter_by(id=challenge_id).values(consumed_at=now))
         db.commit()
-        raise ValueError(f"Não foi possível enviar o código de confirmação ({exc}). Tente outro canal ou aguarde.") from exc
+        logger.warning(
+            "Falha ao enviar código de assinatura eletrônica (doc=%s, canal=%s, destino=%s, tipo_erro=%s)",
+            doc.id,
+            chan,
+            dest_masked,
+            type(exc).__name__,
+        )
+        if chan == "whatsapp" and fallback_email_available:
+            raise ValueError(
+                "Não foi possível entregar o código pelo WhatsApp no momento. "
+                "Tente novamente em instantes ou escolha receber o código por e-mail."
+            ) from exc
+        if chan == "whatsapp":
+            raise ValueError(
+                "Não foi possível entregar o código pelo WhatsApp no momento. "
+                "Aguarde alguns instantes e tente novamente."
+            ) from exc
+        raise ValueError("Não foi possível enviar o código de confirmação por e-mail. Tente novamente em instantes.") from exc
 
     return {
         "challenge_id": challenge_id,
         "channel": chan,
         "destination_masked": dest_masked,
         "expires_minutes": CHALLENGE_MINUTES,
+        "expires_seconds": CHALLENGE_MINUTES * 60,
+        "expires_at": challenge.expires_at.isoformat(),
+        "resend_after_seconds": RESEND_COOLDOWN_SECONDS,
+        "max_attempts": MAX_ATTEMPTS,
+        "fallback_email_available": bool(chan == "whatsapp" and fallback_email_available),
+        "fallback_email_masked": mask_email(dest_email) if fallback_email_available else "",
         "sha256": revision.sha256,
     }
 
@@ -1693,10 +1751,14 @@ def confirm_electronic_signature(
 
     challenge.attempts += 1
     if not hmac.compare_digest(challenge.code_hash, hash_verification_code(challenge.id + (code or "").strip())):
+        remaining = max(0, MAX_ATTEMPTS - challenge.attempts)
         if challenge.attempts >= MAX_ATTEMPTS:
             challenge.consumed_at = now
         db.commit()
-        raise PermissionError("Código de autorização incorreto. Confira o código recebido ou solicite um novo.")
+        if remaining == 0:
+            raise PermissionError("Limite de tentativas atingido. Solicite um novo código para continuar.")
+        plural = "tentativa" if remaining == 1 else "tentativas"
+        raise PermissionError(f"Código de autorização incorreto. Você ainda tem {remaining} {plural}.")
 
     challenge.consumed_at = now
     ver_code = ensure_document_verification_code(db, doc)

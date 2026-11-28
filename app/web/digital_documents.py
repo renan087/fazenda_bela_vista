@@ -1248,19 +1248,6 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
     display_title = doc.title or (doc.filename[:-4] if doc.filename.lower().endswith(".pdf") else doc.filename)
     ver_code = electronic.ensure_document_verification_code(db, doc)
     pending_count = electronic._pending_signer_count(db, doc)
-    settings = get_settings()
-    otp_template = (getattr(settings, "whatsapp_signing_otp_template", None) or "").strip()
-    whatsapp_ready = bool(
-        signer.phone
-        and electronic.whatsapp_is_configured()
-        and (otp_template or electronic.has_active_whatsapp_window(db, signer.phone))
-    )
-    bot_wa = electronic.normalize_br_whatsapp(getattr(settings, "whatsapp_display_number", None))
-    whatsapp_bot_url = (
-        f"https://wa.me/{bot_wa}?text=" + quote("Olá, quero ativar o recebimento do código de assinatura no SiSFarm.", safe="")
-        if bot_wa
-        else ""
-    )
     cpf_digits = ""
     if signer.cpf_encrypted:
         try:
@@ -1271,10 +1258,11 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
     cpf_masked_for_stamp = signer.cpf_masked or (electronic.mask_cpf(cpf_digits) if cpf_digits else "")
     locked_channel = "whatsapp" if signer.channel == "whatsapp" else "email"
     locked_contact_display = (
-        _format_phone_br(signer.phone)
+        electronic.mask_phone(signer.phone)
         if locked_channel == "whatsapp"
-        else (signer.email or "")
+        else electronic.mask_email(signer.email)
     )
+    has_fallback_email = bool(locked_channel == "whatsapp" and signer.email and "@" in signer.email)
     preset_appearance = signer.appearance if isinstance(signer.appearance, dict) else {"visible": False}
     electronic.record_real_external_access(
         db,
@@ -1306,11 +1294,10 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
             "has_preset_cpf": bool(cpf_display),
             "locked_channel": locked_channel,
             "locked_contact_display": locked_contact_display,
+            "has_fallback_email": has_fallback_email,
             "preset_appearance": preset_appearance,
             "phone_masked": electronic.mask_phone(signer.phone) if signer.phone else "",
             "email_masked": electronic.mask_email(signer.email) if signer.email else "",
-            "whatsapp_ready": whatsapp_ready,
-            "whatsapp_bot_url": whatsapp_bot_url,
         },
         headers=PRIVATE,
     )
@@ -1354,6 +1341,12 @@ async def external_request_code(token: str, request: Request, db: Session = Depe
             except Exception:
                 preset_cpf = ""
         locked_channel = "whatsapp" if signer.channel == "whatsapp" else "email"
+        requested_channel = str(data.get("channel") or "").strip().lower()
+        effective_channel = (
+            "email"
+            if locked_channel == "whatsapp" and requested_channel == "email" and signer.email and "@" in signer.email
+            else locked_channel
+        )
         locked_appearance = (
             signer.appearance
             if isinstance(signer.appearance, dict)
@@ -1370,7 +1363,7 @@ async def external_request_code(token: str, request: Request, db: Session = Depe
             external_signer=signer,
             signer_name=signer.name,
             cpf_raw=preset_cpf or str(data.get("cpf") or ""),
-            auth_channel=locked_channel,
+            auth_channel=effective_channel,
             appearance=locked_appearance,
             consent=data.get("consent") is True,
             override_email=None,
