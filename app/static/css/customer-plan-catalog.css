@@ -91,6 +91,10 @@
     0%, 100% { box-shadow: 0 0 0 0 rgba(155, 203, 107, .45); }
     50% { box-shadow: 0 0 0 7px rgba(155, 203, 107, 0); }
 }
+@keyframes pcGoldPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(229, 183, 86, .48); }
+    50% { box-shadow: 0 0 0 7px rgba(229, 183, 86, 0); }
+}
 @keyframes pcSheen {
     0% { transform: translateX(-130%) skewX(-22deg); }
     100% { transform: translateX(240%) skewX(-22deg); }
@@ -148,10 +152,14 @@
     border-radius: 50%; background: radial-gradient(circle, rgba(155, 203, 107, .34) 0%, rgba(155, 203, 107, 0) 70%);
     pointer-events: none;
 }
-.pc-tier-completa { background: linear-gradient(180deg, #FFF9EB 0%, #FFFFFF 38%); border: 1.5px solid #E6CA8F; color: var(--pc-ink); }
+.pc-tier-completa {
+    background: linear-gradient(155deg, #121914 0%, #1E281C 52%, #2E2C1B 100%);
+    color: #F8F6F0; border: 2px solid #E5B756;
+}
 .pc-tier-completa::before {
-    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
-    background: linear-gradient(90deg, #C68A1E, #E7B752, #9A6612);
+    content: ""; position: absolute; inset: -32% -16% auto auto; width: 220px; height: 220px;
+    border-radius: 50%; background: radial-gradient(circle, rgba(229, 183, 86, .34) 0%, rgba(229, 183, 86, 0) 70%);
+    pointer-events: none;
 }
 .pc-tier-grupo { background: linear-gradient(155deg, #141C1F 0%, #212F35 100%); color: #F3F6F7; border: 1.5px solid #CCA86C; }
 .pc-tier-grupo::before {
@@ -168,8 +176,10 @@
 }
 .pc-tag-pro { background: #9BCB6B; color: #0E1710; animation: pcSoftPulse 2.6s infinite; }
 .pc-tag-current { background: #E6F4E2; color: #1F7A3A; }
-.pc-tier-profissional .pc-tag-current, .pc-tier-grupo .pc-tag-current { background: rgba(155, 203, 107, .2); color: #C3EC9C; }
-.pc-tag-gold { background: #FFF0CC; color: #8A5600; }
+.pc-tier-profissional .pc-tag-current,
+.pc-tier-completa .pc-tag-current,
+.pc-tier-grupo .pc-tag-current { background: rgba(155, 203, 107, .2); color: #C3EC9C; }
+.pc-tag-gold { background: #E5B756; color: #16140C; animation: pcGoldPulse 2.6s infinite; }
 .pc-tag-champagne { background: rgba(226, 183, 120, .2); color: #ECC78F; }
 .pc-tag-trial { background: #F1EBFB; color: #593497; }
 .pc-tag-soft { background: #EEF3EB; color: #446A36; }
@@ -179,30 +189,36 @@
 .pc-plan-name { font-size: 1.45rem; font-weight: 800; letter-spacing: -.025em; line-height: 1.2; }
 .pc-plan-description { margin-top: .375rem; font-size: .8125rem; line-height: 1.48; color: var(--pc-sub); }
 .pc-tier-profissional .pc-plan-description,
+.pc-tier-completa .pc-plan-description,
 .pc-tier-grupo .pc-plan-description { color: rgba(244, 248, 242, .74); }
 
 /* Preco ancorado */
 .pc-plan-pricing { margin-top: 1.5rem; }
 .pc-price-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: .45rem; }
 .pc-price-strike { font-size: .78rem; font-weight: 600; text-decoration: line-through; color: #8C968F; font-variant-numeric: tabular-nums; }
-.pc-tier-profissional .pc-price-strike, .pc-tier-grupo .pc-price-strike { color: rgba(255, 255, 255, .42); }
+.pc-tier-profissional .pc-price-strike,
+.pc-tier-completa .pc-price-strike,
+.pc-tier-grupo .pc-price-strike { color: rgba(255, 255, 255, .42); }
 .pc-price-main { display: flex; align-items: baseline; gap: .2rem; }
 .pc-price-currency { font-size: .875rem; font-weight: 700; color: var(--pc-sub); }
 .pc-price-main strong { font-size: 2.35rem; font-weight: 800; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .pc-price-unit { font-size: .78rem; font-weight: 600; color: var(--pc-sub); }
 .pc-tier-profissional .pc-price-currency, .pc-tier-profissional .pc-price-unit,
+.pc-tier-completa .pc-price-currency, .pc-tier-completa .pc-price-unit,
 .pc-tier-grupo .pc-price-currency, .pc-tier-grupo .pc-price-unit { color: rgba(255, 255, 255, .65); }
 .pc-price-animate { animation: pcPricePop .24s cubic-bezier(.22, 1, .36, 1); }
 
 .pc-price-hint { margin-top: .6rem; min-height: 1.35rem; font-size: .75rem; font-weight: 500; color: #7A857E; }
-.pc-tier-profissional .pc-price-hint, .pc-tier-grupo .pc-price-hint { color: rgba(255, 255, 255, .58); }
+.pc-tier-profissional .pc-price-hint,
+.pc-tier-completa .pc-price-hint,
+.pc-tier-grupo .pc-price-hint { color: rgba(255, 255, 255, .6); }
 .pc-save-pill {
     display: inline-flex; align-items: center; padding: .25rem .6rem; border-radius: .5rem;
     font-size: .7rem; font-weight: 700; font-variant-numeric: tabular-nums;
     background: #E6F4E2; color: #1F7A3A;
 }
 .pc-tier-profissional .pc-save-pill { background: rgba(155, 203, 107, .2); color: #C3EC9C; }
-.pc-tier-completa .pc-save-pill { background: #FFF0CC; color: #8A5600; }
+.pc-tier-completa .pc-save-pill { background: rgba(229, 183, 86, .2); color: #F8DC94; }
 .pc-tier-grupo .pc-save-pill { background: rgba(226, 183, 120, .2); color: #F0D09A; }
 
 /* Grade fixa de 3 capacidades */
@@ -211,13 +227,16 @@
     margin-top: 1.5rem; padding: .75rem .3rem; border-radius: 15px; text-align: center;
     background: #F3F6F1; color: #294127;
 }
-.pc-tier-profissional .pc-cap-grid, .pc-tier-grupo .pc-cap-grid {
-    background: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .95); border: 1px solid rgba(255, 255, 255, .1);
+.pc-tier-profissional .pc-cap-grid,
+.pc-tier-completa .pc-cap-grid,
+.pc-tier-grupo .pc-cap-grid {
+    background: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .95); border: 1px solid rgba(255, 255, 255, .11);
 }
-.pc-tier-completa .pc-cap-grid { background: #FFF5E0; color: #7A4F00; }
+.pc-tier-completa .pc-cap-grid { border-color: rgba(229, 183, 86, .22); }
 .pc-cap-cell { padding: 0 .25rem; min-width: 0; }
 .pc-cap-cell + .pc-cap-cell { border-left: 1px solid rgba(22, 32, 26, .1); }
 .pc-tier-profissional .pc-cap-cell + .pc-cap-cell,
+.pc-tier-completa .pc-cap-cell + .pc-cap-cell,
 .pc-tier-grupo .pc-cap-cell + .pc-cap-cell { border-left-color: rgba(255, 255, 255, .14); }
 .pc-cap-val { display: block; font-size: .92rem; font-weight: 800; line-height: 1.2; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pc-cap-lbl { display: block; margin-top: 4px; font-size: .7rem; font-weight: 500; line-height: 1.1; white-space: nowrap; opacity: .72; }
@@ -231,7 +250,7 @@
 }
 .pc-feat-check svg { width: .75rem; height: .75rem; }
 .pc-tier-profissional .pc-feat-check { background: rgba(155, 203, 107, .24); color: #9BCB6B; }
-.pc-tier-completa .pc-feat-check { background: #FFF0CC; color: #B7791F; }
+.pc-tier-completa .pc-feat-check { background: rgba(229, 183, 86, .24); color: #F0C66A; }
 .pc-tier-grupo .pc-feat-check { background: rgba(226, 183, 120, .24); color: #E2B778; }
 .pc-feature-requested { font-weight: 700; }
 
@@ -279,12 +298,12 @@
     box-shadow: 0 14px 32px rgba(217, 164, 59, .42);
 }
 .pc-cta-completa {
-    background: linear-gradient(135deg, #16201A 0%, #24332A 100%); color: #FFFFFF; border-color: #16201A;
-    box-shadow: 0 8px 22px rgba(22, 32, 26, .2);
+    background: linear-gradient(135deg, #F0C66A 0%, #D49A2A 100%); color: #16140C; border-color: #F6D78A;
+    box-shadow: 0 10px 26px rgba(212, 154, 42, .36);
 }
 .pc-cta-completa:hover, .pc-cta-completa.is-alt {
-    background: linear-gradient(135deg, #C7891C 0%, #A96F11 100%); color: #FFFFFF; border-color: #D99E30;
-    box-shadow: 0 12px 28px rgba(199, 137, 28, .36);
+    background: linear-gradient(135deg, #A4D673 0%, #83BA52 100%); color: #0D1610; border-color: #B4E285;
+    box-shadow: 0 14px 32px rgba(155, 203, 107, .42);
 }
 .pc-cta-grupo {
     background: linear-gradient(135deg, #E2B778 0%, #C99852 100%); color: #151C1F; border-color: #ECC993;
@@ -305,7 +324,9 @@
 .pc-button-primary { background: var(--pc-brand); border-color: var(--pc-brand); color: #FFFFFF; }
 .pc-button-primary:hover { background: var(--pc-brand-dark); border-color: var(--pc-brand-dark); }
 .pc-button-static { background: #EEF1ED; border-color: var(--pc-border); color: var(--pc-sub); cursor: default; }
-.pc-tier-profissional .pc-button-static, .pc-tier-grupo .pc-button-static {
+.pc-tier-profissional .pc-button-static,
+.pc-tier-completa .pc-button-static,
+.pc-tier-grupo .pc-button-static {
     background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .18); color: rgba(255, 255, 255, .85);
 }
 .pc-button-blocked { background: #FFF6E5; border-color: #F0D9A6; color: #7A4F00; width: 100%; }
@@ -318,7 +339,7 @@
 }
 .pc-modules-link:hover { text-decoration: underline; }
 .pc-tier-profissional .pc-modules-link { color: #B5D69A; }
-.pc-tier-completa .pc-modules-link { color: #8A5600; }
+.pc-tier-completa .pc-modules-link { color: #F0CC7A; }
 .pc-tier-grupo .pc-modules-link { color: #E2B778; }
 
 /* Dots nativos e pilulas de salto */
