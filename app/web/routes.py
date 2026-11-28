@@ -1788,6 +1788,15 @@ def _render_profile_page(
     google_oauth_configured = bool(
         settings.google_client_id and settings.google_client_secret and settings.google_redirect_uri
     )
+    from app.services import authenticator as mfa
+
+    authenticator_state = {
+        "enabled": bool(getattr(user, "totp_secret_encrypted", None)),
+        "enrollment_available": mfa.enrollment_available(),
+        "email_enabled": mfa.email_verification_available(user),
+        "preferred_method": mfa.authenticator_preference(user),
+        "recovery_codes_remaining": mfa.recovery_code_count(repo.db, user.id),
+    }
     ctx = _base_context(
         request,
         user,
@@ -1810,6 +1819,7 @@ def _render_profile_page(
         trusted_browsers_has_others=any(not item["is_current"] for item in trusted_browsers),
         google_oauth_configured=google_oauth_configured,
         whatsapp_link_summary=_profile_whatsapp_summary(repo.db, user.id),
+        authenticator_state=authenticator_state,
     )
     perms = set(ctx.get("permission_codes") or ())
     ctx["profile_start_pages"] = [
@@ -15181,6 +15191,9 @@ def profile_page(
         "password": "password",
         "2fa": "email2fa",
         "email2fa": "email2fa",
+        "autenticador": "authenticator",
+        "authenticator": "authenticator",
+        "totp": "authenticator",
         "navegadores": "browsers",
         "dispositivos": "browsers",
         "browsers": "browsers",

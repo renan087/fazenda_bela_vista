@@ -14109,6 +14109,144 @@ a.mp-sec-row:hover { background: var(--mp-soft); }
     gap: 12px;
 }
 .mp-alert-danger[hidden] { display: none; }
+.mp-alert-warn {
+    padding: 13px 16px;
+    border-radius: 12px;
+    border: 1px solid #F0D9A6;
+    background: var(--mp-warn-bg);
+    color: var(--mp-warn);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+}
+.mp-alert-warn[hidden] { display: none; }
+.mp-alert-inline-err {
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid #F2C6C2;
+    background: var(--mp-danger-bg);
+    color: #7A1810;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+}
+.mp-alert-inline-err[hidden] { display: none; }
+
+/* Aplicativo autenticador (TOTP Google / Microsoft) */
+.mp-totp-qr-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 20px;
+    padding: 18px;
+    border-radius: 14px;
+    border: 1px solid var(--mp-line);
+    background: var(--mp-soft);
+}
+.mp-totp-qr-box {
+    width: 176px;
+    height: 176px;
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid var(--mp-line);
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.mp-totp-qr-box img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.mp-totp-key-panel { flex: 1 1 220px; min-width: 0; }
+.mp-totp-key-row {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+.mp-totp-key {
+    display: inline-block;
+    padding: 7px 11px;
+    border-radius: 8px;
+    border: 1px solid var(--mp-line-strong);
+    background: #FFFFFF;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.84375rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--mp-ink);
+    word-break: break-all;
+}
+.mp-recovery-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+}
+.mp-recovery-code {
+    padding: 9px 12px;
+    border-radius: 9px;
+    border: 1px solid var(--mp-line);
+    background: var(--mp-soft);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-align: center;
+    color: var(--mp-ink);
+    font-variant-numeric: tabular-nums;
+}
+.mp-seg-toggle {
+    display: inline-flex;
+    gap: 4px;
+    padding: 3px;
+    border-radius: 10px;
+    border: 1px solid var(--mp-line);
+    background: var(--mp-soft);
+}
+.mp-seg-btn {
+    border: 0;
+    border-radius: 7px;
+    padding: 6px 11px;
+    background: transparent;
+    color: var(--mp-muted);
+    font-size: 0.78125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.14s ease, color 0.14s ease;
+}
+.mp-seg-btn[aria-pressed="true"] {
+    background: #FFFFFF;
+    color: var(--mp-ink);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(15, 21, 19, 0.08);
+}
+.mp-check-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.84375rem;
+    color: var(--mp-ink);
+    cursor: pointer;
+}
+.mp-check-row input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    accent-color: var(--mp-brand);
+    flex-shrink: 0;
+    cursor: pointer;
+}
+.mp-manage-panel {
+    margin-top: 14px;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid var(--mp-line);
+    background: var(--mp-soft);
+}
+.mp-manage-panel.is-danger {
+    border-color: #F2C6C2;
+    background: var(--mp-danger-bg);
+}
+.mp-manage-panel[hidden] { display: none; }
 .mp-info-box {
     padding: 16px;
     border-radius: 12px;

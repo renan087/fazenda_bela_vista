@@ -100,18 +100,23 @@ def test_profile_tabs_and_removed_fields(client):
     assert 'name="notes"' not in html
     assert "Editar foto" in html
 
-    # Aba Segurança (visão principal drill-down + Autenticador Google Em breve)
+    # Aba Segurança (visão principal drill-down + Aplicativo autenticador)
     sec = client.get("/meu-perfil?aba=seguranca")
     assert sec.status_code == 200
     assert "Conta protegida" in sec.text
     assert "Verificação em duas etapas" in sec.text
-    assert "Autenticador Google" in sec.text
-    assert "Em breve" in sec.text
+    assert "Aplicativo autenticador" in sec.text
+    assert "Google ou Microsoft Authenticator" in sec.text
     assert "Navegadores confiáveis" in sec.text
 
     # Sub-telas drill-down
     assert "← Voltar para Segurança" in client.get("/meu-perfil?aba=seguranca&secao=senha").text
     assert "← Voltar para Segurança" in client.get("/meu-perfil?aba=seguranca&secao=2fa").text
+    auth_sub = client.get("/meu-perfil?aba=seguranca&secao=autenticador")
+    assert auth_sub.status_code == 200
+    assert "← Voltar para Segurança" in auth_sub.text
+    assert "data-authenticator-panel" in auth_sub.text
+    assert "profile_authenticator.js" in auth_sub.text
     assert "← Voltar para Segurança" in client.get("/meu-perfil?aba=seguranca&secao=navegadores").text
 
     # Abas Notificações e Preferências

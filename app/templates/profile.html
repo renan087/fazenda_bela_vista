@@ -293,13 +293,265 @@
                     <p class="mt-1 text-[12.5px] text-[#5B6660]">Para alterar o endereço de recebimento, atualize seu e-mail na aba <a href="/meu-perfil?aba=perfil" class="mp-foot-link">Perfil</a>.</p>
                 </div>
 
-                <div class="flex items-start justify-between gap-3 border-t border-[#EEF1ED] pt-4">
-                    <div>
+                <div class="flex flex-wrap items-center justify-between gap-3 border-t border-[#EEF1ED] pt-4">
+                    <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
-                            <strong class="text-[14px] font-semibold text-[#16201A]">Autenticador Google</strong>
-                            <span class="mp-pill mp-pill-muted">Em breve</span>
+                            <strong class="text-[14px] font-semibold text-[#16201A]">Aplicativo autenticador</strong>
+                            {% if authenticator_state.enabled %}
+                            <span class="mp-pill mp-pill-ok">Ativo</span>
+                            {% elif authenticator_state.enrollment_available %}
+                            <span class="mp-pill mp-pill-muted">Não vinculado</span>
+                            {% else %}
+                            <span class="mp-pill mp-pill-warn">Indisponível</span>
+                            {% endif %}
                         </div>
-                        <p class="mt-1 text-[13px] text-[#5B6660]">Em breve você poderá usar o aplicativo Google Authenticator como segundo fator, inclusive sem internet no campo.</p>
+                        <p class="mt-1 text-[13px] text-[#5B6660]">Use Google Authenticator ou Microsoft Authenticator para gerar códigos no celular, inclusive sem internet no campo.</p>
+                    </div>
+                    <a href="/meu-perfil?aba=seguranca&secao=autenticador" class="mp-btn mp-btn-secondary mp-btn-sm">
+                        {{ 'Gerenciar' if authenticator_state.enabled else 'Configurar' }}
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        {% elif active_security_view == 'authenticator' %}
+        {# Sub-tela: Aplicativo autenticador (Google / Microsoft Authenticator) #}
+        <div class="mp-surface" data-authenticator-panel
+             data-auth-enabled="{{ '1' if authenticator_state.enabled else '0' }}"
+             data-auth-enrollment-available="{{ '1' if authenticator_state.enrollment_available else '0' }}"
+             data-auth-email-enabled="{{ '1' if authenticator_state.email_enabled else '0' }}"
+             data-auth-preferred="{{ authenticator_state.preferred_method }}"
+             data-auth-recovery-remaining="{{ authenticator_state.recovery_codes_remaining }}"
+             data-auth-email="{{ user.email }}">
+            <div class="mp-drill-head mp-pad-x">
+                <div>
+                    <a href="/meu-perfil?aba=seguranca" class="mp-back-link">← Voltar para Segurança</a>
+                    <div class="mt-2 flex flex-wrap items-center gap-2">
+                        <h2 class="mp-drill-title" style="margin-top:0;">Aplicativo autenticador</h2>
+                        <span class="mp-pill {{ 'mp-pill-ok' if authenticator_state.enabled else ('mp-pill-muted' if authenticator_state.enrollment_available else 'mp-pill-warn') }}" data-auth-status-pill>
+                            {{ 'Ativo' if authenticator_state.enabled else ('Não vinculado' if authenticator_state.enrollment_available else 'Indisponível') }}
+                        </span>
+                    </div>
+                    <p class="mp-drill-desc">Compatível com Google Authenticator e Microsoft Authenticator (códigos de 6 dígitos, funciona sem internet).</p>
+                </div>
+            </div>
+
+            {# Área dinâmica gerenciada por profile_authenticator.js (mantém QR/chave/códigos somente em memória) #}
+            <div class="mp-block space-y-5" data-auth-stage-root>
+                <div class="mp-alert-inline-err" hidden role="alert" data-auth-error></div>
+                <div class="mp-otp-banner" hidden role="status" data-auth-info></div>
+
+                {# 1) Painel de códigos de recuperação recém-gerados (aparece após ativar ou regenerar) #}
+                <div hidden data-auth-recovery-reveal class="space-y-4" style="max-width: 540px;">
+                    <div class="mp-alert-warn">
+                        <strong>Guarde seus 10 códigos de recuperação agora.</strong> Cada código só pode ser usado uma vez caso você perca o acesso ao celular. Eles não serão exibidos novamente.
+                    </div>
+                    <div class="mp-recovery-grid" data-auth-recovery-grid></div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" class="mp-btn mp-btn-secondary mp-btn-sm" data-auth-copy-recovery>Copiar todos os códigos</button>
+                    </div>
+                    <label class="mp-check-row">
+                        <input type="checkbox" data-auth-recovery-ack>
+                        <span>Confirmo que guardei estes códigos de recuperação em um local seguro.</span>
+                    </label>
+                    <div>
+                        <button type="button" class="mp-btn mp-btn-primary" disabled data-auth-recovery-done>Concluir</button>
+                    </div>
+                </div>
+
+                {# 2) Fluxo de vinculação (quando enabled = false) #}
+                <div {% if authenticator_state.enabled %}hidden{% endif %} data-auth-enroll-wrap style="max-width: 560px;" class="space-y-4">
+                    <div class="mp-alert-warn" {% if authenticator_state.enrollment_available %}hidden{% endif %} data-auth-unavailable-banner>
+                        A vinculação de aplicativo autenticador está indisponível neste servidor no momento. Entre em contato com o suporte ou tente novamente mais tarde.
+                    </div>
+
+                    {# Etapa 1: Confirmar senha atual #}
+                    <form class="space-y-4" data-auth-start-form novalidate>
+                        <p class="m-0 text-[13.5px] leading-relaxed text-[#5B6660]">
+                            Ao ativar o aplicativo autenticador, você usará códigos temporários do <strong>Google Authenticator</strong> ou <strong>Microsoft Authenticator</strong> para entrar com segurança, mesmo sem sinal no campo.
+                        </p>
+                        <div class="mp-field" style="max-width: 420px;">
+                            <label class="mp-label" for="mp-auth-start-pw">Confirme sua senha atual para iniciar</label>
+                            <div class="mp-pw-wrap" data-password-visibility>
+                                <input id="mp-auth-start-pw" type="password" name="current_password" class="mp-input" autocomplete="current-password" required data-password-input {% if not authenticator_state.enrollment_available %}disabled{% endif %}>
+                                <button type="button" class="mp-pw-eye" aria-label="Mostrar senha" aria-pressed="false" data-password-toggle>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-eye-open><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="hidden" data-eye-closed><path d="m3 3 18 18"/><path d="M10.6 5.3A10.7 10.7 0 0 1 12 5.2c6.4 0 10 6.8 10 6.8a17.4 17.4 0 0 1-4 4.7"/><path d="M6.7 6.8C3.9 8.6 2 12 2 12s3.6 6 10 6c1.5 0 2.8-.3 4-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button type="submit" class="mp-btn mp-btn-primary" data-auth-start-btn {% if not authenticator_state.enrollment_available %}disabled{% endif %}>Iniciar vinculação</button>
+                            <a href="/meu-perfil?aba=seguranca" class="mp-btn mp-btn-ghost">Cancelar</a>
+                        </div>
+                    </form>
+
+                    {# Etapa 2A: Verificação por e-mail (quando exigido antes do QR Code) #}
+                    <form class="space-y-4" hidden data-auth-email-form novalidate>
+                        <div class="mp-otp-banner">
+                            Enviamos um código de 6 dígitos para <strong data-auth-email-target>{{ user.email }}</strong>. Informe-o abaixo para liberar o QR Code do autenticador.
+                        </div>
+                        <div class="mp-field">
+                            <label class="mp-label" for="mp-auth-email-code">Código recebido por e-mail</label>
+                            <input id="mp-auth-email-code" type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" class="mp-input mp-tabular mp-otp-input" placeholder="000000" required>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button type="submit" class="mp-btn mp-btn-primary" data-auth-email-btn>Continuar</button>
+                            <button type="button" class="mp-btn mp-btn-ghost" data-auth-cancel-btn>Cancelar</button>
+                        </div>
+                    </form>
+
+                    {# Etapa 2B: QR Code / chave manual + confirmação por código TOTP #}
+                    <form class="space-y-4" hidden data-auth-totp-form novalidate>
+                        <div class="mp-totp-qr-wrap">
+                            <div class="mp-totp-qr-box">
+                                <img alt="QR Code do aplicativo autenticador" data-auth-qr-img>
+                            </div>
+                            <div class="mp-totp-key-panel">
+                                <p class="m-0 text-[13.5px] font-semibold text-[#16201A]">1. Escaneie o QR Code no aplicativo</p>
+                                <p class="mt-1 mb-0 text-[12.5px] text-[#5B6660]">Abra o Google Authenticator ou Microsoft Authenticator, toque em adicionar conta e leia o código ao lado.</p>
+                                <p class="mt-3 mb-0 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#7A857E]">Ou digite a chave manualmente</p>
+                                <div class="mp-totp-key-row">
+                                    <code class="mp-totp-key" data-auth-manual-key></code>
+                                    <button type="button" class="mp-btn mp-btn-secondary mp-btn-sm" data-auth-copy-key>Copiar chave</button>
+                                </div>
+                                <p class="mt-2 mb-0 text-[11.5px] text-[#7A857E]" data-auth-totp-meta>6 dígitos · 30s · SHA-1</p>
+                            </div>
+                        </div>
+
+                        <div class="mp-field">
+                            <label class="mp-label" for="mp-auth-confirm-code">2. Digite o código de 6 dígitos exibido no aplicativo</label>
+                            <input id="mp-auth-confirm-code" type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" class="mp-input mp-tabular mp-otp-input" placeholder="000000" required>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button type="submit" class="mp-btn mp-btn-primary" data-auth-confirm-btn>Confirmar e ativar</button>
+                            <button type="button" class="mp-btn mp-btn-ghost" data-auth-cancel-btn>Cancelar</button>
+                        </div>
+                    </form>
+                </div>
+
+                {# 3) Painel de gerenciamento (quando enabled = true) #}
+                <div {% if not authenticator_state.enabled %}hidden{% endif %} data-auth-active-wrap class="space-y-6">
+                    {# Método preferido no login #}
+                    <div class="space-y-3">
+                        <div>
+                            <h3 class="mp-block-title">Como confirmar ao entrar</h3>
+                            <p class="mp-block-desc">Escolha se deseja confirmar apenas com o aplicativo ou combinar e-mail + aplicativo.</p>
+                        </div>
+                        <div class="mp-choice-grid" role="radiogroup" aria-label="Método de verificação no login">
+                            <button type="button" class="mp-choice{% if authenticator_state.preferred_method != 'email_then_totp' %} is-selected{% endif %}" role="radio" aria-checked="{{ 'true' if authenticator_state.preferred_method != 'email_then_totp' else 'false' }}" data-auth-pref-opt="totp">
+                                <span class="mp-radio-dot" aria-hidden="true"></span>
+                                <span>
+                                    <strong>Somente aplicativo autenticador</strong>
+                                    <span class="mp-choice-sub">Mais rápido e funciona mesmo sem internet no campo.</span>
+                                </span>
+                            </button>
+                            <button type="button" class="mp-choice{% if authenticator_state.preferred_method == 'email_then_totp' %} is-selected{% endif %}{% if not authenticator_state.email_enabled %} is-disabled{% endif %}" role="radio" aria-checked="{{ 'true' if authenticator_state.preferred_method == 'email_then_totp' else 'false' }}" data-auth-pref-opt="email_then_totp" {% if not authenticator_state.email_enabled %}disabled aria-disabled="true"{% endif %}>
+                                <span class="mp-radio-dot" aria-hidden="true"></span>
+                                <span>
+                                    <strong>E-mail e depois aplicativo</strong>
+                                    <span class="mp-choice-sub">Exige o código por e-mail antes do código do aplicativo.</span>
+                                </span>
+                            </button>
+                        </div>
+
+                        {# Confirmação inline para alterar preferência #}
+                        <form class="mp-manage-panel space-y-3" hidden data-auth-manage-form="preference" novalidate>
+                            <p class="m-0 text-[13px] font-medium text-[#16201A]">Confirme sua identidade para alterar a preferência de login.</p>
+                            <div class="mp-form-grid">
+                                <div class="mp-field">
+                                    <label class="mp-label">Senha atual</label>
+                                    <input type="password" name="current_password" class="mp-input" autocomplete="current-password" required>
+                                </div>
+                                <div class="mp-field">
+                                    <label class="mp-label" data-code-label>Código do aplicativo (6 dígitos)</label>
+                                    <input type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" class="mp-input mp-tabular" placeholder="000000" required>
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="mp-seg-toggle" role="group" aria-label="Tipo de código">
+                                    <button type="button" class="mp-seg-btn" data-method-btn="totp" aria-pressed="true">Aplicativo</button>
+                                    <button type="button" class="mp-seg-btn" data-method-btn="recovery" aria-pressed="false">Recuperação</button>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button type="button" class="mp-btn mp-btn-ghost mp-btn-sm" data-manage-cancel>Cancelar</button>
+                                    <button type="submit" class="mp-btn mp-btn-primary mp-btn-sm" data-manage-submit>Salvar preferência</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    {# Códigos de recuperação #}
+                    <div class="border-t border-[#EEF1ED] pt-5 space-y-3">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <h3 class="mp-block-title">Códigos de recuperação</h3>
+                                <p class="mp-block-desc mp-tabular" data-auth-recovery-summary>
+                                    {{ authenticator_state.recovery_codes_remaining }} de 10 códigos disponíveis para acesso de emergência.
+                                </p>
+                            </div>
+                            <button type="button" class="mp-btn mp-btn-secondary mp-btn-sm" data-open-manage="regenerate_recovery_codes">Gerar novos códigos</button>
+                        </div>
+
+                        <form class="mp-manage-panel space-y-3" hidden data-auth-manage-form="regenerate_recovery_codes" novalidate>
+                            <p class="m-0 text-[13px] text-[#5B6660]" role="alert"><strong>Atenção:</strong> gerar novos códigos invalida imediatamente todos os códigos de recuperação anteriores.</p>
+                            <div class="mp-form-grid">
+                                <div class="mp-field">
+                                    <label class="mp-label">Senha atual</label>
+                                    <input type="password" name="current_password" class="mp-input" autocomplete="current-password" required>
+                                </div>
+                                <div class="mp-field">
+                                    <label class="mp-label" data-code-label>Código do aplicativo (6 dígitos)</label>
+                                    <input type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" class="mp-input mp-tabular" placeholder="000000" required>
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="mp-seg-toggle" role="group" aria-label="Tipo de código">
+                                    <button type="button" class="mp-seg-btn" data-method-btn="totp" aria-pressed="true">Aplicativo</button>
+                                    <button type="button" class="mp-seg-btn" data-method-btn="recovery" aria-pressed="false">Recuperação</button>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button type="button" class="mp-btn mp-btn-ghost mp-btn-sm" data-manage-cancel>Cancelar</button>
+                                    <button type="submit" class="mp-btn mp-btn-primary mp-btn-sm" data-manage-submit>Gerar 10 códigos</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    {# Desvincular aplicativo #}
+                    <div class="border-t border-[#EEF1ED] pt-5 space-y-3">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <h3 class="mp-block-title">Desvincular aplicativo</h3>
+                                <p class="mp-block-desc">Remove o autenticador e invalida os códigos de recuperação. A conta volta à verificação por e-mail.</p>
+                            </div>
+                            <button type="button" class="mp-btn mp-btn-danger-ghost mp-btn-sm" data-open-manage="disable">Desvincular</button>
+                        </div>
+
+                        <form class="mp-manage-panel is-danger space-y-3" hidden data-auth-manage-form="disable" novalidate>
+                            <p class="m-0 text-[13px] text-[#7A1810]" role="alert"><strong>Confirmar desvinculação?</strong> O aplicativo deixará de gerar códigos válidos e todos os códigos de recuperação serão apagados.</p>
+                            <div class="mp-form-grid">
+                                <div class="mp-field">
+                                    <label class="mp-label">Senha atual</label>
+                                    <input type="password" name="current_password" class="mp-input" autocomplete="current-password" required>
+                                </div>
+                                <div class="mp-field">
+                                    <label class="mp-label" data-code-label>Código do aplicativo (6 dígitos)</label>
+                                    <input type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" class="mp-input mp-tabular" placeholder="000000" required>
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="mp-seg-toggle" role="group" aria-label="Tipo de código">
+                                    <button type="button" class="mp-seg-btn" data-method-btn="totp" aria-pressed="true">Aplicativo</button>
+                                    <button type="button" class="mp-seg-btn" data-method-btn="recovery" aria-pressed="false">Recuperação</button>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button type="button" class="mp-btn mp-btn-secondary mp-btn-sm" data-manage-cancel>Cancelar</button>
+                                    <button type="submit" class="mp-btn mp-btn-danger mp-btn-sm" data-manage-submit>Confirmar desvinculação</button>
+                                </div>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -368,18 +620,28 @@
 
         {% else %}
         {# Visão principal de Segurança (Lista limpa com drill-down) #}
+        {% set has_any_2fa = authenticator_state.enabled or user.is_two_factor_enabled %}
+        {% if authenticator_state.enabled and authenticator_state.preferred_method == 'email_then_totp' %}
+            {% set status_sub = 'E-mail + aplicativo ativos' %}
+        {% elif authenticator_state.enabled %}
+            {% set status_sub = 'Aplicativo autenticador ativo' %}
+        {% elif user.is_two_factor_enabled %}
+            {% set status_sub = '2FA por e-mail ativo' %}
+        {% else %}
+            {% set status_sub = '2FA desativado' %}
+        {% endif %}
         <div class="mp-surface">
             <div class="mp-sec-status">
                 <div class="mp-sec-status-top">
                     <div class="mp-sec-status-main">
-                        <span class="mp-sec-dot{% if not user.is_two_factor_enabled %} is-warn{% endif %}" aria-hidden="true"></span>
-                        <strong class="mp-sec-status-label">{{ 'Conta protegida' if user.is_two_factor_enabled else 'Atenção à proteção' }}</strong>
+                        <span class="mp-sec-dot{% if not has_any_2fa %} is-warn{% endif %}" aria-hidden="true"></span>
+                        <strong class="mp-sec-status-label">{{ 'Conta protegida' if has_any_2fa else 'Atenção à proteção' }}</strong>
                         <span class="mp-sec-status-sep text-[#7A857E]" aria-hidden="true">·</span>
-                        <span class="mp-only-desktop mp-sec-status-sub">{{ '2FA por e-mail ativo' if user.is_two_factor_enabled else '2FA desativado' }}</span>
+                        <span class="mp-only-desktop mp-sec-status-sub">{{ status_sub }}</span>
                     </div>
                     <span class="mp-only-mobile mp-sec-status-count mp-tabular">{{ browsers_count }} navegador{{ 'es' if browsers_count != 1 else '' }}</span>
                 </div>
-                <span class="mp-only-mobile mp-sec-status-sub">{{ '2FA por e-mail ativo' if user.is_two_factor_enabled else '2FA desativado' }}</span>
+                <span class="mp-only-mobile mp-sec-status-sub">{{ status_sub }}</span>
                 <span class="mp-only-desktop mp-sec-status-count mp-tabular">{{ browsers_count }} navegador{{ 'es' if browsers_count != 1 else '' }} confiáve{{ 'is' if browsers_count != 1 else 'l' }}</span>
             </div>
 
@@ -418,18 +680,33 @@
                     <svg class="mp-sec-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
                 </a>
 
-                <div class="mp-sec-row is-soon" aria-disabled="true">
-                    <div class="mp-sec-row-left">
+                <a href="/meu-perfil?aba=seguranca&secao=autenticador" class="mp-sec-row">
+                    <span class="mp-sec-row-left">
                         <span class="mp-sec-ico" aria-hidden="true">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 18h4"/><circle cx="12" cy="10" r="2.2"/></svg>
                         </span>
-                        <div class="mp-sec-row-body">
-                            <p class="mp-sec-row-title">Autenticador Google</p>
-                            <p class="mp-sec-row-sub is-wrap">Códigos no celular mesmo sem internet no campo.</p>
-                        </div>
-                    </div>
-                    <span class="mp-pill mp-pill-muted">Em breve</span>
-                </div>
+                        <span class="mp-sec-row-body">
+                            <span class="mp-sec-title-line">
+                                <span class="mp-sec-row-title">Aplicativo autenticador</span>
+                                {% if authenticator_state.enabled %}
+                                <span class="mp-pill mp-pill-ok">Ativo</span>
+                                {% elif authenticator_state.enrollment_available %}
+                                <span class="mp-pill mp-pill-muted">Não vinculado</span>
+                                {% else %}
+                                <span class="mp-pill mp-pill-warn">Indisponível</span>
+                                {% endif %}
+                            </span>
+                            <span class="mp-sec-row-sub block">
+                                {% if authenticator_state.enabled %}
+                                {{ 'E-mail + aplicativo' if authenticator_state.preferred_method == 'email_then_totp' else 'Google ou Microsoft Authenticator' }} · {{ authenticator_state.recovery_codes_remaining }} códigos restantes
+                                {% else %}
+                                Google ou Microsoft Authenticator · Funciona offline
+                                {% endif %}
+                            </span>
+                        </span>
+                    </span>
+                    <svg class="mp-sec-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                </a>
 
                 {% set google_on = google_oauth_configured and prefs.google_login_enabled %}
                 <div class="mp-sec-row-action">
@@ -761,5 +1038,8 @@
     <span data-mp-toast-text>Salvo.</span>
 </div>
 
-<script src="{{ url_for('static', path='js/profile.js') }}?v=20261128mp2" defer></script>
+<script src="{{ url_for('static', path='js/profile.js') }}?v=20261128mp3" defer></script>
+{% if active_profile_tab == 'security' and active_security_view == 'authenticator' %}
+<script src="{{ url_for('static', path='js/profile_authenticator.js') }}?v=20261128mp3" defer></script>
+{% endif %}
 {% endblock %}
