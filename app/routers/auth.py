@@ -29,6 +29,7 @@ from app.services.trusted_browser import (
     revoke_user_trusted_browsers,
     validate_trusted_browser_token,
 )
+from app.services.user_preferences import get_user_preferences
 from app.services.two_factor import get_active_login_code, issue_login_verification_code, revoke_active_login_codes, verify_login_code
 
 templates = Jinja2Templates(directory="app/templates")
@@ -122,6 +123,18 @@ def _complete_web_login(
             extra={"user_email": user.email},
         )
 
+    prefs = get_user_preferences(user)
+    if prefs.get("context_mode") == "fixed" and prefs.get("default_farm_id"):
+        try:
+            from app.models.farm import Farm
+            fixed_farm = db.query(Farm).filter(Farm.id == int(prefs["default_farm_id"])).first()
+            if fixed_farm and (user.is_admin or not user.organization_id or fixed_farm.organization_id == user.organization_id):
+                user.active_farm_id = fixed_farm.id
+                db.add(user)
+                db.commit()
+        except Exception:
+            db.rollback()
+
     request.session["user_email"] = user.email
     if verified_second_factor:
         request.session["commercial_mfa_at"] = utc_now().timestamp()
@@ -132,7 +145,8 @@ def _complete_web_login(
     request.session.pop(PENDING_2FA_LAST_SENT_AT, None)
     touch_session_activity(request)
     append_audit_event(request=request, actor_user=user, event_type="auth.login.success", outcome="success")
-    response = RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    target_url = prefs.get("start_page") or "/dashboard"
+    response = RedirectResponse(url=target_url, status_code=status.HTTP_303_SEE_OTHER)
     if clear_trusted_browser_cookie:
         _clear_trusted_browser_cookie(response)
     if trusted_browser_token:
@@ -423,6 +437,11 @@ def login_google_callback(
         return RedirectResponse(url="/cadastro/dados", status_code=status.HTTP_303_SEE_OTHER)
     if not user.is_active:
         return _render_login(request, "Seu usuario esta inativo no sistema. Entre em contato com o administrador.")
+    if not get_user_preferences(user).get("google_login_enabled", True):
+        return _render_login(
+            request,
+            "O acesso com Google está desativado nas configurações de segurança desta conta. Entre com e-mail e senha.",
+        )
     return _start_web_login_challenge(request, db, user)
 
 

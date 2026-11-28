@@ -405,7 +405,20 @@ from app.services.password_change import (
 )
 from app.services.password_reset import revoke_user_password_reset_tokens
 from app.services.email_service import send_access_code_email, send_password_change_code_email, send_plain_email
-from app.services.trusted_browser import revoke_user_trusted_browsers
+from app.services.trusted_browser import (
+    list_active_trusted_browsers,
+    revoke_other_trusted_browsers,
+    revoke_single_trusted_browser,
+    revoke_user_trusted_browsers,
+)
+from app.services.user_preferences import (
+    NOTIFICATION_CATEGORIES,
+    START_PAGE_OPTIONS,
+    VALID_QUIET_END,
+    VALID_QUIET_START,
+    get_user_preferences,
+    merge_user_preferences,
+)
 from app.services.two_factor import get_active_login_code, issue_login_verification_code, revoke_active_login_codes, verify_login_code
 
 settings = get_settings()
@@ -1159,6 +1172,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         "permission_codes": permission_codes,
         "can_write_page": can_write_page,
         "page_write_permission": page_write_permission,
+        "user_ui_density": get_user_preferences(user).get("density", "comfortable"),
     }
     if repo:
         scope_context = _global_scope_context(request, repo, user)
@@ -1724,6 +1738,32 @@ def mark_notifications_read(request: Request, csrf_token: str = Form(...), scope
     return JSONResponse({"read": sorted(valid)}, headers={"Cache-Control": "no-store"})
 
 
+def _profile_role_label(user: User) -> str:
+    if is_super_admin_email(user.email):
+        return "Super administrador"
+    if user.is_admin:
+        return "Administrador"
+    role_names = [r.name for r in (getattr(user, "roles", None) or []) if getattr(r, "name", None)]
+    return role_names[0] if role_names else "Membro"
+
+
+def _profile_whatsapp_summary(db: Session, user_id: int) -> dict:
+    from app.models.whatsapp import WhatsAppLink
+
+    link = db.query(WhatsAppLink).filter(WhatsAppLink.user_id == user_id).first()
+    if not link or not link.verified_at or not link.wa_id:
+        return {"linked": False, "phone_last4": "", "farm_name": "", "season_name": ""}
+    digits = "".join(ch for ch in str(link.wa_id) if ch.isdigit())
+    farm = db.query(Farm).filter(Farm.id == link.farm_id).first() if link.farm_id else None
+    season = db.query(CropSeason).filter(CropSeason.id == link.season_id).first() if link.season_id else None
+    return {
+        "linked": True,
+        "phone_last4": digits[-4:] if digits else "",
+        "farm_name": farm.name if farm else "",
+        "season_name": season.name if season else "",
+    }
+
+
 def _render_profile_page(
     request: Request,
     user: User,
@@ -1731,22 +1771,53 @@ def _render_profile_page(
     repo: FarmRepository,
     pending_password_change=None,
     active_profile_tab: str = "profile",
+    active_security_view: str = "index",
 ):
-    return templates.TemplateResponse(
-        "profile.html",
-        _base_context(
-            request,
-            user,
-            csrf_token,
-            "profile",
-            title="Meu Perfil",
-            _repo=repo,
-            profile_gender_options=_profile_gender_options(),
-            profile_gender_label=_profile_gender_label(user.gender),
-            pending_password_change=pending_password_change,
-            active_profile_tab=active_profile_tab,
-        ),
+    prefs = get_user_preferences(user)
+    cookie_name = get_settings().trusted_browser_cookie_name
+    current_raw_token = request.cookies.get(cookie_name)
+    trusted_browsers = list_active_trusted_browsers(
+        repo.db,
+        user.id,
+        current_raw_token=current_raw_token,
+        current_user_agent=request.headers.get("user-agent", ""),
     )
+    org_name = ""
+    if getattr(user, "organization", None) and getattr(user.organization, "name", None):
+        org_name = user.organization.name
+    google_oauth_configured = bool(
+        settings.google_client_id and settings.google_client_secret and settings.google_redirect_uri
+    )
+    ctx = _base_context(
+        request,
+        user,
+        csrf_token,
+        "profile",
+        title="Meu Perfil",
+        _repo=repo,
+        profile_gender_options=_profile_gender_options(),
+        profile_gender_label=_profile_gender_label(user.gender),
+        pending_password_change=pending_password_change,
+        active_profile_tab=active_profile_tab,
+        active_security_view=active_security_view,
+        profile_role_label=_profile_role_label(user),
+        profile_organization_name=org_name,
+        profile_preferences=prefs,
+        notification_categories=NOTIFICATION_CATEGORIES,
+        quiet_start_options=VALID_QUIET_START,
+        quiet_end_options=VALID_QUIET_END,
+        trusted_browsers=trusted_browsers,
+        trusted_browsers_has_others=any(not item["is_current"] for item in trusted_browsers),
+        google_oauth_configured=google_oauth_configured,
+        whatsapp_link_summary=_profile_whatsapp_summary(repo.db, user.id),
+    )
+    perms = set(ctx.get("permission_codes") or ())
+    ctx["profile_start_pages"] = [
+        opt for opt in START_PAGE_OPTIONS
+        if not opt["permission"] or opt["permission"] in perms
+    ]
+    ctx["profile_farms"] = ctx.get("context_farms") or []
+    return templates.TemplateResponse("profile.html", ctx)
 
 
 def _flash(request: Request, kind: str, message: str) -> None:
@@ -15087,18 +15158,43 @@ def delete_backup_action(
 def profile_page(
     request: Request,
     aba: str | None = None,
+    secao: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    active_profile_tab = "security" if (aba or "").strip().lower() == "seguranca" else "profile"
+    tab_map = {
+        "perfil": "profile",
+        "profile": "profile",
+        "seguranca": "security",
+        "security": "security",
+        "notificacoes": "notifications",
+        "notifications": "notifications",
+        "preferencias": "preferences",
+        "preferences": "preferences",
+    }
+    active_profile_tab = tab_map.get((aba or "").strip().lower(), "profile")
+
+    sec_map = {
+        "senha": "password",
+        "password": "password",
+        "2fa": "email2fa",
+        "email2fa": "email2fa",
+        "navegadores": "browsers",
+        "dispositivos": "browsers",
+        "browsers": "browsers",
+    }
+    active_security_view = sec_map.get((secao or "").strip().lower(), "index") if active_profile_tab == "security" else "index"
+
     pending_password_change = None
     if active_profile_tab == "security":
         if _has_password_change_pending(request, user.id):
             pending_password_change = get_active_password_change_verification(db, user.id)
             if not pending_password_change:
                 _clear_password_change_pending(request)
+            else:
+                active_security_view = "password"
         else:
             stale_password_change = get_active_password_change_verification(db, user.id)
             if stale_password_change:
@@ -15112,6 +15208,7 @@ def profile_page(
         repo,
         pending_password_change=pending_password_change,
         active_profile_tab=active_profile_tab,
+        active_security_view=active_security_view,
     )
 
 
@@ -15124,7 +15221,7 @@ async def update_profile_action(
     gender: str | None = Form(None),
     birth_date: str | None = Form(None),
     phone: str | None = Form(None),
-    email: str = Form(...),
+    email: str | None = Form(None),
     job_title: str | None = Form(None),
     notes: str | None = Form(None),
     avatar: UploadFile | None = File(None),
@@ -15135,47 +15232,92 @@ async def update_profile_action(
     repo = _repository(db)
 
     normalized_name = _clean_text(name)
-    normalized_email = (email or "").strip().lower()
-    normalized_gender = (gender or "").strip()
-    if normalized_gender and normalized_gender not in {option[0] for option in _profile_gender_options()}:
-        normalized_gender = None
-
+    normalized_email = (email or user.email or "").strip().lower()
     if not normalized_name or not normalized_email:
-        _flash(request, "error", "Nome completo e email sao obrigatorios.")
+        _flash(request, "error", "Nome completo e e-mail são obrigatórios.")
         return _redirect("/meu-perfil?aba=perfil")
 
     existing = db.query(User).filter(User.email == normalized_email, User.id != user.id).first()
     if existing:
-        _flash(request, "error", "Ja existe outro usuario com este email.")
-        return _redirect("/meu-perfil?aba=perfil")
-
-    try:
-        normalized_birth_date = _date_or_none(birth_date)
-    except ValueError:
-        _flash(request, "error", "Informe uma data de nascimento valida.")
-        return _redirect("/meu-perfil?aba=perfil")
-
-    avatar_payload, avatar_error = await _read_avatar_upload(avatar)
-    if avatar_error:
-        _flash(request, "error", avatar_error)
+        _flash(request, "error", "Já existe outro usuário com este e-mail.")
         return _redirect("/meu-perfil?aba=perfil")
 
     payload = {
         "name": normalized_name,
         "email": normalized_email,
         "display_name": _clean_text(display_name),
-        "gender": normalized_gender or None,
-        "birth_date": normalized_birth_date,
         "phone": _clean_text(phone),
         "job_title": _clean_text(job_title),
-        "notes": (notes or "").strip() or None,
     }
+
+    if gender is not None:
+        normalized_gender = (gender or "").strip()
+        if normalized_gender and normalized_gender not in {option[0] for option in _profile_gender_options()}:
+            normalized_gender = None
+        payload["gender"] = normalized_gender or None
+    if birth_date is not None:
+        try:
+            payload["birth_date"] = _date_or_none(birth_date)
+        except ValueError:
+            _flash(request, "error", "Informe uma data de nascimento válida.")
+            return _redirect("/meu-perfil?aba=perfil")
+    if notes is not None:
+        payload["notes"] = (notes or "").strip() or None
+
+    avatar_payload, avatar_error = await _read_avatar_upload(avatar)
+    if avatar_error:
+        _flash(request, "error", avatar_error)
+        return _redirect("/meu-perfil?aba=perfil")
     if avatar_payload:
         payload.update(avatar_payload)
 
     updated_user = repo.update(user, payload)
     request.session["user_email"] = updated_user.email
     _flash(request, "success", "Perfil atualizado com sucesso.")
+    return _redirect("/meu-perfil?aba=perfil")
+
+
+@router.post("/meu-perfil/email")
+def update_profile_email_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    email: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    normalized_email = (email or "").strip().lower()
+    if not normalized_email or "@" not in normalized_email or "." not in normalized_email.split("@")[-1]:
+        _flash(request, "error", "Informe um endereço de e-mail válido.")
+        return _redirect("/meu-perfil?aba=perfil")
+    existing = db.query(User).filter(User.email == normalized_email, User.id != user.id).first()
+    if existing:
+        _flash(request, "error", "Já existe outro usuário com este e-mail.")
+        return _redirect("/meu-perfil?aba=perfil")
+    updated_user = _repository(db).update(user, {"email": normalized_email})
+    request.session["user_email"] = updated_user.email
+    _flash(request, "success", "E-mail de acesso atualizado com sucesso.")
+    return _redirect("/meu-perfil?aba=perfil")
+
+
+@router.post("/meu-perfil/avatar")
+async def update_profile_avatar_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    avatar: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    avatar_payload, avatar_error = await _read_avatar_upload(avatar)
+    if avatar_error:
+        _flash(request, "error", avatar_error)
+        return _redirect("/meu-perfil?aba=perfil")
+    if not avatar_payload:
+        _flash(request, "error", "Selecione uma imagem válida para atualizar a foto.")
+        return _redirect("/meu-perfil?aba=perfil")
+    _repository(db).update(user, avatar_payload)
+    _flash(request, "success", "Foto do perfil atualizada com sucesso.")
     return _redirect("/meu-perfil?aba=perfil")
 
 
@@ -15231,17 +15373,17 @@ def change_own_password_action(
     normalized_confirm_password = (confirm_password or "").strip()
 
     if not verify_password(normalized_current_password, user.hashed_password):
-        _flash(request, "error", "A senha atual informada nao confere.")
-        return _redirect("/meu-perfil?aba=seguranca")
+        _flash(request, "error", "A senha atual informada não confere.")
+        return _redirect("/meu-perfil?aba=seguranca&secao=senha")
     if not normalized_new_password:
         _flash(request, "error", "Informe a nova senha.")
-        return _redirect("/meu-perfil?aba=seguranca")
+        return _redirect("/meu-perfil?aba=seguranca&secao=senha")
     if normalized_new_password != normalized_confirm_password:
-        _flash(request, "error", "A confirmacao da nova senha nao confere.")
-        return _redirect("/meu-perfil?aba=seguranca")
+        _flash(request, "error", "A confirmação da nova senha não confere.")
+        return _redirect("/meu-perfil?aba=seguranca&secao=senha")
     if verify_password(normalized_new_password, user.hashed_password):
         _flash(request, "error", "A nova senha precisa ser diferente da senha atual.")
-        return _redirect("/meu-perfil?aba=seguranca")
+        return _redirect("/meu-perfil?aba=seguranca&secao=senha")
 
     try:
         code = issue_password_change_verification(db, user, get_password_hash(normalized_new_password))
@@ -15249,16 +15391,16 @@ def change_own_password_action(
     except RuntimeError as exc:
         _discard_password_change_pending(request, db, user.id)
         _flash(request, "error", str(exc))
-        return _redirect("/meu-perfil?aba=seguranca")
+        return _redirect("/meu-perfil?aba=seguranca&secao=senha")
     except Exception:
         db.rollback()
         _discard_password_change_pending(request, db, user.id)
-        _flash(request, "error", "Nao foi possivel enviar o codigo de confirmacao agora. Tente novamente.")
-        return _redirect("/meu-perfil?aba=seguranca")
+        _flash(request, "error", "Não foi possível enviar o código de confirmação agora. Tente novamente.")
+        return _redirect("/meu-perfil?aba=seguranca&secao=senha")
 
     _mark_password_change_pending(request, user.id)
-    _flash(request, "success", "Enviamos um codigo de confirmacao para o seu email. Informe o codigo para concluir a alteracao da senha.")
-    return _redirect("/meu-perfil?aba=seguranca")
+    _flash(request, "success", "Enviamos um código de confirmação para o seu e-mail. Informe o código para concluir a alteração da senha.")
+    return _redirect("/meu-perfil?aba=seguranca&secao=senha")
 
 
 @router.post("/meu-perfil/alterar-senha/confirmar")
@@ -15272,15 +15414,15 @@ def confirm_own_password_change_action(
     validate_csrf(request, csrf_token)
     normalized_code = "".join(char for char in (code or "") if char.isdigit())[:6]
     if len(normalized_code) != 6:
-        _flash(request, "error", "Informe um codigo numerico de 6 digitos.")
-        return _redirect("/meu-perfil?aba=seguranca")
+        _flash(request, "error", "Informe um código numérico de 6 dígitos.")
+        return _redirect("/meu-perfil?aba=seguranca&secao=senha")
 
     valid, message, verification = verify_password_change_code(db, user.id, normalized_code)
     if not valid or not verification:
         if not get_active_password_change_verification(db, user.id):
             _clear_password_change_pending(request)
         _flash(request, "error", message)
-        return _redirect("/meu-perfil?aba=seguranca")
+        return _redirect("/meu-perfil?aba=seguranca&secao=senha")
 
     repo = _repository(db)
     repo.update(user, {"hashed_password": verification.new_password_hash})
@@ -15289,7 +15431,7 @@ def confirm_own_password_change_action(
     revoke_user_password_reset_tokens(db, user.id)
     revoke_user_trusted_browsers(db, user.id)
     revoke_active_login_codes(db, user.id)
-    _flash(request, "success", "Senha atualizada com sucesso.")
+    _flash(request, "success", "Senha atualizada com sucesso. Outros navegadores confiáveis foram desconectados.")
     return _redirect("/meu-perfil?aba=seguranca")
 
 
@@ -15302,7 +15444,133 @@ async def cancel_own_password_change_action(
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
     _discard_password_change_pending(request, db, user.id)
+    if form.get("redirect") == "1":
+        return _redirect("/meu-perfil?aba=seguranca")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/meu-perfil/seguranca/google")
+def toggle_profile_google_login_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    enabled: str = Form("0"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    next_enabled = enabled in ("1", "true", "on", "yes")
+    _, serialized = merge_user_preferences(user, {"google_login_enabled": next_enabled})
+    _repository(db).update(user, {"preferences_json": serialized})
+    _flash(
+        request,
+        "success",
+        "Acesso com Google ativado." if next_enabled else "Acesso com Google desconectado.",
+    )
+    return _redirect("/meu-perfil?aba=seguranca")
+
+
+@router.post("/meu-perfil/seguranca/navegadores/{token_id}/remover")
+def revoke_profile_single_browser_action(
+    token_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    removed = revoke_single_trusted_browser(db, user.id, token_id)
+    if removed:
+        _flash(request, "success", "Navegador removido da lista confiável.")
+    else:
+        _flash(request, "error", "Navegador não encontrado ou já desconectado.")
+    return _redirect("/meu-perfil?aba=seguranca&secao=navegadores")
+
+
+@router.post("/meu-perfil/seguranca/navegadores/revogar-outros")
+def revoke_profile_other_browsers_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    current_raw_token = request.cookies.get(get_settings().trusted_browser_cookie_name)
+    count = revoke_other_trusted_browsers(db, user.id, current_raw_token=current_raw_token)
+    if count:
+        _flash(request, "success", "Outros navegadores confiáveis foram desconectados.")
+    else:
+        _flash(request, "success", "Nenhum outro navegador confiável ativo para desconectar.")
+    return _redirect("/meu-perfil?aba=seguranca&secao=navegadores")
+
+
+@router.post("/meu-perfil/notificacoes")
+async def update_profile_notifications_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    content_type = (request.headers.get("content-type") or "").lower()
+    if "application/json" in content_type:
+        body = await request.json()
+        validate_csrf(request, str((body or {}).get("csrf_token") or request.headers.get("x-csrf-token") or ""))
+        patch: dict = {}
+        if isinstance(body.get("notifications"), dict):
+            patch["notifications"] = body["notifications"]
+        if isinstance(body.get("quiet_hours"), dict):
+            patch["quiet_hours"] = body["quiet_hours"]
+        prefs, serialized = merge_user_preferences(user, patch)
+        _repository(db).update(user, {"preferences_json": serialized})
+        return JSONResponse({"ok": True, "preferences": prefs}, headers={"Cache-Control": "no-store"})
+
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    notifs_patch: dict = {}
+    for cat in NOTIFICATION_CATEGORIES:
+        key = cat["key"]
+        notifs_patch[key] = {
+            channel: form.get(f"notif_{key}_{channel}") == "1"
+            for channel in ("system", "email", "whatsapp")
+        }
+    quiet_patch = {
+        "enabled": form.get("quiet_enabled") == "1",
+        "start": str(form.get("quiet_start") or "21:00"),
+        "end": str(form.get("quiet_end") or "07:00"),
+    }
+    _, serialized = merge_user_preferences(user, {"notifications": notifs_patch, "quiet_hours": quiet_patch})
+    _repository(db).update(user, {"preferences_json": serialized})
+    _flash(request, "success", "Preferências de notificação atualizadas.")
+    return _redirect("/meu-perfil?aba=notificacoes")
+
+
+@router.post("/meu-perfil/preferencias")
+async def update_profile_preferences_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    content_type = (request.headers.get("content-type") or "").lower()
+    if "application/json" in content_type:
+        body = await request.json()
+        validate_csrf(request, str((body or {}).get("csrf_token") or request.headers.get("x-csrf-token") or ""))
+        patch = {
+            k: body[k]
+            for k in ("start_page", "context_mode", "default_farm_id", "density")
+            if k in body
+        }
+        prefs, serialized = merge_user_preferences(user, patch)
+        _repository(db).update(user, {"preferences_json": serialized})
+        return JSONResponse({"ok": True, "preferences": prefs}, headers={"Cache-Control": "no-store"})
+
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    patch = {}
+    for field in ("start_page", "context_mode", "default_farm_id", "density"):
+        if field in form:
+            patch[field] = form.get(field)
+    _, serialized = merge_user_preferences(user, patch)
+    _repository(db).update(user, {"preferences_json": serialized})
+    _flash(request, "success", "Preferências salvas com sucesso.")
+    return _redirect("/meu-perfil?aba=preferencias")
 
 
 @router.get("/insumos/comprados")

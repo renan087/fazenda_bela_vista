@@ -34,7 +34,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261128cgc">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261128mp1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -70,7 +70,7 @@
 {% block head_extra %}{% endblock %}
 {% include "_google_tag.html" %}
 </head>
-<body class="bg-slate-100 text-slate-800" data-modal-mode="{% if modal_mode %}1{% else %}0{% endif %}" data-can-write-page="{% if can_write_page %}1{% else %}0{% endif %}">
+<body class="bg-slate-100 text-slate-800" data-modal-mode="{% if modal_mode %}1{% else %}0{% endif %}" data-can-write-page="{% if can_write_page %}1{% else %}0{% endif %}" data-ui-density="{{ user_ui_density|default('comfortable') }}">
     {# Evita flash expandido→recolhido: aplica preferência antes de parsear a sidebar (desktop). #}
     <script>
         (function () {

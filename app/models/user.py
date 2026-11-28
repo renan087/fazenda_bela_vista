@@ -33,6 +33,7 @@ class User(Base):
     welcome_email_sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     asaas_customer_id: Mapped[str] = mapped_column(String(40), nullable=True, index=True)
+    preferences_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     organization = relationship("Organization", back_populates="users", foreign_keys=[organization_id])
     roles = relationship("Role", secondary=user_roles_table, back_populates="users")
