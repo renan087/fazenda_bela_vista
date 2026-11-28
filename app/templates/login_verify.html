@@ -30,7 +30,7 @@
                 {% endif %}
                 <label class="block">
                     <span class="mb-2 block text-sm font-medium text-slate-700">Codigo</span>
-                    <input type="text" name="code" inputmode="numeric" maxlength="6" class="w-full rounded-2xl border-slate-200 bg-slate-50 text-center text-2xl tracking-[0.55em]" placeholder="000000" required>
+                    <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" class="w-full rounded-2xl border-slate-200 bg-slate-50 text-center text-2xl tracking-[0.55em]" placeholder="000000" required autofocus>
                 </label>
                 <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                     <input type="checkbox" name="trust_browser" value="on" class="mt-0.5 rounded border-slate-300 text-brand-500 focus:ring-brand-500" {% if trust_browser_checked %}checked{% endif %}>

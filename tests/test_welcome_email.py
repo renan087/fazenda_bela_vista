@@ -37,16 +37,15 @@ def _make_request(path: str, query_string: str = "") -> Request:
 
 
 def test_welcome_email_static_assets_exist():
+    assert Path("app/static/images/logo-wordmark.png").is_file()
+    assert Path("app/static/img/pezinho/icone-cabecalho.png").is_file()
     email_dir = Path("app/static/images/email")
     for filename in (
-        "welcome-header.png",
-        "icon-fazenda.png",
-        "icon-producao.png",
-        "icon-insumos.png",
-        "icon-financeiro.png",
+        "icon-whatsapp.png",
+        "icon-mail.png",
     ):
         asset = email_dir / filename
-        assert asset.is_file() and asset.stat().st_size > 1000, f"Asset ausente ou vazio: {asset}"
+        assert asset.is_file() and asset.stat().st_size > 500, f"Asset ausente ou vazio: {asset}"
 
 
 def test_build_welcome_email_content_personalizes_and_escapes():
@@ -63,6 +62,7 @@ def test_build_welcome_email_content_personalizes_and_escapes():
     assert subject == "Bem-vindo ao SiSFarm, João! Sua conta está pronta"
     assert "Olá, João!" in text_body
     assert "Pezinho" in text_body
+    assert "Gestão agrícola inteligente" in text_body
     assert "https://app.sisfarm.com.br/primeiros-passos" in text_body
     assert "https://app.sisfarm.com.br/mobile/assistente" in text_body
     assert "https://app.sisfarm.com.br/fazendas" in text_body
@@ -72,12 +72,12 @@ def test_build_welcome_email_content_personalizes_and_escapes():
 
     assert "<script>" not in html_body
     assert "Fazenda &#34;Bela Vista&#34; &amp; Cia" in html_body
-    assert "https://app.sisfarm.com.br/static/images/email/welcome-header.png" in html_body
-    assert "https://app.sisfarm.com.br/static/images/email/icon-fazenda.png" in html_body
-    assert "https://app.sisfarm.com.br/static/images/email/icon-producao.png" in html_body
-    assert "https://app.sisfarm.com.br/static/images/email/icon-insumos.png" in html_body
-    assert "https://app.sisfarm.com.br/static/images/email/icon-financeiro.png" in html_body
+    assert "https://app.sisfarm.com.br/static/images/logo-wordmark.png" in html_body
     assert "https://app.sisfarm.com.br/static/img/pezinho/icone-cabecalho.png" in html_body
+    assert "https://app.sisfarm.com.br/static/images/email/icon-whatsapp.png" in html_body
+    assert "https://app.sisfarm.com.br/static/images/email/icon-mail.png" in html_body
+    assert "Gestão agrícola inteligente" in html_body
+    assert "Este é um e-mail automático do SiSFarm" in html_body
     assert "suporte@sisfarm.com.br" in html_body
     assert "(35) 99999-0000" in html_body
 

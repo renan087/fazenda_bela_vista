@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block content %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  {% if eyebrow %}
+  <tr>
+    <td style="padding:0 0 6px 0; font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#446A36;">
+      {{ eyebrow }}
+    </td>
+  </tr>
+  {% endif %}
+
+  <tr>
+    <td class="em-h1" style="padding:0 0 12px 0; font-size:22px; line-height:29px; font-weight:700; letter-spacing:-0.02em; color:#16201A;">
+      {{ title }}
+    </td>
+  </tr>
+
+  {% for paragraph in intro_paragraphs %}
+  <tr>
+    <td style="padding:0 0 {{ '10px' if not loop.last else '20px' }} 0; font-size:15px; line-height:23px; color:#38443D;">
+      {{ paragraph }}
+    </td>
+  </tr>
+  {% endfor %}
+
+  {% if otp %}
+  <tr>
+    <td style="padding:0 0 {{ '14px' if details or callout else '18px' }} 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F6F8F5; border:1px solid #D6DDD5; border-radius:12px;">
+        <tr>
+          <td align="center" style="padding:20px 16px;">
+            <div style="font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:#5B6660; margin-bottom:10px;">
+              {{ otp.label }}
+            </div>
+            <!-- Digitos sem espacos internos (apenas CSS letter-spacing) para compatibilidade total com Apple AutoFill -->
+            <div class="em-otp-digits" style="font-family:ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace; font-variant-numeric:tabular-nums; font-size:32px; line-height:38px; font-weight:700; letter-spacing:0.22em; padding-left:0.22em; color:#16201A;">{{ otp.code }}</div>
+            {% if otp.expiry %}
+            <div style="font-size:12.5px; line-height:18px; color:#5B6660; margin-top:10px;">
+              {{ otp.expiry }}
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  {% endif %}
+
+  {% if details %}
+  <tr>
+    <td style="padding:0 0 {{ '12px' if callout else '18px' }} 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{{ details_style.bg }}; border:1px solid {{ details_style.border }}; border-radius:12px;">
+        {% for row in details %}
+        <tr>
+          <td style="padding:{{ '13px 16px 8px 16px' if loop.first and not loop.last else ('13px 16px' if loop.first and loop.last else ('8px 16px 13px 16px' if loop.last else '8px 16px')) }};{% if not loop.last %} border-bottom:1px solid {{ details_style.border }};{% endif %}">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td valign="top" class="em-detail-label" style="font-size:12.5px; color:#5B6660; width:38%; padding-right:8px;">{{ row.label }}</td>
+                <td valign="top" align="right" class="em-detail-value" style="font-size:{{ '12px' if row.mono else '13.5px' }}; font-weight:{{ '700' if row.bold else '600' }}; color:{{ row.color or '#16201A' }};{% if row.mono %} font-family:ui-monospace, 'SF Mono', Menlo, Consolas, monospace; word-break:break-all;{% endif %}">{{ row.value }}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+    </td>
+  </tr>
+  {% endif %}
+
+  {% if callout %}
+  <tr>
+    <td style="padding:0 0 18px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{{ callout_style.bg }}; border:1px solid {{ callout_style.border }}; border-radius:10px;">
+        <tr>
+          <td style="padding:13px 15px; font-size:13.5px; line-height:20px; color:{{ callout_style.text }};">
+            {% if callout.title %}<strong style="color:{{ callout_style.text }};">{{ callout.title }}</strong> {% endif %}{{ callout.text }}
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  {% endif %}
+
+  {% if cta %}
+  <tr>
+    <td style="padding:4px 0 20px 0;">
+      <table role="presentation" class="em-cta-table" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="center" class="em-cta-cell" bgcolor="{{ cta_style.bg }}" style="border-radius:10px; background-color:{{ cta_style.bg }};">
+            <a href="{{ cta.url }}" target="_blank" style="display:inline-block; padding:13px 24px; font-size:14px; font-weight:600; color:{{ cta_style.text }}; text-decoration:none; border-radius:10px; letter-spacing:-0.01em;">
+              {{ cta.label }}
+            </a>
+          </td>
+          {% if secondary_cta %}
+          <td width="10" class="em-cta-spacer" style="font-size:0; line-height:0;">&nbsp;</td>
+          <td align="center" class="em-cta-cell" bgcolor="#FFFFFF" style="border-radius:10px; background-color:#FFFFFF; border:1px solid #D6DDD5;">
+            <a href="{{ secondary_cta.url }}" target="_blank" style="display:inline-block; padding:12px 18px; font-size:14px; font-weight:600; color:#16201A; text-decoration:none; border-radius:10px;">
+              {{ secondary_cta.label }}
+            </a>
+          </td>
+          {% endif %}
+        </tr>
+      </table>
+    </td>
+  </tr>
+  {% endif %}
+
+  {% if fallback_url %}
+  <tr>
+    <td style="padding:0 0 12px 0; font-size:12.5px; line-height:19px; color:#5B6660;">
+      Se o botão não abrir, copie e cole este link no navegador:<br>
+      <a href="{{ fallback_url }}" target="_blank" style="color:#446A36; word-break:break-all; text-decoration:none;">{{ fallback_url }}</a>
+    </td>
+  </tr>
+  {% endif %}
+
+  {% for note in footnotes %}
+  <tr>
+    <td style="padding:{{ '4px' if loop.first else '6px' }} 0 0 0; font-size:12.5px; line-height:19px; color:#5B6660;">
+      {{ note }}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

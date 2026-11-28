@@ -262,12 +262,22 @@ def issue_challenge(db, user, farm_id, document_id, certificate_id, appearance, 
     email = user.email
     db.commit()
     try:
-        send_plain_email(
-            email, "Confirme a assinatura do seu PDF no SiSFarm",
-            f"Documento: {filename}\nTitular do certificado: {holder}\nSHA-256: {digest}\n\n"
-            f"Código de autorização: {code}\nVálido por {CHALLENGE_MINUTES} minutos e para esta versão do PDF.\n"
-            "Insira o código somente na tela do SiSFarm em que você iniciou a assinatura.",
+        from app.services.email_service import build_document_signing_icp_otp_email, dispatch_email
+
+        subject, text_body, html_body = build_document_signing_icp_otp_email(
+            code=code,
+            filename=filename,
+            holder=holder,
+            sha256=digest,
+            expires_minutes=CHALLENGE_MINUTES,
+        )
+        dispatch_email(
+            send_plain_email,
+            email,
+            subject,
+            text_body,
             "document_signing",
+            html_body=html_body,
         )
     except RuntimeError as exc:
         db.execute(update(SigningChallenge).filter_by(id=challenge_id).values(consumed_at=now))

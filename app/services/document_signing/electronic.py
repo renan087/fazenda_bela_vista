@@ -957,15 +957,23 @@ def _dispatch_external_invite(
             )
     else:
         try:
-            send_plain_email(
+            from app.services.email_service import build_document_signing_external_invite_email, dispatch_email
+
+            subject, text_body, html_body = build_document_signing_external_invite_email(
+                signer_name=signer.name,
+                sender_name=sender_name,
+                farm_name=farm.name,
+                doc_title=doc_title,
+                sign_url=sign_url,
+                expires_days=EXTERNAL_TOKEN_DAYS,
+            )
+            dispatch_email(
+                send_plain_email,
                 signer.email,
-                f"Convite para assinar documento no SiSFarm: {doc_title}",
-                f"Olá, {signer.name}.\n\n"
-                f"{sender_name} ({farm.name}) enviou o documento \"{doc_title}\" para sua assinatura eletrônica no SiSFarm.\n"
-                "Você não precisa criar conta nem ter certificado digital.\n\n"
-                f"Acesse seu link exclusivo para revisar e assinar:\n{sign_url}\n\n"
-                f"Link válido por {EXTERNAL_TOKEN_DAYS} dias.",
+                subject,
+                text_body,
                 "document_signing_external_invite",
+                html_body=html_body,
             )
             sent = True
         except RuntimeError as exc:
@@ -1451,16 +1459,23 @@ def issue_electronic_challenge(
                     f"Válido por {CHALLENGE_MINUTES} minutos. Informe este código apenas na tela onde você iniciou a assinatura.",
                 )
         else:
-            send_plain_email(
+            from app.services.email_service import build_document_signing_electronic_otp_email, dispatch_email
+
+            subject, text_body, html_body = build_document_signing_electronic_otp_email(
+                code=code,
+                doc_title=doc_title,
+                signer_name=clean_name,
+                masked_cpf=mask_cpf(cpf_digits),
+                sha256=revision.sha256,
+                expires_minutes=CHALLENGE_MINUTES,
+            )
+            dispatch_email(
+                send_plain_email,
                 dest_email,
-                f"Código para assinar documento no SiSFarm: {doc_title}",
-                f"Documento: {doc_title}\n"
-                f"Signatário: {clean_name} (CPF {mask_cpf(cpf_digits)})\n"
-                f"SHA-256: {revision.sha256}\n\n"
-                f"Código de autorização: {code}\n"
-                f"Válido por {CHALLENGE_MINUTES} minutos exclusivamente para esta versão do documento.\n"
-                "Informe o código somente na tela do SiSFarm onde você iniciou a assinatura.",
+                subject,
+                text_body,
                 "document_signing_electronic_otp",
+                html_body=html_body,
             )
     except (RuntimeError, WhatsAppError) as exc:
         db.execute(update(SigningElectronicChallenge).filter_by(id=challenge_id).values(consumed_at=now))

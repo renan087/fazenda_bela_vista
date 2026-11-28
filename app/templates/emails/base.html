@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="x-apple-disable-message-reformatting">
+  <title>{{ subject }}</title>
+  <style type="text/css">
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #F3F5F2; }
+    @media only screen and (max-width: 600px) {
+      .em-outer-pad { padding: 14px 8px 20px 8px !important; }
+      .em-card { border-radius: 12px !important; }
+      .em-pad { padding-left: 18px !important; padding-right: 18px !important; }
+      .em-logo { height: 24px !important; width: auto !important; }
+      .em-badge { font-size: 10px !important; padding: 3px 8px !important; }
+      .em-h1 { font-size: 20px !important; line-height: 26px !important; }
+      .em-stack { display: block !important; width: 100% !important; padding-left: 0 !important; padding-right: 0 !important; border-left: 0 !important; }
+      .em-stack-gap { display: block !important; width: 100% !important; height: 10px !important; }
+      .em-detail-label { display: block !important; width: 100% !important; padding-right: 0 !important; padding-bottom: 2px !important; font-size: 11.5px !important; }
+      .em-detail-value { display: block !important; width: 100% !important; text-align: left !important; word-break: break-word !important; }
+      .em-pezinho-img { text-align: center !important; padding-bottom: 14px !important; padding-right: 0 !important; }
+      .em-pezinho-body { border-left: 0 !important; border-top: 1px solid #CFE2C8 !important; padding-left: 0 !important; padding-top: 14px !important; text-align: center !important; }
+      .em-pezinho-cta { margin: 0 auto !important; }
+      .em-cta-table { width: 100% !important; }
+      .em-cta-cell { display: block !important; width: 100% !important; }
+      .em-cta-cell a { display: block !important; text-align: center !important; }
+      .em-cta-spacer { display: block !important; width: 100% !important; height: 8px !important; }
+      .em-otp-digits { font-size: 24px !important; line-height: 30px !important; letter-spacing: 0.16em !important; padding-left: 0.16em !important; white-space: nowrap !important; }
+    }
+  </style>
+</head>
+<body style="margin:0; padding:0; background-color:#F3F5F2; font-family:-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color:#16201A;">
+  {% if preheader %}
+  <!-- Preheader oculto para previa na caixa de entrada -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F3F5F2;">
+    {{ preheader }}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+  </div>
+  {% endif %}
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F3F5F2;">
+    <tr>
+      <td align="center" class="em-outer-pad" style="padding:28px 14px 32px 14px;">
+        <!--[if mso]><table role="presentation" width="580" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+        <table role="presentation" class="em-card" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:580px; width:100%; background-color:#FFFFFF; border:1px solid #E3E8E2; border-radius:16px; overflow:hidden; border-collapse:separate;">
+
+          <!-- Barra superior fina de marca -->
+          <tr>
+            <td height="3" bgcolor="{{ '#16201A' if is_internal else '#446A36' }}" style="background-color:{{ '#16201A' if is_internal else '#446A36' }}; font-size:0; line-height:0;">&nbsp;</td>
+          </tr>
+
+          <!-- Cabecalho padrao SiSFarm -->
+          <tr>
+            <td class="em-pad" style="padding:18px 28px; border-bottom:1px solid #EEF1ED;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td valign="middle" align="left">
+                    <a href="{{ base_url }}" target="_blank" style="text-decoration:none; display:inline-block;">
+                      <img src="{{ base_url }}/static/images/logo-wordmark.png" alt="SiSFarm" height="30" class="em-logo" style="display:block; height:30px; width:auto; border:0; font-size:20px; font-weight:700; color:#446A36; letter-spacing:-0.02em;">
+                    </a>
+                  </td>
+                  {% if badge_label %}
+                  <td valign="middle" align="right">
+                    <span class="em-badge" style="display:inline-block; padding:4px 10px; border-radius:999px; background-color:{{ badge.bg }}; border:1px solid {{ badge.border }}; color:{{ badge.text }}; font-size:11px; font-weight:600; letter-spacing:0.03em; text-transform:uppercase; white-space:nowrap;">
+                      {{ badge_label }}
+                    </span>
+                  </td>
+                  {% endif %}
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Corpo da mensagem -->
+          <tr>
+            <td class="em-pad" style="padding:28px 28px 24px 28px;">
+              {% block content %}{% endblock %}
+            </td>
+          </tr>
+
+          {% if show_support and (support_email or whatsapp_display) %}
+          <!-- Bloco de ajuda padronizado -->
+          <tr>
+            <td class="em-pad" style="padding:18px 28px; background-color:#F6F8F5; border-top:1px solid #E3E8E2;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="font-size:13px; line-height:19px; color:#16201A; font-weight:700; padding-bottom:3px;">
+                    Precisa de ajuda?
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-size:12.5px; line-height:18px; color:#5B6660; padding-bottom:11px;">
+                    Nossa equipe está pronta para te apoiar:
+                  </td>
+                </tr>
+                {% if support_email %}
+                <tr>
+                  <td style="padding-bottom:{{ '8px' if whatsapp_display else '0' }};">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td valign="middle" style="padding-right:8px;">
+                          <img src="{{ base_url }}/static/images/email/icon-mail.png" alt="" width="15" height="15" style="display:block; width:15px; height:15px; border:0;">
+                        </td>
+                        <td valign="middle" style="font-size:13px; line-height:18px;">
+                          <a href="mailto:{{ support_email }}" style="color:#16201A; font-weight:600; text-decoration:none;">{{ support_email }}</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                {% endif %}
+                {% if whatsapp_display %}
+                <tr>
+                  <td>
+                    {% if whatsapp_href %}
+                    <a href="{{ whatsapp_href }}" target="_blank" style="text-decoration:none; display:inline-block;">
+                    {% endif %}
+                      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          <td valign="middle" style="padding-right:8px;">
+                            <img src="{{ base_url }}/static/images/email/icon-whatsapp.png" alt="" width="16" height="16" style="display:block; width:16px; height:16px; border:0;">
+                          </td>
+                          <td valign="middle" style="font-size:13px; line-height:18px; font-weight:600; color:#1F7A3A;">
+                            WhatsApp: {{ whatsapp_display }}
+                          </td>
+                        </tr>
+                      </table>
+                    {% if whatsapp_href %}
+                    </a>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endif %}
+              </table>
+            </td>
+          </tr>
+          {% endif %}
+
+        </table>
+
+        <!-- Rodape padrao SiSFarm -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:580px; width:100%;">
+          <tr>
+            <td align="center" style="padding:18px 16px 4px 16px; font-size:12px; line-height:18px; color:#5B6660;">
+              <strong style="color:#16201A; font-weight:600;">SiSFarm</strong> &middot; Gestão agrícola inteligente
+            </td>
+          </tr>
+          {% if context_line %}
+          <tr>
+            <td align="center" style="padding:2px 16px 6px 16px; font-size:11.5px; line-height:17px; color:#7A857E;">
+              {{ context_line }}
+            </td>
+          </tr>
+          {% endif %}
+          <tr>
+            <td align="center" style="padding:0 16px 4px 16px; font-size:11.5px; line-height:17px; color:#7A857E;">
+              <a href="{{ base_url }}" target="_blank" style="color:#446A36; text-decoration:none; font-weight:500;">{{ public_host }}</a>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:2px 16px 0 16px; font-size:11px; line-height:16px; color:#7A857E;">
+              Este é um e-mail automático do SiSFarm
+            </td>
+          </tr>
+        </table>
+        <!--[if mso]></td></tr></table><![endif]-->
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

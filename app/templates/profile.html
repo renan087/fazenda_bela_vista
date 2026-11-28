@@ -99,7 +99,7 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <label>
                         <span class="mb-2 block text-sm font-medium text-slate-700">Codigo de confirmacao</span>
-                        <input type="text" name="code" inputmode="numeric" maxlength="6" class="w-full rounded-2xl border-slate-200 bg-white text-center text-2xl tracking-[0.45em]" placeholder="000000" required>
+                        <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" class="w-full rounded-2xl border-slate-200 bg-white text-center text-2xl tracking-[0.45em]" placeholder="000000" required>
                     </label>
                     <button class="rounded-2xl bg-brand-500 px-5 py-3 font-semibold text-white hover:bg-brand-700">Confirmar alteracao</button>
                 </form>

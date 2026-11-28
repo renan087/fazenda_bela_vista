@@ -774,7 +774,7 @@ def _client_ip(request: Request) -> str | None:
 
 
 def _finish_signup(request: Request, db: Session, state: dict, password_hash: str | None):
-    from app.services.email_service import send_plain_email
+    from app.services import email_service
     from app.services.self_signup import SignupData, SignupError, create_self_signup, TRIAL_DAYS
     from app.core.timezone import today_in_app_timezone
 
@@ -791,11 +791,20 @@ def _finish_signup(request: Request, db: Session, state: dict, password_hash: st
     support = (get_settings().support_email or "").strip()
     if support:
         try:
-            send_plain_email(
-                support, f"Novo cadastro no SiSFarm: {user.organization.name}",
-                f"Nova conta criada pelo site (teste de {TRIAL_DAYS} dias).\n\n"
-                f"Organização: {user.organization.name}\nNome: {user.name}\nE-mail: {user.email}\nWhatsApp: {user.phone}\n",
+            subject, text_body, html_body = email_service.build_new_signup_team_email(
+                organization_name=user.organization.name,
+                user_name=user.name,
+                user_email=user.email,
+                user_phone=user.phone,
+                trial_days=TRIAL_DAYS,
+            )
+            email_service.dispatch_email(
+                email_service.send_plain_email,
+                support,
+                subject,
+                text_body,
                 "aviso de novo cadastro",
+                html_body=html_body,
             )
         except Exception:
             logger.exception("Falha ao avisar a equipe sobre novo cadastro")
@@ -868,7 +877,7 @@ def signup_details_action(
     csrf_token: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    from app.services.email_service import send_plain_email
+    from app.services import email_service
     from app.services.self_signup import (
         CODE_TTL_SECONDS, SignupError, code_digest, new_code, validate_password, validate_signup,
     )
@@ -889,11 +898,19 @@ def signup_details_action(
 
     code = new_code()
     try:
-        send_plain_email(
-            state["email"], f"{code} é o seu código do SiSFarm",
-            f"Olá, {data.first_name}!\n\nSeu código para criar a conta no SiSFarm é: {code}\n\n"
-            "Ele vale por 15 minutos. Se você não pediu este cadastro, ignore este e-mail.\n",
+        subject, text_body, html_body = email_service.build_signup_code_email(
+            code,
+            first_name=data.first_name,
+            is_resend=False,
+            expires_in_minutes=CODE_TTL_SECONDS // 60,
+        )
+        email_service.dispatch_email(
+            email_service.send_plain_email,
+            state["email"],
+            subject,
+            text_body,
             "codigo de cadastro",
+            html_body=html_body,
         )
     except Exception:
         logger.exception("Falha ao enviar codigo de cadastro")
@@ -935,7 +952,7 @@ def signup_confirm_action(
 
 @router.post("/cadastro/reenviar")
 def signup_resend_action(request: Request, csrf_token: str = Form(...)):
-    from app.services.email_service import send_plain_email
+    from app.services import email_service
     from app.services.self_signup import CODE_TTL_SECONDS, RESEND_COOLDOWN_SECONDS, code_digest, new_code, rate_limited
 
     validate_csrf(request, csrf_token)
@@ -949,8 +966,21 @@ def signup_resend_action(request: Request, csrf_token: str = Form(...)):
         return _render_signup(request, "confirmar", "Muitas tentativas a partir desta rede. Tente novamente mais tarde.")
     code = new_code()
     try:
-        send_plain_email(state["email"], f"{code} é o seu código do SiSFarm",
-                         f"Seu novo código para criar a conta no SiSFarm é: {code}\n\nEle vale por 15 minutos.\n", "codigo de cadastro")
+        first_name = (state.get("data") or {}).get("first_name")
+        subject, text_body, html_body = email_service.build_signup_code_email(
+            code,
+            first_name=first_name,
+            is_resend=True,
+            expires_in_minutes=CODE_TTL_SECONDS // 60,
+        )
+        email_service.dispatch_email(
+            email_service.send_plain_email,
+            state["email"],
+            subject,
+            text_body,
+            "codigo de cadastro",
+            html_body=html_body,
+        )
     except Exception:
         logger.exception("Falha ao reenviar codigo de cadastro")
         return _render_signup(request, "confirmar", "Não foi possível reenviar o código agora.")

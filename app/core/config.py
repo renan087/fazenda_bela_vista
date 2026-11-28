@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_from_email: str | None = None
-    smtp_from_name: str = "Fazenda Bela Vista"
+    smtp_from_name: str = "SiSFarm"
     smtp_use_tls: bool = True
     two_factor_code_minutes: int = 10
     two_factor_max_attempts: int = 5

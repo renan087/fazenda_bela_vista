@@ -906,13 +906,22 @@ def _notify_participant(db: Session, *, doc: SigningDocument, farm: Farm, sender
             logger.warning("Falha ao enviar convite de assinatura por WhatsApp (doc=%s, user=%s): %s", doc.id, collaborator.id, exc)
             return False, f"Não foi possível enviar o WhatsApp para {collaborator.display_name or collaborator.name}: {exc}"
     try:
-        send_plain_email(
+        from app.services.email_service import build_document_signing_internal_invite_email, dispatch_email
+
+        subject, text_body, html_body = build_document_signing_internal_invite_email(
+            collaborator_name=collaborator.display_name or collaborator.name,
+            sender_name=sender_name,
+            doc_title=doc_title,
+            farm_name=farm.name,
+            doc_url=doc_url,
+        )
+        dispatch_email(
+            send_plain_email,
             collaborator.email,
-            f"Documento para assinatura no SiSFarm: {doc_title}",
-            f"Olá, {collaborator.display_name or collaborator.name}.\n\n"
-            f"{sender_name} compartilhou o documento \"{doc_title}\" ({farm.name}) para sua assinatura digital no SiSFarm.\n\n"
-            f"Acesse o link abaixo para revisar e assinar:\n{doc_url}\n",
+            subject,
+            text_body,
             "document_signing_invite",
+            html_body=html_body,
         )
         return True, None
     except RuntimeError as exc:

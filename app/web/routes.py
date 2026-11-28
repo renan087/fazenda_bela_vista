@@ -13076,12 +13076,25 @@ def plan_upgrade_request_action(request: Request, csrf_token: str = Form(...), p
     db.commit()
     support = (get_settings().support_email or "").strip()
     if support:
+        from app.services.email_service import build_plan_upgrade_request_email, dispatch_email
+
         organization = user.organization
-        body = (f"A organização {organization.name if organization else user.organization_id} pediu para mudar para o plano {plan.name}.\n"
-                f"Solicitante: {user.email}\n" + (f"Módulo de interesse: {MODULE_LABELS[modulo]}\n" if modulo in MODULE_LABELS else "")
-                + "Ajuste a assinatura em Configuração > Assinaturas.")
+        org_name = organization.name if organization else str(user.organization_id)
+        subject, text_body, html_body = build_plan_upgrade_request_email(
+            organization_name=org_name,
+            plan_name=plan.name,
+            requester_email=user.email,
+            module_label=MODULE_LABELS[modulo] if modulo in MODULE_LABELS else None,
+        )
         try:
-            send_plain_email(support, f"Pedido de mudança de plano: {plan.name}", body, "pedido de mudança de plano")
+            dispatch_email(
+                send_plain_email,
+                support,
+                subject,
+                text_body,
+                "pedido de mudança de plano",
+                html_body=html_body,
+            )
         except Exception:
             logger.exception("Falha ao avisar a equipe sobre pedido de mudança de plano")
     _flash(request, "success", f"Pedido enviado! A equipe SiSFarm vai entrar em contato para ativar o plano {plan.name}.")

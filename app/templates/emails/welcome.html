@@ -1,244 +1,164 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>Bem-vindo ao SiSFarm, {{ first_name }}!</title>
-  <style type="text/css">
-    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
-    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
-    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
-    body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #F3F5F2; }
-    @media only screen and (max-width: 600px) {
-      .sf-container { width: 100% !important; border-radius: 0 !important; }
-      .sf-pad { padding-left: 20px !important; padding-right: 20px !important; }
-      .sf-h1 { font-size: 22px !important; line-height: 29px !important; }
-      .sf-feature-cell { display: inline-block !important; width: 48% !important; vertical-align: top !important; margin-bottom: 10px !important; }
-      .sf-feature-spacer { display: none !important; width: 0 !important; }
-      .sf-stack { display: block !important; width: 100% !important; padding-left: 0 !important; padding-right: 0 !important; border-left: 0 !important; }
-      .sf-pezinho-img-wrap { text-align: center !important; padding-bottom: 16px !important; }
-      .sf-help-right { padding-top: 14px !important; }
-    }
-  </style>
-</head>
-<body style="margin:0; padding:0; background-color:#F3F5F2; font-family:-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#16201A;">
-  <!-- Preheader oculto para previa na caixa de entrada -->
-  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F3F5F2;">
-    A conta de {{ organization_name }} já está pronta no SiSFarm! Comece agora seus {{ trial_days }} dias grátis e conheça o Pezinho.
-  </div>
+{% extends "base.html" %}
 
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F3F5F2;">
-    <tr>
-      <td align="center" style="padding:24px 12px;">
-        <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
-        <table role="presentation" class="sf-container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; background-color:#FFFFFF; border:1px solid #E3E8E2; border-radius:18px; overflow:hidden; border-collapse:separate;">
+{% block content %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td style="padding:0 0 6px 0; font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#446A36;">
+      Bem-vindo ao SiSFarm
+    </td>
+  </tr>
+  <tr>
+    <td class="em-h1" style="padding:0 0 12px 0; font-size:22px; line-height:29px; font-weight:700; letter-spacing:-0.02em; color:#16201A;">
+      Olá, <span style="color:#446A36;">{{ first_name }}!</span> Que bom ter você com a gente.
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:0 0 20px 0; font-size:15px; line-height:23px; color:#38443D;">
+      A conta de <strong style="color:#16201A;">{{ organization_name }}</strong> já está pronta. Durante os próximos <strong style="color:#294127;">{{ trial_days }} dias grátis</strong>, todos os recursos do SiSFarm estão liberados para você organizar a safra, controlar insumos, acompanhar colheitas e gerenciar o financeiro em um só lugar.
+    </td>
+  </tr>
 
-          <!-- 1. Banner do topo -->
-          <tr>
-            <td style="padding:0; line-height:0; border-bottom:1px solid #E3E8E2;">
-              <a href="{{ base_url }}/primeiros-passos" target="_blank" style="text-decoration:none;">
-                <img src="{{ base_url }}/static/images/email/welcome-header.png" alt="SiSFarm — Teste gratuito por {{ trial_days }} dias" width="600" style="display:block; width:100%; max-width:600px; height:auto; border:0;">
-              </a>
-            </td>
-          </tr>
+  <!-- Botao principal em destaque logo no topo -->
+  <tr>
+    <td style="padding:0 0 22px 0;">
+      <table role="presentation" class="em-cta-table" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="center" class="em-cta-cell" bgcolor="#446A36" style="border-radius:10px; background-color:#446A36;">
+            <a href="{{ base_url }}/primeiros-passos" target="_blank" style="display:inline-block; padding:13px 26px; font-size:14.5px; font-weight:600; color:#FFFFFF; text-decoration:none; border-radius:10px; letter-spacing:-0.01em;">
+              Acessar meu SiSFarm &rarr;
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
 
-          <!-- 2. Hero -->
-          <tr>
-            <td class="sf-pad" style="padding:28px 30px 20px 30px;">
-              <p style="margin:0 0 8px 0; font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#446A36;">
-                BEM-VINDO AO SISFARM
-              </p>
-              <h1 class="sf-h1" style="margin:0 0 14px 0; font-size:25px; line-height:32px; font-weight:700; letter-spacing:-0.02em; color:#16201A;">
-                Olá, <span style="color:#294127; border-bottom:3px solid #7BB344; padding-bottom:1px;">{{ first_name }}!</span> Sua conta está pronta.
-              </h1>
-              <p style="margin:0 0 22px 0; font-size:15px; line-height:23px; color:#38443D;">
-                A conta de <strong style="color:#16201A;">{{ organization_name }}</strong> já está cadastrada e você já pode começar a organizar a sua safra, controlar os insumos, acompanhar a produção e o financeiro da fazenda, tudo em um só lugar.
-              </p>
+  <!-- Bloco 1: Primeiros passos -->
+  <tr>
+    <td style="padding:0 0 20px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F6F8F5; border:1px solid #E3E8E2; border-radius:14px;">
+        <tr>
+          <td style="padding:18px 20px;">
+            <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#446A36; margin-bottom:12px;">
+              Por onde começar (leva 2 minutos)
+            </div>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td width="26" valign="top" style="padding-top:1px;">
+                  <div style="width:20px; height:20px; border-radius:999px; background-color:#446A36; color:#FFFFFF; font-size:11px; font-weight:700; text-align:center; line-height:20px;">1</div>
+                </td>
+                <td valign="top" style="padding:0 0 11px 6px; font-size:13.5px; line-height:19px; color:#38443D;">
+                  <strong style="color:#16201A;">Cadastre sua fazenda e talhões</strong> &mdash; informe áreas, variedades e a safra atual.
+                </td>
+              </tr>
+              <tr>
+                <td width="26" valign="top" style="padding-top:1px;">
+                  <div style="width:20px; height:20px; border-radius:999px; background-color:#446A36; color:#FFFFFF; font-size:11px; font-weight:700; text-align:center; line-height:20px;">2</div>
+                </td>
+                <td valign="top" style="padding:0 0 11px 6px; font-size:13.5px; line-height:19px; color:#38443D;">
+                  <strong style="color:#16201A;">Registre estoque, colheitas ou vendas</strong> &mdash; tudo organizado por lote e safra.
+                </td>
+              </tr>
+              <tr>
+                <td width="26" valign="top" style="padding-top:1px;">
+                  <div style="width:20px; height:20px; border-radius:999px; background-color:#446A36; color:#FFFFFF; font-size:11px; font-weight:700; text-align:center; line-height:20px;">3</div>
+                </td>
+                <td valign="top" style="padding:0 0 0 6px; font-size:13.5px; line-height:19px; color:#38443D;">
+                  <strong style="color:#16201A;">Acompanhe do celular ou computador</strong> &mdash; seus indicadores atualizados em tempo real.
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
 
-              <!-- Botao CTA primario -->
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td align="center" bgcolor="#2F5E24" style="border-radius:10px; background-color:#2F5E24;">
-                    <a href="{{ base_url }}/primeiros-passos" target="_blank" style="display:inline-block; padding:13px 26px; font-size:15px; font-weight:700; color:#FFFFFF; text-decoration:none; border-radius:10px;">
-                      Acessar meu SiSFarm &rarr;
-                    </a>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
+  <!-- Bloco 2: 4 pilares em grade 2x2 responsiva -->
+  <tr>
+    <td style="padding:0 0 10px 0; font-size:14px; font-weight:700; color:#16201A;">
+      Principais recursos já liberados para você
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:0 0 20px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td width="48.5%" valign="top" class="em-stack" style="background-color:#FFFFFF; border:1px solid #E3E8E2; border-radius:12px; padding:14px 15px;">
+            <a href="{{ base_url }}/fazendas" target="_blank" style="display:block; text-decoration:none;">
+              <div style="display:inline-block; padding:2px 8px; border-radius:6px; background-color:#EEF3EB; color:#294127; font-size:10.5px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:7px;">Mapa &amp; Safra</div>
+              <div style="font-size:13.5px; font-weight:700; color:#16201A; margin-bottom:3px;">Fazenda e Talhões</div>
+              <div style="font-size:12px; line-height:17px; color:#5B6660;">Organize áreas, variedades, perímetros e safras.</div>
+            </a>
+          </td>
+          <td width="3%" class="em-stack-gap" style="font-size:0; line-height:0;">&nbsp;</td>
+          <td width="48.5%" valign="top" class="em-stack" style="background-color:#FFFFFF; border:1px solid #E3E8E2; border-radius:12px; padding:14px 15px;">
+            <a href="{{ base_url }}/producao" target="_blank" style="display:block; text-decoration:none;">
+              <div style="display:inline-block; padding:2px 8px; border-radius:6px; background-color:#EEF3EB; color:#294127; font-size:10.5px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:7px;">Lotes &amp; Vendas</div>
+              <div style="font-size:13.5px; font-weight:700; color:#16201A; margin-bottom:3px;">Produção e Classificação</div>
+              <div style="font-size:12px; line-height:17px; color:#5B6660;">Colheitas, bebida, peneira, saldo e vendas.</div>
+            </a>
+          </td>
+        </tr>
+        <tr><td colspan="3" height="10" style="font-size:0; line-height:0;">&nbsp;</td></tr>
+        <tr>
+          <td width="48.5%" valign="top" class="em-stack" style="background-color:#FFFFFF; border:1px solid #E3E8E2; border-radius:12px; padding:14px 15px;">
+            <a href="{{ base_url }}/insumos/estoque" target="_blank" style="display:block; text-decoration:none;">
+              <div style="display:inline-block; padding:2px 8px; border-radius:6px; background-color:#EEF3EB; color:#294127; font-size:10.5px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:7px;">Manejo</div>
+              <div style="font-size:13.5px; font-weight:700; color:#16201A; margin-bottom:3px;">Insumos e Estoque</div>
+              <div style="font-size:12px; line-height:17px; color:#5B6660;">Controle entradas, saldo e aplicações por talhão.</div>
+            </a>
+          </td>
+          <td width="3%" class="em-stack-gap" style="font-size:0; line-height:0;">&nbsp;</td>
+          <td width="48.5%" valign="top" class="em-stack" style="background-color:#FFFFFF; border:1px solid #E3E8E2; border-radius:12px; padding:14px 15px;">
+            <a href="{{ base_url }}/gestao-financeira" target="_blank" style="display:block; text-decoration:none;">
+              <div style="display:inline-block; padding:2px 8px; border-radius:6px; background-color:#EEF3EB; color:#294127; font-size:10.5px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; margin-bottom:7px;">Resultados</div>
+              <div style="font-size:13.5px; font-weight:700; color:#16201A; margin-bottom:3px;">Financeiro da Fazenda</div>
+              <div style="font-size:12px; line-height:17px; color:#5B6660;">Acompanhe custos, contas e fluxo de caixa.</div>
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
 
-          <!-- 3. Faixa Seu primeiro passo -->
-          <tr>
-            <td class="sf-pad" style="padding:0 30px 24px 30px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#EEF6EA; border:1px solid #D8E7D2; border-radius:12px;">
-                <tr>
-                  <td width="44" valign="middle" align="center" style="padding:14px 0 14px 14px;">
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                      <tr>
-                        <td width="24" height="24" align="center" valign="middle" bgcolor="#4E8B2E" style="width:24px; height:24px; border-radius:999px; background-color:#4E8B2E; color:#FFFFFF; font-size:13px; font-weight:700; line-height:24px;">
-                          &#10003;
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                  <td valign="middle" style="padding:14px 16px 14px 8px; font-size:13px; line-height:19px; color:#38443D;">
-                    <strong style="color:#16201A;">Seu primeiro passo:</strong> cadastre sua fazenda e registre a safra atual para começar a utilizar o sistema com todos os recursos.
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- 4. Principais recursos -->
-          <tr>
-            <td class="sf-pad" style="padding:0 30px 22px 30px;">
-              <p style="margin:0 0 14px 0; font-size:16px; font-weight:700; color:#16201A;">
-                Principais recursos que você já pode usar
-              </p>
-
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <!-- Card 1: Fazenda e Talhoes -->
-                  <td class="sf-feature-cell" width="23.5%" valign="top" style="background-color:#F1F7EE; border:1px solid #DCE7D7; border-radius:12px; padding:12px 8px; text-align:center;">
-                    <a href="{{ base_url }}/fazendas" target="_blank" style="text-decoration:none; color:#16201A; display:block;">
-                      <img src="{{ base_url }}/static/images/email/icon-fazenda.png" alt="Fazenda e Talhões" width="52" height="52" style="display:block; margin:0 auto 8px auto; width:52px; height:52px;">
-                      <div style="font-size:12px; font-weight:700; line-height:15px; color:#16201A; margin-bottom:4px;">Fazenda e Talhões</div>
-                      <div style="font-size:11px; line-height:15px; color:#5B6660;">Organize áreas, variedades e safras.</div>
-                    </a>
-                  </td>
-                  <td class="sf-feature-spacer" width="2%" style="font-size:0; line-height:0;">&nbsp;</td>
-
-                  <!-- Card 2: Producao e Vendas -->
-                  <td class="sf-feature-cell" width="23.5%" valign="top" style="background-color:#F1F7EE; border:1px solid #DCE7D7; border-radius:12px; padding:12px 8px; text-align:center;">
-                    <a href="{{ base_url }}/producao" target="_blank" style="text-decoration:none; color:#16201A; display:block;">
-                      <img src="{{ base_url }}/static/images/email/icon-producao.png" alt="Produção e Vendas" width="52" height="52" style="display:block; margin:0 auto 8px auto; width:52px; height:52px;">
-                      <div style="font-size:12px; font-weight:700; line-height:15px; color:#16201A; margin-bottom:4px;">Produção e Vendas</div>
-                      <div style="font-size:11px; line-height:15px; color:#5B6660;">Registre colheitas, lotes e vendas.</div>
-                    </a>
-                  </td>
-                  <td class="sf-feature-spacer" width="2%" style="font-size:0; line-height:0;">&nbsp;</td>
-
-                  <!-- Card 3: Insumos -->
-                  <td class="sf-feature-cell" width="23.5%" valign="top" style="background-color:#F1F7EE; border:1px solid #DCE7D7; border-radius:12px; padding:12px 8px; text-align:center;">
-                    <a href="{{ base_url }}/insumos/estoque" target="_blank" style="text-decoration:none; color:#16201A; display:block;">
-                      <img src="{{ base_url }}/static/images/email/icon-insumos.png" alt="Insumos" width="52" height="52" style="display:block; margin:0 auto 8px auto; width:52px; height:52px;">
-                      <div style="font-size:12px; font-weight:700; line-height:15px; color:#16201A; margin-bottom:4px;">Insumos</div>
-                      <div style="font-size:11px; line-height:15px; color:#5B6660;">Controle estoque e aplicações.</div>
-                    </a>
-                  </td>
-                  <td class="sf-feature-spacer" width="2%" style="font-size:0; line-height:0;">&nbsp;</td>
-
-                  <!-- Card 4: Financeiro -->
-                  <td class="sf-feature-cell" width="23.5%" valign="top" style="background-color:#F1F7EE; border:1px solid #DCE7D7; border-radius:12px; padding:12px 8px; text-align:center;">
-                    <a href="{{ base_url }}/gestao-financeira" target="_blank" style="text-decoration:none; color:#16201A; display:block;">
-                      <img src="{{ base_url }}/static/images/email/icon-financeiro.png" alt="Financeiro" width="52" height="52" style="display:block; margin:0 auto 8px auto; width:52px; height:52px;">
-                      <div style="font-size:12px; font-weight:700; line-height:15px; color:#16201A; margin-bottom:4px;">Financeiro</div>
-                      <div style="font-size:11px; line-height:15px; color:#5B6660;">Acompanhe custos e resultados.</div>
-                    </a>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- 5. Cartao do Pezinho -->
-          <tr>
-            <td class="sf-pad" style="padding:0 30px 24px 30px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#EEF6EA; border:1px solid #D4E3CE; border-radius:16px;">
-                <tr>
-                  <td style="padding:20px;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                      <tr>
-                        <td class="sf-stack sf-pezinho-img-wrap" width="126" valign="middle" align="center" style="padding-right:18px;">
-                          <img src="{{ base_url }}/static/img/pezinho/icone-cabecalho.png" alt="Pezinho, assistente inteligente do SiSFarm" width="108" height="108" style="display:block; margin:0 auto; width:108px; height:108px;">
-                        </td>
-                        <td class="sf-stack" valign="middle" style="border-left:1px solid #C9DAC2; padding-left:20px;">
-                          <p style="margin:0 0 2px 0; font-size:17px; line-height:22px; font-weight:700; color:#16201A;">
-                            Conheça o Pezinho,
-                          </p>
-                          <p style="margin:0 0 8px 0; font-size:15px; line-height:20px; font-weight:700; color:#446A36;">
-                            seu assistente inteligente!
-                          </p>
-                          <p style="margin:0 0 14px 0; font-size:13px; line-height:19px; color:#38443D;">
-                            Converse por texto ou áudio no sistema ou no WhatsApp, consulte informações da fazenda e registre atividades com facilidade.
-                          </p>
-                          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                            <tr>
-                              <td align="center" bgcolor="#FFFFFF" style="border-radius:9px; background-color:#FFFFFF; border:1px solid #446A36;">
-                                <a href="{{ base_url }}/mobile/assistente" target="_blank" style="display:inline-block; padding:9px 16px; font-size:13px; font-weight:700; color:#294127; text-decoration:none; border-radius:9px;">
-                                  Conversar com o Pezinho &rarr;
-                                </a>
-                              </td>
-                            </tr>
-                          </table>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- 6. Precisa de ajuda -->
-          <tr>
-            <td class="sf-pad" style="padding:0 30px 22px 30px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #E3E8E2;">
-                <tr>
-                  <td style="padding-top:18px;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                      <tr>
-                        <td class="sf-stack" width="50%" valign="middle" style="padding-right:14px;">
-                          <p style="margin:0 0 2px 0; font-size:13px; font-weight:700; color:#16201A;">Precisa de ajuda?</p>
-                          <p style="margin:0; font-size:12px; line-height:17px; color:#5B6660;">Nossa equipe está pronta para te apoiar.</p>
-                        </td>
-                        <td class="sf-stack sf-help-right" width="50%" valign="middle" style="border-left:1px solid #E3E8E2; padding-left:18px;">
-                          {% if support_email %}
-                          <p style="margin:0 0 4px 0; font-size:12.5px; font-weight:600; color:#16201A;">
-                            <a href="mailto:{{ support_email }}" style="color:#16201A; text-decoration:none;">&#9993;&nbsp; {{ support_email }}</a>
-                          </p>
-                          {% endif %}
-                          {% if whatsapp_display %}
-                          <p style="margin:0; font-size:12.5px; font-weight:600; color:#16201A;">
-                            &#128172;&nbsp; {{ whatsapp_display }}
-                          </p>
-                          {% endif %}
-                          {% if not support_email and not whatsapp_display %}
-                          <p style="margin:0; font-size:12px; color:#5B6660;">
-                            Acesse <a href="{{ base_url }}/dashboard" style="color:#446A36; font-weight:600; text-decoration:none;">app.sisfarm.com.br</a>
-                          </p>
-                          {% endif %}
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- 7. Rodape verde escuro -->
-          <tr>
-            <td class="sf-pad" bgcolor="#294127" style="background-color:#294127; padding:20px 30px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td valign="middle" style="color:#FFFFFF; font-size:18px; font-weight:700; white-space:nowrap; padding-right:16px; border-right:1px solid #5F7E59;" width="1">
-                    SiSFarm
-                  </td>
-                  <td valign="middle" style="color:#DCE8D8; font-size:12px; line-height:17px; padding-left:16px;">
-                    Gestão agrícola inteligente para fazendas de café.
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-        </table>
-        <!--[if mso]></td></tr></table><![endif]-->
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
+  <!-- Bloco 3: Destaque especial do Pezinho -->
+  <tr>
+    <td>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#EEF6EA; border:1px solid #CFE2C8; border-radius:14px;">
+        <tr>
+          <td style="padding:18px 20px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td width="92" valign="middle" align="center" class="em-stack em-pezinho-img" style="padding-right:16px;">
+                  <img src="{{ base_url }}/static/img/pezinho/icone-cabecalho.png" alt="Pezinho, assistente inteligente do SiSFarm" width="84" height="84" style="display:block; margin:0 auto; width:84px; height:84px; border:0;">
+                </td>
+                <td valign="middle" class="em-stack em-pezinho-body" style="border-left:1px solid #CFE2C8; padding-left:16px;">
+                  <div style="font-size:10.5px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#446A36; margin-bottom:3px;">
+                    Seu assistente inteligente
+                  </div>
+                  <div style="font-size:16px; line-height:21px; font-weight:700; color:#16201A; margin-bottom:5px;">
+                    Conheça o Pezinho!
+                  </div>
+                  <div style="font-size:13px; line-height:19px; color:#38443D; margin-bottom:12px;">
+                    Converse por texto ou áudio no sistema ou no WhatsApp para consultar informações da fazenda e registrar atividades com facilidade.
+                  </div>
+                  <table role="presentation" class="em-pezinho-cta" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#FFFFFF" style="border-radius:9px; background-color:#FFFFFF; border:1px solid #446A36;">
+                        <a href="{{ base_url }}/mobile/assistente" target="_blank" style="display:inline-block; padding:8px 14px; font-size:12.5px; font-weight:700; color:#294127; text-decoration:none; border-radius:9px;">
+                          Conversar com o Pezinho &rarr;
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+{% endblock %}

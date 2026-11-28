@@ -20,7 +20,14 @@ from app.db.session import SessionLocal
 from app.models import Organization, OrganizationBilling, OrganizationSubscription, OrganizationSubscriptionPayment, SubscriptionNotice
 from app.services.asaas_environment import app_public_base
 from app.services.billing_environment import MERCADOPAGO_LIVE, MERCADOPAGO_TEST, billing_environment
-from app.services.email_service import send_plain_email
+from app.services.email_service import (
+    build_billing_notice_email,
+    build_pix_renewal_reminder_email,
+    build_plan_limits_notice_email,
+    build_trial_notice_email,
+    dispatch_email,
+    send_plain_email,
+)
 from app.services.entitlements import compute_entitlements, grace_days
 from app.services.plan_changes import PAID, latest_settled_subscription_payment
 
@@ -66,42 +73,30 @@ def notices_due(days_overdue: int, grace: int, already_sent: set[str]) -> tuple[
     return [], []
 
 
-def compose_notice(kind: str, *, organization: Organization, charge: OrganizationSubscriptionPayment, entitlements, renewal_pending: bool = False) -> tuple[str, str]:
+def _compose_notice_parts(kind: str, *, organization: Organization, charge: OrganizationSubscriptionPayment, entitlements, renewal_pending: bool = False) -> tuple[str, str, str]:
     link = f"{app_public_base()}/minha-assinatura"
     deadline = entitlements.regularize_until.strftime("%d/%m/%Y") if entitlements.regularize_until else "o fim do prazo"
-    if renewal_pending:
-        base_kind = kind.removeprefix("renovacao_")
-        if base_kind == "pre_restricao":
-            subject = f"SiSFarm: regularize até {deadline} para manter o acesso completo"
-            body = (f"Olá,\n\nAinda não recebemos a confirmação da renovação da assinatura SiSFarm de {organization.name}.\n"
-                    f"Se o pagamento não for identificado até {deadline}, o sistema passa para o modo somente leitura: "
-                    "os dados continuam disponíveis para consulta, mas não será possível cadastrar ou editar.\n\n"
-                    f"Confira sua assinatura: {link}\n\nSe você já regularizou o pagamento, desconsidere esta mensagem; a confirmação é automática.\n\nEquipe SiSFarm")
-        else:
-            restricted = entitlements.read_only
-            subject = "SiSFarm: renovação pendente" + (" (modo somente leitura ativo)" if restricted else "")
-            body = (f"Olá,\n\nAinda não identificamos a confirmação da renovação da assinatura SiSFarm de {organization.name}.\n"
-                    + ("O sistema está em modo somente leitura até a regularização.\n" if restricted else
-                       f"Para evitar o modo somente leitura, confira o meio de pagamento até {deadline}.\n")
-                    + f"\nSua assinatura: {link}\n\nSe você já regularizou o pagamento, desconsidere esta mensagem; a confirmação é automática.\n\nEquipe SiSFarm")
-        return subject, body
-    value = f"R$ {_money(entitlements.overdue_amount)}"
-    due = charge.due_date.strftime("%d/%m/%Y") if charge.due_date else "-"
-    pay = charge.invoice_url or link
-    if kind == "pre_restricao":
-        subject = f"SiSFarm: regularize até {deadline} para manter o acesso completo"
-        body = (f"Olá,\n\nA assinatura SiSFarm de {organization.name} tem {value} em aberto desde {due}.\n"
-                f"Se o pagamento não for identificado até {deadline}, o sistema passa para o modo somente leitura: "
-                "os dados continuam disponíveis para consulta, mas não será possível cadastrar ou editar.\n\n"
-                f"Pagar agora: {pay}\nSua assinatura: {link}\n\nSe você já pagou, desconsidere esta mensagem; a confirmação é automática.\n\nEquipe SiSFarm")
-    else:
-        restricted = entitlements.read_only
-        subject = "SiSFarm: fatura em atraso" + (" (modo somente leitura ativo)" if restricted else "")
-        body = (f"Olá,\n\nNão identificamos o pagamento da fatura SiSFarm de {organization.name}, com vencimento em {due} ({value} em aberto).\n"
-                + ("O sistema está em modo somente leitura até a regularização.\n" if restricted else
-                   f"Para evitar o modo somente leitura, regularize até {deadline}.\n")
-                + f"\nPagar agora: {pay}\nSua assinatura: {link}\n\nSe você já pagou, desconsidere esta mensagem; a confirmação é automática.\n\nEquipe SiSFarm")
-    return subject, body
+    value = f"R$ {_money(entitlements.overdue_amount)}" if not renewal_pending else None
+    due = (charge.due_date.strftime("%d/%m/%Y") if charge.due_date else "-") if not renewal_pending else None
+    pay = (charge.invoice_url or link) if not renewal_pending else None
+    return build_billing_notice_email(
+        kind,
+        organization_name=organization.name,
+        deadline_str=deadline,
+        link=link,
+        renewal_pending=renewal_pending,
+        read_only=bool(entitlements.read_only),
+        value_str=value,
+        due_str=due,
+        pay_url=pay,
+    )
+
+
+def compose_notice(kind: str, *, organization: Organization, charge: OrganizationSubscriptionPayment, entitlements, renewal_pending: bool = False) -> tuple[str, str]:
+    subject, text_body, _ = _compose_notice_parts(
+        kind, organization=organization, charge=charge, entitlements=entitlements, renewal_pending=renewal_pending
+    )
+    return subject, text_body
 
 
 def process_organization(db, organization: Organization, today: date, *, send=send_plain_email) -> list[str]:
@@ -136,7 +131,7 @@ def process_organization(db, organization: Organization, today: date, *, send=se
         db.add(SubscriptionNotice(organization_id=organization.id, payment_id=charge.id, kind=prefix + kind, recipient=recipient, outcome="pulado"))
     for kind in to_send:
         stored_kind = prefix + kind
-        subject, body = compose_notice(stored_kind, organization=organization, charge=charge, entitlements=entitlements, renewal_pending=renewal_pending)
+        subject, body, html_body = _compose_notice_parts(stored_kind, organization=organization, charge=charge, entitlements=entitlements, renewal_pending=renewal_pending)
         notice = SubscriptionNotice(organization_id=organization.id, payment_id=charge.id, kind=stored_kind, recipient=recipient, outcome="enviando")
         db.add(notice)
         try:
@@ -145,7 +140,7 @@ def process_organization(db, organization: Organization, today: date, *, send=se
             db.rollback()
             continue
         try:
-            send(recipient, subject, body, "aviso de cobrança")
+            dispatch_email(send, recipient, subject, body, "aviso de cobrança", html_body=html_body)
             notice.outcome = "enviado"
             delivered.append(stored_kind)
         except Exception:
@@ -155,17 +150,19 @@ def process_organization(db, organization: Organization, today: date, *, send=se
     return delivered
 
 
-def compose_trial_notice(kind: str, *, organization: Organization, ends_on: date) -> tuple[str, str]:
+def _compose_trial_notice_parts(kind: str, *, organization: Organization, ends_on: date) -> tuple[str, str, str]:
     link = f"{app_public_base()}/planos-disponiveis"
-    if kind == "teste_3_dias":
-        return (f"Seu teste grátis do SiSFarm termina em {ends_on.strftime('%d/%m/%Y')}",
-                f"Olá!\n\nO teste grátis da {organization.name} no SiSFarm termina em {ends_on.strftime('%d/%m/%Y')}.\n"
-                f"Para continuar usando sem interrupção, contrate seu plano:\n{link}\n\n"
-                "Seus cadastros continuam guardados. Qualquer dúvida, é só responder este e-mail.\n")
-    return ("Seu teste grátis do SiSFarm terminou",
-            f"Olá!\n\nO teste grátis da {organization.name} no SiSFarm terminou em {ends_on.strftime('%d/%m/%Y')}.\n"
-            "O sistema segue disponível para consulta e nenhum dado foi apagado.\n"
-            f"Para voltar a cadastrar e editar, contrate seu plano:\n{link}\n")
+    return build_trial_notice_email(
+        kind,
+        organization_name=organization.name,
+        ends_on_str=ends_on.strftime("%d/%m/%Y"),
+        link=link,
+    )
+
+
+def compose_trial_notice(kind: str, *, organization: Organization, ends_on: date) -> tuple[str, str]:
+    subject, text_body, _ = _compose_trial_notice_parts(kind, organization=organization, ends_on=ends_on)
+    return subject, text_body
 
 
 def trial_notice_kind(ends_on: date, today: date, already_sent: str) -> str | None:
@@ -202,23 +199,23 @@ def process_trial_notices(db, today: date, *, send=send_plain_email) -> list[tup
             usage = plan_usage(db, grant.organization_id, paid_plan)
             if not usage.exceeds:
                 continue
-            subject = f"Confira os limites do plano contratado pela {organization.name}"
             transition = (f"O teste termina em {grant.ends_on.strftime('%d/%m/%Y')}."
                           if today <= grant.ends_on else "Os limites do plano contratado já estão em vigor.")
-            body = (
-                f"Olá!\n\n{transition} Há cadastros acima dos limites do plano {paid_plan.name}. "
-                "Consulte os excedentes em Minha assinatura para ajustar seus cadastros ou escolher outro plano.\n\n"
-                f"{app_public_base()}/minha-assinatura#regularizacao-plano"
+            subject, body, html_body = build_plan_limits_notice_email(
+                organization_name=organization.name,
+                plan_name=paid_plan.name,
+                transition_text=transition,
+                link=f"{app_public_base()}/minha-assinatura#regularizacao-plano",
             )
         elif db.query(OrganizationSubscription.id).filter_by(
             organization_id=grant.organization_id, environment=billing_environment(), is_current=True,
         ).first():
             continue  # Contratação pendente: o fluxo de cobrança já informa a situação.
         else:
-            subject, body = compose_trial_notice(kind, organization=organization, ends_on=grant.ends_on)
+            subject, body, html_body = _compose_trial_notice_parts(kind, organization=organization, ends_on=grant.ends_on)
         try:
             for email in recipients:
-                send(email, subject, body, "aviso de teste grátis")
+                dispatch_email(send, email, subject, body, "aviso de teste grátis", html_body=html_body)
         except Exception:
             logger.exception("Falha ao enviar aviso de teste %s da organização %s", kind, grant.organization_id)
             continue
@@ -240,27 +237,23 @@ def pix_renewal_reminder_kind(next_due: date, today: date, already_sent: set[str
     return None
 
 
-def compose_pix_renewal_reminder(kind: str, *, organization: Organization, subscription: OrganizationSubscription) -> tuple[str, str]:
+def _compose_pix_renewal_reminder_parts(kind: str, *, organization: Organization, subscription: OrganizationSubscription) -> tuple[str, str, str]:
     link = f"{app_public_base()}/minha-assinatura"
     due = subscription.next_due_date.strftime("%d/%m/%Y") if subscription.next_due_date else "-"
     value = f"R$ {_money(subscription.amount)}"
-    if kind == "pix_renovacao_hoje":
-        subject = f"SiSFarm: sua assinatura Pix vence hoje ({due})"
-        lead = f"O ciclo do plano {subscription.plan_name} da {organization.name} vence hoje ({due})."
-    elif kind == "pix_renovacao_3d":
-        subject = f"SiSFarm: sua assinatura Pix vence em breve ({due})"
-        lead = f"Faltam poucos dias para o vencimento do plano {subscription.plan_name} da {organization.name}, em {due}."
-    else:
-        subject = f"SiSFarm: lembrete de renovação do plano ({due})"
-        lead = f"O período atual do plano {subscription.plan_name} da {organization.name} termina em {due}."
-    body = (
-        f"Olá,\n\n{lead}\n"
-        f"Como o pagamento por Pix não é cobrado automaticamente, gere o novo QR Code Pix ({value}) quando preferir "
-        "para continuar usando o SiSFarm sem interrupções:\n"
-        f"{link}\n\n"
-        "Se você já renovou, desconsidere esta mensagem.\n\nEquipe SiSFarm"
+    return build_pix_renewal_reminder_email(
+        kind,
+        organization_name=organization.name,
+        plan_name=subscription.plan_name,
+        due_str=due,
+        value_str=value,
+        link=link,
     )
-    return subject, body
+
+
+def compose_pix_renewal_reminder(kind: str, *, organization: Organization, subscription: OrganizationSubscription) -> tuple[str, str]:
+    subject, text_body, _ = _compose_pix_renewal_reminder_parts(kind, organization=organization, subscription=subscription)
+    return subject, text_body
 
 
 def process_pix_renewal_reminders(db, today: date, *, send=send_plain_email) -> list[tuple[int, str]]:
@@ -295,7 +288,7 @@ def process_pix_renewal_reminders(db, today: date, *, send=send_plain_email) -> 
         kind = pix_renewal_reminder_kind(subscription.next_due_date, today, sent)
         if not kind:
             continue
-        subject, body = compose_pix_renewal_reminder(kind, organization=organization, subscription=subscription)
+        subject, body, html_body = _compose_pix_renewal_reminder_parts(kind, organization=organization, subscription=subscription)
         notice = SubscriptionNotice(
             organization_id=organization.id, payment_id=settled.id, kind=kind, recipient=recipient, outcome="enviando",
         )
@@ -306,7 +299,7 @@ def process_pix_renewal_reminders(db, today: date, *, send=send_plain_email) -> 
             db.rollback()
             continue
         try:
-            send(recipient, subject, body, "lembrete de renovação Pix")
+            dispatch_email(send, recipient, subject, body, "lembrete de renovação Pix", html_body=html_body)
             notice.outcome = "enviado"
             delivered.append((organization.id, kind))
         except Exception:
