@@ -98,7 +98,10 @@ def test_varieties_page_renders_cards_panel_and_form(plot_env):
     resp = env.routes.varieties_page(env.request("/variedades"), edit_id=None, variedade=None, db=env.db, user=env.user, csrf_token="x")
     html = resp.body.decode()
     assert f'data-vr-item="{v1.id}"' in html and f'data-vr-panel="{v3.id}"' in html
-    assert "Quando cada uma fica pronta" in html
+    assert "Colheita prevista" in html and "vr-summary" in html
+    assert "data-vr-menu-btn" in html and "Excluir variedade" in html
+    assert "data-vr-view" not in html and "sf-kpis" not in html
+    assert "Vincular setor" in html
     assert "Ainda não está em nenhum setor." in html
     assert 'name="plot_ids"' in html and 'role="switch"' in html
     assert "Catuaí Vermelho IAC 144" in html

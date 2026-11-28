@@ -201,6 +201,9 @@ def build_varieties_overview(db, varieties, plots, active_season=None, today: da
         for h in item["history"]:
             h["bar_pct"] = round((h["value"] or 0) / max_yield * 100)
             h["farm_pct"] = round((h["farm"] or 0) / max_yield * 100)
+    used_area = sum(i["area"] for i in used)
+    for item in items:
+        item["share_pct"] = round(item["area"] / used_area * 100) if used_area and item["used"] else 0
     ranked = [i for i in used if i["last_yield"] is not None]
     best = max(ranked, key=lambda i: i["last_yield"]) if ranked else None
     plants_total = sum(i["plants"] for i in items)

@@ -7,8 +7,6 @@
     /* ---------- Lista, filtros e painel ---------- */
     if (page) {
         const items = Array.from(page.querySelectorAll('[data-vr-item]'));
-        const cards = page.querySelector('[data-vr-cards]');
-        const table = page.querySelector('[data-vr-table]');
         const empty = page.querySelector('[data-vr-empty]');
         const detail = page.querySelector('[data-vr-detail]');
         const search = page.querySelector('[data-vr-search]');
@@ -33,7 +31,7 @@
             items.forEach((el) => {
                 const on = el.dataset.vrItem === selected;
                 el.classList.toggle('is-selected', on);
-                if (el.classList.contains('vr-card')) el.setAttribute('aria-pressed', on ? 'true' : 'false');
+                el.setAttribute('aria-pressed', on ? 'true' : 'false');
             });
             page.querySelectorAll('[data-vr-panel]').forEach((panel) => { panel.hidden = panel.dataset.vrPanel !== selected; });
             if (open && mobile.matches) {
@@ -50,7 +48,7 @@
 
         items.forEach((el) => el.addEventListener('click', () => select(el.dataset.vrItem)));
         page.querySelectorAll('[data-vr-close-detail]').forEach((el) => el.addEventListener('click', closeSheet));
-        document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && page.classList.contains('vr-sheet-open')) closeSheet(); });
+        document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && page.classList.contains('vr-sheet-open') && !page.querySelector('[data-vr-menu]:not([hidden])')) closeSheet(); });
         mobile.addEventListener?.('change', () => { if (!mobile.matches) closeSheet(); });
 
         search?.addEventListener('input', applyFilters);
@@ -59,15 +57,6 @@
             page.querySelectorAll('[data-vr-filter]').forEach((c) => { const on = c === chip; c.classList.toggle('is-on', on); c.setAttribute('aria-pressed', on ? 'true' : 'false'); });
             applyFilters();
         }));
-
-        page.querySelectorAll('[data-vr-view]').forEach((btn) => btn.addEventListener('click', () => {
-            const list = btn.dataset.vrView === 'lista';
-            cards?.classList.toggle('hidden', list);
-            table?.classList.toggle('hidden', !list);
-            page.querySelectorAll('[data-vr-view]').forEach((b) => { const on = b === btn; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-            try { localStorage.setItem('sisfarm.varieties.view', list ? 'lista' : 'cards'); } catch (e) { /* sem storage */ }
-        }));
-        try { if (localStorage.getItem('sisfarm.varieties.view') === 'lista') page.querySelector('[data-vr-view="lista"]')?.click(); } catch (e) { /* sem storage */ }
 
         const showTab = (panel, name) => {
             panel.querySelectorAll('[data-vr-tab]').forEach((t) => t.setAttribute('aria-selected', t.dataset.vrTab === name ? 'true' : 'false'));
@@ -82,6 +71,24 @@
                 if (btn.dataset.vrGotoTab) showTab(panel, btn.dataset.vrGotoTab);
             }));
         });
+
+        /* Menu ⋯ do painel: fecha ao clicar fora e com Esc */
+        const closeMenus = (except) => page.querySelectorAll('[data-vr-menu]').forEach((menu) => {
+            if (menu === except || menu.hidden) return;
+            menu.hidden = true;
+            menu.parentElement.querySelector('[data-vr-menu-btn]')?.setAttribute('aria-expanded', 'false');
+        });
+        page.querySelectorAll('[data-vr-menu-btn]').forEach((btn) => btn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const menu = btn.parentElement.querySelector('[data-vr-menu]');
+            closeMenus(menu);
+            menu.hidden = !menu.hidden;
+            btn.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
+            if (!menu.hidden) menu.querySelector('[role=menuitem]')?.focus();
+        }));
+        document.addEventListener('click', (event) => { if (!event.target.closest('.vr-menu-wrap')) closeMenus(); });
+        document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenus(); });
+        page.querySelectorAll('[data-vr-menu] [role=menuitem]').forEach((item) => item.addEventListener('click', () => closeMenus()));
 
         if (detail && selected) select(selected, { open: false });
         applyFilters();
