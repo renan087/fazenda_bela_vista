@@ -13591,3 +13591,6 @@ a.obt-seg{cursor:pointer}a.obt-seg:hover{background:#E3ECDF}
 .obt-coach.is-free .obt-quit{color:#294127;text-shadow:none}
 .obt-coach.is-free .obt-quit:hover{color:#16201A}
 .obt-coach.is-light .obt-quit{display:none}
+/* Encerrar tutorial fica no lado do balão longe do que está sendo apontado */
+.obt-coach:not([hidden]){display:flex;flex-direction:column}
+.obt-coach.is-above .obt-quit{order:-1;margin:0 2px 8px auto}
