@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/styles.css?v=20261123ex8">
-  <link rel="stylesheet" href="/static/css/digital_signing.css?v=18">
+  <link rel="stylesheet" href="/static/css/digital_signing.css?v=19">
 </head>
 <body class="ds-pub-body ds-ext-pub-body">
   <header class="ds-pub-topbar">
@@ -25,7 +25,7 @@
       {% if not invalid_link %}
       <span class="ds-pill ds-pill--brand ds-hide-mobile">{{ icon('link', 13) }} Ambiente seguro · Link exclusivo</span>
       {% if not already_signed %}
-      <span class="ds-mob-bar-step ds-only-mobile" data-ds-ext-mob-pill>1/2</span>
+      <span class="ds-mob-bar-step ds-only-mobile" data-ds-ext-mob-pill {% if show_iab_gate %}hidden{% endif %}>1/2</span>
       {% endif %}
       {% endif %}
     </div>
@@ -60,51 +60,58 @@
     <script type="application/json" data-ds-active-challenge>{{ active_challenge|tojson }}</script>
 
     {% if not already_signed %}
-    <section class="pd-card ds-iab-card" data-ds-iab-gate data-opened-external="{{ 'yes' if opened_external else 'no' }}" {% if not show_iab_gate %}hidden{% endif %} aria-label="Recomendação para abrir no navegador externo">
-      <div class="ds-iab-top">
-        <span class="ds-iab-ic" aria-hidden="true">{{ icon('link', 20) }}</span>
+    <section class="ds-iab-screen" data-ds-iab-gate data-opened-external="{{ 'yes' if opened_external else 'no' }}" {% if not show_iab_gate %}hidden{% endif %} aria-label="Escolha onde abrir a assinatura">
+      <div class="pd-card ds-iab-card">
+        <div class="ds-iab-badge" aria-hidden="true">{{ icon('shield', 24) }}</div>
+
         <div class="ds-iab-copy">
-          <span class="ds-iab-eyebrow">Recomendado para celular</span>
-          <h2>Abra este link no {% if iab_info and iab_info.os == 'ios' %}Safari{% elif iab_info and iab_info.os == 'android' %}Chrome{% else %}seu navegador{% endif %}</h2>
+          <span class="ds-iab-eyebrow">{{ farm.name }}</span>
+          <h1>Antes de assinar, abra no {% if iab_info and iab_info.os == 'ios' %}Safari{% elif iab_info and iab_info.os == 'android' %}Chrome{% else %}seu navegador{% endif %}</h1>
           <p data-ds-iab-desc>
-            {% if iab_info and iab_info.is_in_app %}
-            Você abriu este documento dentro do <strong>{{ iab_info.app_name or 'aplicativo' }}</strong>.
-            {% else %}
-            Se você abriu este link pelo <strong>WhatsApp</strong>, recomendamos abrir no navegador do celular.
-            {% endif %}
-            Abrir no {% if iab_info and iab_info.os == 'ios' %}<strong>Safari</strong>{% elif iab_info and iab_info.os == 'android' %}<strong>Chrome</strong>{% else %}<strong>navegador externo</strong>{% endif %}
-            evita perder esta tela quando você for consultar o código de verificação no WhatsApp.
+            Assim você consulta o código que vai chegar no WhatsApp sem perder esta tela.
           </p>
         </div>
-      </div>
 
-      <div class="ds-iab-actions">
-        <button type="button" class="sf-btn sf-btn-primary" data-ds-iab-open>
-          {{ icon('arrow', 16) }} Abrir no navegador
-        </button>
-        <button type="button" class="sf-btn sf-btn-secondary" data-ds-iab-copy>
-          {{ icon('copy', 15) }} Copiar link de assinatura
-        </button>
+        <div class="ds-iab-doc-chip">
+          <span class="ds-iab-doc-ic" aria-hidden="true">{{ icon('file', 16) }}</span>
+          <div class="ds-iab-doc-meta">
+            <strong>{{ display_title }}</strong>
+            <small>{{ options.pages }} {{ 'página' if options.pages == 1 else 'páginas' }} · Assinatura eletrônica</small>
+          </div>
+        </div>
+
+        <div class="ds-iab-actions">
+          <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-iab-open>
+            {{ icon('arrow', 16) }} Abrir no navegador
+          </button>
+          <button type="button" class="sf-btn sf-btn-secondary ds-full" data-ds-iab-copy>
+            {{ icon('copy', 15) }} Copiar link de assinatura
+          </button>
+        </div>
+
+        <p class="ds-feedback ds-iab-feedback" data-ds-iab-feedback role="status" aria-live="polite" hidden></p>
+
+        <div class="ds-iab-guide" data-ds-iab-guide hidden>
+          <strong>Se não abriu automaticamente:</strong>
+          <p data-ds-iab-guide-text>
+            {% if iab_info and iab_info.os == 'ios' %}
+            Toque no ícone de bússola (Safari) no canto inferior direito desta tela, ou toque em <strong>Copiar link de assinatura</strong> e cole no Safari.
+            {% else %}
+            Toque nos três pontinhos (⋮) no canto superior direito e escolha <strong>Abrir no navegador</strong>, ou copie o link acima e cole no Chrome.
+            {% endif %}
+          </p>
+        </div>
+
+        <div class="ds-iab-divider" role="presentation"></div>
+
         <button type="button" class="ds-iab-continue-btn" data-ds-iab-continue>
-          Continuar neste navegador
+          Continuar no WhatsApp
         </button>
-      </div>
-
-      <p class="ds-feedback ds-iab-feedback" data-ds-iab-feedback role="status" aria-live="polite" hidden></p>
-
-      <div class="ds-iab-guide" data-ds-iab-guide hidden>
-        <strong>Como abrir manualmente:</strong>
-        <p data-ds-iab-guide-text>
-          {% if iab_info and iab_info.os == 'ios' %}
-          Toque no ícone de bússola (Safari) no canto inferior direito desta tela (ou nos três pontinhos ⋯ e escolha <strong>Abrir no navegador</strong>). Se preferir, toque em <strong>Copiar link de assinatura</strong> e cole no Safari.
-          {% else %}
-          Toque nos três pontinhos (⋮) no canto superior direito e escolha <strong>Abrir no navegador</strong>. Se preferir, toque em <strong>Copiar link de assinatura</strong> e cole no Chrome.
-          {% endif %}
-        </p>
       </div>
     </section>
     {% endif %}
 
+    <div class="ds-ext-stage" data-ds-ext-stage {% if show_iab_gate %}hidden{% endif %}>
     <header class="ds-pub-doc-head ds-ext-doc-head">
       <div class="ds-ext-doc-copy">
         <span class="ds-eyebrow">{{ farm.name }} · Convite para assinatura eletrônica</span>
@@ -326,25 +333,13 @@
         </section>
       </aside>
     </div>
-
-    {% if not already_signed %}
-    <!-- BARRA FIXA INFERIOR MOBILE (Signatário Externo) -->
-    <div class="ds-mob-sticky-bar ds-ext-mob-bar ds-only-mobile" data-ds-ext-mob-bar>
-      <div class="ds-mob-bar-meta">
-        <span class="ds-mob-bar-summary" data-ds-ext-mob-hint>Marque "Li e concordo" acima</span>
-        <span class="ds-mob-bar-step">Sem senha</span>
-      </div>
-      <button type="button" class="sf-btn sf-btn-primary ds-full" data-ds-ext-mob-cta disabled>
-        {% if locked_channel == 'whatsapp' %}Enviar código no WhatsApp →{% else %}Enviar código por e-mail →{% endif %}
-      </button>
     </div>
-    {% endif %}
   </main>
   {% endif %}
 
   <footer class="ds-pub-footer">
     <p>SiSFarm · Assinatura Eletrônica conforme MP 2.200-2/2001 (art. 10 §2º), Lei 14.063/2020 (art. 4º II) e LGPD (Lei 13.709/2018).</p>
   </footer>
-  <script type="module" src="/static/js/digital_signing.js?v=21"></script>
+  <script type="module" src="/static/js/digital_signing.js?v=23"></script>
 </body>
 </html>

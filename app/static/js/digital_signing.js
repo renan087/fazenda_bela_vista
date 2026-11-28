@@ -157,6 +157,39 @@ function wireOtpInputHelpers(root, feedbackNode) {
   if (!input) return;
 
   const sanitize = (raw) => String(raw || "").replace(/\D/g, "").slice(0, 8);
+  const extractOtpFromClipboard = (raw) => {
+    const text = String(raw || "").trim();
+    if (!text) return { digits: "", isUrl: false };
+    if (/https?:\/\/|\/assinar\//i.test(text)) {
+      return { digits: "", isUrl: true };
+    }
+    const grouped = text.match(/(?<!\d)(\d{4})[\s\-\u00A0\u200B]?(\d{4})(?!\d)/);
+    if (grouped) {
+      return { digits: `${grouped[1]}${grouped[2]}`, isUrl: false };
+    }
+    return { digits: sanitize(text), isUrl: false };
+  };
+
+  const applyCodeValue = (digits) => {
+    const clean = sanitize(digits);
+    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    if (nativeSetter) {
+      nativeSetter.call(input, clean);
+    } else {
+      input.value = clean;
+    }
+    input.setAttribute("value", clean);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    // Força repaint no iOS Safari / SFSafariViewController após dispensa do menu nativo "Colar"
+    window.requestAnimationFrame(() => {
+      if (input.value !== clean) {
+        if (nativeSetter) nativeSetter.call(input, clean);
+        else input.value = clean;
+      }
+    });
+    return clean;
+  };
 
   input.addEventListener("input", () => {
     const clean = sanitize(input.value);
@@ -166,11 +199,15 @@ function wireOtpInputHelpers(root, feedbackNode) {
   input.addEventListener("paste", (event) => {
     const text = event.clipboardData?.getData("text");
     if (!text) return;
-    const digits = sanitize(text);
+    const { digits, isUrl } = extractOtpFromClipboard(text);
+    if (isUrl) {
+      event.preventDefault();
+      feedback(feedbackNode, "Você colou o link da página. Copie o código de 8 dígitos no WhatsApp e tente novamente.", true);
+      return;
+    }
     if (!digits) return;
     event.preventDefault();
-    input.value = digits;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
+    applyCodeValue(digits);
   });
 
   pasteBtn?.addEventListener("click", async () => {
@@ -181,22 +218,31 @@ function wireOtpInputHelpers(root, feedbackNode) {
         return;
       }
       const clip = await navigator.clipboard.readText();
-      const digits = sanitize(clip);
+      const { digits, isUrl } = extractOtpFromClipboard(clip);
+      if (isUrl) {
+        feedback(feedbackNode, "Você copiou o link da página. Copie o código de 8 dígitos no WhatsApp e toque em Colar código.", true);
+        return;
+      }
       if (digits.length === 8) {
-        input.value = digits;
-        input.focus();
-        feedback(feedbackNode, "Código colado! Agora toque em concluir assinatura.");
+        const applied = applyCodeValue(digits);
+        if (applied.length === 8) {
+          input.blur();
+          feedback(feedbackNode, "Código colado! Agora toque em \"Concluir assinatura agora\".");
+        } else {
+          input.focus();
+          feedback(feedbackNode, "Toque no campo abaixo e escolha \"Colar\" para inserir o código.");
+        }
       } else if (digits.length > 0) {
-        input.value = digits;
+        applyCodeValue(digits);
         input.focus();
         feedback(feedbackNode, "Colamos os dígitos encontrados. Confira se o código tem 8 números.");
       } else {
         input.focus();
-        feedback(feedbackNode, "Nenhum código numérico encontrado na área de transferência. Copie o código no WhatsApp e tente novamente.");
+        feedback(feedbackNode, "Nenhum código numérico encontrado. Copie o código no WhatsApp e tente novamente.");
       }
     } catch {
       input.focus();
-      feedback(feedbackNode, "Toque e segure no campo abaixo e escolha \"Colar\" para inserir o código.");
+      feedback(feedbackNode, "Toque no campo abaixo e escolha \"Colar\" para inserir o código.");
     }
   });
 }
@@ -3819,6 +3865,21 @@ function initExternalSigning(root) {
   const serverIabInfo = parseJson("[data-ds-iab-info]", { is_in_app: false, app_name: "", os: "other" });
   const activeChallenge = parseJson("[data-ds-active-challenge]", null);
   const iabGate = find("[data-ds-iab-gate]");
+  const extStage = find("[data-ds-ext-stage]");
+  let pdfStarted = false;
+  const ensurePdfLoaded = () => {
+    if (pdfStarted) return;
+    pdfStarted = true;
+    loadPdf();
+  };
+  const showSigningStage = () => {
+    if (iabGate) iabGate.hidden = true;
+    if (extStage) extStage.hidden = false;
+    if (mobPill) mobPill.hidden = false;
+    ensurePdfLoaded();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   if (iabGate) {
     const iab = detectClientInAppBrowser(serverIabInfo);
     const openedExternal = iabGate.dataset.openedExternal === "yes";
@@ -3828,8 +3889,12 @@ function initExternalSigning(root) {
 
     if (dismissed || openedExternal || activeChallenge) {
       iabGate.hidden = true;
+      if (extStage) extStage.hidden = false;
+      if (mobPill) mobPill.hidden = false;
     } else if (iab.isInApp) {
       iabGate.hidden = false;
+      if (extStage) extStage.hidden = true;
+      if (mobPill) mobPill.hidden = true;
     }
 
     const externalTargetUrl = () => {
@@ -3912,8 +3977,8 @@ function initExternalSigning(root) {
     });
 
     iabContinueBtn?.addEventListener("click", () => {
-      iabGate.hidden = true;
       try { window.sessionStorage?.setItem(tabKey, "1"); } catch {}
+      showSigningStage();
     });
   }
 
@@ -3953,7 +4018,9 @@ function initExternalSigning(root) {
   }
 
   syncAuthorization();
-  loadPdf();
+  if (!extStage || !extStage.hidden) {
+    ensurePdfLoaded();
+  }
 }
 
 function renderSealSvg(tone) {

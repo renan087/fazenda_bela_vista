@@ -1938,36 +1938,41 @@ def test_in_app_browser_detection_android_ios_and_server_side_otp_resumption(web
     assert ext.status_code == 201, ext.text
     token = ext.json()["sign_url"].rsplit("/assinar/", 1)[1]
 
-    # 3) Abertura no navegador interno do WhatsApp (Android) exibe recomendação antes de assinar
+    # 3) Abertura no navegador interno do WhatsApp (Android) exibe tela pré-assinatura dedicada (ocultando o fluxo de assinatura)
     iab_android = LocalTestClient(_make_signing_app(sessions))
     p_android = iab_android.get(f"/assinar/{token}", headers={"User-Agent": android_wa_ua})
     assert p_android.status_code == 200
-    assert "Abra este link no Chrome" in p_android.text
+    assert "Antes de assinar, abra no Chrome" in p_android.text
     assert "Abrir no navegador" in p_android.text
     assert "Copiar link de assinatura" in p_android.text
-    assert "Continuar neste navegador" in p_android.text
-    assert 'data-ds-iab-gate data-opened-external="no"  aria-label' in p_android.text  # visível (sem hidden)
+    assert "Continuar no WhatsApp" in p_android.text
+    assert 'data-ds-iab-gate data-opened-external="no"  aria-label' in p_android.text  # tela pré-assinatura visível
+    assert 'data-ds-ext-stage hidden' in p_android.text  # página de assinatura oculta até o usuário escolher continuar
+    assert 'data-ds-ext-mob-bar' not in p_android.text  # barra fixa duplicada no rodapé removida
     assert 'autocomplete="one-time-code"' in p_android.text
     assert 'data-ds-otp-paste' in p_android.text
 
     # 4) Abertura no iPhone via SFSafariViewController do WhatsApp (mesmo User-Agent do Safari!)
-    # também exibe o cartão pré-assinatura recomendando abrir no Safari
+    # exibe tela pré-assinatura dedicada recomendando abrir no Safari
     iab_ios = LocalTestClient(_make_signing_app(sessions))
     p_ios = iab_ios.get(f"/assinar/{token}", headers={"User-Agent": ios_safari_ua})
     assert p_ios.status_code == 200
-    assert "Abra este link no Safari" in p_ios.text
+    assert "Antes de assinar, abra no Safari" in p_ios.text
     assert 'data-ds-iab-gate data-opened-external="no"  aria-label' in p_ios.text
+    assert 'data-ds-ext-stage hidden' in p_ios.text
 
-    # 5) Após abrir no Safari externo com ?ext=1 (ou no desktop), o cartão fica oculto
+    # 5) Após abrir no Safari externo com ?ext=1 (ou no desktop), a tela pré-assinatura fica oculta e a assinatura já carrega
     ext_safari = LocalTestClient(_make_signing_app(sessions))
     p_safari = ext_safari.get(f"/assinar/{token}?ext=1", headers={"User-Agent": ios_safari_ua})
     assert p_safari.status_code == 200
     assert 'data-ds-iab-gate data-opened-external="yes" hidden aria-label' in p_safari.text
+    assert 'data-ds-ext-stage >' in p_safari.text
 
     desktop_ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36"
     p_desktop = LocalTestClient(_make_signing_app(sessions)).get(f"/assinar/{token}", headers={"User-Agent": desktop_ua})
     assert p_desktop.status_code == 200
     assert 'data-ds-iab-gate data-opened-external="no" hidden aria-label' in p_desktop.text
+    assert 'data-ds-ext-stage >' in p_desktop.text
 
     # 6) Signatário solicita OTP no navegador interno (1 único envio de WhatsApp)
     sent_payloads.clear()
