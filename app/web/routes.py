@@ -177,6 +177,8 @@ from app.models import (
     OrganizationSubscription,
     OrganizationSubscriptionPayment,
     PestIncident,
+    PestInspection,
+    PestRound,
     Plot,
     PlotAttachment,
     PurchasedInput,
@@ -332,7 +334,6 @@ from app.services.forms import (
     create_manual_stock_output,
     create_stock_adjustment,
     register_stock_inventory,
-    create_pest_incident,
     create_plot,
     create_purchased_input,
     create_rainfall,
@@ -353,7 +354,6 @@ from app.services.forms import (
     update_harvest,
     update_input_recommendation,
     update_irrigation,
-    update_pest_incident,
     update_plot,
     update_purchased_input,
     update_rainfall,
@@ -390,10 +390,31 @@ from app.services.climate_water import (
     build_rainfall_page_context,
 )
 from app.services.lavoura_overview import build_lavoura_overview_context
+from app.services.climate_water import get_forecast_days_safe
+from app.services.pest_monitoring import (
+    LOCATIONS,
+    PEST_CATALOG,
+    ROUND_LEVELS,
+    build_incident_row,
+    build_plot_tiles,
+    build_summary,
+    catalog_entry,
+    classify,
+    climate_alert,
+    common_pest_keys,
+    compute_incidence,
+    ddmm,
+    decision_for,
+    fmt_num,
+    fmt_pct,
+    fmt_threshold,
+    forecast_strip,
+    pest_spec,
+    round_row,
+)
 from app.services.operations_pests_views import (
     active_withdrawals_by_plot,
     build_operations_page_context,
-    build_pests_page_context,
 )
 from app.services.soil_measurements import FIELDS as SOIL_FIELDS, EXTRA_FIELDS as SOIL_EXTRA_FIELDS, METHODS as SOIL_METHODS, canonical_value, parse_metadata, validate_metadata, validate_measurements
 from app.services.stock_assistant import assistant_available
@@ -20230,8 +20251,33 @@ def conclude_agricultural_operation_action(
     if not operation or not _plot_matches_scope(operation.plot, scope):
         _flash(request, "error", "Operação não encontrada no contexto ativo.")
         return _redirect("/pragas/pulverizacoes")
+    was_planned = (operation.status or "realizada") == "planejada"
     operation.status = "realizada"
     repo.db.add(operation)
+    if was_planned and operation.planned_input_id and operation.planned_input_qty and float(operation.planned_input_qty) > 0:
+        try:
+            out = create_manual_stock_output(
+                repo,
+                {
+                    "input_id": int(operation.planned_input_id),
+                    "quantity": float(operation.planned_input_qty),
+                    "farm_id": scope.get("active_farm_id"),
+                    "plot_id": operation.plot_id,
+                    "season_id": operation.season_id or scope.get("active_season_id"),
+                    "movement_date": operation.operation_date.isoformat(),
+                    "notes": f"{operation.operation_type} ({operation.target_pest})" if operation.target_pest else operation.operation_type,
+                },
+                commit=False,
+            )
+        except ValueError as exc:
+            repo.db.rollback()
+            _flash(request, "error", f"Não foi possível dar baixa no estoque: {exc}")
+            return _redirect("/pragas/pulverizacoes")
+        out.origin = "Operações Agrícolas"
+        out.reference_type = "agricultural_operation"
+        out.reference_id = operation.id
+        repo.db.add(out)
+        operation.inputs_cost = round(float(out.total_cost or 0), 2)
     op_key = next((k for k, lbl, _ in AGRICULTURAL_OPERATION_TYPES if lbl == operation.operation_type), "outro")
     _sync_operation_side_effects(repo, farm_id=scope.get("active_farm_id"), operation=operation, op_key=op_key)
     repo.db.commit()
@@ -26969,44 +27015,189 @@ def coffee_buyer_cep_lookup(cep: str, user: User = Depends(get_current_user_web)
     return JSONResponse({"data": data})
 
 
+PEST_REDIRECT = "/pragas"
+
+
+def _pest_user_label(user: User | None) -> str:
+    if not user:
+        return ""
+    return (getattr(user, "display_name", None) or getattr(user, "name", None) or getattr(user, "email", None) or "")[:160]
+
+
+def _pest_scope_incident(request: Request, repo: FarmRepository, record_id: int):
+    scope = _global_scope_context(request, repo)
+    incident = repo.get_pest_incident(record_id)
+    if not incident or not _plot_matches_scope(incident.plot, scope):
+        _flash(request, "error", "Foco não encontrado na fazenda ativa.")
+        return None, scope
+    return incident, scope
+
+
+async def _pest_photo_from_form(form) -> tuple[str | None, str | None, bytes | None]:
+    photo_file = form.get("photo")
+    if photo_file and hasattr(photo_file, "read") and getattr(photo_file, "filename", None):
+        raw_bytes = await photo_file.read()
+        if raw_bytes:
+            return str(photo_file.filename)[:255], getattr(photo_file, "content_type", None) or "image/jpeg", raw_bytes
+    return None, None, None
+
+
+def _pest_products(repo: FarmRepository, farm_id: int | None, operations: list) -> list[dict]:
+    """Defensivos/insumos com estoque disponível, custo médio e carência usada da última vez."""
+    if not farm_id:
+        return []
+    stock_context = _build_stock_context(repo, farm_id=farm_id, item_type="insumo_agricola")
+    entries = stock_context["purchase_entries"]
+    last_withdrawal: dict[int, int] = {}
+    for op in sorted(operations, key=lambda o: (o.operation_date, o.id)):
+        if getattr(op, "planned_input_id", None) and op.withdrawal_days:
+            last_withdrawal[int(op.planned_input_id)] = int(op.withdrawal_days)
+    products = []
+    for item in stock_context["consumption_catalog_inputs"]:
+        mine = [e for e in entries if e.input_id == item.id]
+        stock = round(sum(float(e.available_quantity or 0) for e in mine), 2)
+        total_qty = sum(float(e.total_quantity or 0) for e in mine)
+        total_cost = sum(float(e.unit_price or 0) * float(e.quantity_purchased or 0) for e in mine)
+        category = (item.category or "").lower()
+        products.append({
+            "id": item.id,
+            "name": item.name,
+            "unit": item.default_unit or "L",
+            "stock": stock,
+            "stock_txt": fmt_num(stock) + " " + (item.default_unit or ""),
+            "unit_cost": round(total_cost / total_qty, 4) if total_qty else 0,
+            "withdrawal": last_withdrawal.get(item.id),
+            "is_defensive": any(k in category for k in ("defens", "fung", "insetic", "acaric", "herbic", "agrot")),
+        })
+    products.sort(key=lambda p: (not p["is_defensive"], p["stock"] <= 0, p["name"].lower()))
+    return products
+
+
 @router.get("/pragas")
 def pests_page(
     request: Request,
     edit_id: int | None = None,
     novo: int | None = None,
     plot_id: int | None = None,
+    aba: str | None = None,
+    foco: int | None = None,
+    controle: int | None = None,
+    reinspecao: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
+    farm = scope.get("active_farm")
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
     start_date, end_date = _scoped_dates(scope["active_season"])
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
-    plot_ids = {plot.id for plot in plots}
-    edit_incident = repo.get_pest_incident(edit_id) if edit_id else None
-    if edit_incident and not _plot_matches_scope(edit_incident.plot, scope):
-        edit_incident = None
+    plots_by_id = {plot.id: plot for plot in plots}
     launch_plots = _season_launch_plots(plots, scope)
-    if edit_incident and edit_incident.plot and edit_incident.plot not in launch_plots:
-        launch_plots = [*launch_plots, edit_incident.plot]
     incidents = [
         incident
         for incident in repo.list_pest_incidents()
-        if incident.plot_id in plot_ids and _within_scope(incident.occurrence_date, start_date, end_date)
+        if incident.plot_id in plots_by_id and _within_scope(incident.occurrence_date, start_date, end_date)
     ]
-    incidents = _sort_collection_desc(
-        incidents,
-        lambda item: item.occurrence_date,
-        lambda item: item.id,
-    )
     today_val = today_in_app_timezone()
-    pest_ctx = build_pests_page_context(incidents=incidents, farm=scope.get("active_farm"), today=today_val)
-    all_ops = repo.list_agricultural_operations(plot_ids) if plot_ids else []
+    all_ops = repo.list_agricultural_operations(set(plots_by_id)) if plots_by_id else []
+    ops_by_incident: dict[int, list] = {}
+    for op in all_ops:
+        if op.pest_incident_id:
+            ops_by_incident.setdefault(op.pest_incident_id, []).append(op)
+    status_order = {"ativa": 0, "em_tratamento": 1, "monitoramento": 2, "controlada": 3}
+    incidents.sort(key=lambda i: (status_order.get(i.status or "ativa", 0), -i.occurrence_date.toordinal(), -i.id))
+    rows = [build_incident_row(i, ops_by_incident.get(i.id, []), today_val) for i in incidents]
+
+    rounds = []
+    last_round_by_plot: dict[int, date] = {}
+    if farm:
+        round_models = (
+            repo.db.query(PestRound)
+            .filter(PestRound.farm_id == farm.id)
+            .order_by(PestRound.round_date.desc(), PestRound.id.desc())
+            .limit(30)
+            .all()
+        )
+        for rnd in round_models:
+            if rnd.status == "concluida":
+                for raw in (rnd.plot_ids or "").split(","):
+                    if raw.strip().isdigit():
+                        pid = int(raw)
+                        if pid not in last_round_by_plot or rnd.round_date > last_round_by_plot[pid]:
+                            last_round_by_plot[pid] = rnd.round_date
+        rounds = [round_row(r, plots_by_id) for r in round_models]
+    last_done = max(last_round_by_plot.values()) if last_round_by_plot else None
+    next_round = (last_done + timedelta(days=7)) if last_done else today_val
+    if next_round < today_val:
+        next_round = today_val
+    weekdays = ("seg", "ter", "qua", "qui", "sex", "sáb", "dom")
+
+    forecast_days = get_forecast_days_safe(farm) if farm else []
+    strip = forecast_strip(forecast_days, today_val)
+    profile = repo.get_agronomic_profile_by_farm(farm.id) if farm else None
+    common_keys = common_pest_keys(getattr(profile, "common_pests", None))
+    catalog = [
+        {"key": item["key"], "name": item["name"], "category": item["category"], "threshold": item["threshold"],
+         "threshold_txt": fmt_threshold(item["threshold"]), "unit": item["unit"], "noun": item["noun"], "days": item["days"],
+         "common": item["key"] in common_keys}
+        for item in PEST_CATALOG
+    ]
+    catalog.sort(key=lambda c: (not c["common"], c["name"]))
+    custom_names = sorted({i.name for i in incidents if not catalog_entry(i.name)})
+    for name in custom_names:
+        src = next(i for i in incidents if i.name == name)
+        spec = pest_spec(src.name, src.category, float(src.control_threshold_pct) if src.control_threshold_pct is not None else None)
+        catalog.append({"key": "custom:" + name, "name": name, "category": spec["category"], "threshold": spec["threshold"],
+                        "threshold_txt": fmt_threshold(spec["threshold"]), "unit": spec["unit"], "noun": spec["noun"], "days": spec["days"], "common": False})
+
+    farm_id = farm.id if farm else None
+    products = _pest_products(repo, farm_id, all_ops)
+    equipment_assets = repo.list_equipment_assets(farm_id=farm_id) if farm_id else []
+    responsible_names = []
+    for name in [_pest_user_label(user), *[op.responsible_name for op in sorted(all_ops, key=lambda o: o.id, reverse=True)]]:
+        if name and name not in responsible_names:
+            responsible_names.append(name)
+    responsible_names = responsible_names[:8]
+
+    active_index = [
+        {"id": r["id"], "plot_id": r["plot_id"], "key": _normalize_search_value(r["name"])}
+        for r in rows if r["status"] != "controlado"
+    ]
+    sectors: dict[str, list[int]] = {}
+    for plot in launch_plots:
+        sectors.setdefault((plot.group_name or "").strip() or "Sem setor", []).append(plot.id)
+    pest_json = {
+        "today": today_val.isoformat(),
+        "panels": {str(r["id"]): r["panel"] for r in rows},
+        "catalog": catalog,
+        "active": active_index,
+        "plots": [
+            {"id": p.id, "name": p.name, "variety": getattr(getattr(p, "variety", None), "name", None) or "",
+             "area": float(p.area_hectares or 0), "sector": (p.group_name or "").strip() or "Sem setor",
+             "last_round": last_round_by_plot.get(p.id).strftime("%d/%m") if last_round_by_plot.get(p.id) else ""}
+            for p in launch_plots
+        ],
+        "sectors": [{"name": k, "ids": v} for k, v in sorted(sectors.items())] if len(sectors) > 1 else [],
+        "products": products,
+        "forecast": strip,
+        "locations": list(LOCATIONS),
+        "common_keys": common_keys,
+    }
+    summary = build_summary(rows, plots)
     phyto_sprays_count = sum(1 for item in all_ops if _is_spray_operation(item))
-    phyto_treatments_count = len(all_ops) - phyto_sprays_count
-    incidents_pagination = _paginate_collection(request, incidents, "incidents_page")
+    tab = "rondas" if (aba or "").strip().lower() == "rondas" else "focos"
+    open_drawer = None
+    if novo:
+        open_drawer = {"kind": "novo", "plot_id": plot_id}
+    elif edit_id and str(edit_id) in pest_json["panels"]:
+        open_drawer = {"kind": "editar", "id": edit_id}
+    elif controle and str(controle) in pest_json["panels"]:
+        open_drawer = {"kind": "controle", "id": controle}
+    elif reinspecao and str(reinspecao) in pest_json["panels"]:
+        open_drawer = {"kind": "reinspecao", "id": reinspecao}
+    selected = foco if foco and str(foco) in pest_json["panels"] else (controle or reinspecao or edit_id)
     return templates.TemplateResponse(
         "pests.html",
         _base_context(
@@ -27016,18 +27207,28 @@ def pests_page(
             "pests",
             _repo=repo,
             title="Pragas e Pulverizações",
+            rows=rows,
+            summary=summary,
+            tiles=build_plot_tiles(plots, rows, last_round_by_plot),
+            rounds=rounds,
+            tab=tab,
+            climate_alert=climate_alert(forecast_days, strip),
+            next_round_label=f"{weekdays[next_round.weekday()]} {next_round.strftime('%d/%m')}",
             plots=plots,
             launch_plots=launch_plots,
-            incidents=incidents_pagination["items"],
-            incidents_pagination=incidents_pagination,
-            edit_incident=edit_incident,
-            pest_ctx=pest_ctx,
-            phyto_pests_count=pest_ctx["kpi"]["active"],
+            pest_json=pest_json,
+            equipment_assets=equipment_assets,
+            responsible_names=responsible_names,
+            catalog=catalog,
+            open_drawer=open_drawer,
+            selected_id=selected,
+            season_label=getattr(scope.get("active_season"), "name", None) or "",
+            farm_label=getattr(farm, "name", None) or "",
+            phyto_pests_count=summary["active"],
             phyto_sprays_count=phyto_sprays_count,
-            phyto_treatments_count=phyto_treatments_count,
+            phyto_treatments_count=len(all_ops) - phyto_sprays_count,
+            phyto_rounds_count=len(rounds),
             today_iso=today_val.isoformat(),
-            open_new_modal=bool(novo),
-            preselect_plot_id=plot_id if novo else None,
         ),
     )
 
@@ -27047,69 +27248,123 @@ def pest_incident_photo(
     return Response(content=incident.photo_data, media_type=incident.photo_content_type or "image/jpeg")
 
 
+def _pest_spec_from_form(form) -> tuple[dict, str, str]:
+    """Resolve a praga escolhida (catálogo, nome salvo da fazenda ou 'Outra')."""
+    key = str(form.get("pest_key") or "").strip()
+    if key == "outra":
+        name = str(form.get("other_name") or "").strip()[:120]
+        category = "Doença" if str(form.get("other_category") or "").strip().lower() in {"doenca", "doença"} else "Praga"
+        threshold = _float_or_none(form.get("other_threshold"))
+        return pest_spec(name, category, threshold), name, category
+    if key.startswith("custom:"):
+        name = key.split(":", 1)[1].strip()[:120]
+        threshold = _float_or_none(form.get("other_threshold"))
+        category = "Doença" if str(form.get("other_category") or "").strip().lower() in {"doenca", "doença"} else "Praga"
+        return pest_spec(name, category, threshold), name, category
+    entry = catalog_entry(key) or catalog_entry(str(form.get("name") or ""))
+    if entry:
+        return pest_spec(entry["name"]), entry["name"], entry["category"]
+    name = str(form.get("name") or "").strip()[:120]
+    category = str(form.get("category") or "Praga").strip()
+    category = "Doença" if category.lower() in {"doenca", "doença"} else (category or "Praga")
+    return pest_spec(name, category), name, category
+
+
 @router.post("/pragas")
 async def create_pest_action(
     request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
-    raw_plot_ids = [pid for pid in (_int_or_none(v) for v in form.getlist("plot_id")) if pid]
+    raw_plot_ids = list(dict.fromkeys(pid for pid in (_int_or_none(v) for v in form.getlist("plot_id")) if pid))
     if not raw_plot_ids:
-        _flash(request, "error", "Selecione ao menos um talhão.")
-        return _redirect("/pragas")
-    occurrence_date = str(form.get("occurrence_date") or "").strip()
-    category = str(form.get("category") or "Praga").strip()
-    if category.lower() == "doenca":
-        category = "Doença"
-    name = str(form.get("name") or "").strip()
-    severity = _int_or_none(form.get("severity")) or 2
-    status_val = str(form.get("status") or "ativa").strip().lower()
-    incidence_pct = _float_or_none(form.get("incidence_pct"))
-    treatment = str(form.get("treatment") or "").strip() or None
+        _flash(request, "error", "Marque ao menos um talhão.")
+        return _redirect(PEST_REDIRECT)
+    spec, name, category = _pest_spec_from_form(form)
+    if not name:
+        _flash(request, "error", "Escolha a praga ou doença (ou digite o nome em “Outra”).")
+        return _redirect(PEST_REDIRECT)
+    try:
+        occurrence_date = date.fromisoformat(str(form.get("occurrence_date") or "").strip())
+    except ValueError:
+        occurrence_date = today_in_app_timezone()
+    sampled = _int_or_none(form.get("sampled_count"))
+    affected = _int_or_none(form.get("affected_count"))
+    incidence = compute_incidence(sampled, affected)
+    if incidence is None:
+        legacy = _float_or_none(form.get("incidence_pct"))
+        if legacy is not None and 0 <= legacy <= 100:
+            incidence, sampled, affected = round(legacy, 2), None, None
+    if incidence is None:
+        _flash(request, "error", "Informe quantas amostras foram avaliadas e quantas tinham sintoma.")
+        return _redirect(PEST_REDIRECT + "?novo=1")
+    location = str(form.get("location") or "").strip()[:40] or None
     notes = str(form.get("notes") or "").strip() or None
-    photo_file = form.get("photo")
-    photo_filename, photo_content_type, photo_data = (None, None, None)
-    if photo_file and hasattr(photo_file, "read") and getattr(photo_file, "filename", None):
-        raw_bytes = await photo_file.read()
-        if raw_bytes:
-            photo_filename = str(photo_file.filename)[:255]
-            photo_content_type = getattr(photo_file, "content_type", None) or "image/jpeg"
-            photo_data = raw_bytes
-    if not name or not occurrence_date:
-        _flash(request, "error", "Informe a data e o nome da praga ou doença.")
-        return _redirect("/pragas")
-    created = 0
+    photo_filename, photo_content_type, photo_data = await _pest_photo_from_form(form)
+    threshold = float(spec["threshold"])
+    status_db, severity = classify(incidence, threshold)
+    name_key = _normalize_search_value(name)
+
+    plots = []
     for pid in raw_plot_ids:
-        plot, scope, denied = _resolve_plot_in_scope(request, repo, pid, "/pragas")
+        plot, scope, denied = _resolve_plot_in_scope(request, repo, pid, PEST_REDIRECT)
         if denied:
             return denied
         if not _plot_allowed_for_season_launch(plot, scope):
-            _flash(request, "error", "O talhão selecionado não está vinculado à safra ativa.")
-            return _redirect("/pragas")
-        create_pest_incident(
-            repo,
-            {
-                "plot_id": plot.id,
-                "occurrence_date": occurrence_date,
-                "category": category,
-                "name": name,
-                "severity": max(1, min(5, severity)),
-                "status": status_val,
-                "incidence_pct": incidence_pct,
-                "treatment": treatment,
-                "notes": notes,
-                "photo_filename": photo_filename,
-                "photo_content_type": photo_content_type,
-                "photo_data": photo_data,
-            },
+            _flash(request, "error", f"O {plot.name} não está vinculado à safra ativa.")
+            return _redirect(PEST_REDIRECT)
+        duplicate = next(
+            (i for i in repo.list_pest_incidents() if i.plot_id == plot.id and (i.status or "ativa") != "controlada" and _normalize_search_value(i.name) == name_key),
+            None,
         )
-        created += 1
-    _flash(request, "success", f"{created} ocorrência(s) registrada(s) com sucesso." if created > 1 else "Ocorrência registrada com sucesso.")
-    return _redirect("/pragas")
+        if duplicate:
+            _flash(request, "error", f"Já existe um foco ativo de {name} no {plot.name}. Registre como reinspeção para não duplicar.")
+            return _redirect(f"{PEST_REDIRECT}?reinspecao={duplicate.id}")
+        plots.append(plot)
+
+    author = _pest_user_label(user)
+    created = []
+    for plot in plots:
+        incident = PestIncident(
+            plot_id=plot.id,
+            occurrence_date=occurrence_date,
+            category=category,
+            name=name,
+            severity=severity,
+            status=status_db,
+            incidence_pct=incidence,
+            sampled_count=sampled,
+            affected_count=affected,
+            control_threshold_pct=threshold,
+            location_in_plot=location,
+            reinspection_date=(occurrence_date + timedelta(days=int(spec["days"]))) if status_db == "monitoramento" else None,
+            notes=notes,
+            created_by=author,
+            photo_filename=photo_filename,
+            photo_content_type=photo_content_type,
+            photo_data=photo_data,
+        )
+        incident.inspections.append(PestInspection(
+            inspection_date=occurrence_date, kind="registro", incidence_pct=incidence,
+            sampled_count=sampled, affected_count=affected, created_by=author,
+        ))
+        repo.db.add(incident)
+        created.append(incident)
+    repo.db.commit()
+    first = created[0]
+    if len(created) > 1:
+        _flash(request, "success", f"{len(created)} focos registrados.")
+    elif status_db == "monitoramento":
+        _flash(request, "success", f"Foco registrado. Reinspeção lembrada para {first.reinspection_date.strftime('%d/%m')}.")
+    else:
+        _flash(request, "success", "Foco registrado.")
+    plan_next = str(form.get("plan_next") or "").strip().lower() in {"1", "on", "true", "sim"}
+    if status_db == "ativa" and plan_next:
+        return _redirect(f"{PEST_REDIRECT}?controle={first.id}")
+    return _redirect(f"{PEST_REDIRECT}?foco={first.id}")
 
 
 @router.post("/pragas/{record_id}/editar")
@@ -27119,97 +27374,209 @@ async def update_pest_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
-    pid = _int_or_none(form.get("plot_id"))
-    plot, scope, denied = _resolve_plot_in_scope(request, repo, pid or 0, "/pragas")
-    if denied:
-        return denied
-    incident = repo.get_pest_incident(record_id)
+    incident, _scope = _pest_scope_incident(request, repo, record_id)
     if not incident:
-        _flash(request, "error", "Ocorrência não encontrada.")
-        return _redirect_for_request(request, "/pragas")
-    if not _plot_matches_scope(incident.plot, scope):
-        _flash(request, "error", "Esta ocorrência não pertence ao contexto ativo.")
-        return _redirect_for_request(request, "/pragas")
-    if plot.id != incident.plot_id and not _plot_allowed_for_season_launch(plot, scope):
-        _flash(request, "error", "O talhão selecionado não está vinculado à safra ativa.")
-        return _redirect_for_request(request, "/pragas", edit_id=record_id)
-    category = str(form.get("category") or incident.category or "Praga").strip()
-    if category.lower() == "doenca":
-        category = "Doença"
-    photo_file = form.get("photo")
-    photo_filename, photo_content_type, photo_data = (None, None, None)
-    if photo_file and hasattr(photo_file, "read") and getattr(photo_file, "filename", None):
-        raw_bytes = await photo_file.read()
-        if raw_bytes:
-            photo_filename = str(photo_file.filename)[:255]
-            photo_content_type = getattr(photo_file, "content_type", None) or "image/jpeg"
-            photo_data = raw_bytes
-    update_pest_incident(
-        repo,
-        incident,
-        {
-            "plot_id": plot.id,
-            "occurrence_date": str(form.get("occurrence_date") or incident.occurrence_date.isoformat()),
-            "category": category,
-            "name": str(form.get("name") or incident.name).strip(),
-            "severity": max(1, min(5, _int_or_none(form.get("severity")) or incident.severity or 2)),
-            "status": str(form.get("status") or incident.status or "ativa").strip().lower(),
-            "incidence_pct": _float_or_none(form.get("incidence_pct")),
-            "treatment": str(form.get("treatment") or "").strip() or None,
-            "notes": str(form.get("notes") or "").strip() or None,
-            "photo_filename": photo_filename,
-            "photo_content_type": photo_content_type,
-            "photo_data": photo_data,
-        },
-    )
-    _flash(request, "success", "Ocorrência atualizada com sucesso.")
-    return _redirect_for_request(request, "/pragas")
+        return _redirect(PEST_REDIRECT)
+    sampled = _int_or_none(form.get("sampled_count"))
+    affected = _int_or_none(form.get("affected_count"))
+    incidence = compute_incidence(sampled, affected)
+    if incidence is None:
+        _flash(request, "error", "Informe quantas amostras foram avaliadas e quantas tinham sintoma.")
+        return _redirect(f"{PEST_REDIRECT}?edit_id={record_id}")
+    try:
+        occurrence_date = date.fromisoformat(str(form.get("occurrence_date") or "").strip())
+    except ValueError:
+        occurrence_date = incident.occurrence_date
+    spec = pest_spec(incident.name, incident.category, float(incident.control_threshold_pct) if incident.control_threshold_pct is not None else None)
+    incident.occurrence_date = occurrence_date
+    incident.incidence_pct = incidence
+    incident.sampled_count = sampled
+    incident.affected_count = affected
+    incident.location_in_plot = str(form.get("location") or "").strip()[:40] or incident.location_in_plot
+    notes = str(form.get("notes") or "").strip()
+    incident.notes = notes or None
+    status_db, severity = classify(incidence, float(spec["threshold"]))
+    incident.severity = severity
+    if incident.status in {"ativa", "monitoramento"}:
+        incident.status = status_db
+        incident.reinspection_date = (occurrence_date + timedelta(days=int(spec["days"]))) if status_db == "monitoramento" else None
+    photo_filename, photo_content_type, photo_data = await _pest_photo_from_form(form)
+    if photo_data:
+        incident.photo_filename, incident.photo_content_type, incident.photo_data = photo_filename, photo_content_type, photo_data
+    last = (incident.inspections or [None])[-1]
+    if last is not None:
+        last.incidence_pct, last.sampled_count, last.affected_count = incidence, sampled, affected
+        if last.kind == "registro":
+            last.inspection_date = occurrence_date
+    incident.inspections.append(PestInspection(
+        inspection_date=today_in_app_timezone(), kind="correcao", note=f"Incidência ajustada para {fmt_pct(incidence)}",
+        created_by=_pest_user_label(user),
+    ))
+    repo.db.add(incident)
+    repo.db.commit()
+    _flash(request, "success", "Registro corrigido.")
+    return _redirect(f"{PEST_REDIRECT}?foco={record_id}")
 
 
 @router.post("/pragas/{record_id}/reinspecao")
-def reinspect_pest_action(
+async def reinspect_pest_action(
     record_id: int,
     request: Request,
-    csrf_token: str = Form(...),
-    status_value: str = Form("controlada", alias="status"),
-    severity: int = Form(1),
-    reinspection_date: str = Form(...),
-    reinspection_note: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
-    validate_csrf(request, csrf_token)
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
-    scope = _global_scope_context(request, repo)
-    incident = repo.get_pest_incident(record_id)
-    if not incident or not _plot_matches_scope(incident.plot, scope):
-        _flash(request, "error", "Ocorrência não encontrada no contexto ativo.")
-        return _redirect("/pragas")
-    st = status_value if status_value in {"ativa", "em_tratamento", "monitoramento", "controlada"} else "monitoramento"
+    incident, _scope = _pest_scope_incident(request, repo, record_id)
+    if not incident:
+        return _redirect(PEST_REDIRECT)
+    spec = pest_spec(incident.name, incident.category, float(incident.control_threshold_pct) if incident.control_threshold_pct is not None else None)
+    threshold = float(spec["threshold"])
+    sampled = _int_or_none(form.get("sampled_count"))
+    affected = _int_or_none(form.get("affected_count"))
+    incidence = compute_incidence(sampled, affected)
+    if incidence is None:
+        _flash(request, "error", "Informe quantas amostras foram avaliadas e quantas tinham sintoma.")
+        return _redirect(f"{PEST_REDIRECT}?reinspecao={record_id}")
     try:
-        re_dt = date.fromisoformat(reinspection_date)
+        inspection_date = date.fromisoformat(str(form.get("inspection_date") or "").strip())
     except ValueError:
-        re_dt = today_in_app_timezone()
-    incident.status = st
-    incident.severity = max(1, min(5, severity))
-    incident.reinspection_date = re_dt
-    if st == "controlada":
-        incident.resolved_date = re_dt
-    else:
+        inspection_date = today_in_app_timezone()
+    decision = str(form.get("decision") or "").strip().lower()
+    if decision not in {"encerrar", "manter", "novo"}:
+        decision = decision_for(incidence, threshold)
+    note = str(form.get("note") or "").strip() or None
+    incident.incidence_pct = incidence
+    incident.sampled_count = sampled
+    incident.affected_count = affected
+    incident.severity = classify(incidence, threshold)[1]
+    if decision == "encerrar":
+        incident.status = "controlada"
+        incident.resolved_date = inspection_date
+        incident.reinspection_date = None
+    elif decision == "manter":
+        incident.status = "em_tratamento" if incident.status == "em_tratamento" else "monitoramento"
         incident.resolved_date = None
-    note_clean = (reinspection_note or "").strip()
-    if note_clean:
-        stamp = f"[Reinspeção {re_dt.strftime('%d/%m/%Y')}] {note_clean}"
-        incident.notes = f"{incident.notes}\n{stamp}".strip() if incident.notes else stamp
+        incident.reinspection_date = inspection_date + timedelta(days=7)
+    else:
+        incident.status = "ativa"
+        incident.resolved_date = None
+        incident.reinspection_date = None
+    incident.inspections.append(PestInspection(
+        inspection_date=inspection_date, kind="reinspecao", incidence_pct=incidence, sampled_count=sampled,
+        affected_count=affected, decision=decision, note=note, created_by=_pest_user_label(user),
+    ))
     repo.db.add(incident)
     repo.db.commit()
-    _flash(request, "success", "Reinspeção registrada com sucesso.")
-    return _redirect("/pragas")
+    if decision == "encerrar":
+        _flash(request, "success", "Foco encerrado como controlado.")
+        return _redirect(f"{PEST_REDIRECT}?foco={record_id}")
+    if decision == "manter":
+        _flash(request, "success", f"Reinspeção registrada. Próxima em {incident.reinspection_date.strftime('%d/%m')}.")
+        return _redirect(f"{PEST_REDIRECT}?foco={record_id}")
+    _flash(request, "success", "Reinspeção registrada. Planeje o novo controle.")
+    return _redirect(f"{PEST_REDIRECT}?controle={record_id}")
+
+
+@router.post("/pragas/{record_id}/controle")
+async def plan_pest_control_action(
+    record_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    """Planeja a pulverização a partir do foco: vira um registro 'planejado' em Pulverizações."""
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    incident, _scope = _pest_scope_incident(request, repo, record_id)
+    if not incident:
+        return _redirect(PEST_REDIRECT)
+    scope, denied = _launch_scope_or_redirect(request, repo, PEST_REDIRECT)
+    if denied:
+        return denied
+    back = f"{PEST_REDIRECT}?controle={record_id}"
+    plot = incident.plot
+    area = max(float(plot.area_hectares or 0), 0.01)
+    input_id = _int_or_none(form.get("input_id"))
+    dose = _float_or_none(str(form.get("dose_per_ha") or "").replace(".", "").replace(",", "."))
+    withdrawal_days = _int_or_none(form.get("withdrawal_days"))
+    try:
+        application_date = date.fromisoformat(str(form.get("application_date") or "").strip())
+    except ValueError:
+        _flash(request, "error", "Escolha o dia da aplicação.")
+        return _redirect(back)
+    if not input_id or not dose or dose <= 0:
+        _flash(request, "error", "Escolha o produto do estoque e a dose por hectare.")
+        return _redirect(back)
+    if withdrawal_days is None or withdrawal_days < 0:
+        _flash(request, "error", "Informe a carência do produto em dias (veja na bula).")
+        return _redirect(back)
+    products = {p["id"]: p for p in _pest_products(repo, scope.get("active_farm_id"), [])}
+    product = products.get(input_id)
+    if not product:
+        _flash(request, "error", "Produto não encontrado no estoque desta fazenda.")
+        return _redirect(back)
+    need = round(dose * area, 2)
+    if need > product["stock"] + 1e-6:
+        _flash(request, "error", f"Estoque insuficiente de {product['name']}: precisa de {fmt_num(need)} {product['unit']}, tem {fmt_num(product['stock'])}. Ajuste a dose ou registre a compra.")
+        return _redirect(back)
+    label = next((lbl for key, lbl, _ in AGRICULTURAL_OPERATION_TYPES if key == "pulverizacao"), "Pulverização fitossanitária")
+    spray_rate = _float_or_none(form.get("spray_volume_per_ha")) or 400.0
+    responsible = (str(form.get("responsible_name") or "").strip() or _pest_user_label(user))[:160]
+    operation = repo.create(AgriculturalOperation(
+        plot_id=plot.id,
+        season_id=scope.get("active_season_id"),
+        equipment_asset_id=_int_or_none(form.get("equipment_asset_id")),
+        pest_incident_id=incident.id,
+        operation_date=application_date,
+        operation_type=label,
+        status="planejada",
+        responsible_name=responsible,
+        spray_volume_liters=round(spray_rate * area, 2),
+        withdrawal_days=withdrawal_days,
+        target_pest=incident.name[:140],
+        inputs_cost=0.0,
+        planned_input_id=input_id,
+        planned_input_qty=need,
+        notes=f"{product['name']} · {fmt_num(dose)} {product['unit']}/ha",
+    ))
+    incident.status = "em_tratamento"
+    incident.reinspection_date = application_date + timedelta(days=7)
+    incident.treatment = f"{product['name']} em {application_date.strftime('%d/%m/%Y')}"[:180]
+    repo.db.add(incident)
+    repo.db.commit()
+    del operation
+    _flash(request, "success", f"Pulverização planejada para {application_date.strftime('%d/%m')}. Ela já aparece em Pulverizações; ao marcar como realizada, o produto sai do estoque.")
+    return _redirect(f"{PEST_REDIRECT}?foco={record_id}")
+
+
+@router.post("/pragas/{record_id}/reabrir")
+def reopen_pest_action(
+    record_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    incident, _scope = _pest_scope_incident(request, repo, record_id)
+    if not incident:
+        return _redirect(PEST_REDIRECT)
+    today_val = today_in_app_timezone()
+    incident.status = "monitoramento"
+    incident.resolved_date = None
+    incident.reinspection_date = today_val + timedelta(days=7)
+    incident.inspections.append(PestInspection(inspection_date=today_val, kind="correcao", note="Foco reaberto", created_by=_pest_user_label(user)))
+    repo.db.add(incident)
+    repo.db.commit()
+    _flash(request, "success", "Foco reaberto. Reinspeção em 7 dias.")
+    return _redirect(f"{PEST_REDIRECT}?foco={record_id}")
 
 
 @router.post("/pragas/{record_id}/excluir")
@@ -27223,13 +27590,168 @@ def delete_pest_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    incident = repo.get_pest_incident(record_id)
+    incident, _scope = _pest_scope_incident(request, repo, record_id)
     if not incident:
-        _flash(request, "error", "Ocorrencia nao encontrada.")
-        return _redirect("/pragas")
-    repo.delete(incident)
-    _flash(request, "success", "Ocorrencia excluida com sucesso.")
-    return _redirect("/pragas")
+        return _redirect(PEST_REDIRECT)
+    for op in repo.db.query(AgriculturalOperation).filter(AgriculturalOperation.pest_incident_id == incident.id).all():
+        op.pest_incident_id = None
+        repo.db.add(op)
+    repo.db.delete(incident)
+    repo.db.commit()
+    _flash(request, "success", "Foco excluído. Pulverizações já registradas continuam em Pulverizações.")
+    return _redirect(PEST_REDIRECT)
+
+
+@router.post("/pragas/rondas")
+async def create_pest_round_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, PEST_REDIRECT)
+    if denied:
+        return denied
+    plot_ids = []
+    for pid in dict.fromkeys(_int_or_none(v) for v in form.getlist("plot_id")):
+        plot = repo.get_plot(pid) if pid else None
+        if plot and _plot_matches_scope(plot, scope):
+            plot_ids.append(plot.id)
+    keys = [k for k in dict.fromkeys(str(v).strip() for v in form.getlist("pest_key")) if catalog_entry(k)]
+    if not plot_ids or not keys:
+        _flash(request, "error", "Escolha ao menos um talhão e uma praga para observar.")
+        return _redirect(f"{PEST_REDIRECT}?aba=rondas")
+    rnd = repo.create(PestRound(
+        farm_id=scope.get("active_farm_id"),
+        round_date=today_in_app_timezone(),
+        responsible_name=(str(form.get("responsible_name") or "").strip() or _pest_user_label(user))[:160],
+        plot_ids=",".join(str(i) for i in plot_ids),
+        pest_keys=",".join(keys),
+        status="planejada",
+    ))
+    if str(form.get("mode") or "") == "agora":
+        return _redirect(f"/pragas/rondas/{rnd.id}")
+    _flash(request, "success", f"Ronda criada para {rnd.responsible_name}. Ela aparece na aba Rondas; abra pelo celular para fazer no campo.")
+    return _redirect(f"{PEST_REDIRECT}?aba=rondas")
+
+
+def _pest_round_in_scope(request: Request, repo: FarmRepository, round_id: int):
+    scope = _global_scope_context(request, repo)
+    rnd = repo.db.get(PestRound, round_id)
+    if not rnd or (scope.get("active_farm_id") and rnd.farm_id != scope.get("active_farm_id")):
+        _flash(request, "error", "Ronda não encontrada na fazenda ativa.")
+        return None, scope
+    return rnd, scope
+
+
+@router.get("/pragas/rondas/{round_id}")
+def pest_round_page(
+    round_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    rnd, _scope = _pest_round_in_scope(request, repo, round_id)
+    if not rnd:
+        return _redirect(f"{PEST_REDIRECT}?aba=rondas")
+    plot_ids = [int(x) for x in (rnd.plot_ids or "").split(",") if x.strip().isdigit()]
+    plots = [p for p in (repo.get_plot(pid) for pid in plot_ids) if p]
+    keys = [k for k in (rnd.pest_keys or "").split(",") if catalog_entry(k)]
+    pests = [catalog_entry(k) for k in keys]
+    active: dict[str, str] = {}
+    for inc in repo.list_pest_incidents():
+        if inc.plot_id in plot_ids and (inc.status or "ativa") != "controlada":
+            entry = catalog_entry(inc.name)
+            if entry and entry["key"] in keys:
+                active[f"{inc.plot_id}:{entry['key']}"] = (f"{fmt_pct(float(inc.incidence_pct))} em " if inc.incidence_pct is not None else "") + ddmm(inc.occurrence_date)
+    round_json = {
+        "id": rnd.id,
+        "done": rnd.status == "concluida",
+        "plots": [{"id": p.id, "name": p.name, "variety": getattr(getattr(p, "variety", None), "name", None) or ""} for p in plots],
+        "pests": [{"key": p["key"], "name": p["name"], "category": p["category"]} for p in pests],
+        "active": active,
+        "levels": list(ROUND_LEVELS),
+        "summary": {"new": rnd.new_count, "reinspect": rnd.reinspect_count},
+    }
+    return templates.TemplateResponse(
+        "pest_round.html",
+        _base_context(
+            request, user, csrf_token, "pests", _repo=repo,
+            title="Ronda de monitoramento",
+            pest_round=rnd,
+            round_json=round_json,
+            round_label=f"{('seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom')[rnd.round_date.weekday()]} {rnd.round_date.strftime('%d/%m')}",
+        ),
+    )
+
+
+@router.post("/pragas/rondas/{round_id}")
+async def submit_pest_round_action(
+    round_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    rnd, _scope = _pest_round_in_scope(request, repo, round_id)
+    if not rnd:
+        return _redirect(f"{PEST_REDIRECT}?aba=rondas")
+    if rnd.status == "concluida":
+        _flash(request, "info", "Esta ronda já foi enviada.")
+        return _redirect(f"/pragas/rondas/{round_id}")
+    plot_ids = [int(x) for x in (rnd.plot_ids or "").split(",") if x.strip().isdigit()]
+    keys = [k for k in (rnd.pest_keys or "").split(",") if catalog_entry(k)]
+    today_val = today_in_app_timezone()
+    author = _pest_user_label(user)
+    incidents = repo.list_pest_incidents()
+    new_count = reinspect_count = worse_count = 0
+    for pid in plot_ids:
+        plot = repo.get_plot(pid)
+        if not plot:
+            continue
+        for key in keys:
+            raw = _int_or_none(form.get(f"level_{pid}_{key}"))
+            if raw is None:
+                continue
+            level = max(0, min(3, raw))
+            entry = catalog_entry(key)
+            existing = next(
+                (i for i in incidents if i.plot_id == pid and (i.status or "ativa") != "controlada" and (catalog_entry(i.name) or {}).get("key") == key),
+                None,
+            )
+            note = f"Nível {ROUND_LEVELS[level].lower()} na ronda" if level else "Não encontrado na ronda"
+            if existing:
+                existing.inspections.append(PestInspection(inspection_date=today_val, kind="ronda", level=level, note=None if level else note, created_by=author))
+                if level >= 3 and existing.status == "monitoramento":
+                    existing.status = "ativa"
+                    existing.reinspection_date = None
+                    worse_count += 1
+                repo.db.add(existing)
+                reinspect_count += 1
+            elif level > 0:
+                status_db, severity = classify(None, float(entry["threshold"]), level)
+                incident = PestIncident(
+                    plot_id=pid, occurrence_date=today_val, category=entry["category"], name=entry["name"],
+                    severity=severity, status=status_db, control_threshold_pct=float(entry["threshold"]),
+                    reinspection_date=(today_val + timedelta(days=int(entry["days"]))) if status_db == "monitoramento" else None,
+                    created_by=author,
+                )
+                incident.inspections.append(PestInspection(inspection_date=today_val, kind="ronda", level=level, created_by=author))
+                repo.db.add(incident)
+                new_count += 1
+    rnd.status = "concluida"
+    rnd.new_count, rnd.reinspect_count, rnd.worse_count = new_count, reinspect_count, worse_count
+    rnd.completed_at = app_now()
+    repo.db.add(rnd)
+    repo.db.commit()
+    _flash(request, "success", f"Ronda enviada: {new_count} foco(s) novo(s) e {reinspect_count} reinspeção(ões).")
+    return _redirect(f"/pragas/rondas/{round_id}")
 
 
 @router.get("/perfil-agronomico")

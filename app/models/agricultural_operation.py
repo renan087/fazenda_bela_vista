@@ -25,6 +25,8 @@ class AgriculturalOperation(Base):
     target_pest: Mapped[str | None] = mapped_column(String(140), nullable=True)
     pruning_subtype: Mapped[str | None] = mapped_column(String(60), nullable=True)
     inputs_cost: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True, default=0)
+    planned_input_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    planned_input_qty: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 

@@ -383,17 +383,19 @@ def test_pests_photo_reinspection_and_map_sanidade(env):
     assert "Por sanidade" in map_html
     assert "1 foco(s) · Nv. 5" in map_html
 
-    # Reinspeção marca foco como controlada
-    reinsp = r.reinspect_pest_action(
+    # Reinspeção com contagem e decisão de encerrar marca foco como controlado
+    reinsp = _post(
+        env,
+        r.reinspect_pest_action,
+        [
+            ("sampled_count", "100"),
+            ("affected_count", "0"),
+            ("decision", "encerrar"),
+            ("inspection_date", date.today().isoformat()),
+            ("note", "Controle eficiente após pulverização"),
+        ],
         inc.id,
-        env.request(f"/pragas/{inc.id}/reinspecao"),
-        csrf_token="x",
-        status_value="controlada",
-        severity=1,
-        reinspection_date=date.today().isoformat(),
-        reinspection_note="Controle eficiente após pulverização",
-        db=env.db,
-        user=env.user,
+        path=f"/pragas/{inc.id}/reinspecao",
     )
     assert reinsp.status_code == 303
     env.db.refresh(inc)

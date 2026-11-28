@@ -1,385 +1,422 @@
 {% extends "base.html" %}
 {% from "partials/phytosanitary_nav.html" import phytosanitary_tabs %}
 {% block content %}
-{% set ctx = pest_ctx %}
-{% set k = ctx.kpi %}
-<div class="sf-page pd-page ft-page pest-page" data-pests-page data-can-write="{{ '1' if can_write_page else '0' }}">
-    <header class="pd-head">
+{% set ic_x %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>{% endset %}
+{% set ic_search %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>{% endset %}
+{% set ic_more %}<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>{% endset %}
+{% set ic_cam %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>{% endset %}
+{% set ic_bug %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="14" rx="4.5" ry="5.5"/><path d="M12 8.5V6M9.5 5.5L8 4M14.5 5.5L16 4M7.5 12H4M7.5 16l-3 1.5M16.5 12H20M16.5 16l3 1.5"/></svg>{% endset %}
+{% set ic_leaf %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14z"/><circle cx="11" cy="12" r="1.2"/><circle cx="14" cy="9" r="1"/></svg>{% endset %}
+<div class="sf-page pd-page ft-page pest-page pz" data-pests-page data-can-write="{{ '1' if can_write_page else '0' }}">
+    <header class="pz-head">
         <div>
+            <p class="pz-eyebrow">{% if season_label %}Safra {{ season_label }}{% endif %}{% if season_label and farm_label %} · {% endif %}{{ farm_label }}</p>
             <h1 class="sf-page-title">Pragas e pulverizações</h1>
-            <p class="sf-page-subtitle">Monitore focos fitossanitários com fotos e severidade, dispare pulverizações com controle de carência e acompanhe a reinspeção até o controle.</p>
         </div>
-        <div class="pd-head-actions">
-            {% if can_write_page %}
-            <a class="sf-btn sf-btn-secondary" href="/pragas/pulverizacoes?novo=1">Nova pulverização</a>
-            <button type="button" class="sf-btn sf-btn-primary" data-pest-launch-open>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                Registrar ocorrência
+        {% if can_write_page %}
+        <div class="pz-actions">
+            <button type="button" class="pz-btn pz-btn-sec pz-grow" data-pz-open="ronda">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+                Nova ronda
             </button>
-            {% endif %}
+            <button type="button" class="pz-btn pz-btn-pri pz-grow" data-pz-open="novo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Registrar praga
+            </button>
+            <div class="pz-menu-wrap" data-pz-menu>
+                <button type="button" class="pz-btn pz-btn-sec pz-btn-ic" aria-label="Mais ações" aria-haspopup="menu" aria-expanded="false" data-pz-menu-btn>{{ ic_more }}</button>
+                <div class="pz-menu" role="menu" hidden>
+                    <button type="button" role="menuitem" disabled>Configurar níveis de controle <span class="pz-soon">Em breve</span></button>
+                    <button type="button" role="menuitem" disabled>Relatório da safra (PDF) <span class="pz-soon">Em breve</span></button>
+                    <button type="button" role="menuitem" disabled>Compartilhar com o agrônomo <span class="pz-soon">Em breve</span></button>
+                </div>
+            </div>
         </div>
+        {% endif %}
     </header>
 
-    {{ phytosanitary_tabs('pests', phyto_pests_count, phyto_sprays_count, phyto_treatments_count) }}
+    {{ phytosanitary_tabs('rondas' if tab == 'rondas' else 'pests', phyto_pests_count, phyto_sprays_count, phyto_treatments_count, phyto_rounds_count) }}
 
-    {% if ctx.climate_alert %}
-    <div class="pd-alert is-warn" role="status">
-        <strong>{{ ctx.climate_alert.title }}</strong> — {{ ctx.climate_alert.detail }}
+    {% if tab == 'focos' %}
+    {% if climate_alert %}
+    <div class="pz-alert" role="status" data-pz-alert>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#1F5FA8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 15a4 4 0 0 1 .5-8A5 5 0 0 1 17 8a3.5 3.5 0 0 1 0 7z"/><path d="M9 18l-1 2M13 18l-1 2M17 18l-1 2"/></svg>
+        <div class="pz-alert-txt"><strong>{{ climate_alert.title }}</strong> <span>{{ climate_alert.detail }}</span></div>
+        <a class="pz-btn pz-btn-ghost pz-btn-sm" href="{{ module_href('/clima-agua') }}">Ver previsão</a>
+        <button type="button" class="pz-btn pz-btn-ghost pz-btn-sm pz-btn-ic" aria-label="Dispensar aviso" data-pz-alert-close>{{ ic_x }}</button>
     </div>
     {% endif %}
 
-    <section class="ft-kpis" aria-label="Indicadores fitossanitários">
-        <article class="pd-card ft-kpi">
-            <span class="pd-eyebrow">Focos ativos</span>
-            <div class="ft-kpi-val"><strong class="{{ 'is-warn' if k.active else 'is-ok' }}">{{ k.active }}</strong><span>em aberto</span></div>
-            <p class="ft-kpi-sub">{{ k.affected_plots }} talhão(ões) com ocorrência ativa</p>
-        </article>
-        <article class="pd-card ft-kpi">
-            <span class="pd-eyebrow">Nível crítico (4–5)</span>
-            <div class="ft-kpi-val"><strong class="{{ 'is-err' if k.critical else 'is-ok' }}">{{ k.critical }}</strong><span>foco{{ 's' if k.critical != 1 }}</span></div>
-            <p class="ft-kpi-sub">{% if k.critical %}Prioridade imediata de controle{% else %}Nenhum foco em nível crítico{% endif %}</p>
-        </article>
-        <article class="pd-card ft-kpi">
-            <span class="pd-eyebrow">Em tratamento</span>
-            <div class="ft-kpi-val"><strong>{{ k.treating }}</strong><span>em ação</span></div>
-            <p class="ft-kpi-sub">Aguardando reinspeção para encerramento</p>
-        </article>
-        <article class="pd-card ft-kpi">
-            <span class="pd-eyebrow">Controlados na safra</span>
-            <div class="ft-kpi-val"><strong class="is-ok">{{ k.controlled }}</strong><span>encerrado{{ 's' if k.controlled != 1 }}</span></div>
-            <p class="ft-kpi-sub">{{ k.total }} registro(s) no histórico da safra</p>
-        </article>
+    <section class="pz-card pz-sum" aria-label="Resumo da safra — toque para filtrar">
+        {% for g in summary.segments %}
+        <button type="button" class="pz-seg" aria-pressed="false" data-pz-seg="{{ g.key }}">
+            <span class="pz-seg-l"><span class="pz-dot" style="background: {{ g.dot }}"></span>{{ g.label }}</span>
+            <span class="pz-seg-n">{{ g.count }}</span>
+            <span class="pz-small pz-muted">{{ g.sub }}</span>
+        </button>
+        {% endfor %}
+        <div class="pz-healthy">
+            <span class="pz-seg-l"><span class="pz-dot" style="background:#9BCB6B"></span>Talhões sem foco ativo</span>
+            <span class="pz-seg-n">{{ summary.healthy }} <small>de {{ summary.plots_total }}</small></span>
+            <span class="pz-small pz-muted">Próxima ronda sugerida: {{ next_round_label }}</span>
+        </div>
     </section>
 
-    <section class="pd-card ft-stage" aria-label="Monitoramento fitossanitário">
-        <div class="ft-stage-top">
-            <div>
-                <h2>Ocorrências registradas</h2>
-                <p class="ft-stage-sub">Clique em <strong>Pulverizar</strong> para lançar o defensivo já vinculado ao talhão e à ocorrência.</p>
+    <div class="pz-body">
+        <section class="pz-card pz-list" aria-label="Focos de pragas e doenças">
+            <div class="pz-tool">
+                <label class="pz-search">{{ ic_search }}<input type="search" placeholder="Buscar praga ou talhão" aria-label="Buscar praga ou talhão" data-pz-q></label>
+                <select class="pz-sel" aria-label="Filtrar por talhão" data-pz-plot-f>
+                    <option value="">Todos os talhões</option>
+                    {% for p in plots %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+                </select>
+                <select class="pz-sel" aria-label="Filtrar por praga" data-pz-pest-f>
+                    <option value="">Todas as pragas</option>
+                    {% for name in rows|map(attribute='name')|unique|sort %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+                </select>
+                <div class="pz-seg2" role="group" aria-label="Forma de ver">
+                    <button type="button" class="is-on" data-pz-view="lista" aria-pressed="true">Lista</button>
+                    <button type="button" data-pz-view="talhoes" aria-pressed="false">Por talhão</button>
+                </div>
             </div>
-            <label class="sl-search ft-search">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                <span class="sr-only">Buscar ocorrências</span>
-                <input type="search" placeholder="Buscar praga, doença, talhão ou tratamento..." data-pest-search>
-            </label>
-        </div>
-
-        <div class="ft-filters-row">
-            <div class="sl-chips" role="group" aria-label="Filtrar ocorrências">
-                <button type="button" class="sl-chip" aria-pressed="true" data-pest-filter="all">Todas <span>{{ k.total }}</span></button>
-                <button type="button" class="sl-chip" aria-pressed="false" data-pest-filter="active">Ativas <span>{{ k.active }}</span></button>
-                <button type="button" class="sl-chip" aria-pressed="false" data-pest-filter="critical">Críticas (4–5) <span>{{ k.critical }}</span></button>
-                <button type="button" class="sl-chip" aria-pressed="false" data-pest-filter="em_tratamento">Em tratamento <span>{{ k.treating }}</span></button>
-                <button type="button" class="sl-chip" aria-pressed="false" data-pest-filter="controlada">Controladas <span>{{ k.controlled }}</span></button>
+            <div class="pz-filterbar" data-pz-filterbar hidden>
+                <span class="pz-small pz-muted">Filtrando:</span>
+                <button type="button" class="pz-chip is-on" data-pz-clear><span data-pz-filter-txt></span>{{ ic_x }}<span class="sr-only">Limpar filtros</span></button>
             </div>
-        </div>
 
-        {% if incidents %}
-        <div class="lv-pest-list">
-            {% for item in incidents %}
-            {% set m = ctx.meta_by_id.get(item.id, {}) %}
-            <article class="lv-pest-card"
-                data-pest-card
-                data-status="{{ m.status_code }}"
-                data-severity="{{ item.severity }}"
-                data-pest-search-text="{{ item.name }} {{ m.category_label }} {{ item.plot.name if item.plot else '' }} {{ item.treatment or '' }} {{ item.notes or '' }} {{ item.occurrence_date }}">
-                <div class="lv-pest-main">
-                    {% if m.has_photo %}
-                    <a href="/pragas/{{ item.id }}/foto" target="_blank" class="lv-pest-thumb" title="Abrir foto em tamanho real">
-                        <img src="/pragas/{{ item.id }}/foto" alt="Foto de {{ item.name }}" loading="lazy">
-                    </a>
-                    {% endif %}
-                    <div class="min-w-0" style="flex:1;">
-                        <div class="lv-rec-badges">
-                            <span class="pd-chip is-{{ m.status_tone }}">{{ m.status_label }}</span>
-                            <span class="pd-chip is-{{ m.severity_tone }}">{{ m.severity_label }}</span>
-                            <span class="pd-chip is-muted">{{ m.category_label }}</span>
-                            {% if item.incidence_pct is not none %}
-                            <span class="pd-chip is-info">{{ item.incidence_pct|decimal_br(1) }}% incidência</span>
-                            {% endif %}
+            <div data-pz-view-pane="lista">
+                {% if rows %}
+                <div class="pz-rows" data-pz-rows>
+                    {% for r in rows %}
+                    <div class="pz-row" data-pz-row="{{ r.id }}" data-status="{{ r.status }}" data-plot="{{ r.plot_id }}" data-pest="{{ r.name }}" data-search="{{ r.search }}">
+                        <button type="button" class="pz-name" data-pz-select="{{ r.id }}" aria-label="Abrir {{ r.name }} — {{ r.plot_name }}">
+                            <span class="pz-ico" style="background: {{ r.bg }}; color: {{ r.fg }}">{% if r.is_disease %}{{ ic_leaf }}{% else %}{{ ic_bug }}{% endif %}</span>
+                            <span class="pz-name-txt"><strong>{{ r.name }}</strong><span class="pz-small pz-muted">{{ r.plot_name }}{% if r.variety %} · {{ r.variety }}{% endif %}</span></span>
+                        </button>
+                        <div class="pz-hide-sm">
+                            <span class="pz-badge" style="background: {{ r.bg }}; color: {{ r.fg }}"><span class="pz-dot" style="background: {{ r.fg }}"></span>{{ r.status_label }}</span>
+                            <div class="pz-small pz-muted pz-mt4">{{ r.location }} · desde {{ r.since }}</div>
                         </div>
-                        <h3 class="lv-rec-title">{{ item.name }}</h3>
-                        <p class="lv-rec-meta">
-                            {{ item.plot.name if item.plot else "Talhão removido" }} · {{ item.occurrence_date.strftime('%d/%m/%Y') if item.occurrence_date else "—" }}
-                            {% if item.reinspection_date %} · Reinspeção: {{ item.reinspection_date.strftime('%d/%m/%Y') }}{% endif %}
-                            {% if item.resolved_date %} · Controlada em {{ item.resolved_date.strftime('%d/%m/%Y') }}{% endif %}
-                        </p>
-                        {% if item.treatment %}<p class="lv-pest-treat"><strong>Tratamento:</strong> {{ item.treatment }}</p>{% endif %}
-                        {% if item.notes %}<p class="lv-rec-notes">{{ item.notes }}</p>{% endif %}
+                        <div class="pz-hide-sm">
+                            <div class="pz-inc-top"><strong>{{ r.incidence_txt }}</strong><span class="pz-small pz-muted">nível {{ r.threshold_txt }}</span></div>
+                            <div class="pz-bar" title="Incidência {{ r.incidence_txt }} — a marca preta é o nível de controle"><i style="width: {{ r.bar_w }}%; background: {{ r.bar_c }}"></i><b></b></div>
+                        </div>
+                        <div class="pz-act">
+                            {% if r.action and can_write_page %}
+                            <button type="button" class="pz-btn pz-btn-sm {{ 'pz-btn-pri' if r.action == 'controle' else 'pz-btn-sec' }}" data-pz-action="{{ r.action }}" data-id="{{ r.id }}">{{ r.action_label }}</button>
+                            {% endif %}
+                            <span class="pz-small {{ 'pz-late' if r.late else 'pz-muted' }}">{{ r.action_sub }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="pz-empty" data-pz-nores hidden>
+                    <strong>Nenhum foco encontrado</strong>
+                    <p class="pz-muted">Nada corresponde aos filtros escolhidos.</p>
+                    <button type="button" class="pz-btn pz-btn-sec" data-pz-clear>Limpar filtros</button>
+                </div>
+                <div class="pz-foot"><span data-pz-count></span><span class="pz-hide-sm">A marca preta na barra é o nível de controle de cada praga</span></div>
+                {% else %}
+                <div class="pz-empty">
+                    <div class="pz-empty-ic">{{ ic_leaf }}</div>
+                    <strong>Nenhum foco nesta safra</strong>
+                    <p class="pz-muted">Lavoura sadia até aqui. Faça uma ronda por semana — achar o problema cedo custa menos que controlar depois.</p>
+                    {% if can_write_page %}
+                    <div class="pz-row-btns"><button type="button" class="pz-btn pz-btn-sec" data-pz-open="ronda">Planejar ronda</button><button type="button" class="pz-btn pz-btn-pri" data-pz-open="novo">Registrar praga</button></div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="pz-tiles" data-pz-view-pane="talhoes" hidden>
+                {% for t in tiles %}
+                <button type="button" class="pz-tile" data-pz-tile="{{ t.id }}">
+                    <span class="pz-tile-top"><strong>{{ t.name }}</strong><span class="pz-badge" style="background: {{ t.bg }}; color: {{ t.fg }}">{{ t.label }}</span></span>
+                    <span class="pz-small pz-muted">{% if t.variety %}{{ t.variety }} · {% endif %}{{ t.area }}</span>
+                    <span class="pz-small">{{ t.detail }}</span>
+                </button>
+                {% else %}
+                <p class="pz-muted pz-pad">Nenhum talhão na safra ativa.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <button type="button" class="pz-scrim pz-panel-scrim" aria-label="Fechar detalhes" data-pz-panel-close hidden></button>
+        <aside class="pz-card pz-panel" aria-label="Detalhes do foco" data-pz-panel>
+            <div class="pz-panel-empty" data-pz-panel-empty>
+                <strong>Escolha um foco na lista</strong>
+                <p class="pz-small pz-muted">Aqui aparecem a evolução, o histórico, as fotos e o próximo passo.</p>
+            </div>
+            <div data-pz-panel-body hidden></div>
+        </aside>
+    </div>
+    {% else %}
+    <section class="pz-card pz-list" aria-label="Rondas de monitoramento">
+        <div class="pz-tool pz-tool-between">
+            <div><strong>Rondas de monitoramento</strong><div class="pz-small pz-muted">A cada 7 dias · próxima sugerida: {{ next_round_label }}</div></div>
+            {% if can_write_page %}<button type="button" class="pz-btn pz-btn-pri" data-pz-open="ronda">Nova ronda</button>{% endif %}
+        </div>
+        {% for r in rounds %}
+        <div class="pz-row pz-row-round">
+            <div><strong>{{ r.date }}</strong><div class="pz-small pz-muted">{{ r.by }}</div></div>
+            <div class="pz-hide-sm">{{ r.plots }}<div class="pz-small pz-muted">{{ r.pests }}</div></div>
+            <div><span class="pz-badge" style="background: {{ r.bg }}; color: {{ r.fg }}">{{ r.found }}</span></div>
+            <div class="pz-act">{% if r.open %}<a class="pz-btn pz-btn-sm pz-btn-pri" href="/pragas/rondas/{{ r.id }}">Fazer agora</a>{% else %}<a class="pz-btn pz-btn-sm pz-btn-sec" href="/pragas/rondas/{{ r.id }}">Ver</a>{% endif %}</div>
+        </div>
+        {% else %}
+        <div class="pz-empty">
+            <strong>Nenhuma ronda ainda</strong>
+            <p class="pz-muted">A ronda é uma volta pelos talhões marcando ausente, baixa, média ou alta para cada praga. Só o que for encontrado vira foco.</p>
+            {% if can_write_page %}<button type="button" class="pz-btn pz-btn-pri" data-pz-open="ronda">Planejar a primeira ronda</button>{% endif %}
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    {% if can_write_page %}
+    <button type="button" class="pz-scrim" data-pz-scrim hidden aria-label="Fechar"></button>
+
+    {# ───────── Registrar praga (3 etapas) ───────── #}
+    <form class="pz-drawer" method="post" action="/pragas" enctype="multipart/form-data" data-pz-drawer="novo" role="dialog" aria-modal="true" aria-labelledby="pz-novo-t" hidden novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="pest_key" data-nf-key>
+        <input type="hidden" name="location" value="Bordadura" data-nf-loc>
+        <div class="pz-dr-head">
+            <div class="pz-dr-top"><div><h2 class="pz-dr-title" id="pz-novo-t">Registrar praga ou doença</h2><p class="pz-small pz-muted">Nada é salvo até você conferir e confirmar.</p></div><button type="button" class="pz-btn pz-btn-ghost pz-btn-ic" aria-label="Fechar" data-pz-close>{{ ic_x }}</button></div>
+            <div class="pz-steps"><div class="pz-step" data-nf-step-ind="1">1. O que</div><div class="pz-step" data-nf-step-ind="2">2. Onde e quanto</div><div class="pz-step" data-nf-step-ind="3">3. Conferir</div></div>
+        </div>
+        <div class="pz-dr-body">
+            <div class="pz-stack" data-nf-step="1">
+                <div class="pz-fld"><span class="pz-fld-l">O que você encontrou?</span>
+                    <label class="pz-search">{{ ic_search }}<input type="search" placeholder="Buscar pelo nome" aria-label="Buscar praga ou doença" data-nf-pq></label>
+                </div>
+                <div class="pz-pests">
+                    {% for c in catalog %}
+                    <button type="button" class="pz-pest" data-nf-pest="{{ c.key }}" data-name="{{ c.name }}" aria-pressed="false">
+                        <span class="pz-pest-top"><strong>{{ c.name }}</strong>{% if c.common %}<span class="pz-tag">Comum aqui</span>{% endif %}</span>
+                        <span class="pz-small pz-muted">{{ c.category }} · nível de controle {{ c.threshold_txt }}</span>
+                    </button>
+                    {% endfor %}
+                    <button type="button" class="pz-pest" data-nf-pest="outra" data-name="outra" aria-pressed="false"><strong>Outra</strong><span class="pz-small pz-muted">Não está na lista — digitar o nome</span></button>
+                </div>
+                <div class="pz-box pz-stack" data-nf-other hidden>
+                    <label class="pz-fld"><span class="pz-fld-l">Nome da praga ou doença</span><input class="pz-inp" name="other_name" maxlength="120" placeholder="Ex.: Mosca-das-raízes" data-nf-oname></label>
+                    <div class="pz-grid2">
+                        <div class="pz-fld"><span class="pz-fld-l">Tipo</span>
+                            <div class="pz-chips"><label class="pz-chip-radio"><input type="radio" name="other_category" value="Praga" checked><span>Praga</span></label><label class="pz-chip-radio"><input type="radio" name="other_category" value="Doença"><span>Doença</span></label></div>
+                        </div>
+                        <label class="pz-fld"><span class="pz-fld-l">Nível de controle (%)</span><input class="pz-inp" name="other_threshold" inputmode="numeric" value="10" data-nf-onc></label>
+                    </div>
+                    <span class="pz-small pz-muted">Fica salva na lista da fazenda para as próximas vezes. O agrônomo pode ajustar o nível depois.</span>
+                </div>
+                <button type="button" class="pz-opt" disabled>{{ ic_cam }}<span><strong>Não sei o que é <span class="pz-soon">Em breve</span></strong><span class="pz-small pz-muted pz-block">Tire uma foto e o Pezinho ajuda a identificar</span></span></button>
+            </div>
+
+            <div class="pz-stack" data-nf-step="2" hidden>
+                <div class="pz-box pz-between"><span><span class="pz-small pz-muted">Praga ou doença</span><strong class="pz-block" data-nf-pestname></strong></span><button type="button" class="pz-btn pz-btn-sm pz-btn-ghost" data-nf-goto="1">Trocar</button></div>
+                <div class="pz-fld">
+                    <span class="pz-between"><span class="pz-fld-l">Em quais talhões?</span><span class="pz-small pz-muted"><span data-nf-selcount>0</span> de {{ launch_plots|length }} selecionados</span></span>
+                    {% if launch_plots|length > 6 %}
+                    <label class="pz-search">{{ ic_search }}<input type="search" placeholder="Buscar talhão, variedade ou setor" aria-label="Buscar talhão" data-nf-plq></label>
+                    {% endif %}
+                    <div class="pz-chips" data-nf-sectors hidden><span class="pz-small pz-muted">Marcar setor inteiro:</span></div>
+                    <div class="pz-chips" data-nf-selchips hidden></div>
+                    <div class="pz-selsum pz-small" data-nf-selsum hidden><span><strong data-nf-selsum-n></strong> · <span data-nf-selsum-ha></span></span><button type="button" class="pz-linkb" data-nf-only>Ver só os selecionados</button><button type="button" class="pz-linkb" data-nf-clearplots>Limpar</button></div>
+                    <div class="pz-plist-wrap" data-nf-plist-wrap>
+                        <div class="pz-plist">
+                            {% for p in launch_plots %}
+                            <div data-nf-plot-row="{{ p.id }}" data-search="{{ (p.name ~ ' ' ~ (p.variety.name if p.variety else '') ~ ' setor ' ~ (p.group_name or ''))|lower }}">
+                                <label class="pz-plotc"><span class="dt-chk"><input type="checkbox" class="dt-check" name="plot_id" value="{{ p.id }}" data-nf-plot data-name="{{ p.name }}" data-area="{{ p.area_hectares or 0 }}"></span><span class="pz-grow1"><strong>{{ p.name }}</strong> <span class="pz-small pz-muted">{% if p.variety %}{{ p.variety.name }} · {% endif %}{{ p.area_hectares|decimal_br }} ha</span></span>{% if p.group_name %}<span class="pz-small pz-muted">Setor {{ p.group_name }}</span>{% endif %}</label>
+                                <div class="pz-dup pz-small" data-nf-dup hidden><span>Já existe um foco ativo desta praga aqui. Para não duplicar, registre como reinspeção.</span><button type="button" class="pz-btn pz-btn-sm pz-btn-sec" data-nf-asrei>Registrar reinspeção</button></div>
+                            </div>
+                            {% else %}
+                            <p class="pz-small pz-muted pz-pad">Nenhum talhão vinculado à safra ativa.</p>
+                            {% endfor %}
+                            <div class="pz-small pz-muted pz-pad" data-nf-plot-nores hidden>Nenhum talhão encontrado para essa busca.</div>
+                        </div>
                     </div>
                 </div>
-
-                {% if can_write_page %}
-                <div class="lv-pest-actions">
-                    {% if m.status_code != 'controlada' %}
-                    <a class="sf-btn sf-btn-primary sf-btn-sm" href="/pragas/pulverizacoes?novo=1&amp;plot_id={{ item.plot_id }}&amp;pest_id={{ item.id }}&amp;op_type=pulverizacao">Pulverizar / Tratar →</a>
-                    <button type="button" class="sf-btn sf-btn-secondary sf-btn-sm"
-                        data-pest-status-open
-                        data-pest-id="{{ item.id }}"
-                        data-pest-title="{{ item.name }} · {{ item.plot.name if item.plot else '' }}"
-                        data-pest-status="{{ m.status_code }}"
-                        data-pest-severity="{{ item.severity }}">Reinspecionar</button>
-                    {% endif %}
-                    <a href="/pragas?edit_id={{ item.id }}" class="sf-btn sf-btn-secondary sf-btn-sm">Editar</a>
-                    <details class="sf-menu" data-sf-dropdown>
-                        <summary class="sf-icon-btn" aria-label="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
-                        <div class="sf-menu-panel">
-                            <form method="post" action="/pragas/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta ocorrência fitossanitária?');">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button type="submit" class="sf-menu-danger">Excluir</button>
-                            </form>
-                        </div>
-                    </details>
+                <div class="pz-grid2">
+                    <label class="pz-fld"><span class="pz-fld-l" data-nf-noun>Folhas avaliadas</span><input class="pz-inp" name="sampled_count" inputmode="numeric" value="100" data-nf-sampled></label>
+                    <label class="pz-fld"><span class="pz-fld-l">Com sintoma</span><input class="pz-inp" name="affected_count" inputmode="numeric" placeholder="Ex.: 12" data-nf-affected></label>
                 </div>
-                {% endif %}
-            </article>
-            {% endfor %}
-        </div>
-        <div class="pd-empty" data-pest-search-empty hidden><strong>Nenhuma ocorrência corresponde ao filtro ou busca.</strong></div>
-        {% else %}
-        <div class="pd-empty">
-            <strong>Nenhuma ocorrência registrada nesta safra.</strong>
-            <span>Ao identificar qualquer foco de praga ou doença no campo, registre aqui com foto para acompanhar evolução e controle.</span>
-            {% if can_write_page %}<button type="button" class="sf-btn sf-btn-primary" data-pest-launch-open>Registrar primeira ocorrência</button>{% endif %}
-        </div>
-        {% endif %}
-        {% with pagination=incidents_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
-    </section>
-</div>
-
-{# Modal: Nova / Editar ocorrência #}
-<dialog id="pest-launch-modal" class="ft-dialog is-md">
-    <form method="post" enctype="multipart/form-data" action="{% if edit_incident %}/pragas/{{ edit_incident.id }}/editar{% else %}/pragas{% endif %}" class="ft-dialog-shell" id="pest-form">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div class="ft-dialog-head">
-            <div>
-                <p class="pd-eyebrow is-brand">Lavoura · Fitossanidade</p>
-                <h2>{% if edit_incident %}Editar ocorrência{% else %}Registrar praga ou doença{% endif %}</h2>
-                <p class="ft-dialog-sub">Escolha no catálogo do café ou informe manualmente e anexe foto do campo.</p>
+                <div class="pz-box" aria-live="polite">
+                    <div class="pz-between pz-baseline"><span><span class="pz-small pz-muted">Incidência</span> <strong class="pz-big" data-nf-inc>—</strong></span><span class="pz-small pz-muted">nível de controle <span data-nf-nc></span></span></div>
+                    <div class="pz-bar"><i data-nf-bar style="width:0%"></i><b></b></div>
+                    <div class="pz-small pz-verdict" data-nf-verdict></div>
+                </div>
+                <div class="pz-fld"><span class="pz-fld-l">Onde no talhão</span>
+                    <div class="pz-chips">
+                        {% for l in pest_json.locations %}<button type="button" class="pz-chip{{ ' is-on' if loop.first }}" data-nf-locbtn="{{ l }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ l }}</button>{% endfor %}
+                        <button type="button" class="pz-chip" disabled>Marcar no mapa <span class="pz-soon">Em breve</span></button>
+                    </div>
+                </div>
+                <div class="pz-grid2">
+                    <label class="pz-fld"><span class="pz-fld-l">Data</span><input class="pz-inp" type="date" name="occurrence_date" value="{{ today_iso }}" max="{{ today_iso }}" data-nf-date></label>
+                    <div class="pz-fld"><span class="pz-fld-l">Foto</span><label class="pz-btn pz-btn-sec pz-file">{{ ic_cam }}<span data-nf-photo-txt>Adicionar foto</span><input type="file" name="photo" accept="image/*" capture="environment" class="sr-only" data-nf-photo></label></div>
+                </div>
+                <label class="pz-fld"><span class="pz-fld-l">Observação <span class="pz-muted pz-normal">(opcional)</span></span><textarea class="pz-inp" name="notes" rows="2" placeholder="Ex.: reboleira perto do carreador" data-nf-notes></textarea></label>
             </div>
-            <button type="button" class="ft-x" data-pest-launch-close aria-label="Fechar">✕</button>
-        </div>
 
-        <div class="ft-dialog-body">
-            {% if not edit_incident %}
-            <div class="ft-field" style="margin-bottom:.75rem;">
-                <span>Seleção rápida (pragas e doenças comuns do café)</span>
-                <div class="lv-cat-chips">
-                    {% for item in ctx.catalog %}
-                    <button type="button" class="sl-chip" data-pest-quick-name="{{ item.name }}" data-pest-quick-cat="{{ item.category }}">{{ item.name }}</button>
+            <div class="pz-stack" data-nf-step="3" hidden>
+                <dl class="pz-kv">
+                    <dt>Praga ou doença</dt><dd data-nf-r-pest></dd>
+                    <dt>Talhões</dt><dd data-nf-r-plots></dd>
+                    <dt>Incidência</dt><dd data-nf-r-inc></dd>
+                    <dt>Onde</dt><dd data-nf-r-loc></dd>
+                    <dt>Data</dt><dd data-nf-r-date></dd>
+                </dl>
+                <div class="pz-box"><h3 class="pz-h3">O que vai acontecer</h3><div data-nf-impacts></div></div>
+                <label class="pz-plotc" data-nf-plan-wrap hidden><span class="dt-chk"><input type="checkbox" class="dt-check" name="plan_next" value="1" checked></span><span>Planejar o controle logo depois de confirmar</span></label>
+            </div>
+        </div>
+        <div class="pz-dr-foot">
+            <button type="button" class="pz-btn pz-btn-sec" data-nf-back>Cancelar</button>
+            <div class="pz-foot-r"><span class="pz-small pz-muted" data-nf-hint></span><button type="button" class="pz-btn pz-btn-pri" data-nf-next>Continuar</button></div>
+        </div>
+    </form>
+
+    {# ───────── Corrigir registro ───────── #}
+    <form class="pz-drawer" method="post" enctype="multipart/form-data" data-pz-drawer="editar" role="dialog" aria-modal="true" aria-labelledby="pz-ed-t" hidden novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="location" data-ed-loc>
+        <div class="pz-dr-head"><div class="pz-dr-top"><div><h2 class="pz-dr-title" id="pz-ed-t">Corrigir registro</h2><p class="pz-small pz-muted" data-ed-sub></p></div><button type="button" class="pz-btn pz-btn-ghost pz-btn-ic" aria-label="Fechar" data-pz-close>{{ ic_x }}</button></div></div>
+        <div class="pz-dr-body">
+            <div class="pz-grid2">
+                <label class="pz-fld"><span class="pz-fld-l" data-ed-noun>Amostras avaliadas</span><input class="pz-inp" name="sampled_count" inputmode="numeric" data-ed-sampled></label>
+                <label class="pz-fld"><span class="pz-fld-l">Com sintoma</span><input class="pz-inp" name="affected_count" inputmode="numeric" data-ed-affected></label>
+            </div>
+            <div class="pz-box"><span class="pz-small pz-muted">Incidência</span> <strong class="pz-big" data-ed-inc>—</strong></div>
+            <div class="pz-fld"><span class="pz-fld-l">Onde no talhão</span><div class="pz-chips">{% for l in pest_json.locations %}<button type="button" class="pz-chip" data-ed-locbtn="{{ l }}" aria-pressed="false">{{ l }}</button>{% endfor %}</div></div>
+            <div class="pz-grid2">
+                <label class="pz-fld"><span class="pz-fld-l">Data</span><input class="pz-inp" type="date" name="occurrence_date" max="{{ today_iso }}" data-ed-date></label>
+                <div class="pz-fld"><span class="pz-fld-l">Foto</span><label class="pz-btn pz-btn-sec pz-file">{{ ic_cam }}<span>Trocar foto</span><input type="file" name="photo" accept="image/*" class="sr-only"></label></div>
+            </div>
+            <label class="pz-fld"><span class="pz-fld-l">Observação</span><textarea class="pz-inp" name="notes" rows="2" data-ed-notes></textarea></label>
+        </div>
+        <div class="pz-dr-foot"><button type="button" class="pz-btn pz-btn-sec" data-pz-close>Cancelar</button><button type="submit" class="pz-btn pz-btn-pri" data-ed-submit>Confirmar correção</button></div>
+    </form>
+
+    {# ───────── Planejar controle ───────── #}
+    <form class="pz-drawer" method="post" data-pz-drawer="controle" role="dialog" aria-modal="true" aria-labelledby="pz-ct-t" hidden novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="application_date" data-ct-date>
+        <div class="pz-dr-head"><div class="pz-dr-top"><div><h2 class="pz-dr-title" id="pz-ct-t">Planejar controle</h2><p class="pz-small pz-muted" data-ct-sub></p></div><button type="button" class="pz-btn pz-btn-ghost pz-btn-ic" aria-label="Fechar" data-pz-close>{{ ic_x }}</button></div></div>
+        <div class="pz-dr-body">
+            {% if pest_json.products %}
+            <div class="pz-fld"><span class="pz-fld-l">Produto (do seu estoque)</span>
+                <div class="pz-stack pz-gap8 pz-prodlist">
+                    {% for p in pest_json.products %}
+                    <label class="pz-opt pz-opt-radio"><input type="radio" name="input_id" value="{{ p.id }}" class="sr-only" data-ct-prod {% if loop.first %}checked{% endif %}><span class="pz-radio"></span><span class="pz-grow1"><strong>{{ p.name }}</strong><span class="pz-small pz-muted pz-block">Em estoque: {{ p.stock_txt }}{% if p.withdrawal %} · carência usada antes: {{ p.withdrawal }} dias{% endif %}</span></span></label>
                     {% endfor %}
                 </div>
+            </div>
+            <div class="pz-grid2">
+                <label class="pz-fld"><span class="pz-fld-l">Dose por hectare (<span data-ct-unit>L</span>/ha)</span><input class="pz-inp" name="dose_per_ha" inputmode="decimal" placeholder="0,00" data-ct-dose data-mask="decimal"></label>
+                <div class="pz-fld"><span class="pz-fld-l">Total necessário</span><div class="pz-inp pz-readonly"><strong data-ct-need>—</strong></div></div>
+            </div>
+            <div class="pz-box" data-ct-stockbox>
+                <div class="pz-between"><span class="pz-small pz-muted">Estoque</span><strong data-ct-stock></strong></div>
+                <div class="pz-short" data-ct-short hidden><span class="pz-small" data-ct-short-txt></span><a class="pz-btn pz-btn-sm pz-btn-sec" href="{{ module_href('/insumos/comprados') }}">Registrar compra</a></div>
+            </div>
+            <label class="pz-fld"><span class="pz-fld-l">Carência do produto (dias)</span><input class="pz-inp" name="withdrawal_days" inputmode="numeric" placeholder="Veja na bula" data-ct-car></label>
+            <div class="pz-fld"><span class="pz-fld-l">Quando aplicar</span>
+                <div class="pz-days">
+                    {% for d in pest_json.forecast %}
+                    <button type="button" class="pz-day" data-ct-day="{{ d.iso }}" aria-pressed="false" aria-label="{{ d.aria }}" title="{{ d.aria }}">
+                        <span class="pz-day-w">{{ d.weekday }}</span><strong class="pz-day-d">{{ d.day }}</strong>
+                        {% if d.kind == 'rain' %}<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#1F5FA8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 14a4 4 0 0 1 .5-8A5 5 0 0 1 17 7a3.5 3.5 0 0 1 0 7z"/><path d="M9 17l-1 2.5M13 17l-1 2.5M17 17l-1 2.5"/></svg>
+                        {% elif d.kind == 'cloud' %}<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#5B6660" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17a4 4 0 0 1 .5-8A5 5 0 0 1 17 10a3.5 3.5 0 0 1 0 7z"/></svg>
+                        {% else %}<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#D18A00" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>{% endif %}
+                        <span class="pz-day-v{{ ' is-ideal' if d.ideal }}">{{ d.value }}</span>
+                    </button>
+                    {% endfor %}
+                    <button type="button" class="pz-day" data-ct-day="custom" aria-pressed="false"><span class="pz-day-w">outra</span><strong class="pz-day-d">data</strong><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#294127" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg><span class="pz-day-v" data-ct-custom-short>escolher</span></button>
+                </div>
+                {% if pest_json.forecast %}<span class="pz-small pz-muted" data-ct-legend>Ideal: sem chuva prevista.</span>{% endif %}
+                <div class="pz-custom" data-ct-custom hidden><input class="pz-inp pz-w180" type="date" min="{{ today_iso }}" aria-label="Data da aplicação" data-ct-custom-date><span class="pz-small pz-muted">Sem previsão para essa data ainda. Confira o clima na véspera.</span></div>
+            </div>
+            <div class="pz-grid2">
+                <label class="pz-fld"><span class="pz-fld-l">Equipamento</span><select class="pz-inp" name="equipment_asset_id"><option value="">Não informar</option>{% for eq in equipment_assets %}<option value="{{ eq.id }}">{{ eq.name }}</option>{% endfor %}</select></label>
+                <label class="pz-fld"><span class="pz-fld-l">Responsável</span><input class="pz-inp" name="responsible_name" list="pz-resp" value="{{ responsible_names[0] if responsible_names else '' }}"><datalist id="pz-resp">{% for n in responsible_names %}<option value="{{ n }}"></option>{% endfor %}</datalist></label>
+            </div>
+            <div class="pz-box"><h3 class="pz-h3">Impacto</h3>
+                <div class="pz-impact"><span class="pz-dot" style="background:#1F5FA8"></span><span data-ct-imp-car>Informe a carência para ver quando a colheita fica liberada neste talhão.</span></div>
+                <div class="pz-impact"><span class="pz-dot" style="background:#446A36"></span><span data-ct-imp-cost></span></div>
+                <div class="pz-impact"><span class="pz-dot" style="background:#D18A00"></span><span data-ct-imp-rei></span></div>
+            </div>
+            {% else %}
+            <div class="pz-empty">
+                <strong>Nenhum defensivo no estoque</strong>
+                <p class="pz-muted">Para planejar a pulverização, registre a compra do produto em Insumos. Depois volte aqui — o foco continua aguardando.</p>
+                <a class="pz-btn pz-btn-pri" href="{{ module_href('/insumos/comprados') }}">Registrar compra</a>
             </div>
             {% endif %}
+        </div>
+        <div class="pz-dr-foot"><button type="button" class="pz-btn pz-btn-sec" data-pz-close>Cancelar</button>{% if pest_json.products %}<div class="pz-foot-r"><span class="pz-small pz-muted" data-ct-hint></span><button type="submit" class="pz-btn pz-btn-pri" data-ct-submit>Confirmar planejamento</button></div>{% endif %}</div>
+    </form>
 
-            <div class="ft-field">
-                {% if edit_incident %}
-                <span>Talhão</span>
-                <select name="plot_id" required>
-                    {% for plot in launch_plots %}
-                    <option value="{{ plot.id }}" {% if edit_incident.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
+    {# ───────── Reinspecionar ───────── #}
+    <form class="pz-drawer" method="post" data-pz-drawer="reinspecao" role="dialog" aria-modal="true" aria-labelledby="pz-ri-t" hidden novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="inspection_date" value="{{ today_iso }}">
+        <div class="pz-dr-head"><div class="pz-dr-top"><div><h2 class="pz-dr-title" id="pz-ri-t">Reinspecionar</h2><p class="pz-small pz-muted" data-ri-sub></p></div><button type="button" class="pz-btn pz-btn-ghost pz-btn-ic" aria-label="Fechar" data-pz-close>{{ ic_x }}</button></div></div>
+        <div class="pz-dr-body">
+            <div class="pz-grid2">
+                <label class="pz-fld"><span class="pz-fld-l" data-ri-noun>Amostras avaliadas</span><input class="pz-inp" name="sampled_count" inputmode="numeric" value="100" data-ri-sampled></label>
+                <label class="pz-fld"><span class="pz-fld-l">Com sintoma</span><input class="pz-inp" name="affected_count" inputmode="numeric" placeholder="Ex.: 4" data-ri-affected></label>
+            </div>
+            <div class="pz-box" aria-live="polite">
+                <div class="pz-compare"><span class="pz-muted" data-ri-prev></span><span aria-hidden="true">→</span><strong class="pz-big" data-ri-new>—</strong><span class="pz-badge" data-ri-trend></span></div>
+                <div class="pz-small pz-muted pz-mt4">Nível de controle: <span data-ri-nc></span></div>
+            </div>
+            <div class="pz-fld"><span class="pz-fld-l">O que fazer agora?</span>
+                <div class="pz-stack pz-gap8">
+                    <label class="pz-opt pz-opt-radio"><input type="radio" name="decision" value="encerrar" class="sr-only" data-ri-dec><span class="pz-radio"></span><span class="pz-grow1"><strong>Encerrar: foco controlado</strong> <span class="pz-tag" data-ri-rec="encerrar" hidden>Sugerido</span><span class="pz-small pz-muted pz-block">Sai da lista de ativos e fica no histórico da safra.</span></span></label>
+                    <label class="pz-opt pz-opt-radio"><input type="radio" name="decision" value="manter" class="sr-only" data-ri-dec><span class="pz-radio"></span><span class="pz-grow1"><strong>Continuar observando</strong> <span class="pz-tag" data-ri-rec="manter" hidden>Sugerido</span><span class="pz-small pz-muted pz-block">Nova reinspeção em 7 dias.</span></span></label>
+                    <label class="pz-opt pz-opt-radio"><input type="radio" name="decision" value="novo" class="sr-only" data-ri-dec><span class="pz-radio"></span><span class="pz-grow1"><strong>Precisa de novo controle</strong> <span class="pz-tag" data-ri-rec="novo" hidden>Sugerido</span><span class="pz-small pz-muted pz-block">Abre o planejamento da pulverização em seguida.</span></span></label>
+                </div>
+            </div>
+            <label class="pz-fld"><span class="pz-fld-l">Observação <span class="pz-muted pz-normal">(opcional)</span></span><textarea class="pz-inp" name="note" rows="2" placeholder="Ex.: folhas novas sem mina"></textarea></label>
+        </div>
+        <div class="pz-dr-foot"><button type="button" class="pz-btn pz-btn-sec" data-pz-close>Cancelar</button><div class="pz-foot-r"><span class="pz-small pz-muted" data-ri-hint></span><button type="submit" class="pz-btn pz-btn-pri" data-ri-submit disabled>Confirmar reinspeção</button></div></div>
+    </form>
+
+    {# ───────── Nova ronda ───────── #}
+    <form class="pz-drawer" method="post" action="/pragas/rondas" data-pz-drawer="ronda" role="dialog" aria-modal="true" aria-labelledby="pz-rd-t" hidden>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="pz-dr-head"><div class="pz-dr-top"><div><h2 class="pz-dr-title" id="pz-rd-t">Nova ronda de monitoramento</h2><p class="pz-small pz-muted">A equipe percorre os talhões e marca o que viu. Só o que for encontrado vira foco.</p></div><button type="button" class="pz-btn pz-btn-ghost pz-btn-ic" aria-label="Fechar" data-pz-close>{{ ic_x }}</button></div></div>
+        <div class="pz-dr-body">
+            <div class="pz-fld"><span class="pz-fld-l">Talhões</span>
+                <div class="pz-plist-wrap{{ ' has-more' if launch_plots|length > 6 }}"><div class="pz-plist">
+                    {% for p in launch_plots %}
+                    <div><label class="pz-plotc"><span class="dt-chk"><input type="checkbox" class="dt-check" name="plot_id" value="{{ p.id }}" checked data-rd-plot></span><span class="pz-grow1"><strong>{{ p.name }}</strong> <span class="pz-small pz-muted">{% if p.variety %}{{ p.variety.name }}{% endif %}</span></span>{% set lr = (pest_json.plots|selectattr('id','equalto',p.id)|first) %}<span class="pz-small pz-muted">{% if lr and lr.last_round %}última ronda {{ lr.last_round }}{% else %}sem ronda{% endif %}</span></label></div>
                     {% endfor %}
-                </select>
-                {% else %}
-                <span>Talhões afetados (selecione um ou mais)</span>
-                <div class="lv-plot-checks">
-                    {% for plot in launch_plots %}
-                    <label class="lv-plot-check">
-                        <input type="checkbox" name="plot_id" value="{{ plot.id }}" {% if preselect_plot_id == plot.id or (not preselect_plot_id and launch_plots|length == 1) %}checked{% endif %}>
-                        <span><strong>{{ plot.name }}</strong><small>{{ (plot.area_hectares or 0)|decimal_br(1) }} ha</small></span>
-                    </label>
+                </div></div>
+            </div>
+            <div class="pz-fld"><span class="pz-fld-l">O que observar</span><span class="pz-small pz-muted">Sugeridas pelo Perfil agronômico da fazenda</span>
+                <div class="pz-chips">
+                    {% for c in catalog if not c.key.startswith('custom:') %}
+                    <label class="pz-chip-radio"><input type="checkbox" name="pest_key" value="{{ c.key }}" {% if c.common %}checked{% endif %} data-rd-pest><span>{{ c.name }}</span></label>
                     {% endfor %}
                 </div>
-                {% endif %}
             </div>
-
-            <div class="lv-form-grid" style="margin-top:.85rem;">
-                <label class="ft-field">
-                    <span>Data da constatação</span>
-                    <input type="date" name="occurrence_date" value="{{ edit_incident.occurrence_date.isoformat() if edit_incident else today_iso }}" required>
-                </label>
-                <label class="ft-field">
-                    <span>Categoria</span>
-                    {% set cur_cat = ('Doença' if edit_incident and (edit_incident.category or '').lower() in ['doenca', 'doença'] else (edit_incident.category if edit_incident else 'Praga')) %}
-                    <select name="category" data-pest-cat-select>
-                        <option value="Praga" {% if cur_cat == 'Praga' %}selected{% endif %}>Praga</option>
-                        <option value="Doença" {% if cur_cat == 'Doença' %}selected{% endif %}>Doença</option>
-                    </select>
-                </label>
-                <label class="ft-field">
-                    <span>Nome da praga / doença</span>
-                    <input type="text" name="name" data-pest-name-input value="{{ edit_incident.name if edit_incident else '' }}" placeholder="Ex.: Ferrugem-alaranjada" required>
-                </label>
-                <label class="ft-field">
-                    <span>Severidade</span>
-                    {% set cur_sev = edit_incident.severity if edit_incident else 2 %}
-                    <select name="severity" required>
-                        <option value="1" {% if cur_sev == 1 %}selected{% endif %}>1 — Foco isolado (preventivo)</option>
-                        <option value="2" {% if cur_sev == 2 %}selected{% endif %}>2 — Baixa incidência</option>
-                        <option value="3" {% if cur_sev == 3 %}selected{% endif %}>3 — Moderada (atenção)</option>
-                        <option value="4" {% if cur_sev == 4 %}selected{% endif %}>4 — Alta (nível de ação)</option>
-                        <option value="5" {% if cur_sev == 5 %}selected{% endif %}>5 — Crítica (dano econômico)</option>
-                    </select>
-                </label>
-                <label class="ft-field">
-                    <span>Status</span>
-                    {% set cur_st = (edit_incident.status if edit_incident and edit_incident.status else 'ativa') %}
-                    <select name="status">
-                        <option value="ativa" {% if cur_st == 'ativa' %}selected{% endif %}>Ativa</option>
-                        <option value="em_tratamento" {% if cur_st == 'em_tratamento' %}selected{% endif %}>Em tratamento</option>
-                        <option value="monitoramento" {% if cur_st == 'monitoramento' %}selected{% endif %}>Em monitoramento</option>
-                        <option value="controlada" {% if cur_st == 'controlada' %}selected{% endif %}>Controlada</option>
-                    </select>
-                </label>
-                <label class="ft-field">
-                    <span>Incidência amostrada (% opcional)</span>
-                    <input type="number" step="0.1" min="0" max="100" name="incidence_pct" value="{{ edit_incident.incidence_pct if edit_incident and edit_incident.incidence_pct is not none else '' }}" placeholder="Ex.: 12,5">
-                </label>
-                <label class="ft-field is-span-2">
-                    <span>Foto do campo (folha, fruto ou armadilha — opcional)</span>
-                    <input type="file" name="photo" accept="image/*">
-                    {% if edit_incident and edit_incident.photo_data %}
-                    <small>Foto atual anexada. <a href="/pragas/{{ edit_incident.id }}/foto" target="_blank" style="color:#446A36; font-weight:600;">Ver foto</a></small>
-                    {% endif %}
-                </label>
-                <label class="ft-field is-span-2">
-                    <span>Tratamento orientado / realizado (opcional)</span>
-                    <input type="text" name="treatment" value="{{ edit_incident.treatment if edit_incident else '' }}" placeholder="Ou clique em Pulverizar após salvar para baixar o defensivo do estoque">
-                </label>
-                <label class="ft-field is-span-2">
-                    <span>Observações</span>
-                    <textarea name="notes" rows="2" placeholder="Ex.: bordadura do talhão, reboleira próxima ao carreador...">{{ edit_incident.notes if edit_incident else '' }}</textarea>
-                </label>
-            </div>
+            <label class="pz-fld"><span class="pz-fld-l">Quem vai fazer</span><input class="pz-inp" name="responsible_name" list="pz-resp" value="{{ responsible_names[0] if responsible_names else '' }}"></label>
+            <div class="pz-box pz-small" data-rd-summary></div>
         </div>
-
-        <div class="ft-dialog-foot">
-            <button type="button" class="sf-btn sf-btn-secondary" data-pest-launch-close>Cancelar</button>
-            <button type="submit" class="sf-btn sf-btn-primary">{% if edit_incident %}Salvar alterações{% else %}Salvar ocorrência{% endif %}</button>
-        </div>
+        <div class="pz-dr-foot"><button type="submit" name="mode" value="enviar" class="pz-btn pz-btn-sec">Criar e fazer depois</button><button type="submit" name="mode" value="agora" class="pz-btn pz-btn-pri">Fazer agora no celular</button></div>
     </form>
-</dialog>
 
-{# Modal rápido de reinspeção / mudança de status #}
-<dialog id="pest-status-modal" class="ft-dialog is-sm">
-    <form method="post" action="" class="ft-dialog-shell" data-pest-status-form>
+    <form class="pz-dlg" method="post" data-pz-drawer="excluir" role="alertdialog" aria-modal="true" aria-labelledby="pz-del-t" hidden>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div class="ft-dialog-head">
-            <div>
-                <p class="pd-eyebrow is-brand">Reinspeção em campo</p>
-                <h2 data-pest-status-title>Atualizar ocorrência</h2>
-            </div>
-            <button type="button" class="ft-x" data-pest-status-close aria-label="Fechar">✕</button>
-        </div>
-        <div class="ft-dialog-body">
-            <div class="lv-form-grid">
-                <label class="ft-field is-span-2">
-                    <span>Novo status</span>
-                    <select name="status" data-pest-status-select>
-                        <option value="em_tratamento">Em tratamento</option>
-                        <option value="monitoramento">Em monitoramento</option>
-                        <option value="controlada">Controlada (encerrar foco)</option>
-                        <option value="ativa">Permanece ativa</option>
-                    </select>
-                </label>
-                <label class="ft-field">
-                    <span>Severidade atual</span>
-                    <select name="severity" data-pest-status-severity>
-                        <option value="1">1 — Isolado</option>
-                        <option value="2">2 — Baixa</option>
-                        <option value="3">3 — Moderada</option>
-                        <option value="4">4 — Alta</option>
-                        <option value="5">5 — Crítica</option>
-                    </select>
-                </label>
-                <label class="ft-field">
-                    <span>Data da reinspeção</span>
-                    <input type="date" name="reinspection_date" value="{{ today_iso }}" required>
-                </label>
-                <label class="ft-field is-span-2">
-                    <span>Nota da reinspeção</span>
-                    <textarea name="reinspection_note" rows="2" placeholder="Ex.: incidência caiu após pulverização, foco controlado."></textarea>
-                </label>
-            </div>
-        </div>
-        <div class="ft-dialog-foot">
-            <button type="button" class="sf-btn sf-btn-secondary" data-pest-status-close>Cancelar</button>
-            <button type="submit" class="sf-btn sf-btn-primary">Salvar reinspeção</button>
-        </div>
+        <h2 class="pz-dr-title" id="pz-del-t">Excluir este foco?</h2>
+        <p class="pz-muted" data-del-txt></p>
+        <div class="pz-row-btns pz-end"><button type="button" class="pz-btn pz-btn-sec" data-pz-close>Cancelar</button><button type="submit" class="pz-btn pz-btn-dan">Excluir foco</button></div>
     </form>
-</dialog>
-
-<script>
-(() => {
-    const launchModal = document.getElementById('pest-launch-modal');
-    const isEditing = {{ 'true' if edit_incident else 'false' }};
-    const autoOpenNew = {{ 'true' if open_new_modal else 'false' }};
-
-    const closeModal = () => {
-        if (isEditing) { window.location.href = '/pragas'; return; }
-        launchModal?.close();
-    };
-    document.querySelectorAll('[data-pest-launch-open]').forEach((b) => b.addEventListener('click', () => launchModal?.showModal()));
-    document.querySelectorAll('[data-pest-launch-close]').forEach((b) => b.addEventListener('click', closeModal));
-    launchModal?.addEventListener('cancel', (e) => { e.preventDefault(); closeModal(); });
-    if (isEditing || autoOpenNew) launchModal?.showModal();
-
-    const nameIn = launchModal?.querySelector('[data-pest-name-input]');
-    const catSel = launchModal?.querySelector('[data-pest-cat-select]');
-    launchModal?.querySelectorAll('[data-pest-quick-name]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            if (nameIn) nameIn.value = btn.dataset.pestQuickName || '';
-            if (catSel && btn.dataset.pestQuickCat) catSel.value = btn.dataset.pestQuickCat;
-        });
-    });
-
-    // Reinspeção
-    const stModal = document.getElementById('pest-status-modal');
-    const stForm = stModal?.querySelector('[data-pest-status-form]');
-    const stTitle = stModal?.querySelector('[data-pest-status-title]');
-    const stSelect = stModal?.querySelector('[data-pest-status-select]');
-    const stSev = stModal?.querySelector('[data-pest-status-severity]');
-    document.querySelectorAll('[data-pest-status-open]').forEach((b) => {
-        b.addEventListener('click', () => {
-            if (stForm) stForm.action = `/pragas/${b.dataset.pestId}/reinspecao`;
-            if (stTitle) stTitle.textContent = b.dataset.pestTitle || 'Reinspeção';
-            if (stSelect) stSelect.value = b.dataset.pestStatus === 'em_tratamento' ? 'controlada' : 'em_tratamento';
-            if (stSev && b.dataset.pestSeverity) stSev.value = b.dataset.pestSeverity;
-            stModal?.showModal();
-        });
-    });
-    document.querySelectorAll('[data-pest-status-close]').forEach((b) => b.addEventListener('click', () => stModal?.close()));
-
-    // Filtros e busca
-    let activeFilter = 'all';
-    const filterBtns = Array.from(document.querySelectorAll('[data-pest-filter]'));
-    const cards = Array.from(document.querySelectorAll('[data-pest-card]'));
-    const searchInput = document.querySelector('[data-pest-search]');
-    const emptyEl = document.querySelector('[data-pest-search-empty]');
-    const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    const applyFilter = () => {
-        const q = norm(searchInput?.value || '');
-        let vis = 0;
-        cards.forEach((c) => {
-            const st = c.dataset.status || 'ativa';
-            const sev = Number(c.dataset.severity || 1);
-            const matchF = activeFilter === 'all'
-                || (activeFilter === 'active' && st !== 'controlada')
-                || (activeFilter === 'critical' && st !== 'controlada' && sev >= 4)
-                || st === activeFilter;
-            const matchQ = !q || norm(c.dataset.pestSearchText || c.textContent).includes(q);
-            const show = matchF && matchQ;
-            c.hidden = !show;
-            if (show) vis += 1;
-        });
-        if (emptyEl) emptyEl.hidden = vis > 0 || cards.length === 0;
-    };
-    filterBtns.forEach((b) => b.addEventListener('click', () => {
-        activeFilter = b.dataset.pestFilter || 'all';
-        filterBtns.forEach((x) => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
-        applyFilter();
-    }));
-    searchInput?.addEventListener('input', applyFilter);
-})();
-</script>
+    <form method="post" data-pz-reopen hidden><input type="hidden" name="csrf_token" value="{{ csrf_token }}"></form>
+    {% endif %}
+</div>
+<script type="application/json" id="pz-data">{{ pest_json|tojson }}</script>
+<script type="application/json" id="pz-open">{{ {"drawer": open_drawer, "selected": selected_id}|tojson }}</script>
+<script src="{{ url_for('static', path='js/pests.js') }}?v=20261128pz1"></script>
 {% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="pz prd" data-pest-round>
+    <header class="prd-head">
+        <a class="prd-back" href="/pragas?aba=rondas" data-prd-back aria-label="Voltar"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></a>
+        <div class="pz-grow1"><div class="prd-title" data-prd-title>Ronda de monitoramento</div><div class="prd-sub" data-prd-sub>{{ round_label }} · {{ pest_round.responsible_name or '' }}</div></div>
+        <span class="prd-net" data-prd-net hidden><span class="pz-dot" style="background:#D18A00"></span>Sem internet</span>
+    </header>
+
+    {% if round_json.done %}
+    <section class="prd-done">
+        <div class="prd-done-ic"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l4 4 10-10"/></svg></div>
+        <strong>Ronda concluída</strong>
+        <p class="pz-muted">{{ round_json.summary.new }} foco(s) novo(s) e {{ round_json.summary.reinspect }} reinspeção(ões) registradas.</p>
+        <a class="pz-btn pz-btn-pri prd-wide" href="/pragas">Ver focos</a>
+        <a class="pz-btn pz-btn-sec prd-wide" href="/pragas?aba=rondas">Voltar às rondas</a>
+    </section>
+    {% else %}
+    <form method="post" action="/pragas/rondas/{{ pest_round.id }}" data-prd-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div data-prd-inputs></div>
+
+        <section class="prd-screen" data-prd-screen="plots">
+            <div class="pz-between pz-baseline"><strong>Talhões da ronda</strong><span class="pz-small pz-muted" data-prd-progress></span></div>
+            <div class="prd-prog"><i data-prd-progbar></i></div>
+            <div class="prd-list" data-prd-plots></div>
+            <p class="pz-small pz-muted">As marcações ficam salvas no celular e são enviadas quando houver sinal.</p>
+        </section>
+
+        <section class="prd-screen" data-prd-screen="check" hidden>
+            <p class="pz-small pz-muted">Avalie cerca de 10 plantas pelo talhão. Marque o que viu em cada praga.</p>
+            <div class="prd-list" data-prd-checks></div>
+        </section>
+
+        <section class="prd-screen" data-prd-screen="review" hidden>
+            <strong class="prd-h">Confira antes de enviar</strong>
+            <div class="prd-list" data-prd-review></div>
+            <p class="pz-small pz-muted">Focos com nível alto aparecem como “Precisa de controle” na tela de Pragas.</p>
+        </section>
+
+        <footer class="prd-foot" data-prd-foot></footer>
+    </form>
+    {% endif %}
+</div>
+<script type="application/json" id="prd-data">{{ round_json|tojson }}</script>
+<script src="{{ url_for('static', path='js/pest_round.js') }}?v=20261128pz1"></script>
+{% endblock %}

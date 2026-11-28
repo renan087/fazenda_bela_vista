@@ -52,7 +52,7 @@ from app.models.organization_subscription_payment import OrganizationSubscriptio
 from app.models.mercadopago_event import MercadoPagoEvent
 from app.models.password_reset_token import PasswordResetToken
 from app.models.password_change_verification import PasswordChangeVerification
-from app.models.pesticide import PestIncident
+from app.models.pesticide import PestIncident, PestInspection, PestRound
 from app.models.plot import Plot
 from app.models.plot_attachment import PlotAttachment
 from app.models.plot_planting import PlotPlanting
@@ -141,6 +141,8 @@ __all__ = [
     "PasswordResetToken",
     "PasswordChangeVerification",
     "PestIncident",
+    "PestInspection",
+    "PestRound",
     "Plot",
     "PlotAttachment",
     "PlotPlanting",
