@@ -23,7 +23,7 @@
         <span class="cg-pz" aria-hidden="true"><img src="{{ pz }}" alt=""></span>
         <div><h2 id="cg-title">{{ g.farm.name }} ainda não tem safra aberta</h2><p>Os lançamentos ficam dentro de uma safra. Pela data de hoje, sugiro esta:</p></div>
     </div>
-    <div class="cg-sug"><span class="cg-cal" aria-hidden="true">{{ g.suggest.short }}<small>SAFRA</small></span><div><b>{{ g.suggest.name }}</b><span>{{ g.suggest.period }} · Café</span></div></div>
+    <div class="cg-sug"><span class="cg-cal" aria-hidden="true">{{ g.suggest.short }}<small>SAFRA</small></span><div><b>{{ g.suggest.name }}</b><span>{{ g.suggest.period }} · Café</span><em data-cg-hint>Dá para mudar nome e datas depois.</em></div></div>
     <form method="post" action="/contexto/safra-sugerida" data-cg-season-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="farm_id" value="{{ g.farm.id }}">
@@ -34,15 +34,16 @@
             <div><dt>Período</dt><dd>{{ g.suggest.range }}</dd></div>
             <div><dt>Depois de confirmar</dt><dd>Fica ativa e esta página abre nela</dd></div>
         </dl>
-        <div class="cg-foot">
-            <p data-cg-hint>Você pode mudar nome e datas depois.</p>
-            <a class="sf-btn cg-btn" href="/safras/nova" data-cg-adjust>Ajustar antes</a>
-            <button type="button" class="sf-btn cg-btn" data-cg-back hidden>Voltar</button>
-            <button type="button" class="sf-btn sf-btn-primary cg-btn" data-cg-use>Usar esta safra</button>
-            <button type="submit" class="sf-btn sf-btn-primary cg-btn" data-cg-confirm hidden>Confirmar e abrir</button>
+        <div class="ns-foot">
+            {% if g.other_farms %}<button type="button" class="ns-link" data-cg-open-picker>Trocar a fazenda</button>{% else %}<span></span>{% endif %}
+            <div class="ns-acts">
+                <a class="ns-btn" href="/safras/nova" data-cg-adjust>Ajustar antes</a>
+                <button type="button" class="ns-btn" data-cg-back hidden>Voltar</button>
+                <button type="button" class="ns-btn pri" data-cg-use>Usar esta safra</button>
+                <button type="submit" class="ns-btn pri" data-cg-confirm hidden>Confirmar e abrir</button>
+            </div>
         </div>
     </form>
-    {% if g.other_farms %}<p class="cg-alt">Queria outra fazenda? <button type="button" class="cg-link" data-cg-open-picker>Trocar a fazenda</button></p>{% endif %}
 </section>
 {% else %}
 <section class="fx" aria-labelledby="cg-title" data-cg-pick>
@@ -182,7 +183,7 @@
             q('[data-cg-conf]').hidden = !confirming;
             q('[data-cg-use]').hidden = confirming; q('[data-cg-adjust]').hidden = confirming;
             q('[data-cg-confirm]').hidden = !confirming; q('[data-cg-back]').hidden = !confirming;
-            q('[data-cg-hint]').textContent = confirming ? 'Confira e confirme. Nada é criado antes disso.' : 'Você pode mudar nome e datas depois.';
+            q('[data-cg-hint]').textContent = confirming ? 'Confira abaixo e confirme. Nada é criado antes disso.' : 'Dá para mudar nome e datas depois.';
             (confirming ? q('[data-cg-confirm]') : q('[data-cg-use]')).focus();
         };
         q('[data-cg-use]').addEventListener('click', () => toggle(true));

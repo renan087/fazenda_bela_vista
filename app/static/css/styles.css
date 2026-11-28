@@ -13594,3 +13594,18 @@ a.obt-seg{cursor:pointer}a.obt-seg:hover{background:#E3ECDF}
 /* Encerrar tutorial fica no lado do balão longe do que está sendo apontado */
 .obt-coach:not([hidden]){display:flex;flex-direction:column}
 .obt-coach.is-above .obt-quit{order:-1;margin:0 2px 8px auto}
+/* Fazenda sem safra: rodapé alinhado */
+.cg-card[data-cg-season] { padding: 24px 24px 22px; }
+.cg-card[data-cg-season] .cg-sug em { display: block; margin-top: 6px; font-style: normal; font-size: 12.5px; color: #7a857e; }
+.cg-card[data-cg-season] .cg-conf { margin-top: 14px; }
+.ns-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+.ns-acts { display: flex; gap: 10px; margin-left: auto; }
+.ns-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 11px; border: 1px solid #d5dcd3; background: #fff; color: #16201a; font-size: 14.5px; font-weight: 600; white-space: nowrap; text-decoration: none; cursor: pointer; transition: background-color .15s, border-color .15s; }
+.ns-btn:hover { background: #f6f8f5; border-color: #c9d2c6; color: #16201a; }
+.ns-btn.pri { background: #446a36; border-color: #446a36; color: #fff; }
+.ns-btn.pri:hover { background: #3a5c2e; border-color: #3a5c2e; color: #fff; }
+.ns-btn[hidden] { display: none; }
+.ns-btn:focus-visible, .ns-link:focus-visible { outline: 3px solid #9bcb6b; outline-offset: 2px; }
+.ns-link { border: 0; background: none; padding: 0; min-height: 44px; color: #5b6660; font-size: 13.5px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.ns-link:hover { color: #446a36; }
+@media (max-width: 639px) { .ns-foot { flex-direction: column-reverse; align-items: stretch; } .ns-acts { margin-left: 0; } .ns-acts .ns-btn { flex: 1; } .ns-link { align-self: center; } }
