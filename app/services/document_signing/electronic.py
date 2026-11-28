@@ -1272,6 +1272,104 @@ def record_real_external_access(db, signer: SigningExternalSigner, *, method: st
     return True
 
 
+def detect_in_app_browser(user_agent: str | None) -> dict:
+    """Detecta acessos vindos de navegadores internos (WhatsApp, Instagram, WebViews Android/iOS)."""
+    ua = (user_agent or "").strip()
+    ua_low = ua.lower()
+    if any(k in ua_low for k in ("iphone", "ipad", "ipod")):
+        os_name = "ios"
+    elif "android" in ua_low:
+        os_name = "android"
+    else:
+        os_name = "other"
+
+    if not ua:
+        return {"is_in_app": False, "app_name": "", "os": os_name}
+
+    app_signatures = (
+        ("whatsapp", "WhatsApp"),
+        ("instagram", "Instagram"),
+        ("fban", "Facebook"),
+        ("fbav", "Facebook"),
+        ("fb_iab", "Facebook"),
+        ("messenger", "Messenger"),
+        ("linkedinapp", "LinkedIn"),
+        ("telegram", "Telegram"),
+        ("bytedancewebview", "TikTok"),
+        ("musical_ly", "TikTok"),
+        ("tiktok", "TikTok"),
+        ("line/", "LINE"),
+    )
+    for token, label in app_signatures:
+        if token in ua_low:
+            return {"is_in_app": True, "app_name": label, "os": os_name}
+
+    # Android WebView genérico (ex.: "; wv)" ou Version/4.0 Chrome/...)
+    if os_name == "android" and ("; wv)" in ua_low or ("version/4.0" in ua_low and "chrome/" in ua_low)):
+        return {"is_in_app": True, "app_name": "aplicativo", "os": os_name}
+
+    # iOS WKWebView (AppleWebKit sem identificador de navegador externo como Safari/CriOS/FxiOS/EdgiOS/OPiOS)
+    if (
+        os_name == "ios"
+        and "applewebkit" in ua_low
+        and not any(b in ua_low for b in ("safari/", "crios/", "fxios/", "edgios/", "opios/", "opt/"))
+    ):
+        return {"is_in_app": True, "app_name": "aplicativo", "os": os_name}
+
+    return {"is_in_app": False, "app_name": "", "os": os_name}
+
+
+def get_active_external_challenge(
+    db,
+    *,
+    signer: SigningExternalSigner,
+    revision: SigningRevision,
+) -> dict | None:
+    """Retorna metadados seguros do código OTP ativo no servidor para retomar a assinatura sem reenvio."""
+    if signer.status == "signed":
+        return None
+    now = datetime.now(timezone.utc)
+    challenge = db.scalar(
+        select(SigningElectronicChallenge)
+        .where(
+            SigningElectronicChallenge.external_signer_id == signer.id,
+            SigningElectronicChallenge.document_id == signer.document_id,
+            SigningElectronicChallenge.revision_id == revision.id,
+            SigningElectronicChallenge.revision_sha256 == revision.sha256,
+            SigningElectronicChallenge.consumed_at.is_(None),
+            SigningElectronicChallenge.attempts < MAX_ATTEMPTS,
+            SigningElectronicChallenge.expires_at > now,
+        )
+        .order_by(SigningElectronicChallenge.created_at.desc())
+        .limit(1)
+    )
+    if challenge is None:
+        return None
+
+    expires_seconds = max(0, int((utc(challenge.expires_at) - now).total_seconds()))
+    if expires_seconds <= 0:
+        return None
+    elapsed = (now - utc(challenge.created_at)).total_seconds()
+    resend_after_seconds = max(0, int(RESEND_COOLDOWN_SECONDS - elapsed + 0.999)) if elapsed < RESEND_COOLDOWN_SECONDS else 0
+    attempts_remaining = max(0, MAX_ATTEMPTS - int(challenge.attempts or 0))
+    fallback_email_available = bool(challenge.auth_channel == "whatsapp" and signer.email and "@" in signer.email)
+
+    return {
+        "challenge_id": challenge.id,
+        "channel": challenge.auth_channel,
+        "destination_masked": challenge.auth_destination_masked,
+        "expires_minutes": CHALLENGE_MINUTES,
+        "expires_seconds": expires_seconds,
+        "expires_at": utc(challenge.expires_at).isoformat(),
+        "resend_after_seconds": resend_after_seconds,
+        "attempts_remaining": attempts_remaining,
+        "max_attempts": MAX_ATTEMPTS,
+        "fallback_email_available": fallback_email_available,
+        "fallback_email_masked": mask_email(signer.email) if fallback_email_available else "",
+        "resumed": True,
+    }
+
+
 def get_external_signer_by_token(db, raw_token: str) -> tuple[SigningExternalSigner, SigningDocument, Farm] | None:
     if not raw_token or len(raw_token) < 16:
         return None

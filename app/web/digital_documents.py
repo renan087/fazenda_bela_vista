@@ -1264,11 +1264,18 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
     )
     has_fallback_email = bool(locked_channel == "whatsapp" and signer.email and "@" in signer.email)
     preset_appearance = signer.appearance if isinstance(signer.appearance, dict) else {"visible": False}
+    user_agent = request.headers.get("user-agent")
+    iab_info = electronic.detect_in_app_browser(user_agent)
+    active_challenge = (
+        None
+        if signer.status == "signed"
+        else electronic.get_active_external_challenge(db, signer=signer, revision=revision)
+    )
     electronic.record_real_external_access(
         db,
         signer,
         method=request.method,
-        user_agent=request.headers.get("user-agent"),
+        user_agent=user_agent,
         headers=dict(request.headers),
     )
     db.commit()
@@ -1296,6 +1303,8 @@ def external_signing_page(token: str, request: Request, db: Session = Depends(ge
             "locked_contact_display": locked_contact_display,
             "has_fallback_email": has_fallback_email,
             "preset_appearance": preset_appearance,
+            "iab_info": iab_info,
+            "active_challenge": active_challenge,
             "phone_masked": electronic.mask_phone(signer.phone) if signer.phone else "",
             "email_masked": electronic.mask_email(signer.email) if signer.email else "",
         },

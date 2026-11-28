@@ -88,19 +88,25 @@ function createOtpController(root, { onResend, onFallbackEmail }) {
     fallbackEmailAvailable = false,
     fallbackEmailMasked = "",
     resent = false,
+    resumed = false,
   } = {}) {
     stop();
     currentChannel = channel;
     const now = Date.now();
-    expiresAtMs = now + Math.max(10, Number(expiresSeconds) || 600) * 1000;
-    resendAtMs = now + Math.max(0, Number(resendAfterSeconds) || 60) * 1000;
+    const rawResend = resendAfterSeconds === undefined || resendAfterSeconds === null ? 60 : Number(resendAfterSeconds);
+    expiresAtMs = now + Math.max(1, Number(expiresSeconds) || 600) * 1000;
+    resendAtMs = now + Math.max(0, Number.isFinite(rawResend) ? rawResend : 60) * 1000;
     isExpired = false;
 
     const chanLabel = channel === "whatsapp" ? "WhatsApp" : "E-mail";
     if (sentTitle) {
-      sentTitle.textContent = resent
-        ? `Novo código enviado via ${chanLabel}`
-        : `Código enviado via ${chanLabel}`;
+      sentTitle.textContent = resumed
+        ? `Código ativo recuperado via ${chanLabel}`
+        : (resent ? `Novo código enviado via ${chanLabel}` : `Código enviado via ${chanLabel}`);
+    }
+    const resumedNote = root.querySelector("[data-ds-otp-resumed-note]");
+    if (resumedNote) {
+      resumedNote.hidden = !resumed;
     }
     if (destEl) {
       destEl.textContent = destinationMasked ? `${chanLabel} · ${destinationMasked}` : chanLabel;
@@ -143,6 +149,88 @@ function createOtpController(root, { onResend, onFallbackEmail }) {
   });
 
   return { start, stop, isExpired: () => isExpired };
+}
+
+function wireOtpInputHelpers(root, feedbackNode) {
+  const input = root.querySelector(".ds-otp-input");
+  const pasteBtn = root.querySelector("[data-ds-otp-paste]");
+  if (!input) return;
+
+  const sanitize = (raw) => String(raw || "").replace(/\D/g, "").slice(0, 8);
+
+  input.addEventListener("input", () => {
+    const clean = sanitize(input.value);
+    if (input.value !== clean) input.value = clean;
+  });
+
+  input.addEventListener("paste", (event) => {
+    const text = event.clipboardData?.getData("text");
+    if (!text) return;
+    const digits = sanitize(text);
+    if (!digits) return;
+    event.preventDefault();
+    input.value = digits;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  pasteBtn?.addEventListener("click", async () => {
+    try {
+      if (!navigator.clipboard?.readText) {
+        input.focus();
+        feedback(feedbackNode, "Toque e segure no campo abaixo para colar o código de 8 dígitos.");
+        return;
+      }
+      const clip = await navigator.clipboard.readText();
+      const digits = sanitize(clip);
+      if (digits.length === 8) {
+        input.value = digits;
+        input.focus();
+        feedback(feedbackNode, "Código colado! Agora toque em concluir assinatura.");
+      } else if (digits.length > 0) {
+        input.value = digits;
+        input.focus();
+        feedback(feedbackNode, "Colamos os dígitos encontrados. Confira se o código tem 8 números.");
+      } else {
+        input.focus();
+        feedback(feedbackNode, "Nenhum código numérico encontrado na área de transferência. Copie o código no WhatsApp e tente novamente.");
+      }
+    } catch {
+      input.focus();
+      feedback(feedbackNode, "Toque e segure no campo abaixo e escolha \"Colar\" para inserir o código.");
+    }
+  });
+}
+
+function detectClientInAppBrowser(serverInfo) {
+  const ua = navigator.userAgent || "";
+  const low = ua.toLowerCase();
+  const os = serverInfo?.os && serverInfo.os !== "other"
+    ? serverInfo.os
+    : (/iphone|ipad|ipod/.test(low) ? "ios" : (/android/.test(low) ? "android" : "other"));
+  if (serverInfo?.is_in_app) {
+    return { isInApp: true, appName: serverInfo.app_name || "aplicativo", os };
+  }
+  const sigs = [
+    ["whatsapp", "WhatsApp"],
+    ["instagram", "Instagram"],
+    ["fban", "Facebook"],
+    ["fbav", "Facebook"],
+    ["fb_iab", "Facebook"],
+    ["messenger", "Messenger"],
+    ["linkedinapp", "LinkedIn"],
+    ["telegram", "Telegram"],
+    ["bytedancewebview", "TikTok"],
+  ];
+  for (const [key, label] of sigs) {
+    if (low.includes(key)) return { isInApp: true, appName: label, os };
+  }
+  if (os === "android" && (low.includes("; wv)") || (low.includes("version/4.0") && low.includes("chrome/")))) {
+    return { isInApp: true, appName: "aplicativo", os };
+  }
+  if (os === "ios" && low.includes("applewebkit") && !/safari\/|crios\/|fxios\/|edgios\/|opios\//.test(low)) {
+    return { isInApp: true, appName: "aplicativo", os };
+  }
+  return { isInApp: false, appName: "", os };
 }
 
 function formatted(value, formatter) {
@@ -2531,6 +2619,7 @@ function initWorkspace(root) {
     onResend: (ch) => dispatchWorkspaceAuthorize(ch, true),
     onFallbackEmail: () => dispatchWorkspaceAuthorize("email", true),
   });
+  wireOtpInputHelpers(root, dialogStatus);
 
   // Step 1 -> Step 2 (request authorization code — Electronic SiSFarm OR ICP-Brasil A1)
   authorize?.addEventListener("click", () => dispatchWorkspaceAuthorize(null, false));
@@ -3723,6 +3812,125 @@ function initExternalSigning(root) {
       syncAuthorization();
     }
   });
+
+  wireOtpInputHelpers(root, dialogStatus);
+
+  // Recomendação para abrir fora do navegador interno (WhatsApp / WebView) — sem usar localStorage
+  const serverIabInfo = parseJson("[data-ds-iab-info]", { is_in_app: false, app_name: "", os: "other" });
+  const activeChallenge = parseJson("[data-ds-active-challenge]", null);
+  const iabGate = find("[data-ds-iab-gate]");
+  if (iabGate) {
+    const iab = detectClientInAppBrowser(serverIabInfo);
+    const tabKey = "sisfarm_ext_iab_dismissed";
+    let dismissed = false;
+    try { dismissed = window.sessionStorage?.getItem(tabKey) === "1"; } catch {}
+
+    if (iab.isInApp && !activeChallenge && !dismissed) {
+      iabGate.hidden = false;
+    }
+
+    const iabOpenBtn = find("[data-ds-iab-open]");
+    const iabCopyBtn = find("[data-ds-iab-copy]");
+    const iabContinueBtn = find("[data-ds-iab-continue]");
+    const iabFeedback = find("[data-ds-iab-feedback]");
+    const iabGuide = find("[data-ds-iab-guide]");
+
+    iabOpenBtn?.addEventListener("click", () => {
+      const currentUrl = window.location.href;
+      const hostPath = `${window.location.host}${window.location.pathname}${window.location.search}`;
+      const revealGuideIfStillHere = () => {
+        if (document.visibilityState !== "hidden" && iabGuide) {
+          iabGuide.hidden = false;
+          feedback(iabFeedback, "Se o navegador não abriu automaticamente, siga a orientação abaixo ou copie o link.");
+        }
+      };
+
+      if (iab.os === "android") {
+        const intentUrl = `intent://${hostPath}#Intent;scheme=${window.location.protocol.replace(":", "") || "https"};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end`;
+        window.location.href = intentUrl;
+        window.setTimeout(revealGuideIfStillHere, 1100);
+      } else if (iab.os === "ios") {
+        const safariUrl = `x-safari-${currentUrl}`;
+        window.location.href = safariUrl;
+        window.setTimeout(revealGuideIfStillHere, 900);
+      } else {
+        const opened = window.open(currentUrl, "_blank", "noopener");
+        if (!opened) revealGuideIfStillHere();
+      }
+    });
+
+    iabCopyBtn?.addEventListener("click", async () => {
+      const url = window.location.href;
+      let copied = false;
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url);
+          copied = true;
+        }
+      } catch {}
+      if (!copied) {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = url;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          copied = document.execCommand("copy");
+          document.body.removeChild(ta);
+        } catch {}
+      }
+      if (copied) {
+        feedback(iabFeedback, iab.os === "ios"
+          ? "Link copiado! Agora abra o Safari e cole na barra de endereço."
+          : "Link copiado! Agora abra o Chrome e cole na barra de endereço.");
+      } else {
+        if (iabGuide) iabGuide.hidden = false;
+        feedback(iabFeedback, "Não foi possível copiar automaticamente. Use o menu do aplicativo para abrir no navegador.", true);
+      }
+    });
+
+    iabContinueBtn?.addEventListener("click", () => {
+      iabGate.hidden = true;
+      try { window.sessionStorage?.setItem(tabKey, "1"); } catch {}
+    });
+  }
+
+  // Retomada automática pelo servidor caso já exista código OTP ativo (inclusive após fechar/reabrir ou trocar de navegador)
+  if (activeChallenge && activeChallenge.challenge_id && confirmForm) {
+    challengeId = activeChallenge.challenge_id;
+    if (consent) consent.checked = true;
+    const actualChannel = activeChallenge.channel || lockedChannel;
+    const step2Title = find("[data-ds-step2-title]");
+    const step2Sub = find("[data-ds-step2-sub]");
+    if (step2Title) {
+      step2Title.textContent = actualChannel === "whatsapp"
+        ? "Digite o código enviado no WhatsApp"
+        : "Digite o código enviado ao seu e-mail";
+    }
+    if (step2Sub) {
+      step2Sub.textContent = `Você já tem um código ativo enviado para ${activeChallenge.destination_masked || "seu contato"}.`;
+    }
+    extOtp.start({
+      channel: actualChannel,
+      destinationMasked: activeChallenge.destination_masked || "",
+      expiresSeconds: activeChallenge.expires_seconds,
+      resendAfterSeconds: activeChallenge.resend_after_seconds,
+      fallbackEmailAvailable: Boolean(activeChallenge.fallback_email_available),
+      fallbackEmailMasked: activeChallenge.fallback_email_masked || root.dataset.emailMasked || "",
+      resumed: true,
+    });
+    if (
+      typeof activeChallenge.attempts_remaining === "number"
+      && typeof activeChallenge.max_attempts === "number"
+      && activeChallenge.attempts_remaining < activeChallenge.max_attempts
+    ) {
+      const plural = activeChallenge.attempts_remaining === 1 ? "tentativa restante" : "tentativas restantes";
+      feedback(dialogStatus, `Você ainda tem ${activeChallenge.attempts_remaining} ${plural} com este código.`);
+    }
+    setStep(2);
+  }
 
   syncAuthorization();
   loadPdf();

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, status %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=15">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=18">{% endblock %}
 {% block content %}
 {% set endpoint = '/assinatura-digital/documentos/' ~ doc.id %}
 {% set pdf_url = endpoint ~ '/revisoes/' ~ doc.current_revision ~ '/pdf' %}
@@ -357,8 +357,11 @@
           </div>
 
           <label class="ds-field">
-            <span>Código de confirmação (8 dígitos)</span>
-            <input id="ds-code" name="code" class="ds-otp-input" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="00000000" required>
+            <span class="ds-otp-field-head">
+              <span>Código de confirmação (8 dígitos)</span>
+              <button type="button" class="ds-otp-paste-btn" data-ds-otp-paste>{{ icon('copy', 13) }} Colar código</button>
+            </span>
+            <input id="ds-code" name="code" class="ds-otp-input" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" enterkeyhint="done" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="00000000" required>
           </label>
 
           <p class="ds-feedback" data-ds-confirm-status role="status" aria-live="polite" hidden></p>
@@ -735,5 +738,5 @@
     </footer>
   </dialog>
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=19"></script>
+<script type="module" src="/static/js/digital_signing.js?v=20"></script>
 {% endblock %}

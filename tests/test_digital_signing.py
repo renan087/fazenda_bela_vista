@@ -1866,3 +1866,159 @@ def test_whatsapp_otp_auth_template_countdown_resend_invalidation_abuse_and_fall
     })
     assert signed.status_code == 200, signed.text
     assert signed.json()["sealed"] is True
+
+
+def test_in_app_browser_detection_android_ios_and_server_side_otp_resumption(web_db, monkeypatch):
+    from app.services import whatsapp as wa_svc
+    from app.services.document_signing import electronic
+
+    sessions, _settings = web_db
+    sent_payloads = []
+    monkeypatch.setattr(electronic, "whatsapp_is_configured", lambda: True)
+
+    def _fake_post(self, payload):
+        sent_payloads.append(payload)
+        return {"messages": [{"id": f"wamid.iab.{len(sent_payloads)}"}]}
+
+    monkeypatch.setattr(wa_svc.WhatsAppClient, "_post", _fake_post)
+
+    # 1) Unit checks for Android & iOS in-app browser detection vs external browsers
+    android_wa_ua = (
+        "Mozilla/5.0 (Linux; Android 14; SM-S918B; wv) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Version/4.0 Chrome/126.0.0.0 Mobile Safari/537.36 WhatsApp/2.24.20.78"
+    )
+    android_wv_ua = (
+        "Mozilla/5.0 (Linux; Android 13; Pixel 7; wv) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Version/4.0 Chrome/125.0.0.0 Mobile Safari/537.36"
+    )
+    ios_wa_ua = (
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Mobile/15E148 WhatsApp/2.24.20"
+    )
+    ios_wkwebview_ua = (
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Mobile/15E148"
+    )
+    android_chrome_ua = (
+        "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+    )
+    ios_safari_ua = (
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
+    )
+
+    assert electronic.detect_in_app_browser(android_wa_ua) == {"is_in_app": True, "app_name": "WhatsApp", "os": "android"}
+    assert electronic.detect_in_app_browser(android_wv_ua) == {"is_in_app": True, "app_name": "aplicativo", "os": "android"}
+    assert electronic.detect_in_app_browser(ios_wa_ua) == {"is_in_app": True, "app_name": "WhatsApp", "os": "ios"}
+    assert electronic.detect_in_app_browser(ios_wkwebview_ua) == {"is_in_app": True, "app_name": "aplicativo", "os": "ios"}
+    assert electronic.detect_in_app_browser(android_chrome_ua)["is_in_app"] is False
+    assert electronic.detect_in_app_browser(ios_safari_ua)["is_in_app"] is False
+
+    # 2) Cria documento e convite externo via WhatsApp
+    client = LocalTestClient(_make_signing_app(sessions))
+    headers = {"X-CSRF-Token": client.get("/test-login", params={"user_id": 1, "farm_id": 1}).json()["csrf"]}
+    created = client.post("/assinatura-digital/documentos", content=_original(), headers={
+        **headers,
+        "Content-Type": "application/pdf",
+        "X-Document-Name": "contrato_webview.pdf",
+        "X-Document-Owner-Signs": "0",
+        "X-Document-Signing-Policy": "electronic",
+    })
+    assert created.status_code == 201, created.text
+    endpoint = created.json()["url"]
+
+    ext = client.post(endpoint + "/externos", headers=headers, json={
+        "name": "Luciana Produtora",
+        "role_label": "Produtora",
+        "channel": "whatsapp",
+        "phone": "(35) 99888-7766",
+        "cpf": "529.982.247-25",
+    })
+    assert ext.status_code == 201, ext.text
+    token = ext.json()["sign_url"].rsplit("/assinar/", 1)[1]
+
+    # 3) Abertura no navegador interno do WhatsApp (Android) exibe recomendação antes de assinar
+    iab_android = LocalTestClient(_make_signing_app(sessions))
+    p_android = iab_android.get(f"/assinar/{token}", headers={"User-Agent": android_wa_ua})
+    assert p_android.status_code == 200
+    assert "Abra este link no seu navegador" in p_android.text
+    assert "Abrir no navegador" in p_android.text
+    assert "Copiar link de assinatura" in p_android.text
+    assert "Continuar neste navegador" in p_android.text
+    assert 'data-ds-iab-gate  aria-label' in p_android.text  # visível (sem hidden)
+    assert 'autocomplete="one-time-code"' in p_android.text
+    assert 'data-ds-otp-paste' in p_android.text
+
+    # 4) Abertura no navegador interno do WhatsApp (iOS) exibe orientação para Safari
+    iab_ios = LocalTestClient(_make_signing_app(sessions))
+    p_ios = iab_ios.get(f"/assinar/{token}", headers={"User-Agent": ios_wa_ua})
+    assert p_ios.status_code == 200
+    assert "<strong>Safari</strong>" in p_ios.text
+    assert 'data-ds-iab-gate  aria-label' in p_ios.text
+
+    # 5) Abertura no Safari externo mantém aviso de navegador interno oculto
+    ext_safari = LocalTestClient(_make_signing_app(sessions))
+    p_safari = ext_safari.get(f"/assinar/{token}", headers={"User-Agent": ios_safari_ua})
+    assert p_safari.status_code == 200
+    assert 'data-ds-iab-gate hidden aria-label' in p_safari.text
+
+    # 6) Signatário solicita OTP no navegador interno (1 único envio de WhatsApp)
+    sent_payloads.clear()
+    csrf1 = re.search(r'data-csrf="([^"]+)"', p_android.text).group(1)
+    auth = iab_android.post(f"/assinar/{token}/autorizar", headers={"X-CSRF-Token": csrf1}, json={"consent": True})
+    assert auth.status_code == 201, auth.text
+    ch_id = auth.json()["challenge_id"]
+    otp_code = sent_payloads[0]["template"]["components"][0]["parameters"][0]["text"]
+    assert len(sent_payloads) == 1
+
+    # 7) Cenário real: navegador interno fecha ao ir ver o WhatsApp; usuário reabre o link em um novo client (ou Chrome externo)
+    reopened_client = LocalTestClient(_make_signing_app(sessions))
+    reopened = reopened_client.get(f"/assinar/{token}", headers={"User-Agent": android_chrome_ua})
+    assert reopened.status_code == 200
+    # Nenhum novo disparo de WhatsApp ocorreu!
+    assert len(sent_payloads) == 1
+    # Código OTP NUNCA aparece no HTML retornado
+    assert otp_code not in reopened.text
+    # Payload de retomada preserva challenge_id, validade, cooldown e tentativas
+    resumed_json = json.loads(
+        re.search(r'<script type="application/json" data-ds-active-challenge>(.*?)</script>', reopened.text).group(1)
+    )
+    assert resumed_json["challenge_id"] == ch_id
+    assert resumed_json["resumed"] is True
+    assert resumed_json["channel"] == "whatsapp"
+    assert resumed_json["destination_masked"] == "(35) 9****-7766"
+    assert 0 < resumed_json["expires_seconds"] <= 600
+    assert resumed_json["attempts_remaining"] == 5
+
+    # 8) Uma tentativa errada antes de fechar novamente preserva o limite de tentativas (4 restantes)
+    csrf2 = re.search(r'data-csrf="([^"]+)"', reopened.text).group(1)
+    bad = reopened_client.post(f"/assinar/{token}/assinar", headers={"X-CSRF-Token": csrf2}, json={
+        "consent": True, "challenge_id": ch_id, "code": "00000000" if otp_code != "00000000" else "99999999",
+    })
+    assert bad.status_code == 403
+
+    reopened2_client = LocalTestClient(_make_signing_app(sessions))
+    reopened2 = reopened2_client.get(f"/assinar/{token}", headers={"User-Agent": ios_safari_ua})
+    resumed2_json = json.loads(
+        re.search(r'<script type="application/json" data-ds-active-challenge>(.*?)</script>', reopened2.text).group(1)
+    )
+    assert resumed2_json["challenge_id"] == ch_id
+    assert resumed2_json["attempts_remaining"] == 4
+    assert len(sent_payloads) == 1
+
+    # 9) Conclui assinatura usando o código original já recebido, sem precisar reenviar!
+    csrf3 = re.search(r'data-csrf="([^"]+)"', reopened2.text).group(1)
+    signed = reopened2_client.post(f"/assinar/{token}/assinar", headers={"X-CSRF-Token": csrf3}, json={
+        "consent": True, "challenge_id": ch_id, "code": otp_code,
+    })
+    assert signed.status_code == 200, signed.text
+    assert signed.json()["sealed"] is True
+
+    # 10) Após assinado, reabrir o link não mostra challenge ativo nem card IAB
+    after_done = LocalTestClient(_make_signing_app(sessions)).get(f"/assinar/{token}", headers={"User-Agent": android_wa_ua})
+    assert after_done.status_code == 200
+    assert "Você já assinou este documento" in after_done.text
+    assert json.loads(
+        re.search(r'<script type="application/json" data-ds-active-challenge>(.*?)</script>', after_done.text).group(1)
+    ) is None

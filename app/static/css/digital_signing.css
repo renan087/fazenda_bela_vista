@@ -4542,3 +4542,152 @@ body.dd-no-scroll { overflow: hidden; }
     min-height: 2.75rem;
   }
 }
+
+/* ==========================================================================
+   Aviso de Navegador Interno (WhatsApp / WebView) + Colar código OTP
+   ========================================================================== */
+.ds-iab-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid #C8D9C1;
+  background: linear-gradient(180deg, #F5F9F3 0%, #FFFFFF 100%);
+}
+.ds-iab-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+.ds-iab-ic {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  background: #EEF3EB;
+  color: #446A36;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.ds-iab-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.ds-iab-eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #446A36;
+}
+.ds-iab-copy h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #16201A;
+  line-height: 1.25;
+}
+.ds-iab-copy p {
+  font-size: 0.86rem;
+  color: #5B6660;
+  line-height: 1.45;
+}
+.ds-iab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+.ds-iab-actions .sf-btn {
+  min-height: 2.75rem;
+  justify-content: center;
+}
+.ds-iab-continue-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #5B6660;
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 0.55rem 0.75rem;
+  min-height: 2.75rem;
+  border-radius: 0.65rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ds-iab-continue-btn:hover {
+  color: #16201A;
+  background: #EEF3EB;
+}
+.ds-iab-guide {
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.75rem;
+  background: #F6F8F5;
+  border: 1px solid #E3E8E2;
+  font-size: 0.82rem;
+  color: #5B6660;
+  line-height: 1.45;
+}
+.ds-iab-guide strong {
+  color: #16201A;
+}
+.ds-iab-guide p {
+  margin-top: 0.25rem;
+}
+.ds-otp-resumed-note {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.65rem;
+  background: #EEF3EB;
+  color: #294127;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  font-weight: 500;
+}
+.ds-otp-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.ds-otp-paste-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  min-height: 1.85rem;
+  border-radius: 999px;
+  border: 1px solid #D6DDD5;
+  background: #FFFFFF;
+  color: #446A36;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ds-otp-paste-btn:hover {
+  background: #EEF3EB;
+  border-color: #446A36;
+}
+@media (max-width: 639px) {
+  .ds-iab-card {
+    padding: 1rem;
+  }
+  .ds-iab-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ds-iab-actions .sf-btn,
+  .ds-iab-continue-btn {
+    width: 100%;
+    text-align: center;
+  }
+  .ds-otp-paste-btn {
+    min-height: 2.25rem;
+    padding: 0.35rem 0.75rem;
+  }
+}
