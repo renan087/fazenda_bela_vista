@@ -39,6 +39,11 @@
     const totpMetaEl = panel.querySelector('[data-auth-totp-meta]');
 
     const activeWrap = panel.querySelector('[data-auth-active-wrap]');
+    const suspendedBanner = panel.querySelector('[data-auth-suspended-banner]');
+    const suspendTitle = panel.querySelector('[data-auth-suspend-title]');
+    const suspendDesc = panel.querySelector('[data-auth-suspend-desc]');
+    const suspendTrigger = panel.querySelector('[data-auth-suspend-trigger]');
+    const resumeTrigger = panel.querySelector('[data-auth-resume-trigger]');
     const recoverySummary = panel.querySelector('[data-auth-recovery-summary]');
     const prefButtons = Array.from(panel.querySelectorAll('[data-auth-pref-opt]'));
     const manageForms = Array.from(panel.querySelectorAll('[data-auth-manage-form]'));
@@ -47,6 +52,7 @@
     const state = {
         csrfToken: rootPage?.getAttribute('data-csrf') || '',
         enabled: panel.getAttribute('data-auth-enabled') === '1',
+        suspended: panel.getAttribute('data-auth-suspended') === '1',
         enrollmentAvailable: panel.getAttribute('data-auth-enrollment-available') === '1',
         emailEnabled: panel.getAttribute('data-auth-email-enabled') === '1',
         preferredMethod: panel.getAttribute('data-auth-preferred') || 'none',
@@ -109,6 +115,7 @@
         if (!data || typeof data !== 'object') return;
         if (data.csrf_token) state.csrfToken = data.csrf_token;
         if (typeof data.enabled === 'boolean') state.enabled = data.enabled;
+        if (typeof data.suspended === 'boolean') state.suspended = data.suspended;
         if (typeof data.enrollment_available === 'boolean') state.enrollmentAvailable = data.enrollment_available;
         if (typeof data.email_enabled === 'boolean') state.emailEnabled = data.email_enabled;
         if (typeof data.preferred_method === 'string') state.preferredMethod = data.preferred_method;
@@ -127,7 +134,10 @@
     const renderView = () => {
         // Pílula de status no cabeçalho
         if (statusPill) {
-            if (state.enabled) {
+            if (state.enabled && state.suspended) {
+                statusPill.textContent = 'Suspenso';
+                statusPill.className = 'mp-pill mp-pill-warn';
+            } else if (state.enabled) {
                 statusPill.textContent = 'Ativo';
                 statusPill.className = 'mp-pill mp-pill-ok';
             } else if (state.enrollmentAvailable) {
@@ -173,6 +183,17 @@
         }
 
         // Estado vinculado
+        if (suspendedBanner) suspendedBanner.hidden = !state.suspended;
+        if (suspendTitle) {
+            suspendTitle.textContent = state.suspended ? 'Reativar solicitação no login' : 'Suspender solicitação no login';
+        }
+        if (suspendDesc) {
+            suspendDesc.textContent = state.suspended
+                ? 'Volta a solicitar o código do aplicativo autenticador ao entrar no sistema.'
+                : 'Pausa a exigência do aplicativo ao entrar sem desvincular o app nem apagar os códigos de recuperação.';
+        }
+        if (suspendTrigger) suspendTrigger.hidden = state.suspended;
+        if (resumeTrigger) resumeTrigger.hidden = !state.suspended;
         if (recoverySummary) {
             const count = state.recoveryRemaining;
             recoverySummary.textContent = `${count} de 10 código${count === 1 ? '' : 's'} disponíve${count === 1 ? 'l' : 'is'} para acesso de emergência.`;
@@ -533,6 +554,12 @@
             if (action === 'regenerate_recovery_codes' && Array.isArray(result.data.recovery_codes)) {
                 state.recoveryCodes = result.data.recovery_codes.slice();
                 showToast('Novos códigos de recuperação gerados.');
+            } else if (action === 'suspend') {
+                showInfo('Solicitação no login suspensa. Seu aplicativo e códigos de recuperação continuam vinculados.');
+                showToast('Autenticador suspenso no login.');
+            } else if (action === 'resume') {
+                showInfo('Aplicativo autenticador reativado para o login.');
+                showToast('Autenticador reativado no login.');
             } else if (action === 'disable') {
                 clearSensitiveMemory();
                 state.enrollmentStage = 'start';

@@ -18,6 +18,7 @@ ENROLLMENT_TOKEN = "totp_enrollment_challenge"
 def _profile_state(db: Session, request: Request, user: User) -> dict:
     return {
         "enabled": bool(user.totp_secret_encrypted),
+        "suspended": bool(getattr(user, "totp_suspended", False)),
         "enrollment_available": mfa.enrollment_available(),
         "email_enabled": mfa.email_verification_available(user),
         "preferred_method": mfa.authenticator_preference(user),
@@ -133,6 +134,7 @@ def confirm_authenticator_enrollment(
     user.totp_secret_encrypted = challenge.pending_secret_encrypted
     user.totp_last_step = step
     user.totp_email_first = False
+    user.totp_suspended = False
     mfa.clear_attempts(user)
     codes = mfa.replace_recovery_codes(db, user.id)
     version = mfa.invalidate_authenticator_sessions(db, user)
@@ -167,7 +169,7 @@ def manage_authenticator(
     csrf_token: str = Form(...),
     current_password: str = Form(..., max_length=256),
     code: str = Form(..., max_length=80),
-    action: Literal["disable", "preference", "regenerate_recovery_codes"] = Form(...),
+    action: Literal["disable", "preference", "regenerate_recovery_codes", "suspend", "resume"] = Form(...),
     method: Literal["totp", "recovery"] = Form("totp"),
     preferred_method: Literal["totp", "email_then_totp"] | None = Form(None),
     db: Session = Depends(get_db),
@@ -175,7 +177,13 @@ def manage_authenticator(
 ):
     validate_csrf(request, csrf_token)
     user = _locked_profile_user(db, request, user)
-    event = {"disable": "disabled", "preference": "preference_changed", "regenerate_recovery_codes": "recovery_regenerated"}[action]
+    event = {
+        "disable": "disabled",
+        "preference": "preference_changed",
+        "regenerate_recovery_codes": "recovery_regenerated",
+        "suspend": "suspended",
+        "resume": "resumed",
+    }[action]
     try:
         if action == "preference" and (
             not preferred_method
@@ -192,7 +200,12 @@ def manage_authenticator(
         user.totp_secret_encrypted = None
         user.totp_last_step = None
         user.totp_email_first = False
+        user.totp_suspended = False
         mfa.delete_recovery_codes(db, user.id)
+    elif action == "suspend":
+        user.totp_suspended = True
+    elif action == "resume":
+        user.totp_suspended = False
     elif action == "preference":
         user.totp_email_first = preferred_method == "email_then_totp"
     else:

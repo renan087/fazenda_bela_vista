@@ -349,3 +349,81 @@ def test_legacy_email_login_and_trusted_browser_remain_available(env, monkeypatc
         assert get_settings().trusted_browser_cookie_name in client.cookies
         client.get("/logout", follow_redirects=False)
         assert password_login(client).headers["location"] == "/dashboard"
+
+
+def test_suspend_and_resume_totp_keeps_secret_and_recovery_codes(env):
+    app, sessions, now, _ = env
+    with LocalTestClient(app) as client:
+        assert password_login(client).headers["location"] == "/dashboard"
+        secret, codes = enroll(client, now)
+
+        # Suspender exige senha e código TOTP válidos
+        now[0] += timedelta(seconds=30)
+        bad_pw = post(
+            client,
+            PROFILE + "/gerenciar",
+            action="suspend",
+            current_password="errada",
+            code=current_code(secret, now),
+            method="totp",
+        )
+        assert bad_pw.status_code == 400
+        bad_code = post(
+            client,
+            PROFILE + "/gerenciar",
+            action="suspend",
+            current_password=PASSWORD,
+            code="000000",
+            method="totp",
+        )
+        assert bad_code.status_code == 400
+
+        # Suspensão bem-sucedida mantém segredo e 10 códigos de recuperação
+        suspended = post(
+            client,
+            PROFILE + "/gerenciar",
+            action="suspend",
+            current_password=PASSWORD,
+            code=current_code(secret, now),
+            method="totp",
+        )
+        assert suspended.status_code == 200
+        body = suspended.json()
+        assert body["enabled"] is True
+        assert body["suspended"] is True
+        assert body["recovery_codes_remaining"] == 10
+
+        # Login enquanto suspenso não exige TOTP (entra direto pois 2FA por e-mail está desligado na fixture)
+        client.get("/logout", follow_redirects=False)
+        assert password_login(client).headers["location"] == "/dashboard"
+
+        # Reativar exige senha + próximo código TOTP e volta a exigir no login
+        now[0] += timedelta(seconds=30)
+        resumed = post(
+            client,
+            PROFILE + "/gerenciar",
+            action="resume",
+            current_password=PASSWORD,
+            code=current_code(secret, now),
+            method="totp",
+        )
+        assert resumed.status_code == 200
+        assert resumed.json()["enabled"] is True
+        assert resumed.json()["suspended"] is False
+        assert resumed.json()["recovery_codes_remaining"] == 10
+
+        client.get("/logout", follow_redirects=False)
+        assert password_login(client).headers["location"] == VERIFY
+        state = client.get(VERIFY + "/estado").json()
+        assert state["authenticator_required"] is True
+        assert state["stage"] == "totp"
+
+        # Mesmo segredo e códigos originais continuam válidos
+        now[0] += timedelta(seconds=30)
+        done = post(client, VERIFY, method="totp", code=current_code(secret, now))
+        assert done.json() == {"stage": "complete", "redirect_url": "/dashboard"}
+        with sessions() as db:
+            user = db.get(User, 1)
+            assert user.totp_secret_encrypted is not None
+            assert user.totp_suspended is False
+            assert len(codes) == 10

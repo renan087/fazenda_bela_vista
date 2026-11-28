@@ -297,7 +297,9 @@
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
                             <strong class="text-[14px] font-semibold text-[#16201A]">Aplicativo autenticador</strong>
-                            {% if authenticator_state.enabled %}
+                            {% if authenticator_state.enabled and authenticator_state.suspended %}
+                            <span class="mp-pill mp-pill-warn">Suspenso</span>
+                            {% elif authenticator_state.enabled %}
                             <span class="mp-pill mp-pill-ok">Ativo</span>
                             {% elif authenticator_state.enrollment_available %}
                             <span class="mp-pill mp-pill-muted">Não vinculado</span>
@@ -318,6 +320,7 @@
         {# Sub-tela: Aplicativo autenticador (Google / Microsoft Authenticator) #}
         <div class="mp-surface" data-authenticator-panel
              data-auth-enabled="{{ '1' if authenticator_state.enabled else '0' }}"
+             data-auth-suspended="{{ '1' if authenticator_state.suspended else '0' }}"
              data-auth-enrollment-available="{{ '1' if authenticator_state.enrollment_available else '0' }}"
              data-auth-email-enabled="{{ '1' if authenticator_state.email_enabled else '0' }}"
              data-auth-preferred="{{ authenticator_state.preferred_method }}"
@@ -328,8 +331,8 @@
                     <a href="/meu-perfil?aba=seguranca" class="mp-back-link">← Voltar para Segurança</a>
                     <div class="mt-2 flex flex-wrap items-center gap-2">
                         <h2 class="mp-drill-title" style="margin-top:0;">Aplicativo autenticador</h2>
-                        <span class="mp-pill {{ 'mp-pill-ok' if authenticator_state.enabled else ('mp-pill-muted' if authenticator_state.enrollment_available else 'mp-pill-warn') }}" data-auth-status-pill>
-                            {{ 'Ativo' if authenticator_state.enabled else ('Não vinculado' if authenticator_state.enrollment_available else 'Indisponível') }}
+                        <span class="mp-pill {{ 'mp-pill-warn' if (authenticator_state.enabled and authenticator_state.suspended) else ('mp-pill-ok' if authenticator_state.enabled else ('mp-pill-muted' if authenticator_state.enrollment_available else 'mp-pill-warn')) }}" data-auth-status-pill>
+                            {{ 'Suspenso' if (authenticator_state.enabled and authenticator_state.suspended) else ('Ativo' if authenticator_state.enabled else ('Não vinculado' if authenticator_state.enrollment_available else 'Indisponível')) }}
                         </span>
                     </div>
                     <p class="mp-drill-desc">Compatível com Google Authenticator e Microsoft Authenticator (códigos de 6 dígitos, funciona sem internet).</p>
@@ -433,6 +436,10 @@
 
                 {# 3) Painel de gerenciamento (quando enabled = true) #}
                 <div {% if not authenticator_state.enabled %}hidden{% endif %} data-auth-active-wrap class="space-y-6">
+                    <div class="mp-alert-warn" {% if not authenticator_state.suspended %}hidden{% endif %} data-auth-suspended-banner>
+                        <strong>Solicitação no login suspensa.</strong> Seu aplicativo e os códigos de recuperação continuam vinculados e podem ser reativados quando quiser.
+                    </div>
+
                     {# Método preferido no login #}
                     <div class="space-y-3">
                         <div>
@@ -514,6 +521,72 @@
                                 <div class="flex gap-2">
                                     <button type="button" class="mp-btn mp-btn-ghost mp-btn-sm" data-manage-cancel>Cancelar</button>
                                     <button type="submit" class="mp-btn mp-btn-primary mp-btn-sm" data-manage-submit>Gerar 10 códigos</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    {# Suspender ou reativar solicitação no login (mantém app e códigos vinculados) #}
+                    <div class="border-t border-[#EEF1ED] pt-5 space-y-3">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <h3 class="mp-block-title" data-auth-suspend-title>{{ 'Reativar solicitação no login' if authenticator_state.suspended else 'Suspender solicitação no login' }}</h3>
+                                <p class="mp-block-desc" data-auth-suspend-desc>
+                                    {% if authenticator_state.suspended %}
+                                    Volta a solicitar o código do aplicativo autenticador ao entrar no sistema.
+                                    {% else %}
+                                    Pausa a exigência do aplicativo ao entrar sem desvincular o app nem apagar os códigos de recuperação.
+                                    {% endif %}
+                                </p>
+                            </div>
+                            <button type="button" class="mp-btn mp-btn-secondary mp-btn-sm" data-open-manage="suspend" {% if authenticator_state.suspended %}hidden{% endif %} data-auth-suspend-trigger>Suspender no login</button>
+                            <button type="button" class="mp-btn mp-btn-primary mp-btn-sm" data-open-manage="resume" {% if not authenticator_state.suspended %}hidden{% endif %} data-auth-resume-trigger>Reativar no login</button>
+                        </div>
+
+                        <form class="mp-manage-panel space-y-3" hidden data-auth-manage-form="suspend" novalidate>
+                            <p class="m-0 text-[13px] text-[#5B6660]" role="alert"><strong>Suspender no login?</strong> O aplicativo e os códigos de recuperação permanecerão salvos, mas o login deixará de pedir o código do app até você reativar.</p>
+                            <div class="mp-form-grid">
+                                <div class="mp-field">
+                                    <label class="mp-label">Senha atual</label>
+                                    <input type="password" name="current_password" class="mp-input" autocomplete="current-password" required>
+                                </div>
+                                <div class="mp-field">
+                                    <label class="mp-label" data-code-label>Código do aplicativo (6 dígitos)</label>
+                                    <input type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" class="mp-input mp-tabular" placeholder="000000" required>
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="mp-seg-toggle" role="group" aria-label="Tipo de código">
+                                    <button type="button" class="mp-seg-btn" data-method-btn="totp" aria-pressed="true">Aplicativo</button>
+                                    <button type="button" class="mp-seg-btn" data-method-btn="recovery" aria-pressed="false">Recuperação</button>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button type="button" class="mp-btn mp-btn-ghost mp-btn-sm" data-manage-cancel>Cancelar</button>
+                                    <button type="submit" class="mp-btn mp-btn-primary mp-btn-sm" data-manage-submit>Confirmar suspensão</button>
+                                </div>
+                            </div>
+                        </form>
+
+                        <form class="mp-manage-panel space-y-3" hidden data-auth-manage-form="resume" novalidate>
+                            <p class="m-0 text-[13px] font-medium text-[#16201A]">Confirme sua senha e o código atual do aplicativo para voltar a exigir o autenticador no login.</p>
+                            <div class="mp-form-grid">
+                                <div class="mp-field">
+                                    <label class="mp-label">Senha atual</label>
+                                    <input type="password" name="current_password" class="mp-input" autocomplete="current-password" required>
+                                </div>
+                                <div class="mp-field">
+                                    <label class="mp-label" data-code-label>Código do aplicativo (6 dígitos)</label>
+                                    <input type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" class="mp-input mp-tabular" placeholder="000000" required>
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="mp-seg-toggle" role="group" aria-label="Tipo de código">
+                                    <button type="button" class="mp-seg-btn" data-method-btn="totp" aria-pressed="true">Aplicativo</button>
+                                    <button type="button" class="mp-seg-btn" data-method-btn="recovery" aria-pressed="false">Recuperação</button>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button type="button" class="mp-btn mp-btn-ghost mp-btn-sm" data-manage-cancel>Cancelar</button>
+                                    <button type="submit" class="mp-btn mp-btn-primary mp-btn-sm" data-manage-submit>Confirmar reativação</button>
                                 </div>
                             </div>
                         </form>
@@ -620,10 +693,11 @@
 
         {% else %}
         {# Visão principal de Segurança (Lista limpa com drill-down) #}
-        {% set has_any_2fa = authenticator_state.enabled or user.is_two_factor_enabled %}
-        {% if authenticator_state.enabled and authenticator_state.preferred_method == 'email_then_totp' %}
+        {% set totp_active_login = authenticator_state.enabled and not authenticator_state.suspended %}
+        {% set has_any_2fa = totp_active_login or user.is_two_factor_enabled %}
+        {% if totp_active_login and authenticator_state.preferred_method == 'email_then_totp' %}
             {% set status_sub = 'E-mail + aplicativo ativos' %}
-        {% elif authenticator_state.enabled %}
+        {% elif totp_active_login %}
             {% set status_sub = 'Aplicativo autenticador ativo' %}
         {% elif user.is_two_factor_enabled %}
             {% set status_sub = '2FA por e-mail ativo' %}
@@ -688,7 +762,9 @@
                         <span class="mp-sec-row-body">
                             <span class="mp-sec-title-line">
                                 <span class="mp-sec-row-title">Aplicativo autenticador</span>
-                                {% if authenticator_state.enabled %}
+                                {% if authenticator_state.enabled and authenticator_state.suspended %}
+                                <span class="mp-pill mp-pill-warn">Suspenso</span>
+                                {% elif authenticator_state.enabled %}
                                 <span class="mp-pill mp-pill-ok">Ativo</span>
                                 {% elif authenticator_state.enrollment_available %}
                                 <span class="mp-pill mp-pill-muted">Não vinculado</span>
@@ -697,7 +773,9 @@
                                 {% endif %}
                             </span>
                             <span class="mp-sec-row-sub block">
-                                {% if authenticator_state.enabled %}
+                                {% if authenticator_state.enabled and authenticator_state.suspended %}
+                                Pausado no login · {{ authenticator_state.recovery_codes_remaining }} códigos restantes
+                                {% elif authenticator_state.enabled %}
                                 {{ 'E-mail + aplicativo' if authenticator_state.preferred_method == 'email_then_totp' else 'Google ou Microsoft Authenticator' }} · {{ authenticator_state.recovery_codes_remaining }} códigos restantes
                                 {% else %}
                                 Google ou Microsoft Authenticator · Funciona offline
@@ -1040,6 +1118,6 @@
 
 <script src="{{ url_for('static', path='js/profile.js') }}?v=20261128mp3" defer></script>
 {% if active_profile_tab == 'security' and active_security_view == 'authenticator' %}
-<script src="{{ url_for('static', path='js/profile_authenticator.js') }}?v=20261128mp3" defer></script>
+<script src="{{ url_for('static', path='js/profile_authenticator.js') }}?v=20261128mp4" defer></script>
 {% endif %}
 {% endblock %}

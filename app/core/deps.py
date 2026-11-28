@@ -34,7 +34,11 @@ def get_current_user_api(
             detail="Usuario nao encontrado ou inativo",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if user.is_two_factor_enabled or getattr(user, "totp_secret_encrypted", None) or is_super_admin_email(user.email):
+    if (
+        user.is_two_factor_enabled
+        or (getattr(user, "totp_secret_encrypted", None) and not getattr(user, "totp_suspended", False))
+        or is_super_admin_email(user.email)
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Use o acesso web com verificação em duas etapas.")
     if payload.get("mfa_version", 0) != authenticator_session_version(user):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revogado", headers={"WWW-Authenticate": "Bearer"})

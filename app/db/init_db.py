@@ -906,6 +906,7 @@ def _sync_schema() -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret_encrypted TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_last_step INTEGER",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_email_first BOOLEAN",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_suspended BOOLEAN",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_session_version INTEGER",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_failed_attempts INTEGER",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_retry_at TIMESTAMPTZ",

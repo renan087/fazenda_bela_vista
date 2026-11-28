@@ -20,6 +20,7 @@ class User(Base):
     totp_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     totp_last_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
     totp_email_first: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    totp_suspended: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     totp_session_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     totp_failed_attempts: Mapped[int | None] = mapped_column(Integer, nullable=True)
     totp_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

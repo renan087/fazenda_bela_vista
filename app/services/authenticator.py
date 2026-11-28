@@ -136,6 +136,14 @@ def email_verification_available(user: User) -> bool:
     )
 
 
+def authenticator_login_required(user: User | None) -> bool:
+    return bool(
+        user
+        and getattr(user, "totp_secret_encrypted", None)
+        and not getattr(user, "totp_suspended", False)
+    )
+
+
 def authenticator_preference(user: User) -> str:
     if user.totp_secret_encrypted:
         return "email_then_totp" if user.totp_email_first and email_verification_available(user) else "totp"

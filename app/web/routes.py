@@ -1792,6 +1792,7 @@ def _render_profile_page(
 
     authenticator_state = {
         "enabled": bool(getattr(user, "totp_secret_encrypted", None)),
+        "suspended": bool(getattr(user, "totp_suspended", False)),
         "enrollment_available": mfa.enrollment_available(),
         "email_enabled": mfa.email_verification_available(user),
         "preferred_method": mfa.authenticator_preference(user),

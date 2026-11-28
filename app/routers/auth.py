@@ -120,7 +120,7 @@ def _complete_web_login(
     verified_authenticator_version: int | None = None,
 ):
     session_version = authenticator_session_version(user)
-    if (verified_authenticator_version is not None or getattr(user, "totp_secret_encrypted", None)) and (
+    if (verified_authenticator_version is not None or mfa.authenticator_login_required(user)) and (
         verified_authenticator_version != session_version
     ):
         _clear_pending_2fa(request)
@@ -268,7 +268,7 @@ def _start_authenticator_login(request: Request, db: Session, user: User, *, cle
     _clear_pending_2fa(request)
     user = mfa.lock_user(db, user.id)
     if (
-        not user or not user.totp_secret_encrypted
+        not user or not mfa.authenticator_login_required(user)
         or (user.email, user.hashed_password, authenticator_session_version(user)) != credential
     ):
         return _render_login(request, "As credenciais foram alteradas. Entre novamente.")
@@ -305,7 +305,7 @@ def _start_authenticator_login(request: Request, db: Session, user: User, *, cle
 
 def _start_web_login_challenge(request: Request, db: Session, user: User):
     trusted_browser_cookie = request.cookies.get(_trusted_browser_cookie_name())
-    if getattr(user, "totp_secret_encrypted", None):
+    if mfa.authenticator_login_required(user):
         return _start_authenticator_login(request, db, user, clear_trusted_cookie=bool(trusted_browser_cookie))
     _clear_pending_2fa(request)
     clear_trusted_cookie = False
@@ -697,7 +697,7 @@ def _authenticator_login_state(request: Request, user: User, challenge) -> dict:
 
 
 def _read_authenticator_login(db: Session, request: Request, user: User):
-    if not getattr(user, "totp_secret_encrypted", None):
+    if not mfa.authenticator_login_required(user):
         raise mfa.AuthenticatorError("challenge_expired", "A verificação expirou. Entre novamente.", 409)
     return mfa.read_challenge(db, user, mfa.LOGIN_CHALLENGE, request.session.get(PENDING_AUTHENTICATOR_TOKEN))
 
@@ -765,7 +765,7 @@ def _legacy_login_state(request: Request, user: User) -> dict:
 @router.get("/login/verificacao/estado")
 def login_verification_state(request: Request, db: Session = Depends(get_db)):
     user = _pending_2fa_user(request, db)
-    if user and getattr(user, "totp_secret_encrypted", None):
+    if user and mfa.authenticator_login_required(user):
         try:
             challenge = _read_authenticator_login(db, request, user)
         except mfa.AuthenticatorError as error:
@@ -792,7 +792,7 @@ def login_verification_page(
     user = _pending_2fa_user(request, db)
     if not user:
         return _expired_verification(request)
-    if getattr(user, "totp_secret_encrypted", None) or request.session.get(PENDING_AUTHENTICATOR_TOKEN):
+    if mfa.authenticator_login_required(user) or request.session.get(PENDING_AUTHENTICATOR_TOKEN):
         try:
             challenge = _read_authenticator_login(db, request, user)
         except mfa.AuthenticatorError:
@@ -814,7 +814,7 @@ def login_verification_web(
     user = _pending_2fa_user(request, db)
     if not user:
         return _expired_verification(request)
-    if getattr(user, "totp_secret_encrypted", None) or request.session.get(PENDING_AUTHENTICATOR_TOKEN):
+    if mfa.authenticator_login_required(user) or request.session.get(PENDING_AUTHENTICATOR_TOKEN):
         return _verify_authenticator_login(db, request, user, code, method)
     if method not in (None, "email"):
         return mfa.authenticator_error_reply(mfa.AuthenticatorError("wrong_stage", "Use o código por e-mail.", 409))
@@ -903,7 +903,7 @@ def resend_login_verification_code(
     user = _pending_2fa_user(request, db)
     if not user:
         return _expired_verification(request)
-    if getattr(user, "totp_secret_encrypted", None) or request.session.get(PENDING_AUTHENTICATOR_TOKEN):
+    if mfa.authenticator_login_required(user) or request.session.get(PENDING_AUTHENTICATOR_TOKEN):
         return _resend_authenticator_login(db, request, user)
     cooldown_seconds = _login_code_resend_cooldown_remaining(request)
     if cooldown_seconds > 0:
@@ -993,7 +993,7 @@ def login_api(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais invalidas")
 
-    if user.is_two_factor_enabled or getattr(user, "totp_secret_encrypted", None) or is_super_admin_email(user.email):
+    if user.is_two_factor_enabled or mfa.authenticator_login_required(user) or is_super_admin_email(user.email):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Use o acesso web com verificação em duas etapas.")
     login_throttle.register_success(api_email)
     append_audit_event(request=request, actor_user=user, event_type="auth.api.token.success", outcome="success")
