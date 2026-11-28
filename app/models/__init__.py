@@ -1,4 +1,5 @@
 from app.models.audit_log import AuditLog
+from app.models.authenticator import AuthenticatorChallenge, AuthenticatorRecoveryCode
 from app.models.assistant_thread import AssistantThread
 from app.models.assistant_audio import AssistantAudio
 from app.models.assistant_attachment import AssistantAttachment
@@ -87,6 +88,8 @@ __all__ = [
     "AutomatedTestRun",
     "AutomatedTestSuiteResult",
     "AuditLog",
+    "AuthenticatorChallenge",
+    "AuthenticatorRecoveryCode",
     "OrganizationBilling",
     "OrganizationSubscription",
     "SubscriptionPlan",

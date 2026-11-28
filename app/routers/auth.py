@@ -1,6 +1,7 @@
 import logging
 import secrets
 import time
+from typing import Literal
 from urllib.parse import urlencode
 
 import httpx
@@ -13,13 +14,13 @@ from sqlalchemy.orm import Session
 from app.core.csrf import ensure_csrf_token, validate_csrf
 from app.core.config import get_settings
 from app.core.admin_access import is_super_admin_email
-from app.core.session import clear_expired_session, touch_session_activity
+from app.core.session import AUTHENTICATOR_SESSION_VERSION, authenticator_session_version, clear_expired_session, touch_session_activity
 from app.core.security import authenticate_user, create_access_token, get_password_hash, verify_password
 from app.core.timezone import utc_now
 from app.db.session import get_db
 from app.models import User
 from app.schemas.auth import Token
-from app.services import login_throttle
+from app.services import authenticator as mfa, login_throttle
 from app.services.asaas_environment import current_asaas_environment
 from app.services.audit_log_service import append_audit_event
 from app.services.email_service import send_access_code_email, send_password_reset_email
@@ -30,7 +31,7 @@ from app.services.trusted_browser import (
     validate_trusted_browser_token,
 )
 from app.services.user_preferences import get_user_preferences
-from app.services.two_factor import get_active_login_code, issue_login_verification_code, revoke_active_login_codes, verify_login_code
+from app.services.two_factor import issue_login_verification_code, revoke_active_login_codes, verify_login_code
 
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["google_tag_id"] = lambda: (getattr(get_settings(), "google_tag_id", None) or "").strip()
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 PENDING_2FA_USER_ID = "pending_2fa_user_id"
 PENDING_2FA_EMAIL = "pending_2fa_email"
 PENDING_2FA_LAST_SENT_AT = "pending_2fa_last_sent_at"
+PENDING_AUTHENTICATOR_TOKEN = "totp_login_challenge"
 LOGIN_2FA_RESEND_COOLDOWN_SECONDS = 60
 GOOGLE_OAUTH_STATE = "google_oauth_state"
 GOOGLE_OAUTH_NONCE = "google_oauth_nonce"
@@ -103,6 +105,11 @@ def _pending_2fa_user(request: Request, db: Session) -> User | None:
     return user
 
 
+def _clear_pending_2fa(request: Request) -> None:
+    for key in (PENDING_2FA_USER_ID, PENDING_2FA_EMAIL, PENDING_2FA_LAST_SENT_AT, PENDING_AUTHENTICATOR_TOKEN):
+        request.session.pop(key, None)
+
+
 def _complete_web_login(
     request: Request,
     db: Session,
@@ -110,7 +117,14 @@ def _complete_web_login(
     trusted_browser_token: str | None = None,
     clear_trusted_browser_cookie: bool = False,
     verified_second_factor: bool = False,
+    verified_authenticator_version: int | None = None,
 ):
+    session_version = authenticator_session_version(user)
+    if (verified_authenticator_version is not None or getattr(user, "totp_secret_encrypted", None)) and (
+        verified_authenticator_version != session_version
+    ):
+        _clear_pending_2fa(request)
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
     try:
         user.last_login_at = utc_now()
         db.add(user)
@@ -136,13 +150,12 @@ def _complete_web_login(
             db.rollback()
 
     request.session["user_email"] = user.email
+    request.session[AUTHENTICATOR_SESSION_VERSION] = session_version
     if verified_second_factor:
         request.session["commercial_mfa_at"] = utc_now().timestamp()
     else:
         request.session.pop("commercial_mfa_at", None)
-    request.session.pop(PENDING_2FA_USER_ID, None)
-    request.session.pop(PENDING_2FA_EMAIL, None)
-    request.session.pop(PENDING_2FA_LAST_SENT_AT, None)
+    _clear_pending_2fa(request)
     touch_session_activity(request)
     append_audit_event(request=request, actor_user=user, event_type="auth.login.success", outcome="success")
     target_url = prefs.get("start_page") or "/dashboard"
@@ -247,8 +260,54 @@ def _reactivate_super_admin_if_needed(db: Session, user: User | None) -> None:
         )
 
 
+def _start_authenticator_login(request: Request, db: Session, user: User, *, clear_trusted_cookie: bool):
+    credential = (user.email, user.hashed_password, authenticator_session_version(user))
+    request.session.pop("user_email", None)
+    request.session.pop("commercial_mfa_at", None)
+    request.session.pop(AUTHENTICATOR_SESSION_VERSION, None)
+    _clear_pending_2fa(request)
+    user = mfa.lock_user(db, user.id)
+    if (
+        not user or not user.totp_secret_encrypted
+        or (user.email, user.hashed_password, authenticator_session_version(user)) != credential
+    ):
+        return _render_login(request, "As credenciais foram alteradas. Entre novamente.")
+
+    try:
+        mfa.check_attempts(user, utc_now())
+        stage = "email" if mfa.authenticator_preference(user) == "email_then_totp" else "totp"
+        _, token, email_code = mfa.start_challenge(db, user, mfa.LOGIN_CHALLENGE, stage=stage)
+        if email_code is not None:
+            send_access_code_email(user.email, email_code)
+    except mfa.AuthenticatorError as error:
+        mfa.record_authenticator_event(db, request, user, "login.started", error=error)
+        return _render_login(
+            request,
+            str(error),
+            error_status=error.status_code,
+            retry_after=error.retry_after,
+        )
+    except (RuntimeError, OSError):
+        db.rollback()
+        error = mfa.AuthenticatorError("delivery_failed", "Não foi possível enviar o código de acesso.", 503)
+        mfa.record_authenticator_event(db, request, user, "login.started", error=error)
+        return _render_login(request, str(error))
+
+    mfa.record_authenticator_event(db, request, user, "login.started", stage=stage)
+    request.session[PENDING_2FA_USER_ID] = user.id
+    request.session[PENDING_AUTHENTICATOR_TOKEN] = token
+    touch_session_activity(request)
+    response = RedirectResponse(url="/login/verificacao", status_code=status.HTTP_303_SEE_OTHER, headers=mfa.NO_STORE)
+    if clear_trusted_cookie:
+        _clear_trusted_browser_cookie(response)
+    return response
+
+
 def _start_web_login_challenge(request: Request, db: Session, user: User):
     trusted_browser_cookie = request.cookies.get(_trusted_browser_cookie_name())
+    if getattr(user, "totp_secret_encrypted", None):
+        return _start_authenticator_login(request, db, user, clear_trusted_cookie=bool(trusted_browser_cookie))
+    _clear_pending_2fa(request)
     clear_trusted_cookie = False
     commercial_admin = is_super_admin_email(user.email) and current_asaas_environment().is_production
     if trusted_browser_cookie and not commercial_admin:
@@ -293,7 +352,9 @@ def _start_web_login_challenge(request: Request, db: Session, user: User):
     return response
 
 
-def _render_login(request: Request, error: str | None = None):
+def _render_login(
+    request: Request, error: str | None = None, *, error_status: int = 400, retry_after: int | None = None,
+):
     notice_key = request.query_params.get("notice")
     info = None
     if notice_key == "password-reset-requested":
@@ -310,7 +371,8 @@ def _render_login(request: Request, error: str | None = None):
             "google_login_enabled": _google_login_enabled(),
             "page": "login",
         },
-        status_code=status.HTTP_400_BAD_REQUEST if error else status.HTTP_200_OK,
+        status_code=error_status if error else status.HTTP_200_OK,
+        headers={"Retry-After": str(retry_after)} if retry_after is not None else None,
     )
 
 
@@ -320,6 +382,7 @@ def _render_login_verification(
     error: str | None = None,
     info: str | None = None,
     trust_browser_checked: bool = False,
+    authenticator_challenge: dict | None = None,
 ):
     return templates.TemplateResponse(
         "login_verify.html",
@@ -333,8 +396,10 @@ def _render_login_verification(
             "resend_cooldown_seconds": _login_code_resend_cooldown_remaining(request),
             "csrf_token": ensure_csrf_token(request),
             "page": "login",
+            "authenticator_challenge": authenticator_challenge,
         },
         status_code=status.HTTP_400_BAD_REQUEST if error else status.HTTP_200_OK,
+        headers=mfa.NO_STORE if authenticator_challenge else None,
     )
 
 
@@ -548,8 +613,9 @@ def password_reset_action(
     if not record:
         return _render_password_reset(request, "", error="Este link e invalido ou expirou. Solicite uma nova redefinicao.")
 
-    user = db.query(User).filter(User.id == record.user_id, User.is_active.is_(True)).first()
-    if not user:
+    user = mfa.lock_user(db, record.user_id)
+    record = get_valid_password_reset_token(db, normalized_token)
+    if not user or not record:
         return _render_password_reset(request, "", error="Este link e invalido ou expirou. Solicite uma nova redefinicao.")
 
     if verify_password(normalized_new_password, user.hashed_password):
@@ -559,14 +625,16 @@ def password_reset_action(
     record.used_at = utc_now()
     db.add(user)
     db.add(record)
-    db.commit()
+    if user.totp_secret_encrypted:
+        mfa.invalidate_authenticator_sessions(db, user)
+        mfa.record_authenticator_event(db, request, user, "password_reset")
+    else:
+        db.commit()
+        revoke_user_trusted_browsers(db, user.id)
+        revoke_active_login_codes(db, user.id)
     revoke_user_password_reset_tokens(db, user.id)
-    revoke_user_trusted_browsers(db, user.id)
-    revoke_active_login_codes(db, user.id)
 
-    request.session.pop("user_email", None)
-    request.session.pop(PENDING_2FA_USER_ID, None)
-    request.session.pop(PENDING_2FA_EMAIL, None)
+    request.session.clear()
     return RedirectResponse(url="/login?notice=password-reset-success", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -602,6 +670,116 @@ def login_web(
     return _start_web_login_challenge(request, db, user)
 
 
+def _wants_verification_json(request: Request) -> bool:
+    return "application/json" in request.headers.get("accept", "")
+
+
+def _expired_verification(request: Request):
+    _clear_pending_2fa(request)
+    if _wants_verification_json(request):
+        return mfa.authenticator_error_reply(
+            mfa.AuthenticatorError("challenge_expired", "A verificação expirou. Entre novamente.", 409)
+        )
+    return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER, headers=mfa.NO_STORE)
+
+
+def _authenticator_login_state(request: Request, user: User, challenge) -> dict:
+    email_step = challenge.stage == "email"
+    return {
+        "stage": challenge.stage,
+        "authenticator_required": True,
+        "methods": ["email"] if email_step else ["totp", "recovery"],
+        "email": user.email if email_step else None,
+        "expires_at": challenge.expires_at.isoformat(),
+        "resend_available_in": mfa.email_resend_remaining(challenge, utc_now()) if email_step else None,
+        "csrf_token": ensure_csrf_token(request),
+    }
+
+
+def _read_authenticator_login(db: Session, request: Request, user: User):
+    if not getattr(user, "totp_secret_encrypted", None):
+        raise mfa.AuthenticatorError("challenge_expired", "A verificação expirou. Entre novamente.", 409)
+    return mfa.read_challenge(db, user, mfa.LOGIN_CHALLENGE, request.session.get(PENDING_AUTHENTICATOR_TOKEN))
+
+
+def _render_authenticator_login(request: Request, user: User, challenge, *, info: str | None = None):
+    details = _authenticator_login_state(request, user, challenge)
+    if _wants_verification_json(request):
+        return mfa.authenticator_reply(details)
+    return _render_login_verification(request, user.email, info=info, authenticator_challenge=details)
+
+
+def _authenticator_login_error(
+    db: Session, request: Request, user: User, challenge, action: str, error: mfa.AuthenticatorError,
+):
+    details = _authenticator_login_state(request, user, challenge) if challenge else None
+    mfa.record_authenticator_event(db, request, user, action, error=error)
+    if error.code == "challenge_expired":
+        return _expired_verification(request)
+    if _wants_verification_json(request):
+        return mfa.authenticator_error_reply(error)
+    return _render_login_verification(request, user.email, str(error), authenticator_challenge=details)
+
+
+def _verify_authenticator_login(db: Session, request: Request, user: User, code: str, method: str | None):
+    locked_user = mfa.lock_user(db, user.id)
+    if not locked_user:
+        return _expired_verification(request)
+    user = locked_user
+    challenge = None
+    action = "login.verified"
+    try:
+        challenge = _read_authenticator_login(db, request, user)
+        if challenge.stage == "email" and method in (None, "email"):
+            mfa.verify_challenge_email(user, challenge, code)
+            mfa.record_authenticator_event(db, request, user, "login.email_verified")
+            return _render_authenticator_login(request, user, challenge)
+        if challenge.stage != "totp" or method == "email":
+            raise mfa.AuthenticatorError("wrong_stage", "Use um método disponível nesta etapa.", 409)
+        method = method or "totp"
+        mfa.verify_active_factor(db, user, method=method, code=code)
+    except mfa.AuthenticatorError as error:
+        return _authenticator_login_error(db, request, user, challenge, action, error)
+
+    version = authenticator_session_version(user)
+    db.delete(challenge)
+    mfa.record_authenticator_event(db, request, user, action, method=method)
+    response = _complete_web_login(
+        request, db, user, verified_second_factor=True, verified_authenticator_version=version
+    )
+    if _wants_verification_json(request):
+        if not request.session.get("user_email"):
+            return _expired_verification(request)
+        return mfa.authenticator_reply({"stage": "complete", "redirect_url": response.headers["location"]})
+    return response
+
+
+def _legacy_login_state(request: Request, user: User) -> dict:
+    return {
+        "stage": "email", "authenticator_required": False, "methods": ["email"], "email": user.email, "expires_at": None,
+        "resend_available_in": _login_code_resend_cooldown_remaining(request),
+        "csrf_token": ensure_csrf_token(request),
+    }
+
+
+@router.get("/login/verificacao/estado")
+def login_verification_state(request: Request, db: Session = Depends(get_db)):
+    user = _pending_2fa_user(request, db)
+    if user and getattr(user, "totp_secret_encrypted", None):
+        try:
+            challenge = _read_authenticator_login(db, request, user)
+        except mfa.AuthenticatorError as error:
+            _clear_pending_2fa(request)
+            return mfa.authenticator_error_reply(error)
+        return mfa.authenticator_reply(_authenticator_login_state(request, user, challenge))
+    if not user or request.session.get(PENDING_AUTHENTICATOR_TOKEN):
+        _clear_pending_2fa(request)
+        return mfa.authenticator_error_reply(
+            mfa.AuthenticatorError("challenge_expired", "A verificação expirou. Entre novamente.", 409)
+        )
+    return mfa.authenticator_reply(_legacy_login_state(request, user))
+
+
 @router.get("/login/verificacao")
 def login_verification_page(
     request: Request,
@@ -613,25 +791,38 @@ def login_verification_page(
         return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
     user = _pending_2fa_user(request, db)
     if not user:
-        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+        return _expired_verification(request)
+    if getattr(user, "totp_secret_encrypted", None) or request.session.get(PENDING_AUTHENTICATOR_TOKEN):
+        try:
+            challenge = _read_authenticator_login(db, request, user)
+        except mfa.AuthenticatorError:
+            return _expired_verification(request)
+        return _render_authenticator_login(request, user, challenge)
     return _render_login_verification(request, request.session.get(PENDING_2FA_EMAIL, user.email))
 
 
 @router.post("/login/verificacao")
 def login_verification_web(
     request: Request,
-    code: str = Form(...),
+    code: str = Form(..., max_length=80),
     trust_browser: str | None = Form(None),
     csrf_token: str = Form(...),
     db: Session = Depends(get_db),
+    method: Literal["email", "totp", "recovery"] | None = Form(None),
 ):
     validate_csrf(request, csrf_token)
     user = _pending_2fa_user(request, db)
     if not user:
-        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+        return _expired_verification(request)
+    if getattr(user, "totp_secret_encrypted", None) or request.session.get(PENDING_AUTHENTICATOR_TOKEN):
+        return _verify_authenticator_login(db, request, user, code, method)
+    if method not in (None, "email"):
+        return mfa.authenticator_error_reply(mfa.AuthenticatorError("wrong_stage", "Use o código por e-mail.", 409))
     trust_browser_checked = _trust_browser_requested(trust_browser)
     normalized_code = "".join(char for char in code if char.isdigit())[:6]
     if len(normalized_code) != 6:
+        if _wants_verification_json(request):
+            return mfa.authenticator_error_reply(mfa.AuthenticatorError("invalid_code", "Informe um código de seis dígitos."))
         return _render_login_verification(
             request,
             request.session.get(PENDING_2FA_EMAIL, user.email),
@@ -647,6 +838,8 @@ def login_verification_web(
             outcome="failure",
             metadata={"detail": (message or "")[:120]},
         )
+        if _wants_verification_json(request):
+            return mfa.authenticator_error_reply(mfa.AuthenticatorError("invalid_code", message))
         return _render_login_verification(
             request,
             request.session.get(PENDING_2FA_EMAIL, user.email),
@@ -664,7 +857,39 @@ def login_verification_web(
                 extra={"user_email": user.email},
             )
 
-    return _complete_web_login(request, db, user, trusted_browser_token=trusted_browser_token, verified_second_factor=True)
+    response = _complete_web_login(request, db, user, trusted_browser_token=trusted_browser_token, verified_second_factor=True)
+    if _wants_verification_json(request):
+        if not request.session.get("user_email"):
+            return _expired_verification(request)
+        result = mfa.authenticator_reply({"stage": "complete", "redirect_url": response.headers["location"]})
+        for cookie in response.headers.getlist("set-cookie"):
+            result.headers.append("set-cookie", cookie)
+        return result
+    return response
+
+
+def _resend_authenticator_login(db: Session, request: Request, user: User):
+    locked_user = mfa.lock_user(db, user.id)
+    if not locked_user:
+        return _expired_verification(request)
+    user = locked_user
+    challenge = None
+    action = "login.email_resent"
+    try:
+        challenge = _read_authenticator_login(db, request, user)
+        if challenge.stage != "email":
+            raise mfa.AuthenticatorError("wrong_stage", "O e-mail está indisponível nesta etapa.", 409)
+        mfa.check_attempts(user, utc_now())
+        code = mfa.generate_challenge_email_code(challenge)
+        send_access_code_email(user.email, code)
+    except mfa.AuthenticatorError as error:
+        return _authenticator_login_error(db, request, user, challenge, action, error)
+    except (RuntimeError, OSError):
+        db.rollback()
+        error = mfa.AuthenticatorError("delivery_failed", "Não foi possível reenviar o código de acesso.", 503)
+        return _authenticator_login_error(db, request, user, challenge, action, error)
+    mfa.record_authenticator_event(db, request, user, action)
+    return _render_authenticator_login(request, user, challenge, info="Enviamos um novo código por e-mail.")
 
 
 @router.post("/login/verificacao/reenviar")
@@ -677,9 +902,15 @@ def resend_login_verification_code(
     validate_csrf(request, csrf_token)
     user = _pending_2fa_user(request, db)
     if not user:
-        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+        return _expired_verification(request)
+    if getattr(user, "totp_secret_encrypted", None) or request.session.get(PENDING_AUTHENTICATOR_TOKEN):
+        return _resend_authenticator_login(db, request, user)
     cooldown_seconds = _login_code_resend_cooldown_remaining(request)
     if cooldown_seconds > 0:
+        if _wants_verification_json(request):
+            return mfa.authenticator_error_reply(mfa.AuthenticatorError(
+                "resend_cooldown", "Aguarde antes de solicitar outro código.", 429, retry_after=cooldown_seconds,
+            ))
         return _render_login_verification(
             request,
             user.email,
@@ -694,6 +925,8 @@ def resend_login_verification_code(
             "Falha controlada ao reenviar codigo 2FA",
             extra={"user_email": user.email},
         )
+        if _wants_verification_json(request):
+            return mfa.authenticator_error_reply(mfa.AuthenticatorError("delivery_failed", str(exc), 503))
         return _render_login_verification(
             request,
             user.email,
@@ -705,6 +938,10 @@ def resend_login_verification_code(
             "Falha inesperada ao reenviar codigo 2FA",
             extra={"user_email": user.email},
         )
+        if _wants_verification_json(request):
+            return mfa.authenticator_error_reply(
+                mfa.AuthenticatorError("delivery_failed", "Não foi possível reenviar o código de acesso.", 503)
+            )
         return _render_login_verification(
             request,
             user.email,
@@ -712,6 +949,8 @@ def resend_login_verification_code(
             trust_browser_checked=_trust_browser_requested(trust_browser),
         )
     _mark_login_code_sent(request)
+    if _wants_verification_json(request):
+        return mfa.authenticator_reply(_legacy_login_state(request, user))
     return _render_login_verification(
         request,
         user.email,
@@ -754,11 +993,11 @@ def login_api(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais invalidas")
 
-    if user.is_two_factor_enabled or is_super_admin_email(user.email):
+    if user.is_two_factor_enabled or getattr(user, "totp_secret_encrypted", None) or is_super_admin_email(user.email):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Use o acesso web com verificação em duas etapas.")
     login_throttle.register_success(api_email)
     append_audit_event(request=request, actor_user=user, event_type="auth.api.token.success", outcome="success")
-    return Token(access_token=create_access_token(user.email))
+    return Token(access_token=create_access_token(user.email, security_version=authenticator_session_version(user)))
 
 
 # ---------------------------------------------------------------------------

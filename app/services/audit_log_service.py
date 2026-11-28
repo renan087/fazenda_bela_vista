@@ -58,8 +58,9 @@ def append_audit_event(
     status_code: int | None = None,
     duration_ms: float | None = None,
     metadata: dict[str, Any] | None = None,
+    db: Session | None = None,
 ) -> None:
-    """Insere um evento de auditoria em sessão própria (não interfere na transação da request)."""
+    """Adiciona à transação informada ou grava em uma sessão própria."""
 
     def _write(session: Session) -> None:
         uid = actor_user_id
@@ -100,11 +101,14 @@ def append_audit_event(
             metadata_json=meta_str,
         )
         session.add(row)
-        session.commit()
 
+    if db is not None:
+        _write(db)
+        return
     try:
         with SessionLocal() as session:
             _write(session)
+            session.commit()
     except Exception:
         logger.exception("Falha ao gravar auditoria event_type=%s", event_type)
 

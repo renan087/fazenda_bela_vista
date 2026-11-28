@@ -96,7 +96,9 @@ def _should_skip_object(obj: Any) -> bool:
     except Exception:
         return True
     table_name = getattr(mapper.local_table, "name", "")
-    return table_name in {AuditLog.__tablename__, "farm_preview_cache"}
+    return table_name in {
+        AuditLog.__tablename__, "farm_preview_cache", "authenticator_challenges", "authenticator_recovery_codes",
+    }
 
 
 def _snapshot_object(obj: Any) -> dict[str, Any]:

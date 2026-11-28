@@ -6,8 +6,17 @@ from app.core.config import get_settings
 
 SESSION_LAST_ACTIVITY_KEY = "last_activity_at"
 SESSION_AUTH_KEYS = ("user_email", "pending_2fa_user_id")
+AUTHENTICATOR_SESSION_VERSION = "totp_session_version"
 
 settings = get_settings()
+
+
+def authenticator_session_version(user) -> int:
+    return getattr(user, "totp_session_version", None) or 0
+
+
+def authenticator_session_matches(request: Request, user) -> bool:
+    return request.session.get(AUTHENTICATOR_SESSION_VERSION, 0) == authenticator_session_version(user)
 
 
 def has_managed_session(request: Request) -> bool:

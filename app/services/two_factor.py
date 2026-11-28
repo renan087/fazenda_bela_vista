@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -28,12 +28,13 @@ def issue_login_verification_code(db: Session, user: User) -> str:
     return code
 
 
-def revoke_active_login_codes(db: Session, user_id: int) -> None:
+def revoke_active_login_codes(db: Session, user_id: int, *, commit: bool = True) -> None:
     db.query(LoginVerificationCode).filter(
         LoginVerificationCode.user_id == user_id,
         LoginVerificationCode.used_at.is_(None),
     ).delete(synchronize_session=False)
-    db.commit()
+    if commit:
+        db.commit()
 
 
 def get_active_login_code(db: Session, user_id: int) -> LoginVerificationCode | None:
@@ -66,7 +67,10 @@ def verify_login_code(db: Session, user_id: int, code: str) -> tuple[bool, str]:
         return False, "Solicite um novo codigo de acesso."
     if record.used_at is not None:
         return False, "Este codigo ja foi utilizado."
-    if record.expires_at < now:
+    expires_at = record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < now:
         return False, "O codigo expirou. Solicite um novo codigo."
     if record.attempts_count >= record.max_attempts:
         return False, "Numero maximo de tentativas excedido. Solicite um novo codigo."

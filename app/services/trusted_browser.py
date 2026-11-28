@@ -170,10 +170,11 @@ def revoke_trusted_browser_token(db: Session, raw_token: str | None) -> None:
     db.commit()
 
 
-def revoke_user_trusted_browsers(db: Session, user_id: int) -> None:
+def revoke_user_trusted_browsers(db: Session, user_id: int, *, commit: bool = True) -> None:
     now = utc_now()
     db.query(TrustedBrowserToken).filter(
         TrustedBrowserToken.user_id == user_id,
         TrustedBrowserToken.revoked_at.is_(None),
     ).update({"revoked_at": now}, synchronize_session=False)
-    db.commit()
+    if commit:
+        db.commit()

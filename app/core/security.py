@@ -28,12 +28,14 @@ def authenticate_user(user: User | None, password: str) -> bool:
     return verify_password(password, user.hashed_password)
 
 
-def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
+def create_access_token(subject: str, expires_delta: timedelta | None = None, *, security_version: int = 0) -> str:
     settings = get_settings()
     expire = utc_now() + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
     payload = {"sub": subject, "exp": expire}
+    if security_version:
+        payload["mfa_version"] = security_version
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 

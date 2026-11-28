@@ -32,6 +32,7 @@ from app.routers.assistant_shared_reports import router as assistant_shared_repo
 from app.routers.api import router as api_router
 from app.routers.auth import api_router as auth_api_router
 from app.routers.auth import router as auth_router
+from app.routers.authenticator import router as authenticator_router
 from app.services.audit_log_service import append_audit_event, client_ip
 from app.services.backup_service import run_backup_automation_loop, run_backup_repository_monitor_loop
 from app.services.coffee_quotes import seed_cepea_coffee_quotes_from_bundle
@@ -358,6 +359,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(auth_router)
+app.include_router(authenticator_router)
 app.include_router(asaas_webhook_router)
 app.include_router(mercadopago_webhook_router)
 app.include_router(whatsapp_webhook_router)
