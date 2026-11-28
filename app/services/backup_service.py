@@ -22,6 +22,7 @@ from app.core.timezone import app_now, get_app_timezone
 from app.db.session import SessionLocal
 from app.models import BackupAutomationSetting, BackupRun, User
 from app.repositories.farm import FarmRepository
+from app.services.email_service import send_backup_failure_email
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -99,6 +100,7 @@ def _create_backup_run(
         status="running",
         database_bucket=settings.supabase_bucket_db,
         files_bucket=settings.supabase_bucket_files,
+        details_json=json.dumps({"progress_ui": _backup_progress_payload("starting")}, ensure_ascii=False),
         deleted_from_storage_at=None,
         deleted_from_storage_reason=None,
         deleted_from_storage_source=None,
@@ -106,7 +108,6 @@ def _create_backup_run(
     db.add(run)
     db.commit()
     db.refresh(run)
-    _update_backup_progress(db, run.id, stage="starting")
     return run
 
 
@@ -114,7 +115,29 @@ def execute_backup_run(db: Session, run_id: int) -> BackupRun:
     run = db.query(BackupRun).filter(BackupRun.id == run_id).first()
     if not run:
         raise RuntimeError("Execução de backup não encontrada.")
+    if run.status != "running":
+        return run
 
+    try:
+        return _execute_backup_run(db, run)
+    except Exception:
+        logger.exception("Falha inesperada ao executar backup. run_id=%s", run_id)
+        db.rollback()
+        try:
+            interrupted_runs = (
+                db.query(BackupRun)
+                .filter(BackupRun.id == run_id, BackupRun.status == "running")
+                .with_for_update()
+                .all()
+            )
+            _finish_interrupted_backup_runs(db, interrupted_runs, "Falha inesperada ao executar o backup.")
+        except Exception:
+            db.rollback()
+            logger.exception("Não foi possível registrar a falha do backup. run_id=%s", run_id)
+        raise
+
+
+def _execute_backup_run(db: Session, run: BackupRun) -> BackupRun:
     started_at = _utc_now()
     db_result: dict | None = None
     files_result: dict | None = None
@@ -170,6 +193,9 @@ def execute_backup_run(db: Session, run_id: int) -> BackupRun:
         except Exception:
             logger.warning("Nao foi possivel atualizar a leitura de uso do Supabase apos o backup.", exc_info=True)
 
+    _update_backup_progress(db, run.id, stage="finalizing", preserve_existing=True)
+    db.refresh(run, with_for_update=True)
+    previous_status = run.status
     success_count = int(db_result is not None) + int(files_result is not None)
     run.status = "success" if success_count == 2 else "partial" if success_count == 1 else "failed"
     run.database_bucket = settings.supabase_bucket_db
@@ -183,27 +209,21 @@ def execute_backup_run(db: Session, run_id: int) -> BackupRun:
             "database": db_result["details"] if db_result else None,
             "files": files_result["details"] if files_result else None,
             "storage_preflight": storage_preflight,
+            "progress_ui": _backup_progress_payload(run.status),
         },
         ensure_ascii=False,
     )
     run.error_message = "\n".join(errors) if errors else None
     run.finished_at = _utc_now()
-    progress_stage = "success" if run.status == "success" else "partial" if run.status == "partial" else "failed"
-    _update_backup_progress(
-        db,
-        run.id,
-        stage="finalizing",
-        preserve_existing=True,
-    )
-    db.add(run)
+    alert = None
+    if previous_status == "running" and run.status in {"partial", "failed"}:
+        affected = "Banco de dados e arquivos"
+        if run.status == "partial":
+            affected = "Arquivos" if db_result else "Banco de dados"
+        alert = _backup_failure_email_details(run, affected)
     db.commit()
-    db.refresh(run)
-    _update_backup_progress(
-        db,
-        run.id,
-        stage=progress_stage,
-        preserve_existing=True,
-    )
+    if alert:
+        _notify_backup_failure(**alert)
     db.refresh(run)
     return run
 
@@ -213,16 +233,7 @@ def process_backup_run_in_background(run_id: int) -> int:
         with SessionLocal() as db:
             execute_backup_run(db, run_id)
     except Exception:
-        logger.exception("Falha inesperada ao executar backup em segundo plano. run_id=%s", run_id)
-        with SessionLocal() as db:
-            _update_backup_progress(db, run_id, stage="failed", preserve_existing=True)
-            run = db.query(BackupRun).filter(BackupRun.id == run_id).first()
-            if run and not run.error_message:
-                run.error_message = "Falha inesperada ao executar o backup em segundo plano."
-                run.finished_at = _utc_now()
-                run.status = "failed"
-                db.add(run)
-                db.commit()
+        logger.exception("Falha no processamento do backup em segundo plano. run_id=%s", run_id)
     return run_id
 
 
@@ -232,12 +243,23 @@ def expire_stale_running_backup_runs(db: Session, ttl: timedelta = STALE_RUNNING
         db.query(BackupRun)
         .filter(BackupRun.status == "running")
         .filter(BackupRun.started_at < cutoff)
+        .populate_existing()
+        .with_for_update()
         .all()
     )
-    if not stale_runs:
+    return _finish_interrupted_backup_runs(
+        db,
+        stale_runs,
+        "A execução do backup foi interrompida ou excedeu o tempo esperado. Inicie um novo backup.",
+    )
+
+
+def _finish_interrupted_backup_runs(db: Session, runs: list[BackupRun], message: str) -> int:
+    if not runs:
         return 0
 
-    for run in stale_runs:
+    alerts = []
+    for run in runs:
         try:
             parsed = json.loads(run.details_json) if run.details_json else {}
         except json.JSONDecodeError:
@@ -248,13 +270,46 @@ def expire_stale_running_backup_runs(db: Session, ttl: timedelta = STALE_RUNNING
         run.details_json = json.dumps(parsed, ensure_ascii=False)
         run.status = "failed"
         run.finished_at = _utc_now()
-        run.error_message = run.error_message or (
-            "A execução do backup foi interrompida ou excedeu o tempo esperado. "
-            "Inicie um novo backup."
-        )
-        db.add(run)
+        run.error_message = run.error_message or message
+        alerts.append(_backup_failure_email_details(run, "Execução interrompida"))
     db.commit()
-    return len(stale_runs)
+    for alert in alerts:
+        _notify_backup_failure(**alert)
+    return len(runs)
+
+
+def _backup_failure_email_details(run: BackupRun, affected_components: str) -> dict:
+    return {
+        "run_id": run.id,
+        "trigger_source": run.trigger_source,
+        "status": run.status,
+        "finished_at": run.finished_at,
+        "affected_components": affected_components,
+    }
+
+
+def _notify_backup_failure(
+    *, run_id: int, trigger_source: str, status: str, finished_at: datetime, affected_components: str
+) -> None:
+    configured_recipients = (settings.backup_failure_alert_email, settings.super_admin_email, settings.admin_email)
+    recipient = next(
+        (email.strip() for email in configured_recipients if email and email.strip()),
+        None,
+    )
+    if not recipient:
+        logger.warning("Nenhum destinatário configurado para o alerta de backup. run_id=%s", run_id)
+        return
+    try:
+        send_backup_failure_email(
+            recipient,
+            run_id=run_id,
+            trigger_source=trigger_source,
+            status=status,
+            finished_at=finished_at,
+            affected_components=affected_components,
+        )
+    except Exception:
+        logger.exception("Falha ao enviar o alerta de backup. run_id=%s", run_id)
 
 
 def get_or_create_backup_automation_setting(db: Session) -> BackupAutomationSetting:
@@ -689,11 +744,17 @@ def delete_backup_run(db: Session, run: BackupRun) -> list[str]:
 
 
 def _claim_due_automatic_backup(db: Session) -> BackupAutomationSetting | None:
-    get_or_create_backup_automation_setting(db)
+    setting = get_or_create_backup_automation_setting(db)
     now = _utc_now()
+    if setting.automatic_enabled and (
+        setting.scheduler_locked_at is None or setting.scheduler_locked_at <= now - AUTOMATION_LOCK_TTL
+    ):
+        expire_stale_running_backup_runs(db)
+
     setting = (
         db.query(BackupAutomationSetting)
         .filter(BackupAutomationSetting.id == 1)
+        .populate_existing()
         .with_for_update()
         .first()
     )
@@ -724,7 +785,6 @@ def _claim_due_automatic_backup(db: Session) -> BackupAutomationSetting | None:
     if setting.scheduler_locked_at and setting.scheduler_locked_at > now - AUTOMATION_LOCK_TTL:
         return None
 
-    expire_stale_running_backup_runs(db)
     has_running = db.query(BackupRun.id).filter(BackupRun.status == "running").first() is not None
     if has_running or setting.next_run_at > now:
         return None
@@ -833,10 +893,6 @@ def _update_backup_progress(
             progress_payload["progress"] = int(current.get("progress", 0) or 0)
     parsed["progress_ui"] = progress_payload
     run.details_json = json.dumps(parsed, ensure_ascii=False)
-    if stage in {"success", "partial", "failed"}:
-        run.status = "success" if stage == "success" else "partial" if stage == "partial" else "failed"
-        if run.finished_at is None:
-            run.finished_at = _utc_now()
     db.add(run)
     db.commit()
 

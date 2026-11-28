@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     # Verificacao diaria do repositorio de backups no PostgreSQL do Supabase.
     supabase_backup_monitor_enabled: bool = True
     backup_local_dirs: str | None = None
+    backup_failure_alert_email: str | None = None
     # Asaas (assinaturas / clientes). Opcional: sem ASAAS_API_KEY o formulário só valida e exibe o JSON.
     asaas_api_key: str | None = None
     asaas_api_base_url: str = "https://api-sandbox.asaas.com"

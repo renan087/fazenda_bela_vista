@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import smtplib
+from datetime import datetime
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Callable
@@ -11,6 +12,7 @@ from urllib.parse import urlparse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.core.config import get_settings
+from app.core.timezone import format_app_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,8 @@ def _generic_error_message(error_context: str) -> str:
         return "Nao foi possivel enviar o email de redefinicao."
     if error_context == "welcome":
         return "Nao foi possivel enviar o email de boas-vindas."
+    if error_context == "backup_failure":
+        return "Não foi possível enviar o alerta de falha no backup."
     return "Nao foi possivel enviar o email de verificacao."
 
 
@@ -1163,6 +1167,75 @@ def build_billing_notice_email(
 # =============================================================================
 # 4. EQUIPE INTERNA SISFARM (NOTIFICAÇÕES OPERACIONAIS / COMERCIAIS)
 # =============================================================================
+
+
+def build_backup_failure_email(
+    *,
+    run_id: int,
+    trigger_source: str,
+    status: str,
+    finished_at: datetime,
+    affected_components: str,
+) -> tuple[str, str, str]:
+    env = _resolve_email_env()
+    link = f"{env['base_url']}/backups"
+    source = {
+        "automatic": "Automático",
+        "web_manual": "Manual pelo painel",
+        "manual": "Manual",
+        "cli": "Linha de comando",
+    }.get(trigger_source, "Desconhecida")
+    partial = status == "partial"
+    title = "Backup concluído parcialmente" if partial else "Backup não concluído"
+    description = (
+        "A execução do backup salvou apenas parte dos dados previstos."
+        if partial else "A execução do backup terminou com falha."
+    )
+    subject = f"{title} no SiSFarm (#{run_id})"
+    rows = [
+        ("Execução", f"#{run_id}"),
+        ("Origem", source),
+        ("Encerrado em", format_app_datetime(finished_at, "%d/%m/%Y às %H:%M (%Z)")),
+        ("Falha registrada", affected_components),
+    ]
+    action = "Consulte os detalhes da falha no histórico de backups."
+    plain_details = "\n".join(f"{label}: {value}" for label, value in rows)
+    text_body = f"{description}\n\n{plain_details}\n\n{action}\n{link}"
+    tone = "warning" if partial else "danger"
+    html_body = _render_transactional_html(
+        subject=subject,
+        preheader=description,
+        badge_label="Backup parcial" if partial else "Falha no backup",
+        badge_tone=tone,
+        eyebrow="Operações · Backups",
+        title=title,
+        intro_paragraphs=[description, action],
+        details=[{"label": label, "value": value} for label, value in rows],
+        details_tone=tone,
+        cta={"label": "Abrir histórico de backups", "url": link},
+        fallback_url=link,
+        is_internal=True,
+    )
+    return subject, text_body, html_body
+
+
+def send_backup_failure_email(
+    recipient_email: str,
+    *,
+    run_id: int,
+    trigger_source: str,
+    status: str,
+    finished_at: datetime,
+    affected_components: str,
+) -> None:
+    subject, body, html = build_backup_failure_email(
+        run_id=run_id,
+        trigger_source=trigger_source,
+        status=status,
+        finished_at=finished_at,
+        affected_components=affected_components,
+    )
+    _send_email(recipient_email, subject, body, "backup_failure", html_body=html)
 
 
 def build_new_signup_team_email(

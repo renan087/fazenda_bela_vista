@@ -96,6 +96,10 @@ Parametros de seguranca do 2FA:
 - `TWO_FACTOR_CODE_MINUTES`
 - `TWO_FACTOR_MAX_ATTEMPTS`
 
+## Alertas de backup por e-mail
+
+Backups com falha ou concluídos parcialmente geram um alerta pelo SMTP do SiSFarm. Defina `BACKUP_FAILURE_ALERT_EMAIL` para escolher o destinatário. Sem essa configuração, o sistema usa `SUPER_ADMIN_EMAIL` ou, na ausência dele, `ADMIN_EMAIL`.
+
 ## Assinaturas
 
 O Mercado Pago processa as assinaturas mensais e anuais com checkout hospedado. O SiSFarm gerencia o catálogo, o histórico e o acesso da organização. Acompanhe os contratos em **Assinaturas** e em **Minha assinatura**. [Homologação](docs/mercadopago-sandbox.md) · [Entrada em produção](docs/mercadopago-producao.md)
