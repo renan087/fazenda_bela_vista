@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/digital_signing_ui.html" import icon, doc_chip, module_tabs, dropzone %}
-{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=9">{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/css/digital_signing.css?v=10">{% endblock %}
 {% block content %}
 {% set c = doc_counts %}
 <main class="sf-page pd-page ds-page" data-ds-home data-csrf="{{ csrf_token }}" data-active-tab="{{ active_tab }}">
@@ -43,18 +43,18 @@
     {% if farm %}
     <!-- MOBILE-ONLY: Faixa enxuta de 3 mini-KPIs + 1 banner de ação urgente -->
     <section class="ds-mobile-kpis ds-only-mobile-grid" aria-label="Resumo rápido">
-      <button type="button" class="ds-mkpi{% if c.your_turn %} is-warn{% endif %}" data-ds-filter-trigger="your_turn">
+      <a class="ds-mkpi{% if c.your_turn %} is-warn{% endif %}" href="{{ filter_urls.your_turn }}#ds-docs-title">
         <strong class="ds-tabular">{{ c.your_turn }}</strong>
         <span>Para assinar</span>
-      </button>
-      <button type="button" class="ds-mkpi" data-ds-filter-trigger="waiting">
+      </a>
+      <a class="ds-mkpi" href="{{ filter_urls.waiting }}#ds-docs-title">
         <strong class="ds-tabular">{{ c.waiting }}</strong>
         <span>Aguardando</span>
-      </button>
-      <button type="button" class="ds-mkpi" data-ds-filter-trigger="done">
+      </a>
+      <a class="ds-mkpi" href="{{ filter_urls.done }}#ds-docs-title">
         <strong class="ds-tabular">{{ c.done }}</strong>
         <span>Concluídos</span>
-      </button>
+      </a>
     </section>
 
     {% if next_to_sign %}
@@ -97,7 +97,7 @@
           <p class="ds-kpi-big ds-tabular">{{ c.waiting }} <small>em andamento</small></p>
           <p class="ds-kpi-sub">Documentos em que você já assinou e aguarda os demais participantes.</p>
         </div>
-        <button type="button" class="ds-kpi-link" data-ds-filter-trigger="waiting">Acompanhar pendentes →</button>
+        <a class="ds-kpi-link" href="{{ filter_urls.waiting }}#ds-docs-title">Acompanhar pendentes →</a>
       </article>
 
       <article class="pd-card ds-kpi">
@@ -110,7 +110,7 @@
           <p class="ds-kpi-big ds-tabular">{{ c.done }} <small>assinados</small></p>
           <p class="ds-kpi-sub">Arquivados com integridade protegida e validade ICP-Brasil.</p>
         </div>
-        <button type="button" class="ds-kpi-link" data-ds-filter-trigger="done">Ver concluídos →</button>
+        <a class="ds-kpi-link" href="{{ filter_urls.done }}#ds-docs-title">Ver concluídos →</a>
       </article>
     </section>
 
@@ -164,27 +164,29 @@
     <section class="pd-card ds-list-card" aria-labelledby="ds-docs-title">
       <div class="ds-list-head">
         <div class="ds-list-top">
-          <h2 id="ds-docs-title">Documentos <span class="ds-count-muted ds-tabular" data-ds-visible-count>({{ history|length }})</span></h2>
-          <div class="ds-list-tools">
-            {% if history %}
-            <select class="ds-select-compact ds-hide-mobile" data-ds-category-filter aria-label="Filtrar por categoria">
-              <option value="todas">Todas as categorias</option>
-              {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+          <h2 id="ds-docs-title">Documentos <span class="ds-count-muted ds-tabular">({{ pagination.total_items }})</span></h2>
+          {% if c.total %}
+          <form class="ds-list-tools" method="get" action="/assinatura-digital#ds-docs-title">
+            <input type="hidden" name="por" value="{{ per_page }}">
+            {% if status_filter != 'todos' %}<input type="hidden" name="situacao" value="{{ status_filter }}">{% endif %}
+            <select class="ds-select-compact ds-hide-mobile" name="categoria" data-ds-submit-on-change aria-label="Filtrar por categoria">
+              <option value="">Todas as categorias</option>
+              {% for cat in categories %}<option value="{{ cat }}"{% if cat == category_filter %} selected{% endif %}>{{ cat }}</option>{% endfor %}
             </select>
             <label class="ds-search-box">
               {{ icon('search', 16) }}
               <span class="sr-only">Buscar documento</span>
-              <input type="search" placeholder="Buscar contrato ou arquivo..." data-ds-search>
+              <input type="search" name="q" value="{{ search_query }}" placeholder="Buscar contrato ou arquivo...">
             </label>
-            {% endif %}
-          </div>
+            <button type="submit" class="sf-btn sf-btn-secondary">Buscar</button>
+          </form>
+          {% endif %}
         </div>
-        {% if history %}
+        {% if c.total %}
         <div class="ds-chips-row" role="group" aria-label="Filtrar por situação">
-          <button type="button" class="sl-chip" data-ds-filter="todos" aria-pressed="true">Todos <span>{{ c.total }}</span></button>
-          <button type="button" class="sl-chip" data-ds-filter="your_turn" aria-pressed="false">Para assinar <span>{{ c.your_turn }}</span></button>
-          <button type="button" class="sl-chip" data-ds-filter="waiting" aria-pressed="false">Aguardando <span>{{ c.waiting }}</span></button>
-          <button type="button" class="sl-chip" data-ds-filter="done" aria-pressed="false">Concluídos <span>{{ c.done }}</span></button>
+          {% for key, label, count in [('todos', 'Todos', c.total), ('your_turn', 'Para assinar', c.your_turn), ('waiting', 'Aguardando', c.waiting), ('done', 'Concluídos', c.done)] %}
+          <a class="sl-chip" href="{{ filter_urls[key] }}#ds-docs-title"{% if status_filter == key %} aria-current="true"{% endif %}>{{ label }} <span>{{ count }}</span></a>
+          {% endfor %}
         </div>
         {% endif %}
       </div>
@@ -201,7 +203,7 @@
       </div>
       <ul class="ds-doc-list" data-ds-doc-list>
         {% for item in history %}
-        <li class="ds-doc-row" data-ds-list-row data-status="{{ item.status_key }}" data-category="{{ item.category }}" data-search-text="{{ (item.title ~ ' ' ~ item.filename ~ ' ' ~ item.category)|lower }}">
+        <li class="ds-doc-row" data-ds-list-row>
           <div class="ds-doc-primary">
             <a class="ds-doc-link" href="/assinatura-digital/documentos/{{ item.id }}">
               <span class="ds-doc-ic ds-doc-ic--{{ item.status_tone }} ds-hide-mobile">{{ icon('file', 18) }}</span>
@@ -281,10 +283,27 @@
         </li>
         {% endfor %}
       </ul>
-      <div class="ds-empty" data-ds-search-empty hidden>
+      <nav class="ds-pagination" aria-label="Paginação de documentos">
+        <div class="ds-pagination-nav">
+          {% if pagination.has_prev %}<a class="sf-btn sf-btn-secondary" href="{{ pagination.prev_url }}#ds-docs-title" rel="prev">Anterior</a>{% endif %}
+          <span>Página {{ pagination.page }} de {{ pagination.total_pages }}</span>
+          {% if pagination.has_next %}<a class="sf-btn sf-btn-secondary" href="{{ pagination.next_url }}#ds-docs-title" rel="next">Próxima</a>{% endif %}
+        </div>
+        <form class="ds-pagination-size" method="get" action="/assinatura-digital#ds-docs-title">
+          {% if status_filter != 'todos' %}<input type="hidden" name="situacao" value="{{ status_filter }}">{% endif %}
+          {% if category_filter %}<input type="hidden" name="categoria" value="{{ category_filter }}">{% endif %}
+          {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
+          <label for="ds-page-size">Documentos por página</label>
+          <select id="ds-page-size" class="ds-select-compact" name="por" data-ds-submit-on-change>
+            {% for size in page_sizes %}<option value="{{ size }}"{% if size == per_page %} selected{% endif %}>{{ size }}</option>{% endfor %}
+          </select>
+          <noscript><button type="submit" class="sf-btn sf-btn-secondary">Aplicar</button></noscript>
+        </form>
+      </nav>
+      {% elif c.total %}
+      <div class="ds-empty">
         <strong>Nenhum documento encontrado neste filtro.</strong>
-        <p>Tente limpar a busca ou trocar a situação selecionada.</p>
-        <button type="button" class="sf-btn sf-btn-secondary" data-ds-reset-filters>Limpar filtros</button>
+        <a href="{{ reset_filters_url }}#ds-docs-title" class="sf-btn sf-btn-secondary">Limpar filtros</a>
       </div>
       {% else %}
       <div class="ds-empty">
@@ -327,5 +346,5 @@
     </div>
   </div>
 </main>
-<script type="module" src="/static/js/digital_signing.js?v=14"></script>
+<script type="module" src="/static/js/digital_signing.js?v=15"></script>
 {% endblock %}

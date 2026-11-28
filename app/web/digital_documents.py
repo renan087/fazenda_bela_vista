@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import secrets
+import unicodedata
 from datetime import datetime, timezone
 from hashlib import sha256
 from urllib.parse import quote, unquote
@@ -42,12 +43,14 @@ from app.services.document_signing.receipt_pdf import build_validation_receipt_p
 from app.services.email_service import send_plain_email
 from app.services.nfe_permissions import has_fiscal_permission
 from app.services.whatsapp import WhatsAppClient, WhatsAppError, is_configured as whatsapp_is_configured
-from app.web.routes import _base_context, _repository, templates
+from app.web.routes import _base_context, _paginate_collection, _repository, _url_with_query, templates
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 PRIVATE = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
 SESSION_NONCE = "document_signing_session"
+DOCUMENT_PAGE_SIZES = (10, 30, 50, 100)
+DOCUMENT_FILTERS = ("todos", "your_turn", "waiting", "done", "attention")
 
 
 def _public_base_url(request: Request) -> str:
@@ -147,36 +150,33 @@ def _doc(db, user, farm, document_id, **kwargs):
 def _document_summaries(db, user, farm):
     if not farm:
         return [], {"total": 0, "your_turn": 0, "waiting": 0, "done": 0, "attention": 0}, None
-    docs = db.scalars(
-        workflow.document_query(db, user, farm.id)
-        .order_by(SigningDocument.updated_at.desc(), SigningDocument.id)
-        .limit(100)
-    ).all()
+    document_query = workflow.document_query(db, user, farm.id)
+    docs = db.scalars(document_query.order_by(SigningDocument.updated_at.desc(), SigningDocument.id)).all()
     if not docs:
         return [], {"total": 0, "your_turn": 0, "waiting": 0, "done": 0, "attention": 0}, None
 
-    doc_ids = [d.id for d in docs]
-    part_map: dict[str, list[int]] = {doc_id: [] for doc_id in doc_ids}
+    visible_ids = document_query.with_only_columns(SigningDocument.id)
+    part_map: dict[str, list[int]] = {}
     for doc_id, uid in db.execute(
         select(SigningParticipant.document_id, SigningParticipant.user_id).where(
-            SigningParticipant.document_id.in_(doc_ids)
+            SigningParticipant.document_id.in_(visible_ids)
         )
     ).all():
         part_map.setdefault(doc_id, []).append(uid)
 
-    signed_by_map: dict[str, set[int]] = {doc_id: set() for doc_id in doc_ids}
+    signed_by_map: dict[str, set[int]] = {}
     for doc_id, uid, sig in db.execute(
         select(SigningRevision.document_id, SigningRevision.user_id, SigningRevision.signature).where(
-            SigningRevision.document_id.in_(doc_ids), SigningRevision.signature.is_not(None)
+            SigningRevision.document_id.in_(visible_ids), SigningRevision.signature.is_not(None)
         )
     ).all():
         if uid is not None and sig:
             signed_by_map.setdefault(doc_id, set()).add(uid)
 
-    ev_electronic_count: dict[str, int] = {doc_id: 0 for doc_id in doc_ids}
+    ev_electronic_count: dict[str, int] = {}
     for doc_id, uid, mod in db.execute(
         select(SigningEvidence.document_id, SigningEvidence.user_id, SigningEvidence.modality).where(
-            SigningEvidence.document_id.in_(doc_ids)
+            SigningEvidence.document_id.in_(visible_ids)
         )
     ).all():
         if uid is not None:
@@ -184,10 +184,10 @@ def _document_summaries(db, user, farm):
         if mod == "electronic_sisfarm":
             ev_electronic_count[doc_id] = ev_electronic_count.get(doc_id, 0) + 1
 
-    ext_pending_map: dict[str, int] = {doc_id: 0 for doc_id in doc_ids}
+    ext_pending_map: dict[str, int] = {}
     for doc_id, st in db.execute(
         select(SigningExternalSigner.document_id, SigningExternalSigner.status).where(
-            SigningExternalSigner.document_id.in_(doc_ids)
+            SigningExternalSigner.document_id.in_(visible_ids)
         )
     ).all():
         if st == "pending":
@@ -326,6 +326,28 @@ def _certificate_inventory(db, user, farm):
 def signing_home(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
     farm = _farm(request, db, user, required=False)
     summaries, doc_counts, next_to_sign = _document_summaries(db, user, farm)
+    params = request.query_params
+    size_by_value = {str(size): size for size in DOCUMENT_PAGE_SIZES}
+    per_page = size_by_value.get(params.get("por"), DOCUMENT_PAGE_SIZES[0])
+    status_filter = params.get("situacao", "todos")
+    if status_filter not in DOCUMENT_FILTERS:
+        status_filter = "todos"
+    category = params.get("categoria", "")
+    if category not in workflow.DOCUMENT_CATEGORIES:
+        category = ""
+    query = params.get("q", "").strip()
+    search = _normalize_document_search(query)
+    matches = [
+        item for item in summaries
+        if (status_filter == "todos" or item["status_key"] == status_filter)
+        and (not category or item["category"] == category)
+        and (not search or search in _normalize_document_search(f"{item['title']} {item['filename']} {item['category']}"))
+    ]
+    pagination = _paginate_collection(request, matches, "pagina", per_page)
+    filter_urls = {
+        key: _url_with_query(request, aba=None, pagina=None, situacao=None if key == "todos" else key)
+        for key in DOCUMENT_FILTERS
+    }
     cert_rows, _, expiring_certs = _certificate_inventory(db, user, farm)
     org_colleagues = (
         db.scalars(
@@ -339,11 +361,18 @@ def signing_home(request: Request, db: Session = Depends(get_db), user: User = D
     active_tab = "validate" if request.query_params.get("aba") == "validar" else "overview"
     return _page(
         request, user, db, "digital_signing", "digital_signing.html", "Documentos",
-        farm=farm, history=summaries, doc_counts=doc_counts, next_to_sign=next_to_sign,
+        farm=farm, history=pagination["items"], doc_counts=doc_counts, next_to_sign=next_to_sign,
+        pagination=pagination, page_sizes=DOCUMENT_PAGE_SIZES, per_page=per_page,
+        status_filter=status_filter, category_filter=category, search_query=query, filter_urls=filter_urls,
+        reset_filters_url=_url_with_query(request, aba=None, pagina=None, situacao=None, categoria=None, q=None),
         cert_count=len(cert_rows), expiring_certs=expiring_certs,
         categories=workflow.DOCUMENT_CATEGORIES, org_colleagues=org_colleagues,
         active_tab=active_tab, mode=signing_mode(farm.id if farm else None),
     )
+
+
+def _normalize_document_search(value: str) -> str:
+    return "".join(char for char in unicodedata.normalize("NFD", value.lower()) if not unicodedata.combining(char))
 
 
 def _format_phone_br(phone: str | None) -> str:

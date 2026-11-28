@@ -250,6 +250,22 @@
 .ds-search-box:focus-within { border-color: var(--ds-brand); }
 .ds-search-box input { border: 0; outline: 0; background: transparent; font-size: 0.8125rem; color: var(--ds-ink); width: 13rem; }
 .ds-chips-row { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.ds-chips-row .sl-chip { text-decoration: none; }
+.ds-chips-row .sl-chip[aria-current="true"] { background: var(--pd-ink); border-color: var(--pd-ink); color: #fff; }
+.ds-pagination, .ds-pagination-nav, .ds-pagination-size {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ds-pagination {
+  justify-content: space-between;
+  border-top: 1px solid var(--ds-line);
+  padding: 0.85rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--ds-muted);
+}
+#ds-docs-title { scroll-margin-top: 6rem; }
 
 .ds-table-head {
   display: grid;

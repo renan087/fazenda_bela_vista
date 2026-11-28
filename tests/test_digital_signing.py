@@ -31,7 +31,7 @@ from app.core.deps import get_current_user_web
 from app.db.base import Base
 from app.db.session import get_db
 from app.models import Farm, Organization, User
-from app.models.signed_document import SigningRevision
+from app.models.signed_document import SigningDocument, SigningRevision
 from app.services import digital_certificates as certificates
 from app.services.document_signing import pdf, policy, workflow
 from app.services.nfe_certificate_vault import Pkcs12CertificateProvider, store_encrypted_certificate
@@ -227,6 +227,69 @@ def test_a1_key_configuration_distinguishes_absence_and_bad_format(web_db):
         with pytest.raises(certificates.EncryptionConfigurationError, match="32 bytes em Base64") as exc:
             certificates.encryption_key(setting)
         assert value not in str(exc.value)
+
+
+def test_document_list_paginates_and_filters_beyond_the_first_hundred(web_db):
+    sessions, _ = web_db
+    now = datetime.now(timezone.utc)
+    category = workflow.DOCUMENT_CATEGORIES[0]
+    with sessions() as db:
+        db.add_all(
+            SigningDocument(
+                id=f"doc-{n:03}", organization_id=1, farm_id=1, owner_id=1,
+                title=f"Contrato {n:03}" if n < 104 else "Cédula antiga",
+                filename=f"arquivo-{n:03}.pdf", category=category, validation={},
+                updated_at=now - timedelta(minutes=n),
+            )
+            for n in range(105)
+        )
+        db.add(SigningDocument(
+            id="unshared", organization_id=1, farm_id=1, owner_id=2,
+            title="Cédula de outra pessoa", filename="outra.pdf", category=category,
+            validation={}, updated_at=now,
+        ))
+        db.commit()
+
+    app = FastAPI()
+    app.add_middleware(SessionMiddleware, secret_key="pagination-test")
+    app.include_router(router)
+    app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+    def db_dependency():
+        with sessions() as db:
+            yield db
+
+    def signing_user(request: Request):
+        request.session["active_farm_id"] = 1
+        with sessions() as db:
+            return db.get(User, 1)
+
+    app.dependency_overrides[get_db] = db_dependency
+    app.dependency_overrides[get_current_user_web] = signing_user
+    with LocalTestClient(app) as client:
+        first = client.get("/assinatura-digital")
+        assert first.status_code == 200
+        assert first.text.count("data-ds-list-row") == 10
+        assert "Página 1 de 11" in first.text
+        assert re.findall(r'<option value="(\d+)"(?: selected)?>\d+</option>', first.text) == ["10", "30", "50", "100"]
+
+        for size in (30, 50, 100):
+            page = client.get("/assinatura-digital", params={"por": size})
+            assert page.text.count("data-ds-list-row") == size
+            assert f'<option value="{size}" selected>' in page.text
+
+        last = client.get("/assinatura-digital", params={"por": 100, "pagina": 999})
+        assert last.text.count("data-ds-list-row") == 5
+        assert "Página 2 de 2" in last.text
+        assert "Cédula antiga" in last.text
+
+        filtered = client.get("/assinatura-digital", params={
+            "por": 30, "pagina": 2, "q": "cedula", "categoria": category, "situacao": "your_turn",
+        })
+        assert filtered.text.count("data-ds-list-row") == 1
+        assert "Cédula antiga" in filtered.text
+        assert "Cédula de outra pessoa" not in filtered.text
+        assert "Página 1 de 1" in filtered.text
 
 
 def test_central_reuses_fiscal_a1_and_controls_independent_purposes(authority, web_db):

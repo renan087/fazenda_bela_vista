@@ -26,10 +26,6 @@ function badge(state) {
   return element("span", states[state] || "A verificar", `ds-pill ds-pill--${states[state] ? state : "unsigned"}`);
 }
 
-function cleanText(value) {
-  return (value || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
-}
-
 function maskPhone(value) {
   const d = String(value || "").replace(/\D/g, "").slice(0, 11);
   if (d.length <= 2) return d ? `(${d}` : "";
@@ -343,8 +339,11 @@ function initHome(root) {
       if (targetTab === "validate") link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
     }
-    const nextUrl = targetTab === "validate" ? "/assinatura-digital?aba=validar" : "/assinatura-digital";
-    window.history.replaceState({}, "", nextUrl);
+    const url = new URL(location.href);
+    if (targetTab === "validate") url.searchParams.set("aba", "validar");
+    else url.searchParams.delete("aba");
+    url.hash = "";
+    window.history.replaceState({}, "", url);
   }
 
   overviewTabLink?.addEventListener("click", (event) => {
@@ -358,55 +357,9 @@ function initHome(root) {
     });
   }
 
-  // Filters & search
-  const rows = [...root.querySelectorAll("[data-ds-list-row]")];
-  const filterChips = [...root.querySelectorAll("[data-ds-filter]")];
-  const categorySelect = root.querySelector("[data-ds-category-filter]");
-  const searchInput = root.querySelector("[data-ds-search]");
-  const visibleCount = root.querySelector("[data-ds-visible-count]");
-  const emptySearch = root.querySelector("[data-ds-search-empty]");
-  let activeFilter = "todos";
-
-  function applyFilters() {
-    const query = cleanText(searchInput?.value);
-    const category = categorySelect?.value || "todas";
-    let shown = 0;
-    for (const row of rows) {
-      const matchStatus = activeFilter === "todos" || row.dataset.status === activeFilter;
-      const matchCategory = category === "todas" || row.dataset.category === category;
-      const matchSearch = !query || cleanText(row.dataset.searchText).includes(query);
-      row.hidden = !(matchStatus && matchCategory && matchSearch);
-      if (!row.hidden) shown++;
-    }
-    if (visibleCount) visibleCount.textContent = `(${shown})`;
-    if (emptySearch) emptySearch.hidden = shown !== 0 || rows.length === 0;
-    for (const chip of filterChips) {
-      chip.setAttribute("aria-pressed", String(chip.dataset.dsFilter === activeFilter));
-    }
+  for (const select of root.querySelectorAll("[data-ds-submit-on-change]")) {
+    select.addEventListener("change", () => select.form.requestSubmit());
   }
-
-  for (const chip of filterChips) {
-    chip.addEventListener("click", () => {
-      activeFilter = chip.dataset.dsFilter;
-      applyFilters();
-    });
-  }
-  for (const trigger of root.querySelectorAll("[data-ds-filter-trigger]")) {
-    trigger.addEventListener("click", () => {
-      activeFilter = trigger.dataset.dsFilterTrigger;
-      switchTab("overview");
-      applyFilters();
-      root.querySelector(".ds-list-card")?.scrollIntoView({behavior: "smooth", block: "start"});
-    });
-  }
-  categorySelect?.addEventListener("change", applyFilters);
-  searchInput?.addEventListener("input", applyFilters);
-  root.querySelector("[data-ds-reset-filters]")?.addEventListener("click", () => {
-    activeFilter = "todos";
-    if (categorySelect) categorySelect.value = "todas";
-    if (searchInput) searchInput.value = "";
-    applyFilters();
-  });
 
   // Delete unsigned document from (...) menu
   const listStatus = root.querySelector("[data-ds-list-status]");
