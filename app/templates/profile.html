@@ -187,7 +187,7 @@
                 </div>
             </div>
 
-            <div class="mp-block" style="max-width: 500px;">
+            <div class="mp-block" style="max-width: 540px;">
                 {% if pending_password_change %}
                 <div class="mp-otp-banner">
                     Enviamos um código de 6 dígitos para <strong>{{ user.email }}</strong>. Informe o código abaixo para concluir a alteração da senha.
@@ -255,8 +255,8 @@
                         <p class="mt-1 hidden text-xs font-medium text-[#B42318]" data-pw-mismatch>As senhas não conferem.</p>
                     </div>
 
-                    <p class="text-[12.5px] leading-relaxed text-[#5B6660]">
-                        Enviaremos um código de 6 dígitos para <strong>{{ user.email }}</strong>. Ao concluir, outros navegadores confiáveis serão desconectados automaticamente.
+                    <p class="mp-pw-note">
+                        Enviaremos um código de 6 dígitos para <strong>{{ user.email }}</strong>. Ao concluir, outros navegadores confiáveis serão desconectados.
                     </p>
 
                     <div class="flex flex-wrap items-center gap-2 pt-1">
@@ -761,5 +761,5 @@
     <span data-mp-toast-text>Salvo.</span>
 </div>
 
-<script src="{{ url_for('static', path='js/profile.js') }}?v=20261128mp1" defer></script>
+<script src="{{ url_for('static', path='js/profile.js') }}?v=20261128mp2" defer></script>
 {% endblock %}

@@ -13614,7 +13614,9 @@ a.obt-seg{cursor:pointer}a.obt-seg:hover{background:#E3ECDF}
 /* ============================================================================
    Meu Perfil (.mp-*) — Padrão visual oficial SiSFarm
    ============================================================================ */
-.mp-page {
+.mp-page,
+dialog.mp-dialog,
+.mp-toast {
     --mp-ink: #16201A;
     --mp-muted: #5B6660;
     --mp-subtle: #7A857E;
@@ -13634,6 +13636,8 @@ a.obt-seg{cursor:pointer}a.obt-seg:hover{background:#E3ECDF}
     --mp-danger: #B42318;
     --mp-danger-hover: #912018;
     --mp-danger-bg: #FDECEA;
+}
+.mp-page {
     width: 100%;
     max-width: 860px;
     margin: 0 auto;
@@ -13777,29 +13781,54 @@ a.obt-seg{cursor:pointer}a.obt-seg:hover{background:#E3ECDF}
     background: #FFFFFF;
 }
 
-/* Formulários e campos */
+/* Formulários e campos (especificidade acima do @tailwindcss/forms) */
 .mp-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .mp-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .mp-label { font-size: 0.8125rem; font-weight: 500; color: var(--mp-ink); }
-.mp-input, .mp-select {
+.mp-page input.mp-input,
+.mp-page select.mp-select,
+dialog.mp-dialog input.mp-input,
+dialog.mp-dialog select.mp-select {
     width: 100%;
     min-height: 42px;
     padding: 9px 12px;
     border-radius: 10px;
     border: 1px solid var(--mp-line-strong);
-    background: #FFFFFF;
+    background-color: #FFFFFF;
     font-size: 0.875rem;
+    line-height: 1.4;
     color: var(--mp-ink);
+    box-shadow: none;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.mp-input:hover, .mp-select:hover { border-color: #B9C4BC; }
-.mp-input:focus, .mp-select:focus {
+.mp-page input.mp-input::placeholder { color: var(--mp-subtle); }
+.mp-page input.mp-input:hover,
+.mp-page select.mp-select:hover,
+dialog.mp-dialog input.mp-input:hover,
+dialog.mp-dialog select.mp-select:hover { border-color: #B9C4BC; }
+.mp-page input.mp-input:focus,
+.mp-page input.mp-input:focus-visible,
+.mp-page select.mp-select:focus,
+.mp-page select.mp-select:focus-visible,
+dialog.mp-dialog input.mp-input:focus,
+dialog.mp-dialog select.mp-select:focus {
     border-color: var(--mp-brand);
     box-shadow: 0 0 0 3px rgba(155, 203, 107, 0.28);
     outline: none;
 }
 .mp-pw-wrap { position: relative; }
-.mp-pw-wrap .mp-input { padding-right: 42px; }
+.mp-page .mp-pw-wrap input.mp-input { padding-right: 42px; }
+.mp-pw-note {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--mp-muted);
+}
+dialog.mp-dialog input[type="range"] {
+    width: 100%;
+    accent-color: var(--mp-brand);
+    cursor: pointer;
+}
 .mp-pw-eye {
     position: absolute;
     right: 6px;
@@ -14336,8 +14365,8 @@ dialog.mp-dialog::backdrop { background: rgba(15, 21, 19, 0.45); backdrop-filter
 
 /* Densidade compacta aplicada globalmente via body[data-ui-density="compact"] */
 body[data-ui-density="compact"] .mp-block { padding: 18px 22px; }
-body[data-ui-density="compact"] .mp-input,
-body[data-ui-density="compact"] .mp-select { min-height: 36px; padding: 6px 10px; font-size: 0.84375rem; }
+body[data-ui-density="compact"] .mp-page input.mp-input,
+body[data-ui-density="compact"] .mp-page select.mp-select { min-height: 36px; padding: 6px 10px; font-size: 0.84375rem; }
 body[data-ui-density="compact"] .mp-sec-row,
 body[data-ui-density="compact"] .mp-sec-row-action { padding: 12px 22px; }
 body[data-ui-density="compact"] .mp-notif-row { padding: 10px 0; }

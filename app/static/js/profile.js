@@ -120,11 +120,40 @@
         drawAvatar();
     };
 
+    const hasSavedAvatar = root.getAttribute('data-has-avatar') === '1';
+
+    const applyLoadedImage = (img, fileName, message) => {
+        avState.img = img;
+        avState.fileName = fileName || 'avatar';
+        avState.baseScale = Math.max(viewportSize / img.width, viewportSize / img.height);
+        avState.scale = avState.baseScale;
+        avState.offsetX = 0;
+        avState.offsetY = 0;
+        if (zoomInput) zoomInput.value = '1';
+        if (zoomVal) zoomVal.textContent = '100%';
+        clampAvatarOffsets();
+        drawAvatar();
+        if (feedbackEl && message) feedbackEl.textContent = message;
+    };
+
+    const loadCurrentSavedAvatar = () => {
+        if (!hasSavedAvatar) return;
+        const img = new Image();
+        img.onload = () => {
+            applyLoadedImage(img, 'avatar', 'Arraste ou dê zoom para ajustar sua foto, ou escolha outra imagem.');
+        };
+        img.onerror = () => {
+            drawAvatar();
+        };
+        img.src = `/meu-perfil/avatar?t=${Date.now()}`;
+    };
+
     const openEditorDialog = () => {
         resetAvatarDraft();
         if (editorDlg && typeof editorDlg.showModal === 'function') {
             editorDlg.showModal();
         }
+        loadCurrentSavedAvatar();
     };
 
     if (avatarTrigger) {
@@ -161,17 +190,7 @@
             img.onload = () => {
                 if (avState.objectUrl) URL.revokeObjectURL(avState.objectUrl);
                 avState.objectUrl = nextUrl;
-                avState.img = img;
-                avState.fileName = file.name || 'avatar';
-                avState.baseScale = Math.max(viewportSize / img.width, viewportSize / img.height);
-                avState.scale = avState.baseScale;
-                avState.offsetX = 0;
-                avState.offsetY = 0;
-                if (zoomInput) zoomInput.value = '1';
-                if (zoomVal) zoomVal.textContent = '100%';
-                clampAvatarOffsets();
-                drawAvatar();
-                if (feedbackEl) feedbackEl.textContent = 'Arraste para centralizar e clique em Salvar foto.';
+                applyLoadedImage(img, file.name || 'avatar', 'Arraste para centralizar e clique em Salvar foto.');
             };
             img.onerror = () => {
                 URL.revokeObjectURL(nextUrl);
